@@ -5,8 +5,6 @@
 package ciphertrust
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -23,7 +21,7 @@ var updateCipherTrustEARCmd = &cobra.Command{
     --auth-type <PASSWORD|REFRESH_TOKEN> [--username <username> --password <password> | --refresh-token <token>]`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		configNameFlag := util.MustGetFlagString(cmd, "name")
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
+		if util.IsEmptyString(configNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(

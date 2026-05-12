@@ -28,6 +28,8 @@
 
 #include "yb/rocksdb/types.h"
 
+#include "yb/util/byte_buffer.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
@@ -39,6 +41,7 @@ class BlockBuilder {
 
   explicit BlockBuilder(int block_restart_interval,
                         KeyValueEncodingFormat key_value_encoding_format,
+                        const yb::MemTrackerPtr& mem_tracker,
                         bool use_delta_encoding = true);
 
   // Reset the contents as if the BlockBuilder was just constructed.
@@ -72,11 +75,11 @@ class BlockBuilder {
   const bool use_delta_encoding_;
   const KeyValueEncodingFormat key_value_encoding_format_;
 
-  std::string           buffer_;    // Destination buffer
-  std::vector<uint32_t> restarts_;  // Restart points
-  int                   counter_;   // Number of entries emitted since restart
-  bool                  finished_;  // Has Finish() been called?
-  std::string           last_key_;
+  yb::MemTrackedByteBuffer<1024> buffer_;  // Destination buffer
+  std::vector<uint32_t> restarts_;         // Restart points
+  int counter_;                            // Number of entries emitted since restart
+  bool finished_;                          // Has Finish() been called?
+  std::string last_key_;
 };
 
 }  // namespace rocksdb

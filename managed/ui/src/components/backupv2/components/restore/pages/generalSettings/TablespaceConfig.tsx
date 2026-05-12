@@ -16,8 +16,8 @@ import { Box, makeStyles } from '@material-ui/core';
 import { IGeneralSettings } from './GeneralSettings';
 import { TablespaceWarnings } from '@app/redesign/features/backup/restore/pages/RestoreTarget/TablespaceWarnings';
 import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
-import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg?img';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg?img';
 
 const TRANS_PREFIX = 'backup.restore.target';
 
@@ -41,7 +41,7 @@ const useStyles = makeStyles((theme) => ({
   conflictingTablespace: {
     marginLeft: '34px',
     marginTop: '5px'
-  },
+  }
 }));
 
 export const TablespaceConfig = () => {

@@ -59,6 +59,8 @@ public class HealthCheckMetrics {
   public static final String NODE_EXPORTER_CHECK = "Node exporter";
   private static final String YB_CONTROLLER_CHECK = "YB-Controller server check";
   public static final String UNEXPECTED_PROCESSES_CHECK = "Check unexpected masters/tservers";
+  public static final String YNP_VERSION_CHECK = "YNP Version";
+  private static final String PROCESS_LIMITS_CHECK = "Per-process limits check";
 
   public static final String CUSTOM_NODE_METRICS_COLLECTION_METRIC = "yb_node_custom_node_metrics";
   public static final String DDL_ATOMICITY_CHECK_METRIC = "yb_ddl_atomicity_check";
@@ -87,6 +89,7 @@ public class HealthCheckMetrics {
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_YB_CONTROLLER_DOWN)
+          .add(PlatformMetrics.HEALTH_CHECK_PROCESS_LIMITS_ERROR)
           .build();
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS =
@@ -143,6 +146,8 @@ public class HealthCheckMetrics {
         return PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT;
       case YB_CONTROLLER_CHECK:
         return PlatformMetrics.HEALTH_CHECK_YB_CONTROLLER_DOWN;
+      case PROCESS_LIMITS_CHECK:
+        return PlatformMetrics.HEALTH_CHECK_PROCESS_LIMITS_ERROR;
       default:
         return null;
     }
@@ -170,7 +175,6 @@ public class HealthCheckMetrics {
                   new Metric()
                       .setExpireTime(
                           nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
-                      .setType(Metric.Type.GAUGE)
                       .setName(metric.getName())
                       .setHelp(metric.getHelp())
                       .setUnit(metric.getUnit())
@@ -209,7 +213,6 @@ public class HealthCheckMetrics {
       Customer customer, Universe universe, String node, String checkName, Double value) {
     return new Metric()
         .setExpireTime(nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
-        .setType(Metric.Type.GAUGE)
         .setName(PlatformMetrics.YB_UNIV_HEALTH_STATUS.getMetricName())
         .setHelp("Boolean result of health checks")
         .setCustomerUUID(customer.getUuid())

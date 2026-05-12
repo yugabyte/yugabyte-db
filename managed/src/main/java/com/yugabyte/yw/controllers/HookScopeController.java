@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.HookScopeFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -28,6 +29,8 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponse;
+import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
@@ -129,6 +132,10 @@ public class HookScopeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @ApiResponses(
+      value = {
+        @ApiResponse(code = 404, message = "Hook scope not found", response = YBPError.class)
+      })
   public Result delete(UUID customerUUID, UUID hookScopeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer, request);
@@ -154,6 +161,10 @@ public class HookScopeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @ApiResponses(
+      value = {
+        @ApiResponse(code = 404, message = "Hook scope not found", response = YBPError.class)
+      })
   public Result addHook(
       UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -180,6 +191,10 @@ public class HookScopeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @ApiResponses(
+      value = {
+        @ApiResponse(code = 404, message = "Hook scope not found", response = YBPError.class)
+      })
   public Result removeHook(
       UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

@@ -9,14 +9,22 @@ CREATE INDEX i_nulltest_ba ON nulltest ((b, a) HASH);
 \set filename :abs_srcdir '/yb_commands/index_scan_null_queries.sql'
 \i :filename
 -- Queries for the null scan key tests
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)'
 SET client_min_messages = DEBUG1;
 \set YB_DISABLE_ERROR_PREFIX on
 SET yb_bnl_batch_size to 1;
 -- Should return empty results (actual rows=0)
 -- The plans should not show any "Recheck"
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;
+\set Q1 '/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */'
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -29,9 +37,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: (a = t2.x)
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;'
+:query
                          QUERY PLAN                          
 -------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -48,9 +55,8 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
                Storage Table Rows Scanned: 4
 (12 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;'
+:query
                          QUERY PLAN                          
 -------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -67,9 +73,8 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
                Storage Table Rows Scanned: 4
 (12 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
@@ -82,9 +87,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: ((b = t2.y) AND (a = t2.x))
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);'
+:query
                          QUERY PLAN                          
 -------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -101,9 +105,12 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
                Storage Table Rows Scanned: 4
 (12 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
+\set Q1 '/*+ IndexScan(t1) */'
+\set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query ':explain :Q SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=0 loops=1)
@@ -114,9 +121,6 @@ SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
    Storage Table Rows Scanned: 4
 (6 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=0 loops=1)
@@ -127,18 +131,16 @@ SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
    Storage Table Rows Scanned: 4
 (6 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, null);
+\set query ':explain :Q SELECT a FROM nulltest t1 WHERE a IN (null, null);'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
    Index Cond: (a = ANY ('{NULL,NULL}'::integer[]))
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, null);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
@@ -153,17 +155,13 @@ SELECT a FROM nulltest t1 WHERE a IN (null, null);
 (9 rows)
 
 -- Should return 1s
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
+\set Q1 '/*+ IndexScan(t1) */'
+\set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query ':P :Q SELECT a FROM nulltest t1 WHERE a IN (null, 1);'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -176,17 +174,6 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
    Storage Index Rows Scanned: 2
 (8 rows)
 
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=2 loops=1)
@@ -200,17 +187,23 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
    Storage Index Rows Scanned: 4
 (9 rows)
 
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
  a 
 ---
  1
  1
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
+ a 
+---
+ 1
+ 1
+(2 rows)
+
 /*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
+\set query ':P :Q SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=2 loops=1)
@@ -221,17 +214,6 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Storage Table Rows Scanned: 4
 (6 rows)
 
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=2 loops=1)
@@ -241,19 +223,26 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
 (6 rows)
+
+ a 
+---
+ 1
+ 1
+(2 rows)
+
+ a 
+---
+ 1
+ 1
+(2 rows)
 
 -- Should return nulls
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IS NULL;
- a 
----
-  
-  
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IS NULL;
+\set Q1 '/*+ IndexScan(t1) */'
+\set query ':P :Q1 SELECT a FROM nulltest t1 WHERE a IS NULL;'
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -265,6 +254,12 @@ SELECT a FROM nulltest t1 WHERE a IS NULL;
    Storage Index Read Ops: 1
    Storage Index Rows Scanned: 2
 (8 rows)
+
+ a 
+---
+  
+  
+(2 rows)
 
 RESET client_min_messages;
 \unset YB_DISABLE_ERROR_PREFIX

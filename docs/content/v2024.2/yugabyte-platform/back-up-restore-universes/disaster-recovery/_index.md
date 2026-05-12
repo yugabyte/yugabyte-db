@@ -11,6 +11,9 @@ menu:
     weight: 90
 type: indexpage
 showRightNav: true
+cascade:
+  tags:
+    other: ysql
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
@@ -70,12 +73,15 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
 
 xCluster DR can be set up to perform schema changes in the following ways:
 
-- [Semi-automatic mode](#semi-automatic-mode), providing simpler steps for performing DDL changes.
-- [Manual mode](#manual-mode).
+| Mode | Description | GA | Deprecated |
+| :--- | :--- | :--- | :--- |
+| Automatic | Handles all aspects of replication for both data and schema changes. <br>Automatic will be available as Early Access in v2025.1. | v2025.2.1 | |
+| [Semi-automatic](#semi-automatic-mode) {{<tags/feature/ea idea="1186">}} | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | v2025.2.1 |
+| [Manual](#manual-mode) | Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2024.2 | v2025.1 |
 
 ### Semi-automatic mode
 
-Semi-automatic mode is {{<tags/feature/ea idea="1186">}}. In this mode, table and index-level schema changes must be performed in the same order as follows:
+{{<tags/feature/ea idea="1186">}}In this mode, table and index-level schema changes must be performed in the same order as follows:
 
 1. The DR primary universe.
 2. The DR replica universe.
@@ -114,7 +120,7 @@ xCluster refers to all YugabyteDB deployments with two or more universes, and ha
 - _xCluster DR_. Provides turnkey workflow orchestration for applications using transactional SQL in an active-active single-master manner, with only unidirectional replication configured at any moment in time. xCluster DR uses xCluster Replication under the hood, and adds workflow automation and orchestration, including switchover, failover, resynchronization to make another full copy, and so on.
 - _xCluster Replication_. Moves the data from one universe to another. Can be used for CQL, non-transactional SQL, bi-directional replication, and other deployment models not supported by xCluster DR.
 
-xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/preview/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/stable/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
 - Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
 
@@ -153,7 +159,9 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 
 ## Limitations
 
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes). This is tracked by [GitHub issue #11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+- DR is only available for YSQL databases.
+
+- Replication is managed at the database level. All tables in the database are added to replication; you cannot replicate only a subset of tables in a database.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
 

@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -22,7 +23,6 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -55,7 +55,6 @@ import play.libs.Json;
 @Abortable
 public class GFlagsUpgrade extends UpgradeTaskBase {
 
-  private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
   private final AuditService auditService;
   private final GFlagsAuditHandler gFlagsAuditHandler;
@@ -63,12 +62,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   @Inject
   protected GFlagsUpgrade(
       BaseTaskDependencies baseTaskDependencies,
-      GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService,
       AuditService auditService,
       GFlagsAuditHandler gFlagsAuditHandler) {
     super(baseTaskDependencies);
-    this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
     this.auditService = auditService;
     this.gFlagsAuditHandler = gFlagsAuditHandler;
@@ -318,6 +315,26 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     }
 
     taskParams().verifyPreviewGFlagsSettings(universe);
+
+    if (!isSkipPrechecks()) {
+      doInPrecheckSubTaskGroup(
+          "CheckNodeDataDirDiskSpace",
+          subTaskGroup -> {
+            mastersAndTservers.getAllNodes().stream()
+                .forEach(
+                    node -> {
+                      CheckNodeDataDirDiskSpace.Params params =
+                          new CheckNodeDataDirDiskSpace.Params();
+                      params.setUniverseUUID(taskParams().getUniverseUUID());
+                      params.nodeName = node.nodeName;
+                      CheckNodeDataDirDiskSpace checkNodeDataDirDiskSpace =
+                          createTask(CheckNodeDataDirDiskSpace.class);
+                      checkNodeDataDirDiskSpace.initialize(params);
+                      subTaskGroup.addSubTask(checkNodeDataDirDiskSpace);
+                    });
+          });
+    }
+
     addBasicPrecheckTasks();
   }
 

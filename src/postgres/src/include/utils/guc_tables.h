@@ -169,6 +169,8 @@ struct config_generic
 	char	   *sourcefile;		/* file current setting is from (NULL if not
 								 * set in config file) */
 	int			sourceline;		/* line in source file */
+	/* YB: Saved default value in case conn mgr overrides the default */
+	GucStack   *ysql_conn_mgr_saved_default;
 };
 
 /* bit values in status field */
@@ -179,7 +181,13 @@ struct config_generic
  */
 #define GUC_PENDING_RESTART 0x0002	/* changed value cannot be applied yet */
 #define GUC_NEEDS_REPORT	0x0004	/* new value must be reported to client */
-
+/* YB: GUC value was reset to the currently saved default */
+#define YB_GUC_VALUE_RESET 0x0008
+/*
+ * YB: GUC default value, which was overriden by ConnMgr, was reset to the
+ * default value of the txn backend
+ */
+#define YB_GUC_DEFAULT_RESET 0x0010
 
 /* GUC records for specific variable types */
 

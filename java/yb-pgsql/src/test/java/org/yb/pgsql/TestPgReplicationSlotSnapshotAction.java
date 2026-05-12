@@ -34,15 +34,9 @@ public class TestPgReplicationSlotSnapshotAction extends BasePgSQLTest {
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
-        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG2");
-    flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs", Integer.toString(5));
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
 
-    String enable_pg_export_snapshot_gFlag = "ysql_enable_pg_export_snapshot";
-    flagMap.put("allowed_preview_flags_csv", enable_pg_export_snapshot_gFlag);
-    flagMap.put(enable_pg_export_snapshot_gFlag, "true");
     return flagMap;
   }
 

@@ -101,11 +101,11 @@ export function GetRestoreContext() {
 
 // Get unsupported tablespace config
 export const getUnSupportedTableSpaceConfig = (preflightResponse: PreflightResponseV2Params | PreflightResponseParams, configName: 'conflictingTablespaces' | 'unsupportedTablespaces') => {
-    const storageLocationsKeys = keys(preflightResponse.perLocationBackupInfoMap);
+    const storageLocationsKeys = keys(preflightResponse?.perLocationBackupInfoMap);
 
     return storageLocationsKeys.some((location) => {
         const tablespaceResponse =
-            preflightResponse.perLocationBackupInfoMap[location].tablespaceResponse;
+            preflightResponse?.perLocationBackupInfoMap[location]?.tablespaceResponse;
         return (
             tablespaceResponse[configName]?.length !== 0
         );

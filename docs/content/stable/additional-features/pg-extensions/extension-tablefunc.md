@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-tablefunc
 ---
 
 The [tablefunc](https://www.postgresql.org/docs/15/tablefunc.html) module includes various functions that return tables (that is, multiple rows).

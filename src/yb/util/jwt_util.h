@@ -14,7 +14,6 @@
 
 #include <jwt-cpp/jwt.h>
 
-#include <set>
 #include <string>
 
 #include "yb/util/status.h"
@@ -27,6 +26,13 @@ namespace yb::util {
 Status ValidateJWT(
     const std::string& token, const YbcPgJwtAuthOptions& options,
     std::vector<std::string>* identity_claims);
+
+Status ValidateJWT(const std::string& token,
+                   const std::string& jwks,
+                   const std::string& matching_claim_key,
+                   const std::vector<std::string>& allowed_issuers,
+                   const std::vector<std::string>& allowed_audiences,
+                   std::vector<std::string>* identity_claims);
 
 Result<std::string> TEST_GetJwkAsPEM(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk);
 

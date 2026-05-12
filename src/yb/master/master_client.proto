@@ -102,7 +102,9 @@ message GetIndexBackfillProgressResponsePB {
   optional MasterErrorPB error = 1;
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (GetIndexBackfillProgressRequestPB).
-  repeated uint64 rows_processed_entries = 2;
+  repeated uint64 num_rows_read_from_table_for_backfill = 2;
+
+  repeated double num_rows_backfilled_in_index = 3;
 }
 
 message GetTabletLocationsRequestPB {
@@ -220,6 +222,17 @@ message GetYsqlCatalogConfigResponsePB {
   optional uint64 version = 2;
 }
 
+message GetYsqlYbSystemTableInfoRequestPB {
+  optional uint32 namespace_oid = 1; // pg_class.relnamesapce, required.
+  optional string table_name = 2; // pg_class.relname, required.
+}
+
+message GetYsqlYbSystemTableInfoResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 table_oid = 2;  // pg_class.oid
+  optional uint32 relfilenode = 3; // pg_class.relfilenode
+}
+
 message RedisConfigSetRequestPB {
   optional string keyword = 1;
   repeated bytes args = 2;
@@ -259,7 +272,11 @@ message GetStatefulServiceLocationResponsePB {
   optional StatefulServiceInfoPB service_info = 2;
 }
 
-message GetTabletsMetadataRequestPB {}
+message GetTabletsMetadataRequestPB {
+  // Optional: return only the tablet containing this partition key (used by GetTabletForKey).
+  optional bytes table_id = 1;
+  optional bytes partition_key = 2;
+}
 
 message GetTabletsMetadataResponsePB {
   optional MasterErrorPB error = 1;
@@ -285,6 +302,9 @@ service MasterClient {
 
   rpc GetIndexBackfillProgress(GetIndexBackfillProgressRequestPB)
       returns (GetIndexBackfillProgressResponsePB);
+
+  rpc GetYsqlYbSystemTableInfo(GetYsqlYbSystemTableInfoRequestPB)
+      returns (GetYsqlYbSystemTableInfoResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);

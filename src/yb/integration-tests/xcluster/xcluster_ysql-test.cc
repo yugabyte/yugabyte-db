@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -116,6 +117,7 @@ DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
+DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb {
 
@@ -152,23 +154,21 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return Status::OK();
   }
 
-  Result<YBTableName> CreateMaterializedView(Cluster* cluster, const YBTableName& table) {
-    auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
-    RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
-    return GetYsqlTable(
-        cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
-  }
-
   void TestDropTableOnConsumerThenProducer(bool restart_master);
   void TestDropTableOnProducerThenConsumer(bool restart_master);
 
   MonoDelta MaxAsyncTaskWaitDuration() {
     return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
   }
-
- private:
 };
+
+TEST_F(XClusterYsqlTest, RejectSequencesDataTableInManualSetup) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 1, 1));
+
+  auto setup_status = SetupUniverseReplication({kPgSequencesDataTableId});
+  ASSERT_NOK(setup_status);
+  ASSERT_STR_CONTAINS(setup_status.ToString(), "sequences_data");
+}
 
 TEST_F(XClusterYsqlTest, GenerateSeries) {
   ASSERT_OK(SetUpWithParams({4}, {4}, 3, 1));
@@ -345,7 +345,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     auto catalog_manager =
         &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
     return catalog_manager->SplitTablet(
-        tablet_id, master::ManualSplit::kTrue, catalog_manager->GetLeaderEpochInternal());
+        tablet_id, master::ManualSplit::kTrue, cluster->GetSplitFactor(),
+        catalog_manager->GetLeaderEpochInternal());
   }
 
   Status SetupReplicationAndWaitForValidSafeTime() {
@@ -479,7 +480,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
 
   // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
   // optimization will kick in:
-  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
 
   // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
   // be replicated and visible on the consumer side.
@@ -495,7 +496,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // No wait here; see next test for why this matters.
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
 
   ASSERT_OK(VerifyWrittenRecords());
   ASSERT_OK(DeleteUniverseReplication());
@@ -1868,8 +1869,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
         // Check that first log was garbage collected, so remote bootstrap will be required.
         consensus::ReplicateMsgs replicates;
         int64_t starting_op;
-        return !tablet_peer->log()
-                    ->GetLogReader()
+        return !VERIFY_RESULT(tablet_peer->log()->GetLogReader())
                     ->ReadReplicatesInRange(
                         1, 2, 0, log::ObeyMemoryLimit::kFalse, &replicates, &starting_op)
                     .ok();
@@ -2033,13 +2033,15 @@ TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   std::shared_ptr<client::YBTable> producer_mv;
   std::shared_ptr<client::YBTable> consumer_mv;
   ASSERT_OK(InsertRowsInProducer(0, 5));
-  ASSERT_OK(producer_client()->OpenTable(
-      ASSERT_RESULT(CreateMaterializedView(&producer_cluster_, producer_table_->name())),
-      &producer_mv));
+  ASSERT_OK(
+      producer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(producer_cluster_, producer_table_->name())),
+          &producer_mv));
   producer_tables.push_back(producer_mv);
-  ASSERT_OK(consumer_client()->OpenTable(
-      ASSERT_RESULT(CreateMaterializedView(&consumer_cluster_, consumer_table_->name())),
-      &consumer_mv));
+  ASSERT_OK(
+      consumer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(consumer_cluster_, consumer_table_->name())),
+          &consumer_mv));
 
   auto s = SetupUniverseReplication(producer_tables);
 
@@ -2054,7 +2056,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
-  TestReplicationWithSchemaChanges(producer_table_->id(), false /* boostrap */);
+  TestReplicationWithSchemaChanges(producer_table_->id(), /*bootstrap=*/false);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrap) {
@@ -2063,7 +2065,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrap) {
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
-  TestReplicationWithSchemaChanges(producer_table_->id(), true /* boostrap */);
+  TestReplicationWithSchemaChanges(producer_table_->id(), /*bootstrap=*/true);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
@@ -2439,28 +2441,38 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ValidateRecordsXClusterWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/false,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
-  ValidateRecordsXClusterWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/false,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ValidateRecordsXClusterWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/true);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
-  ValidateRecordsXClusterWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/true);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
-  ValidateRecordsXClusterWithCDCSDK(true, true, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/true,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
@@ -2469,9 +2481,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   namespace_name = "test_namespace";
 
   SetupParams params{
-      .num_consumer_tablets = {1, 1},
-      .num_producer_tablets = {1, 1},
-      .replication_factor = 1,
+    .num_consumer_tablets = {1, 1},
+    .num_producer_tablets = {1, 1},
+    .replication_factor = 1,
   };
   ASSERT_OK(SetUpClusters(params));
 
@@ -2548,11 +2560,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
 
   ASSERT_OK(DropDatabase(producer_cluster_, namespace_name));
   master::GetNamespaceInfoResponsePB ret;
-  ASSERT_NOK(producer_client()->GetNamespaceInfo(
-      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
+  ASSERT_NOK(producer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ret));
   ASSERT_OK(DropDatabase(consumer_cluster_, namespace_name));
-  ASSERT_NOK(consumer_client()->GetNamespaceInfo(
-      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
+  ASSERT_NOK(consumer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ret));
 }
 
 struct XClusterPgSchemaNameParams {
@@ -3473,6 +3483,78 @@ TEST_F(XClusterYsqlTest, NonconcurrentBackfills) {
           "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName,
           kColumn2Name),
       expected_error);
+}
+
+TEST_F(XClusterYsqlTest, ValidatePartitionType) {
+  const auto kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /*replication_factor=*/1));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table_->name().namespace_name()));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &producer_cluster_, /*tablegroup_name=*/{}, /*colocated=*/false,
+      /*ranged_partitioned=*/true));
+  std::shared_ptr<client::YBTable> new_producer_table;
+  ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
+
+  ASSERT_OK(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_, /*tablegroup_name=*/{}, /*colocated=*/false,
+      /*ranged_partitioned=*/false));
+
+  // We should not replicate from a range-partitioned table to a hash-partitioned table.
+  ASSERT_NOK_STR_CONTAINS(
+      AlterUniverseReplication(kReplicationGroupId, {new_producer_table}, /*add_tables=*/true),
+      "Source and target schemas don\\'t match");
+}
+
+TEST_F(XClusterYsqlTest, VectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+
+  SetupParams params{
+    .extra_columns = "embedding vector(3)",
+    .create_vector_extension = true,
+  };
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  auto table_name = producer_table_->name();
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(table_name.namespace_name()));
+
+  ASSERT_OK(p_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int i = 0; i != 10; ++i) {
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, '[$1, $2, $3]')", table_name.table_name(), i, i * 2, i * 3));
+  }
+  ASSERT_OK(p_conn.CommitTransaction());
+  ASSERT_OK(VerifyWrittenRecords());
+
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE INDEX CONCURRENTLY vec_idx ON $0 USING ybhnsw (embedding vector_l2_ops)",
+      table_name.table_name()));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(table_name.namespace_name()));
+  ASSERT_OK(c_conn.ExecuteFormat(
+      "CREATE INDEX CONCURRENTLY vec_idx ON $0 USING ybhnsw (embedding vector_l2_ops)",
+      table_name.table_name()));
+
+  // Verify consumer uses the vector index.
+  auto c_explain = ASSERT_RESULT(c_conn.FetchAllAsString(Format(
+      "EXPLAIN (COSTS OFF) SELECT key FROM $0 "
+      "ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5", table_name.table_name())));
+  ASSERT_STR_CONTAINS(c_explain, "vec_idx");
+
+  // Verify search results match.
+  auto p_search = ASSERT_RESULT(p_conn.FetchAllAsString(Format(
+      "SELECT key FROM $0 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5",
+      table_name.table_name())));
+  auto c_search = ASSERT_RESULT(c_conn.FetchAllAsString(Format(
+      "SELECT key FROM $0 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5",
+      table_name.table_name())));
+  ASSERT_EQ(p_search, c_search);
+  ASSERT_EQ(p_search, "0; 1; 2; 3; 4");
 }
 
 }  // namespace yb

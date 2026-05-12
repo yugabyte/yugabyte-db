@@ -23,8 +23,8 @@ import { ALERT_TEMPLATES_QUERY_KEY, createCustomAlertTemplteVariable } from './C
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
 import { Add, Edit } from '@material-ui/icons';
-import { ReactComponent as BulbIcon } from '../../../assets/bulb.svg';
-import { ReactComponent as Trash } from '../../../assets/trashbin.svg';
+import BulbIcon from '../../../assets/bulb.svg';
+import Trash from '../../../assets/trashbin.svg';
 
 type CustomVariableEditorModalProps = {
   open: boolean;

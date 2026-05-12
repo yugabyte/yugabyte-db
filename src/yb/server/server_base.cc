@@ -49,7 +49,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/messenger.h"
@@ -70,6 +69,7 @@
 #include "yb/server/webserver.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -144,8 +144,7 @@ using std::stringstream;
 using std::vector;
 using strings::Substitute;
 
-namespace yb {
-namespace server {
+namespace yb::server {
 
 namespace {
 
@@ -205,6 +204,9 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
+    common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
+        /* byte_limit = */ -1, kUntrackedTrackerName, std::bind(&MemTracker::GetUntrackedMemory)));
+
 #if YB_GOOGLE_TCMALLOC
     RegisterTCMallocTracker("Sum of CPU Cache Freelists", "tcmalloc.cpu_free");
     RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free");
@@ -222,7 +224,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {
           for (auto& tracker : common_mem_trackers->trackers) {
-            tracker->UpdateConsumption();
+            tracker->MaybeUpdateConsumption();
           }
         });
   }
@@ -283,7 +285,7 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
 Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
-    auto count = std::min(16, static_cast<int>(base::NumCPUs()));
+    auto count = std::min(16, static_cast<int>(NumEffectiveCPUs()));
     RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_reactor_threads, count));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
@@ -597,14 +599,8 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
     RETURN_NOT_OK_PREPEND(
         AddHostPortPBs(endpoints, reg->mutable_private_rpc_addresses()),
         "Failed to add RPC endpoints to registration");
-    for (const auto &addr : reg->private_rpc_addresses()) {
-      LOG(INFO) << " Using private rpc addresses: ( " << addr.ShortDebugString()
-                << " )";
-    }
   } else {
     HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses());
-    LOG(INFO) << "Using private rpc address "
-              << reg->private_rpc_addresses(0).host();
   }
 
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
@@ -620,12 +616,8 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
       RETURN_NOT_OK_PREPEND(AddHostPortPBs(
           web_addrs, reg->mutable_http_addresses()),
           "Failed to add HTTP addresses to registration");
-      for (const auto &addr : reg->http_addresses()) {
-        LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
-      }
     } else {
       HostPortsToPBs({ web_input_hp }, reg->mutable_http_addresses());
-      LOG(INFO) << "Using http address " << reg->http_addresses(0).host();
     }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
@@ -683,6 +675,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
   DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
+  DisplayIconTile(output, "fa-area-chart", "CPU Profile", "/perf");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
@@ -755,6 +748,15 @@ Status RpcAndWebServerBase::Start() {
 
   RETURN_NOT_OK(RpcServerBase::Start());
 
+  ServerRegistrationPB reg;
+  RETURN_NOT_OK(GetRegistration(&reg));
+  for (const auto& addr : reg.private_rpc_addresses()) {
+    LOG(INFO) << "Using private rpc address: " << addr.ShortDebugString();
+  }
+  for (const auto& addr : reg.http_addresses()) {
+    LOG(INFO) << "Using http address: " << addr.ShortDebugString();
+  }
+
   return Status::OK();
 }
 
@@ -813,5 +815,8 @@ void TEST_Isolate(rpc::Messenger* messenger) {
   }
 }
 
-} // namespace server
-} // namespace yb
+std::string MakeServerLogPrefix(const std::string& uuid) {
+  return Format("P $0: ", uuid);
+}
+
+} // namespace yb::server

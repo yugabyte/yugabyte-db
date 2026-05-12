@@ -29,6 +29,7 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -73,23 +74,27 @@ public class NodeAgentManager {
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
   public static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
   public static final String NODE_AGENT_SERVER_INSTALL_PROPERTY = "yb.node_agent.server.install";
+  public static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   public static final int NODE_AGENT_JWT_EXPIRY_SECS = 1800;
 
-  private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final String NODE_AGENT_FILE_FILTER_FORMAT = "node_agent-%s*-%s-%s.tar.gz";
   private static final String NODE_AGENT_FILE_REGEX_FORMAT = "^node_agent-(.+)-%s-%s.tar.gz$";
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
-
   private final CertificateHelper certificateHelper;
+  private final FileHelperService fileHelperService;
 
   @Inject
   public NodeAgentManager(
-      Config appConfig, ConfigHelper configHelper, CertificateHelper certificateHelper) {
+      Config appConfig,
+      ConfigHelper configHelper,
+      CertificateHelper certificateHelper,
+      FileHelperService fileHelperService) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
     this.certificateHelper = certificateHelper;
+    this.fileHelperService = fileHelperService;
   }
 
   @Getter
@@ -97,15 +102,27 @@ public class NodeAgentManager {
     @NonNull private final Path sourcePath;
     @NonNull private final Path targetPath;
     private final String permission;
+    private final boolean deleteAfterCopy;
 
     CopyFileInfo(Path sourcePath, Path targetPath) {
-      this(sourcePath, targetPath, null);
+      this(sourcePath, targetPath, null, false);
     }
 
-    CopyFileInfo(Path sourcePath, Path targetPath, String permission) {
+    CopyFileInfo(Path sourcePath, Path targetPath, String permission, boolean deleteAfterCopy) {
       this.sourcePath = sourcePath;
       this.targetPath = targetPath;
       this.permission = permission;
+      this.deleteAfterCopy = deleteAfterCopy;
+    }
+
+    public void cleanupAfterCopy() {
+      if (deleteAfterCopy) {
+        try {
+          Files.deleteIfExists(sourcePath);
+        } catch (IOException e) {
+          log.warn("Error deleting file {}: {}", sourcePath, e.getMessage());
+        }
+      }
     }
   }
 
@@ -117,6 +134,12 @@ public class NodeAgentManager {
     @Nullable private Path packagePath;
     @Singular private List<Path> createDirs;
     @Singular private List<CopyFileInfo> copyFileInfos;
+
+    public void cleanupCopiedFiles() {
+      if (copyFileInfos != null) {
+        copyFileInfos.forEach(CopyFileInfo::cleanupAfterCopy);
+      }
+    }
   }
 
   @VisibleForTesting
@@ -403,7 +426,7 @@ public class NodeAgentManager {
             new GzipCompressorInputStream(new FileInputStream(filepath.toFile())))) {
       TarArchiveEntry currEntry;
       while ((currEntry = tarInput.getNextEntry()) != null) {
-        if (!currEntry.isFile() || !currEntry.getName().endsWith(NODE_AGENT_INSTALLER_FILE)) {
+        if (!currEntry.isFile() || !currEntry.getName().endsWith("/" + NODE_AGENT_INSTALLER_FILE)) {
           continue;
         }
         BufferedInputStream in = new BufferedInputStream(tarInput);
@@ -413,9 +436,31 @@ public class NodeAgentManager {
       }
     } catch (IOException e) {
       throw new PlatformServiceException(
-          Status.INTERNAL_SERVER_ERROR, "Error in reading the node-agent installer.");
+          Status.INTERNAL_SERVER_ERROR,
+          "Error in reading the node-agent installer - " + e.getMessage());
     }
     throw new PlatformServiceException(Status.NOT_FOUND, "Node-agent installer does not exist.");
+  }
+
+  /**
+   * Returns the installer script temp file path.
+   *
+   * @param prefix the temp file prefix.
+   * @return the temp file path containing the script.
+   */
+  public Path getInstallerScriptTempFile(String prefix) {
+    byte[] contents = getInstallerScript();
+    String tmpDirectory = fileHelperService.createTempFile(prefix, ".sh").toString();
+    try {
+      return Files.write(
+          Paths.get(tmpDirectory),
+          contents,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          Status.INTERNAL_SERVER_ERROR, "Error in writing to the temp file - " + e.getMessage());
+    }
   }
 
   /**
@@ -477,6 +522,12 @@ public class NodeAgentManager {
         certDirPath = nodeAgent.getCertDirPath();
       } else {
         certDirPath = generateCerts(nodeAgent);
+        // Upload the installer script for upgrade as the old one may not be forward compatible.
+        Path tmpInstallerScriptPath = getInstallerScriptTempFile("node-agent-installer-");
+        Path targetInstallerScriptPath =
+            nodeAgentDirPath.resolve(Paths.get("pkg", "bin", NODE_AGENT_INSTALLER_FILE));
+        builder.copyFileInfo(
+            new CopyFileInfo(tmpInstallerScriptPath, targetInstallerScriptPath, "755", true));
       }
     }
 
@@ -488,12 +539,12 @@ public class NodeAgentManager {
     builder.createDir(targetCertDirPath);
     Path caCertPath = certDirPath.resolve(NodeAgent.SERVER_CERT_NAME);
     Path targetCaCertPath = targetCertDirPath.resolve("node_agent.crt");
-    builder.copyFileInfo(new CopyFileInfo(caCertPath, targetCaCertPath, "644"));
+    builder.copyFileInfo(new CopyFileInfo(caCertPath, targetCaCertPath, "644", false));
 
     // Key file to be copied.
     Path keyPath = certDirPath.resolve(NodeAgent.SERVER_KEY_NAME);
     Path targetKeyPath = targetCertDirPath.resolve("node_agent.key");
-    builder.copyFileInfo(new CopyFileInfo(keyPath, targetKeyPath, "644"));
+    builder.copyFileInfo(new CopyFileInfo(keyPath, targetKeyPath, "644", false));
     return builder.build();
   }
 

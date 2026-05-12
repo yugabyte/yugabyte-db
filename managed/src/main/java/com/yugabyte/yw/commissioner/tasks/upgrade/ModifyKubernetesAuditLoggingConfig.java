@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -55,7 +54,9 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+          // Update auditLogConfig on taskParams() clusters, not the fresh universe object.
+          // taskParams().clusters is what gets passed to KubernetesCommandExecutor for Helm values.
+          Cluster cluster = taskParams().getPrimaryCluster();
           cluster.userIntent.auditLogConfig = taskParams().auditLogConfig;
 
           // Create Kubernetes Upgrade Task.
@@ -67,20 +68,6 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
           updateAndPersistAuditLoggingConfigTask();
-        });
-  }
-
-  private void checkOtelOperatorInstallation(Universe universe) {
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.skipOpentelemetryOperatorCheck)) {
-      log.info("Skipping Opentelemetry Operator check.");
-      return;
-    }
-    doInPrecheckSubTaskGroup(
-        "CheckOpentelemetryOperator",
-        subTaskGroup -> {
-          CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
-          task.initialize(universe.getUniverseDetails());
-          subTaskGroup.addSubTask(task);
         });
   }
 }

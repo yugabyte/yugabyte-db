@@ -17,6 +17,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.List;
+import java.util.Collections;
 import java.util.Properties;
 
 import org.slf4j.Logger;
@@ -30,7 +32,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 public class ConnectionBuilder implements Cloneable {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
-  private static final int MAX_CONNECTION_ATTEMPTS = 15;
   private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
   // TODO(janand) GH #17899 Deduplicate DEFAULT_PG_DATABASE and TEST_PG_USER (present in
@@ -47,8 +48,10 @@ public class ConnectionBuilder implements Cloneable {
   private static final String EX_UNABLE_TO_CONNECT_TO_SERVER =
       "failed to connect to remote server";
 
-  private final MiniYBCluster miniCluster;
+  private final List<InetSocketAddress> postgresContactPoints;
+  private final List<InetSocketAddress> ysqlConnMgrContactPoints;
 
+  private int maxConnectionAttempts = 15;
   private boolean loadBalance;
   private int tserverIndex = 0;
   private String database = DEFAULT_PG_DATABASE;
@@ -64,8 +67,19 @@ public class ConnectionBuilder implements Cloneable {
   private ConnectionEndpoint connectionEndpoint = ConnectionEndpoint.DEFAULT;
   private String options = null;
 
+  public ConnectionBuilder(List<InetSocketAddress> postgresContactPoints,
+                           List<InetSocketAddress> ysqlConnMgrContactPoints) {
+    this.postgresContactPoints = checkNotNull(postgresContactPoints);
+    this.ysqlConnMgrContactPoints = checkNotNull(ysqlConnMgrContactPoints);
+  }
+
+  public ConnectionBuilder(List<InetSocketAddress> postgresContactPoints) {
+    this(postgresContactPoints, Collections.emptyList());
+  }
+
   public ConnectionBuilder(MiniYBCluster miniCluster) {
-    this.miniCluster = checkNotNull(miniCluster);
+    this(miniCluster.getPostgresContactPoints(),
+         miniCluster.getYsqlConnMgrContactPoints());
   }
 
   public ConnectionBuilder withTServer(int tserverIndex) {
@@ -177,8 +191,8 @@ public class ConnectionBuilder implements Cloneable {
 
   public Connection connect(Properties additionalProperties) throws Exception {
     final InetSocketAddress postgresAddress = connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR
-        ? miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex)
-        : miniCluster.getPostgresContactPoints().get(tserverIndex);
+        ? ysqlConnMgrContactPoints.get(tserverIndex)
+        : postgresContactPoints.get(tserverIndex);
     String url = String.format("jdbc:yugabytedb://%s:%d/%s", postgresAddress.getHostName(),
         postgresAddress.getPort(), database);
     Properties props = new Properties();
@@ -247,7 +261,7 @@ public class ConnectionBuilder implements Cloneable {
         }
 
         boolean retry = false;
-        if (attempt < MAX_CONNECTION_ATTEMPTS) {
+        if (attempt < maxConnectionAttempts) {
           if (sqlEx.getMessage().contains(EX_DB_STARTING) ||
               sqlEx.getMessage().contains(EX_CONN_REFUSED)) {
             retry = true;
@@ -284,5 +298,13 @@ public class ConnectionBuilder implements Cloneable {
 
   public void setLoadBalance(boolean lb) {
     loadBalance = lb;
+  }
+
+  public int getMaxConnectionAttempts() {
+    return maxConnectionAttempts;
+  }
+
+  public void setMaxConnectionAttempts(int maxAttempts) {
+    maxConnectionAttempts = maxAttempts;
   }
 }

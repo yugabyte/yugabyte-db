@@ -707,7 +707,13 @@ void od_system_config_reload(od_system_t *system)
 		od_rules_free(&rules);
 		return;
 	}
+
+	/* YB: Set tserver key auth method on all rules on config reload */
+	yb_read_conf_from_env_var(&rules, &config, &instance->logger);
+
 	od_config_reload(&instance->config, &config);
+	/* YB: Update log_debug variable in logger as well */
+	od_logger_set_debug(&instance->logger, config.log_debug);
 	od_hba_reload(hba, &hba_rules);
 
 	pthread_mutex_unlock(&router->rules.mu);

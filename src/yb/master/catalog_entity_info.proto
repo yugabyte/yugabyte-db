@@ -41,7 +41,14 @@ message BackfillJobPB {
   map<string, State> backfill_state = 2;
 
   // Number of rows processed for this backfill task (the same for all indexes)
-  optional uint64 num_rows_processed = 4 [ default = 0 ];
+  optional uint64 num_rows_read_from_table_for_backfill = 4 [ default = 0 ];
+
+  // Number of rows inserted for each index in this backfill task
+  // In case of rolling upgrade, an older tserver may not report rows inserted
+  // in the index for the tablets hosted on that node. This could lead to
+  // this value being inaccurate for backfills being carried out during
+  // upgrades.
+  map<string, double> num_rows_backfilled_in_index = 5;
 
   optional uint64 backfilling_timestamp = 3;
 }
@@ -110,7 +117,9 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this table.
+  // Replication information for this table. If set, this overrides cluster-level replication info
+  // and tablespaces. This is only expected to be set for YCQL tables; YSQL tables should use
+  // tablespaces.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
@@ -432,6 +441,8 @@ message SysObjectLockEntryPB {
   message SubtxnDBMapPB {
     // subtxn -> object locks ...
     map<uint32, ObjectLocksListPB> subtxns = 1;
+    optional bytes status_tablet = 2;
+    optional bytes background_transaction_id = 3;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...
@@ -648,6 +659,15 @@ message SysCDCStreamEntryPB {
       13 [default = ReplicationSlotLsnType_UNSPECIFIED];
   optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
       14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+
+  optional bool allow_tables_without_primary_key = 15 [default = false];
+
+  // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
+  // catalog tablet for detecting changes to publications.
+  optional bool detect_publication_changes_implicitly = 16 [default = false];
+
+  // This field stores the list of tables that were dropped while being part of the CDCSDK stream.
+  repeated bytes dropped_table_id = 17;
 }
 
 
@@ -831,6 +851,14 @@ message SysUniverseReplicationEntryPB {
   }
 
   optional DBScopeInfo db_scoped_info = 13;
+
+  // Set to true while a failover task is running. Cleared on completion or when a new master
+  // detects a stale in-progress failover from a previous leader.
+  optional bool failover_in_progress = 14;
+
+  // Error status of the last failed failover. This field is absent on a successful failover
+  // since the replication group is deleted.
+  optional AppStatusPB last_failover_completion_status = 15;
 }
 
 message XClusterSafeTimePB {
@@ -1042,4 +1070,6 @@ message SysTabletServerEntryPB {
   optional bool persisted = 6;
 
   optional VersionInfoPB version_info = 9;
+
+  optional uint64 start_time_us = 10;
 }

@@ -38,7 +38,7 @@ Note that YEDIS implements a password-only authentication scheme. From the [Redi
 
 ## 1. Enable YEDIS authentication
 
-You can enable password-based authentication in YEDIS API using the [CONFIG](/preview/yedis/api/config/) command.
+You can enable password-based authentication in YEDIS API using the [CONFIG](/stable/yedis/api/config/) command.
 
 To do so, connect to the cluster using redis-cli and run the following command:
 

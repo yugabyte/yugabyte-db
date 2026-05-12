@@ -89,6 +89,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom script to run on VM boot during universe provisioning",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> minPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_python_version",
@@ -97,6 +102,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> maxPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.max_python_version",
@@ -105,6 +115,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Integer> defaultAwsVolumeCount =
       new ConfKeyInfo<>(
           "yb.aws.default_volume_count",
@@ -201,6 +212,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Maximum Kubernetes Memory Size",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> user =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.user",
@@ -209,6 +225,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> userGroup =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.user_group",
@@ -217,38 +238,44 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> minPrometheusSpaceMb =
+
+  public static final ConfKeyInfo<Integer> minPrometheusSpaceGb =
       new ConfKeyInfo<>(
-          "yb.node_agent.preflight_checks.min_prometheus_space_mb",
+          "yb.node_agent.preflight_checks.min_prometheus_space_gb",
           ScopeType.PROVIDER,
-          "Min Prometheus Space MB",
+          "Min Prometheus Space GB",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> minTempDirSpaceMb =
+  public static final ConfKeyInfo<Integer> minTempDirSpaceGb =
       new ConfKeyInfo<>(
-          "yb.node_agent.preflight_checks.min_tmp_dir_space_mb",
+          "yb.node_agent.preflight_checks.min_tmp_dir_space_gb",
           ScopeType.PROVIDER,
-          "Min Temp Dir Space MB",
+          "Min Temp Dir Space GB",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> minHomeDirSpaceMb =
+  public static final ConfKeyInfo<Integer> minHomeDirSpaceGb =
       new ConfKeyInfo<>(
-          "yb.node_agent.preflight_checks.min_home_dir_space_mb",
+          "yb.node_agent.preflight_checks.min_home_dir_space_gb",
           ScopeType.PROVIDER,
-          "Min Home Space MB",
+          "Min Home Space GB",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> minMountPointDirSpaceMb =
+  public static final ConfKeyInfo<Integer> minMountPointDirSpaceGb =
       new ConfKeyInfo<>(
-          "yb.node_agent.preflight_checks.min_mount_point_dir_space_mb",
+          "yb.node_agent.preflight_checks.min_mount_point_dir_space_gb",
           ScopeType.PROVIDER,
-          "Min Mount Point Dir Space MB",
+          "Min Mount Point Dir Space GB",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> ulimitCore =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_core",
@@ -257,6 +284,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> ulimitOpenFiles =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_open_files",
@@ -265,6 +297,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<String> ulimitUserProcesses =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_user_processes",
@@ -273,6 +310,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<Integer> swappiness =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.swappiness",
@@ -281,6 +323,11 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<Integer> sshTimeout =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ssh_timeout",
@@ -290,15 +337,10 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
-  public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
-      new ConfKeyInfo<>(
-          "yb.node_agent.client.enabled",
-          ScopeType.PROVIDER,
-          "Enable Node Agent Client",
-          "Enable node agent client for communication to DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
+  /**
+   * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
+   */
+  @Deprecated
   public static final ConfKeyInfo<Integer> vmMaxMemCount =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.vm_max_map_count",
@@ -307,14 +349,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Max count of memory-mapped regions allowed in the system.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.enabled",
-          ScopeType.PROVIDER,
-          "Enable Ansible Offloading",
-          "Offload ansible tasks to the DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> useSpotInstances =
       new ConfKeyInfo<>(
           "yb.use_spot_instances",
@@ -506,6 +541,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default earlyoom arguments",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomOnOSUpgrade =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_on_os_upgrade",
+          ScopeType.PROVIDER,
+          "Whether to install and enable earlyoom during OS upgrade",
+          "Whether to install and enable earlyoom during OS upgrade (for old universes)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
       new ConfKeyInfo<>(
           "yb.gcp.operations.connection_draining_timeout",
@@ -529,5 +572,39 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable capacity reservations for AWS",
           "Enable capacity reservations for AWS for tasks that need new nodes",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCgroupConfiguration =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_cgroup_configuration",
+          ScopeType.PROVIDER,
+          "Enable cgroup configuration",
+          "When true, TServer CPU cgroup isolation is configured during provisioning and"
+              + " configure-server. Only effective when user-level systemd is in use.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useSystemLevelSystemd =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_system_level_systemd",
+          ScopeType.PROVIDER,
+          "Use System Level Systemd",
+          "Use system-level systemd instead of user-level systemd for service management",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_gcp",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for GCP",
+          "Enable capacity reservations for GCP for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybUserHomeOverride =
+      new ConfKeyInfo<>(
+          "yb.internal.yb_user_home_override",
+          ScopeType.PROVIDER,
+          "YB User Home Override",
+          "Custom home directory for the yb user for CSPs and sudo onprem mainly for testing"
+              + " purposes",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

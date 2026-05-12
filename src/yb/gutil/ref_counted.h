@@ -42,6 +42,7 @@ typedef std::atomic<intptr_t> AtomicRefCount;
 class RefCountedBase {
  public:
   bool HasOneRef() const { return ref_count_ == 1; }
+  bool HasTwoRef() const { return ref_count_ == 2; }
 
  protected:
   RefCountedBase();
@@ -238,24 +239,6 @@ void intrusive_ptr_release(RefCountedThreadSafe<T, Traits>* px) {
   px->Release();
 }
 
-//
-// A thread-safe wrapper for some piece of data so we can place other
-// things in scoped_refptrs<>.
-//
-template<typename T>
-class RefCountedData
-    : public yb::RefCountedThreadSafe< yb::RefCountedData<T> > {
- public:
-  RefCountedData() : data() {}
-  explicit RefCountedData(const T& in_value) : data(in_value) {}
-
-  T data;
-
- private:
-  friend class yb::RefCountedThreadSafe<yb::RefCountedData<T> >;
-  ~RefCountedData() {}
-};
-
 }  // namespace yb
 
 //
@@ -416,6 +399,9 @@ class scoped_refptr {
   void reset(T* p = NULL) {
     *this = p;
   }
+
+  bool HasOneRef() const { return ptr_->HasOneRef(); }
+  bool HasTwoRef() const { return ptr_->HasTwoRef(); }
 
  protected:
   T* ptr_;

@@ -25,7 +25,6 @@ import org.yb.client.YBClient;
 @Slf4j
 public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
 
-  private final RuntimeConfGetter confGetter;
   private final YbClientConfigFactory ybcClientConfigFactory;
 
   @Inject
@@ -35,7 +34,6 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
       YbClientConfigFactory ybcClientConfigFactory,
       XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies, xClusterUniverseService);
-    this.confGetter = confGetter;
     this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 

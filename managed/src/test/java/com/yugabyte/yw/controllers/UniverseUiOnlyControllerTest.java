@@ -198,9 +198,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     taskParams.nodePrefix = "univWithReadOnlyCreate";
     UUID readOnlyUuid0 = UUID.randomUUID();
     UUID readOnlyUuid1 = UUID.randomUUID();
-    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
-    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, readOnlyUuid0);
-    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, readOnlyUuid1);
+    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null, null);
+    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, null, readOnlyUuid0);
+    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, null, readOnlyUuid1);
 
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
@@ -281,7 +281,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.instanceType = "type.small";
     userIntent.universeName = "megauniverse";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
     updateUniverseDefinition(taskParams, customer.getId(), primaryCluster.uuid, CREATE);
 
@@ -336,7 +336,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ui.universeName = u.getName();
     ui.ybSoftwareVersion = "1.0";
     ui.preferredRegion = ui.regionList.get(0);
-    utd.upsertPrimaryCluster(ui, null);
+    utd.upsertPrimaryCluster(ui, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         utd,
         customer.getId(),
@@ -707,6 +707,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
           for (int idx = 0; idx < 3; idx++) {
             NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+            node.cloudInfo.instance_type = i.getInstanceTypeCode();
             node.placementUuid = cluster.uuid;
             nodeDetailsJsonArray.add(Json.toJson(node));
             if (idx == 1) {
@@ -890,6 +891,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
           for (int idx = 0; idx < 3; idx++) {
             NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+            node.cloudInfo.instance_type = i.getInstanceTypeCode();
             node.placementUuid = cluster.uuid;
             if (idx > 0) {
               // Exclude the first node in the payload.
@@ -952,6 +954,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
               for (int idx = 0; idx < 3; idx++) {
                 NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
                 node.placementUuid = cluster.uuid;
                 nodeDetailsJsonArray.add(Json.toJson(node));
                 if (idx > 0) {
@@ -1072,6 +1075,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
               for (int idx = 0; idx < 3; idx++) {
                 NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
                 node.placementUuid = cluster.uuid;
                 nodeDetailsJsonArray.add(Json.toJson(node));
                 universeDetails.nodeDetailsSet.add(node);
@@ -2422,7 +2426,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           di.numVolumes = 2;
           di.storageType = storageType;
           userIntent.deviceInfo = di;
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.

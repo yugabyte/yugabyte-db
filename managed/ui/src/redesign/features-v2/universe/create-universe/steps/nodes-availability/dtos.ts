@@ -1,13 +1,15 @@
+import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+
 export type Zone = {
   name: string;
   uuid: string;
   nodeCount: number;
-  preffered: string;
+  preffered: number;
 };
 export interface NodeAvailabilityProps {
   availabilityZones: {
     [region: string]: Zone[];
   };
   useDedicatedNodes: boolean;
-  nodeCountPerAz: number;
+  [REPLICATION_FACTOR]?: number;
 }

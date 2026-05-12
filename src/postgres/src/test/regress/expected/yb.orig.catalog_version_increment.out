@@ -1,4 +1,4 @@
--- Test yb_make_all_ddl_statements_incrementing GUC.
+-- Test yb_test_make_all_ddl_statements_incrementing GUC.
 -- All of the following DDL statements should increment current_version.
 \set template1_db_oid 1
 \set db_oid 'CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'
@@ -94,31 +94,31 @@ CREATE TEMP TABLE temp_to_drop_guc(id int);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10009 |                 10000
+           10008 |                 10000
 (1 row)
 
 CREATE INDEX idx_guc ON temp_to_drop_guc(id);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10010 |                 10000
+           10008 |                 10000
 (1 row)
 
 ALTER TABLE temp_to_drop_guc ADD COLUMN val int;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10011 |                 10000
+           10008 |                 10000
 (1 row)
 
 DROP TABLE temp_to_drop_guc;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10012 |                 10000
+           10008 |                 10000
 (1 row)
 
--- Additional DDLs that should increment under yb_make_all_ddl_statements_incrementing=true.
+-- Additional DDLs that should increment under yb_test_make_all_ddl_statements_incrementing=true.
 CREATE OPERATOR ==# (
     LEFTARG = int,
     RIGHTARG = int,
@@ -127,7 +127,7 @@ CREATE OPERATOR ==# (
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10013 |                 10000
+           10009 |                 10000
 (1 row)
 
 CREATE AGGREGATE cv_test_agg(int) (
@@ -138,41 +138,41 @@ CREATE AGGREGATE cv_test_agg(int) (
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10014 |                 10000
+           10010 |                 10000
 (1 row)
 
 CREATE TYPE cv_type_enum AS ENUM ('a','b');
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10015 |                 10000
+           10011 |                 10000
 (1 row)
 
 CREATE TEXT SEARCH CONFIGURATION cv_ts_conf ( COPY = pg_catalog.simple );
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10016 |                 10000
+           10012 |                 10000
 (1 row)
 
 CREATE TEXT SEARCH DICTIONARY cv_ts_dict ( TEMPLATE = pg_catalog.simple );
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10017 |                 10000
+           10013 |                 10000
 (1 row)
 
 CREATE COLLATION cv_coll (lc_collate = 'C', lc_ctype = 'C');
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10018 |                 10000
+           10014 |                 10000
 (1 row)
 
 COMMENT ON TABLE t_ctas_guc IS 'x';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10019 |                 10000
+           10015 |                 10000
 (1 row)
 

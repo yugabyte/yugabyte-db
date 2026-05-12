@@ -49,6 +49,7 @@
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
 
+DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(use_fast_backward_scan);
@@ -76,6 +77,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_entity(table);
 
 DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+DECLARE_bool(skip_prefix_locks);
 
 using namespace std::literals;
 
@@ -93,6 +95,8 @@ class PgSingleTServerTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
     // Disable auto analyze to prevent query plan from changing.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // disable skip_prefix_locks because serializable is being used
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -832,11 +836,11 @@ using FastBackwardScanParams = std::tuple<
 
 std::string FastBackwardScanParamsToString(
     const testing::TestParamInfo<FastBackwardScanParams>& param_info) {
-  return yb::Format(
+  return Format(
     "$0_$1_$2",
     std::get<0>(param_info.param) ? "Fast" : "Slow",
     std::get<1>(param_info.param) ? "WithNulls" : "WithoutNulls",
-    yb::AsString(std::get<2>(param_info.param)));
+    AsString(std::get<2>(param_info.param)));
 }
 
 class PgFastBackwardScanTestBase : public PgSingleTServerTest {
@@ -1689,13 +1693,13 @@ class PgRocksDbIteratorLoggingTest : public PgSingleTServerTest {
     // This way we won't be logging system table operations needed to fetch PostgreSQL metadata.
     for (bool is_warmup : {true, false}) {
       if (!is_warmup) {
-        SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_use_logging_iterator) = true;
       }
       auto actual_num_rows = ASSERT_RESULT(conn.FetchRow<PGUint64>(count_stmt_str));
       const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
       ASSERT_EQ(expected_num_rows, actual_num_rows);
     }
-    SetAtomicFlag(false, &FLAGS_rocksdb_use_logging_iterator);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_use_logging_iterator) = false;
   }
 
  private:
@@ -2032,6 +2036,45 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
   ASSERT_EQ(result, "1");
+}
+
+// During bootstrap, StrandEnqueue would fail with "Thread pool not ready" because the strand
+// was only initialized after bootstrap, this can cause some intents of a large txn not applied.
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
+  constexpr int kNumRows = 30;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, -i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Restart without flushing RocksDB so the apply state is not persisted to regular DB.
+  // This forces WAL replay to re-encounter the APPLY_TRANSACTION record and re-initiate
+  // the large transaction apply from scratch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  auto* tserver = cluster_->mini_tablet_server(0);
+  tserver->Shutdown();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+  ASSERT_OK(tserver->Start());
+  ASSERT_OK(tserver->WaitStarted());
+
+  // Wait for the large transaction intents to be fully applied after restart. Without the fix,
+  // WaitForAllIntentsApplied will timeout.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  conn = ASSERT_RESULT(Connect());
+
+  // Verify all rows are visible.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(count, kNumRows);
+
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(value) FROM test"));
+  ASSERT_EQ(sum, -kNumRows * (kNumRows + 1) / 2);
 }
 
 class PgSmallRpcWorkersTest : public PgSingleTServerTest {

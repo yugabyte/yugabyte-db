@@ -66,9 +66,7 @@ var updateGCPProviderCmd = &cobra.Command{
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Provider: GCP", "Update - Fetch Providers")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: GCP", "Update - Fetch Providers")
 		}
 
 		if len(r) < 1 {
@@ -87,7 +85,7 @@ var updateGCPProviderCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(provider.GetName())) == 0 {
+		if util.IsEmptyString(provider.GetName()) {
 			errMessage := fmt.Sprintf(
 				"No provider %s in cloud type %s.\n",
 				providerName,
@@ -315,8 +313,7 @@ var updateGCPProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: GCP", "Update")
 		}
 
 		providerutil.WaitForUpdateProviderTask(
@@ -388,6 +385,8 @@ func init() {
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"If default is not specified, the bundle will automatically be set as default "+
+			"if no other default bundle exists for the same architecture. "+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 
 	updateGCPProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
@@ -600,7 +599,6 @@ func addGCPImageBundles(
 	if len(imageBundles) == 0 {
 		return providerImageBundles
 	}
-	imageBundleLen := len(imageBundles)
 	for _, i := range imageBundles {
 		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
 		bundle = providerutil.DefaultImageBundleValues(bundle)
@@ -637,8 +635,22 @@ func addGCPImageBundles(
 			)
 			defaultBundle = false
 		}
-		if imageBundleLen == 1 && !defaultBundle {
-			defaultBundle = true
+
+		// If default not explicitly set, check if there's already a default bundle
+		// for this architecture. If not, set this bundle as default.
+		if !defaultBundle {
+			arch := strings.ToLower(bundle["arch"])
+			hasDefaultForArch := false
+			for _, existingBundle := range providerImageBundles {
+				existingArch := strings.ToLower(existingBundle.Details.GetArch())
+				if existingArch == arch && existingBundle.GetUseAsDefault() {
+					hasDefaultForArch = true
+					break
+				}
+			}
+			if !hasDefaultForArch {
+				defaultBundle = true
+			}
 		}
 
 		imageBundle := ybaclient.ImageBundle{

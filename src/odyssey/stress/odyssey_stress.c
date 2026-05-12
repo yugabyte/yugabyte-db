@@ -88,7 +88,7 @@ static inline void stress_client_main(void *arg)
 	if (msg == NULL)
 		return;
 
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		printf("client %d: write error: %s\n", client->id,
 		       machine_error(client->io.io));
@@ -134,7 +134,7 @@ static inline void stress_client_main(void *arg)
 		msg = kiwi_fe_write_query(NULL, query, sizeof(query));
 		if (msg == NULL)
 			return;
-		rc = od_write(&client->io, msg);
+		rc = od_write(&client->io, &msg);
 		if (rc == -1) {
 			printf("client %d: write error: %s\n", client->id,
 			       machine_error(client->io.io));
@@ -172,7 +172,7 @@ static inline void stress_client_main(void *arg)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return;
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		printf("client %d: write error: %s\n", client->id,
 		       machine_error(client->io.io));

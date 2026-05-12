@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/common/ysql_utils.h"
@@ -158,7 +159,7 @@ XClusterConsumer::XClusterConsumer(
       xcluster_context_(xcluster_context),
       ts_uuid_(ts_uuid) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-      GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
+      FLAGS_apply_changes_max_send_rate_mbps * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
   SetRateLimiterSpeed();
 
@@ -747,7 +748,7 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
 
   std::lock_guard l(safe_time_update_mutex_);
 
-  int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
+  int wait_time = FLAGS_xcluster_safe_time_update_interval_secs;
   if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {
     return Status::OK();
   }
@@ -800,7 +801,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     const auto key =
         VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(producer_info));
 
-    const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const auto op = safe_time_table_->NewWriteOp(
+        session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, key.replication_group_id_column_value().ToString());
     QLAddStringHashValue(req, key.tablet_id_column_value());

@@ -1003,7 +1003,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   // looping over the computed wait-for probes and sending information requests. The test ensures
   // that concurrent changes to the wait-for probes are safe. Concurrent changes to the wait-for
   // probes are forced by having multiple transactions contend for locks in a sequential order.
-  SetAtomicFlag(200 * kTimeMultiplier, &FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_amidst_iterating_blockers_ms) = 200 * kTimeMultiplier;
   auto setup_conn = ASSERT_RESULT(Connect());
 
   constexpr int kClients = 5;
@@ -1879,6 +1879,37 @@ TEST_F(PgWaitQueuesWithRetriesTest, TestDeadlockRetries) {
 
   thread_holder.WaitAndStop(30s * kTimeMultiplier);
 }
+
+#ifndef NDEBUG
+TEST_F(PgWaitQueuesTestWithoutObjectLocking, TestDDLHaveWaitStartTimeSet) {
+  constexpr auto kDbName = "colodb";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDbName));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT, v INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX idx_1 ON test (v ASC)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, -1)"));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDDLHaveWaitStartTimeSet"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+    ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=10"));
+    ASSERT_OK(conn.Execute("DROP INDEX idx_1"));
+  });
+  DEBUG_ONLY_TEST_SYNC_POINT("TestDDLHaveWaitStartTimeSet");
+  ASSERT_OK(conn.CommitTransaction());
+
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+#endif
 
 } // namespace pgwrapper
 } // namespace yb

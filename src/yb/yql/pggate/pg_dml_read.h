@@ -29,11 +29,18 @@
 
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
+
+// Enumeration representing results of PgDmlRead::IsMergeSortColumn function
+// kNone - column does not participate in merge sort
+// kStreamKey - column defines merge stream and must have equality or SAOP condition on it
+// kSortKey - column is a merge sort key
+YB_DEFINE_ENUM(MergeSortColumnType, (kNone)(kStreamKey)(kSortKey));
 
 //--------------------------------------------------------------------------------------------------
 // DML_READ
@@ -89,7 +96,7 @@ class PgDmlRead : public PgDml {
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
   // remaining from the previous range scan.
-  Status BindRange(
+  Status ApplyParallelRange(
       Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
 
   void BindBounds(
@@ -105,6 +112,8 @@ class PgDmlRead : public PgDml {
   // this call will set the upper bound to the stricter of the two bounds.
   Status AddRowUpperBound(
       YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+
+  Status SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys);
 
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
@@ -134,7 +143,7 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] virtual bool IsPgSelectIndex() const { return false; }
 
  protected:
-  explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgDmlRead(const PgSessionPtr& pg_session);
 
   // Allocate column protobuf.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
@@ -161,19 +170,53 @@ class PgDmlRead : public PgDml {
 
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   [[nodiscard]] bool IsConcreteRowRead() const;
-  Status ProcessEmptyPrimaryBinds();
-  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
+  Status ProcessEmptyKeyBinds();
+  [[nodiscard]] bool IsAllKeyColumnsBound() const;
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromKeyBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids();
+  Status SubstituteKeyBindsWithYbctids();
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
   Status InitDocOp(const YbcPgExecParameters* params);
 
+  // Check if the column at specified position participates in merge sort
+  [[nodiscard]] MergeSortColumnType IsMergeSortColumn(size_t index) const {
+    if (!merge_sort_keys_) {
+      return MergeSortColumnType::kNone;
+    }
+    // merge_sort_keys_ must be ordered by the att_idx, the order of the columns in the key
+    for (const auto& key : *merge_sort_keys_) {
+      if (index < key.att_idx) {
+        return MergeSortColumnType::kStreamKey;
+      } else if (index == key.att_idx) {
+        return MergeSortColumnType::kSortKey;
+      }
+    }
+    return MergeSortColumnType::kNone;
+  }
+
+  // Collects the IN and equality conditions on the hash and range key columns and sets up
+  // the permutations generator. Each permutation corresponds to a set of conditions on a request
+  // making a stream of rows to merge sort with the other streams.
+  InPermutationGenerator MergeStreamPermutations();
+
+  [[nodiscard]] PgReadRange& GetScanRange() {
+    if (!scan_range_) {
+      scan_range_.emplace(bind_);
+    }
+    return *scan_range_;
+  }
+
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
+
+  bool key_binds_processed_ = false;
+
+  MergeSortKeysPtr merge_sort_keys_;
+
+  std::optional<PgReadRange> scan_range_;
 };
 
 }  // namespace yb::pggate

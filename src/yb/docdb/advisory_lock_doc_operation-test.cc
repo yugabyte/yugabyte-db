@@ -13,6 +13,8 @@
 
 #include "yb/common/transaction-test-util.h"
 
+#include "yb/common/pgsql_protocol.messages.h"
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/pgsql_operation.h"
@@ -44,8 +46,9 @@ class AdvisoryLockDocOperationTest : public DocDBTestBase {
   Status Lock(uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
                PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait) {
     auto schema = CreateSchema();
-    PgsqlLockRequestPB request;
-    PgsqlResponsePB response;
+    auto arena = SharedThreadSafeArena();
+    auto& request = *arena->NewArenaObject<LWPgsqlLockRequestPB>();
+    auto& response = *arena->NewArenaObject<LWPgsqlResponsePB>();
     request.set_lock_mode(mode);
     auto* lock_id = request.mutable_lock_id();
     lock_id->add_lock_partition_column_values()->mutable_value()->set_uint32_value(db_oid);
@@ -80,7 +83,7 @@ TEST_F(AdvisoryLockDocOperationTest, ExclusiveLock) {
   ASSERT_OK(Lock(kDBOid, 2, 3, 4,
                  PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, true));
   std::unordered_set<std::string> locks;
-  DocDBDebugDumpToContainer(&locks);
+  DocDBDebugDumpToContainer(locks);
   LOG(INFO) << CollectionToString(locks);
   ASSERT_TRUE(locks.contains(Format(
       "SubDocKey(DocKey(0x0000, [1111], [2, 3, 4]), []) [kStrongRead, kStrongWrite] "
@@ -95,7 +98,7 @@ TEST_F(AdvisoryLockDocOperationTest, ShareLock) {
   ASSERT_OK(Lock(kDBOid, 4, 5, 6,
                  PgsqlLockRequestPB::PG_LOCK_SHARE, true));
   std::unordered_set<std::string> locks;
-  DocDBDebugDumpToContainer(&locks);
+  DocDBDebugDumpToContainer(locks);
   ASSERT_TRUE(locks.contains(Format(
       "SubDocKey(DocKey(0x0000, [1111], [2, 3, 4]), []) [kStrongRead] "
       "HT<max> -> TransactionId($0) WriteId(0) l",

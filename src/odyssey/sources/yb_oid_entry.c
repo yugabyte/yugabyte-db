@@ -236,8 +236,8 @@ int yb_is_route_invalid(void *route)
 	return ((od_route_t *)route)->status == YB_ROUTE_INACTIVE ? YB_ROUTE_INVALID : 0;
 }
 
-int read_oid_pkt(od_client_t *client, machine_msg_t *msg,
-		 od_instance_t *instance, char *oid_type, uint32_t *oid_val)
+int read_oid_pkt(machine_msg_t *msg, od_instance_t *instance, char *oid_type,
+		 uint32_t *oid_val)
 {
 	char *pos = (char *)machine_msg_data(msg) + 1;
 	uint32_t pos_size = machine_msg_size(msg) - 1;
@@ -271,7 +271,7 @@ int yb_handle_oid_pkt_server(od_instance_t *instance, od_server_t *server,
 	int db_oid = -1;
 	int user_oid = -1;
 
-	int rc = read_oid_pkt(server, msg, instance, &oid_type, &oid_val);
+	int rc = read_oid_pkt(msg, instance, &oid_type, &oid_val);
 	if (rc == -1)
 		return -1;
 
@@ -308,7 +308,7 @@ int yb_handle_oid_pkt_client(od_instance_t *instance, od_client_t *client,
 	char oid_type;
 	uint32_t oid_val;
 
-	if (read_oid_pkt(client, msg, instance, &oid_type, &oid_val) == -1)
+	if (read_oid_pkt(msg, instance, &oid_type, &oid_val) == -1)
 		return -1;
 
 	/* Do nothing for a logical connection failure */

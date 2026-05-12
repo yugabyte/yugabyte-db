@@ -40,6 +40,7 @@ import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
@@ -71,6 +72,8 @@ message GetSafeTimeRequestPB {
   optional fixed64 propagated_hybrid_time = 4;
 
   optional fixed64 min_hybrid_time_for_backfill = 5;
+
+  optional bool only_abort_txns_not_using_table_locks = 6;
 }
 
 message GetSafeTimeResponsePB {
@@ -119,8 +122,11 @@ message BackfillIndexResponsePB {
   // In case of a partial error, list of indexes that failed.
   repeated bytes failed_index_ids = 4;
 
-  // Returns the number of rows backfilled in the request.
-  optional uint64 number_rows_processed = 5;
+  // Returns the number of base table rows processed during backfill in this batch.
+  optional uint64 num_rows_read_from_table_for_backfill = 5;
+
+  // Returns the number of rows inserted in the index in this batch.
+  map<string, double> num_rows_backfilled_in_index = 6;
 }
 
 // A create tablet request.
@@ -221,6 +227,9 @@ message DeleteTabletRequestPB {
 
   // Do not delete tablet data.
   optional bool keep_data = 8;
+
+  // Transactions will be aborted except the one with this id which triggered the DeleteTablet.
+  optional bytes transaction_id = 9; // 16 byte uuid
 }
 
 message DeleteTabletResponsePB {
@@ -422,17 +431,25 @@ service TabletServerAdminService {
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
 
   // Alter a tablet's schema.
-  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // GetSafeTime API to get the current safe time.
-  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB);
+  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // Backfill the index for the specified index tables. Addressed to the indexed
   // table.
-  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // Marks an index table as having completed backfilling.
-  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
@@ -448,7 +465,9 @@ service TabletServerAdminService {
   rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
 
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
-      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);

@@ -12,9 +12,8 @@ NOTICE:  creating collection
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}';
-                              QUERY PLAN                               
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' $cmd$);
+                         run_explain_and_trim                          
 -----------------------------------------------------------------------
  Index Scan using _id_ on documents_5000
    Index Cond: (shard_key_value = '5000'::bigint)
@@ -32,7 +31,7 @@ ROLLBACK;
 SELECT documentdb_api.shard_collection('db','reshard', '{"value":1}');
 ERROR:  only shard keys that use hashed are supported
 SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hash"}');
-ERROR:  invalid value for shard key: hash
+ERROR:  Shard key value provided is invalid: hash
 -- create two indexes before re-sharding
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'db',
@@ -53,17 +52,16 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 SELECT collection_id AS reshard_collection_id FROM documentdb_api_catalog.collections
 WHERE collection_name = 'reshard' AND database_name = 'db' \gset
 \d documentdb_data.documents_:reshard_collection_id
-                   Table "documentdb_data.documents_5000"
-     Column      |           Type           | Collation | Nullable | Default 
------------------+--------------------------+-----------+----------+---------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+          Table "documentdb_data.documents_5000"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5001" documentdb_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
-    "documents_rum_index_5002" documentdb_rum (document bson_rum_single_path_ops (path=z, tl='2699'))
+    "documents_rum_index_5002" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "z" ]', tl='2691'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5000'::bigint)
 
@@ -78,18 +76,17 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hashed"}', fal
 (1 row)
 
 \d documentdb_data.documents_:reshard_collection_id
-                   Table "documentdb_data.documents_5000"
-     Column      |           Type           | Collation | Nullable | Default 
------------------+--------------------------+-----------+----------+---------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+          Table "documentdb_data.documents_5000"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5003" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
     "documents_rum_index_5004" documentdb_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
-    "documents_rum_index_5005" documentdb_rum (document bson_rum_single_path_ops (path=z, tl='2699'))
+    "documents_rum_index_5005" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "z" ]', tl='2691'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "value" : "hashed" }'::bson, 5000::bigint, document))
 
@@ -97,11 +94,11 @@ SELECT 'documentdb_data.documents_' || collection_id AS db_shard_data_table_name
 -- make plans (more) deterministic
 VACUUM (ANALYZE) :db_shard_data_table_name;
 SELECT * FROM documentdb_test_helpers.get_collection_indexes('db', 'reshard') ORDER BY index_id;
- collection_id | index_id |                                          index_spec_as_bson                                          | index_is_valid 
----------------+----------+------------------------------------------------------------------------------------------------------+----------------
-          5000 |     5003 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }        | t
-          5000 |     5004 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b.c.$**" : { "$numberInt" : "1" } }, "name" : "idx_1" } | t
-          5000 |     5005 | { "v" : { "$numberInt" : "2" }, "key" : { "z" : { "$numberInt" : "1" } }, "name" : "idx_2" }         | t
+ collection_id | index_id |                                                               index_spec_as_bson                                                                | index_is_valid 
+---------------+----------+-------------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          5000 |     5003 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                   | t
+          5000 |     5004 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b.c.$**" : { "$numberInt" : "1" } }, "name" : "idx_1" }                                            | t
+          5000 |     5005 | { "v" : { "$numberInt" : "2" }, "key" : { "z" : { "$numberInt" : "1" } }, "name" : "idx_2", "storageEngine" : { "enableOrderedIndex" : true } } | t
 (3 rows)
 
 SELECT documentdb_api.insert_one('db','reshard','{"value":{"$numberLong" : "134311"}, "_id":"2" }');
@@ -144,16 +141,16 @@ SELECT count(*) FROM documentdb_api.collection('db','reshard') WHERE document @@
 
 -- documents with an array shard key are not allowed
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value": ["hello","world"]}');
-                                                                                                     insert_one                                                                                                      
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain an array." } ] }
+                                                                                                                  insert_one                                                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "A shard key is not permitted to include any array elements." } ] }
 (1 row)
 
 -- documents with regex shard key are not allowed
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value":  {"$regularExpression":{"pattern":"foo","options":""}}}');
-                                                                                                     insert_one                                                                                                     
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
+                                                                                                                       insert_one                                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "A shard key is not allowed to include any regular expression pattern." } ] }
 (1 row)
 
 -- documents with double shard key are allowed
@@ -167,9 +164,8 @@ SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value": 15.0}');
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
-                                 QUERY PLAN                                  
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id' $cmd$);
+                            run_explain_and_trim                             
 -----------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
@@ -190,9 +186,8 @@ ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
-                                    QUERY PLAN                                    
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id' $cmd$);
+                               run_explain_and_trim                               
 ----------------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
@@ -211,9 +206,8 @@ ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
-                                   QUERY PLAN                                    
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id' $cmd$);
+                              run_explain_and_trim                               
 ---------------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
@@ -233,9 +227,8 @@ ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
-                                 QUERY PLAN                                  
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id' $cmd$);
+                            run_explain_and_trim                             
 -----------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
@@ -263,9 +256,8 @@ BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
-                                                QUERY PLAN                                                 
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}' $cmd$);
+                                           run_explain_and_trim                                            
 -----------------------------------------------------------------------------------------------------------
  Index Scan using _id_ on documents_5000
    Index Cond: ((shard_key_value = '-2638831846010261801'::bigint) AND (object_id = '{ "" : "1" }'::bson))
@@ -341,9 +333,8 @@ SELECT documentdb_api_internal.get_shard_key_value('{"a":1,"b":1}', 1,'{"_id":"1
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
-                                 QUERY PLAN                                  
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id' $cmd$);
+                            run_explain_and_trim                             
 -----------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
@@ -387,9 +378,9 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"a.b":"hashed"}', true)
 
 -- we should not allow arrays in the path even if the value is not an array
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"10", "a": [{"b":22}]}');
-                                                                                                                  insert_one                                                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain array values or array descendants." } ] }
+                                                                                                                            insert_one                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key is not allowed to include array values or any array-derived elements." } ] }
 (1 row)
 
 -- nested objects should be fine
@@ -506,11 +497,11 @@ SELECT collection_id AS reshard_collection_id FROM documentdb_api_catalog.collec
 WHERE collection_name = 'reshardwithindexes2' AND database_name = 'db' \gset
 set local documentdb_core.bsonUseEJson to true;
 SELECT index_spec from documentdb_api_catalog.collection_indexes WHERE collection_id = :reshard_collection_id order by index_id ASC;
-                            index_spec                             
--------------------------------------------------------------------
+                                                         index_spec                                                         
+----------------------------------------------------------------------------------------------------------------------------
  (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
- (idx1,"{ ""value"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
- (idx2,"{ ""otherValue"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
+ (idx1,"{ ""value"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,"{ ""enableOrderedIndex"" : { ""$numberInt"" : ""1"" } }")
+ (idx2,"{ ""otherValue"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,"{ ""enableOrderedIndex"" : { ""$numberInt"" : ""1"" } }")
 (3 rows)
 
 SELECT database_name, collection_name, shard_key from documentdb_api_catalog.collections WHERE collection_id = :reshard_collection_id;

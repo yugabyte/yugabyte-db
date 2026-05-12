@@ -65,6 +65,7 @@ parseCommandLine(int argc, char *argv[])
 		{"new-host", required_argument, NULL, 'H'},
 		{"old-socketdir", required_argument, NULL, 's'},
 		{"new-socketdir", required_argument, NULL, 'S'},
+		{"yb-working-dir", required_argument, NULL, 'w'},	/* YB */
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -119,7 +120,8 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:S:U:v",
+	/* YB: added 'w:' for --yb-working-dir option */
+	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:S:U:vw:",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -220,6 +222,10 @@ parseCommandLine(int argc, char *argv[])
 
 			case 'v':
 				log_opts.verbose = true;
+				break;
+
+			case 'w':			/* YB */
+				user_opts.yb_working_dir = pg_strdup(optarg);
 				break;
 
 			case 1:
@@ -344,6 +350,7 @@ usage(void)
 	printf(_("  -H, --new-host=HOST           new cluster host address\n"));	/* YB */
 	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));	/* YB */
 	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));	/* YB */
+	printf(_("  -w, --yb-working-dir=DIR         working directory for pg_upgrade\n"));	/* YB */
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"

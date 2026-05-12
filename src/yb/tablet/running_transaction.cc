@@ -17,6 +17,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/transaction_participant_context.h"
@@ -47,22 +48,29 @@ DEFINE_test_flag(bool, pause_sending_txn_status_requests, false,
 namespace yb {
 namespace tablet {
 
-RunningTransaction::RunningTransaction(TransactionMetadata metadata,
-                                       const TransactionalBatchData& last_batch_data,
-                                       OneWayBitmap&& replicated_batches,
-                                       HybridTime base_time_for_abort_check_ht_calculation,
-                                       RunningTransactionContext* context)
+RunningTransaction::RunningTransaction(
+    TransactionMetadata metadata,
+    const TransactionalBatchData& last_batch_data,
+    OneWayBitmap&& replicated_batches,
+    HybridTime base_time_for_abort_check_ht_calculation,
+    HybridTime first_write_ht,
+    RunningTransactionContext* context,
+    const AtomicGaugePtr<uint64_t>& metric_aborted_transactions_pending_cleanup)
     : metadata_(std::move(metadata)),
       last_batch_data_(last_batch_data),
       replicated_batches_(std::move(replicated_batches)),
       context_(*context),
+      weak_context_(context_.RetainWeak()),
       remove_intents_task_(&context->applier_, &context->participant_context_, context,
                            metadata_.transaction_id),
       get_status_handle_(context->rpcs_.InvalidHandle()),
       abort_handle_(context->rpcs_.InvalidHandle()),
       apply_intents_task_(&context->applier_, context, &apply_data_),
       abort_check_ht_(base_time_for_abort_check_ht_calculation.AddDelta(
-                          1ms * FLAGS_transaction_abort_check_interval_ms)) {
+                          1ms * FLAGS_transaction_abort_check_interval_ms)),
+      first_write_ht_(first_write_ht),
+      fast_mode_scope_(context->CreateFastModeTransactionScope(metadata_)),
+      metric_aborted_transactions_pending_cleanup_(metric_aborted_transactions_pending_cleanup) {
 }
 
 RunningTransaction::~RunningTransaction() {
@@ -70,9 +78,12 @@ RunningTransaction::~RunningTransaction() {
                                             << "being destroyed. This could lead to stuck "
                                             << "WriteQuery object(s).";
   if (WasAborted()) {
-    context_.NotifyAbortedTransactionDecrement(id());
+    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
-  context_.rpcs_.Abort({&get_status_handle_, &abort_handle_});
+  auto lock = weak_context_.lock();
+  if (lock) {
+    context_.rpcs_.Abort({&get_status_handle_, &abort_handle_});
+  }
 }
 
 void RunningTransaction::AddReplicatedBatch(
@@ -94,7 +105,7 @@ void RunningTransaction::SetLocalCommitData(
   local_commit_time_ = time;
   last_known_status_hybrid_time_ = local_commit_time_;
   if (last_known_status_ == TransactionStatus::ABORTED) {
-    context_.NotifyAbortedTransactionDecrement(id());
+    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
   last_known_status_ = TransactionStatus::COMMITTED;
 }
@@ -104,7 +115,7 @@ void RunningTransaction::Aborted() {
 
   if (last_known_status_ != TransactionStatus::ABORTED) {
     last_known_status_ = TransactionStatus::ABORTED;
-    context_.NotifyAbortedTransactionIncrement(id());
+    metric_aborted_transactions_pending_cleanup_->Increment();
   }
   last_known_status_hybrid_time_ = HybridTime::kMax;
 }
@@ -198,14 +209,10 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          [status_tablet, shared_self, weak_context = context_.RetainWeak()](
+          GuardedByWeak(weak_context_, [status_tablet, shared_self](
               const Status& status, const tserver::AbortTransactionResponsePB& response) {
-            auto context_lock = weak_context.lock();
-            if (!context_lock) {
-              return;
-            }
             shared_self->AbortReceived(status_tablet, status, response);
-          }),
+          })),
       &abort_handle_);
 }
 
@@ -287,8 +294,11 @@ void RunningTransaction::SendStatusRequest(
           nullptr /* tablet */,
           client,
           &req,
-          std::bind(&RunningTransaction::StatusReceived, this, status_tablet, _1, _2, serial_no,
-                    shared_self)),
+          GuardedByWeak(weak_context_, [status_tablet, serial_no, shared_self](
+              const Status& status,
+              const tserver::GetTransactionStatusResponsePB& response) {
+            shared_self->StatusReceived(status_tablet, status, response, serial_no, shared_self);
+          })),
       &get_status_handle_);
 }
 
@@ -351,7 +361,7 @@ bool RunningTransaction::UpdateStatus(
     return false;
   }
   if (last_known_status_ == TransactionStatus::ABORTED) {
-    context_.NotifyAbortedTransactionDecrement(id());
+    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
   last_known_status_ = transaction_status;
 
@@ -437,7 +447,7 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
         status_tablet, transaction_status, time_of_status, coordinator_safe_time,
         aborted_subtxn_set, expected_deadlock_status, pg_session_req_version);
     if (did_abort_txn) {
-      context_.NotifyAbortedTransactionIncrement(id());
+      metric_aborted_transactions_pending_cleanup_->Increment();
       context_.EnqueueRemoveUnlocked(
           id(), RemoveReason::kStatusReceived, &min_running_notifier, expected_deadlock_status);
     }
@@ -516,14 +526,11 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
           expected_deadlock_status, pg_session_req_version});
     } else {
-      waiter.callback(STATUS(
-          TryAgain,
-          Format(
-              "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-              "last known: $2 at $3",
-              waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
-              time_of_status),
-          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)));
+      waiter.callback(CreateAbortedStatus(
+          "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+          "last known: $2 at $3",
+          waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
+          time_of_status));
     }
   }
 }
@@ -577,7 +584,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
           result->aborted_subtxn_set, result->expected_deadlock_status,
           result->pg_session_req_version);
       if (did_abort_txn) {
-        context_.NotifyAbortedTransactionIncrement(id());
+        metric_aborted_transactions_pending_cleanup_->Increment();
         context_.EnqueueRemoveUnlocked(
             id(), RemoveReason::kAbortReceived, &min_running_notifier,
             result->expected_deadlock_status);
@@ -598,9 +605,7 @@ std::string RunningTransaction::LogPrefix() const {
 }
 
 Status MakeAbortedStatus(const TransactionId& id) {
-  return STATUS(
-      TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+  return CreateAbortedStatus("Transaction aborted: $0", id);
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
@@ -659,7 +664,7 @@ const TabletId& RunningTransaction::status_tablet() const {
   return metadata_.status_tablet;
 }
 
-void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
+void RunningTransaction::UpdateTransactionPromoting(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
   metadata_.locality = TransactionFullLocality::Global();

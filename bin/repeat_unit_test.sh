@@ -379,6 +379,7 @@ if [[ $iteration -gt 0 ]]; then
 
   if [[ $pass_or_fail == "FAILED" ]]; then
     touch "$failure_flag_file_path"
+    exit 1
   fi
 else
   # $iteration is 0

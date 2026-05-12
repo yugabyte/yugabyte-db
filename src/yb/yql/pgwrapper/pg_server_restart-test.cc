@@ -28,7 +28,7 @@ namespace yb::pgwrapper {
 class PgSingleServerRestartTest : public LibPqTestBase {
  protected:
   void SetUp() override {
-    FLAGS_replication_factor = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
     LibPqTestBase::SetUp();
   }
   int GetNumTabletServers() const override {

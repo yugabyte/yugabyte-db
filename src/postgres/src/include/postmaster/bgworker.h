@@ -171,4 +171,6 @@ extern void YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, 
 extern void BackgroundWorkerBlockSignals(void);
 extern void BackgroundWorkerUnblockSignals(void);
 
+extern size_t YbBackgroundWorkerHandleSize();
+
 #endif							/* BGWORKER_H */

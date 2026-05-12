@@ -31,7 +31,7 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageNameFlag)) == 0 {
+		if util.IsEmptyString(storageNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -46,10 +46,12 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 
 		r, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: S3",
-				"Update - List Customer Configurations")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Storage Configuration: S3",
+				"Update - List Customer Configurations",
+			)
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -127,8 +129,8 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(accessKeyID)) != 0 &&
-				len(strings.TrimSpace(secretAccessKey)) != 0 {
+			if !util.IsEmptyString(accessKeyID) &&
+				!util.IsEmptyString(secretAccessKey) {
 				data[util.AWSAccessKeyEnv] = accessKeyID
 				data[util.AWSSecretAccessKeyEnv] = secretAccessKey
 			} else {
@@ -148,9 +150,7 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 		_, response, err = authAPI.EditCustomerConfig(storageUUID).
 			Config(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: S3", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Storage Configuration: S3", "Update")
 		}
 
 		logrus.Infof("The storage configuration %s (%s) has been updated\n",

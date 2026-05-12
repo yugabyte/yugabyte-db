@@ -4,8 +4,6 @@ headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC authentication
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -152,18 +150,6 @@ For more information, refer to [Register an application with the Microsoft ident
 
 To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your Azure application client ID, client secret, and tenant ID.
 
-To allow users to access their JWT from the YugabyteDB sign in page, you must enable the OIDC feature via a configuration flag before you configure OIDC.
-
-#### Enable OIDC enhancements
-
-To enable some features of the OIDC functionality in Yugabyte Anywhere, you need to set the `yb.security.oidc_feature_enhancements` configuration flag to true as follows:
-
-1. Navigate to **Admin > Advanced > Global Configuration**.
-
-1. Search on OIDC to display the configuration setting and set it to true.
-
-    ![Configuring yb.security.oidc_feature_enhancements flag for OIDC](/images/yp/security/oidc-azure-globalfeature.png)
-
 #### Enable OIDC authentication
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
@@ -176,7 +162,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
     - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
     - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
     - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
-    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
+    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA.
 
 1. Click **Save**.
 
@@ -244,18 +230,6 @@ The following are examples of possible rules:
   map1 OIDC.Test.Read read_only_user
   ```
 
-#### yb.security.oidc_feature_enhancements
-
-This flag must be enabled to expose the OIDC functionality in Yugabyte Anywhere. Use the following API to set values for this flag.
-
-```sh
-curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUID>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.oidc_feature_enhancements' \
---header 'Content-Type: text/plain' \
---header 'Accept: application/json' \
---header 'X-AUTH-YW-API-TOKEN: <api-token>' \
---data 'true'
-```
-
 ## Manage users and roles
 
-{{< readfile "/preview/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}

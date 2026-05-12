@@ -46,8 +46,7 @@ var describeRoleCmd = &cobra.Command{
 
 		rList, response, err := roleListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role", "Describe")
 		}
 
 		r := make([]ybaclient.Role, 0)
@@ -56,7 +55,7 @@ var describeRoleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) > 0 {
+		if !util.IsEmptyString(name) {
 			for _, p := range rList {
 				if strings.Contains(strings.ToLower(p.GetName()), strings.ToLower(name)) {
 					r = append(r, p)

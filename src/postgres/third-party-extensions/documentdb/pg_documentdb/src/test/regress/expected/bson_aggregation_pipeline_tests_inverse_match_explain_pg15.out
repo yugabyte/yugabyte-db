@@ -1,5 +1,4 @@
 NOTICE:  identifier "pg_regress/bson_aggregation_pipeline_tests_inverse_match_explain_pg15" will be truncated to "pg_regress/bson_aggregation_pipeline_tests_inverse_match_explai"
-SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 \i sql/bson_aggregation_pipeline_tests_inverse_match_explain_core.sql
 SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 12300;
@@ -75,22 +74,22 @@ SELECT documentdb_api.insert_one('invmatchexp','sales','{ "_id": 3, "order": 103
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatchexp', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
-                                                                      QUERY PLAN                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on documentdb_data.documents_12303 collection
    Output: collection.document
    Recheck Cond: (collection.shard_key_value = '12303'::bigint)
    Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
    InitPlan 2 (returns $1)
      ->  Result
-           Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0)
+           Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0, false)
            InitPlan 1 (returns $0)
              ->  Limit
                    Output: (COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson))
                    ->  Aggregate
                          Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
                          ->  Bitmap Heap Scan on documentdb_data.documents_12302 collection_0_1
-                               Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                               Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
                                Recheck Cond: (collection_0_1.shard_key_value = '12302'::bigint)
                                Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
                                ->  Bitmap Index Scan on _id_
@@ -100,20 +99,20 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 (20 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatchexp', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
-                                                                   QUERY PLAN                                                                    
--------------------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on documentdb_data.documents_12303 collection
    Output: collection.document
    Recheck Cond: (collection.shard_key_value = '12303'::bigint)
    Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
    InitPlan 2 (returns $1)
      ->  Result
-           Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0)
+           Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0, false)
            InitPlan 1 (returns $0)
              ->  Aggregate
                    Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
                    ->  Bitmap Heap Scan on documentdb_data.documents_12302 collection_0_1
-                         Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                         Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
                          Recheck Cond: (collection_0_1.shard_key_value = '12302'::bigint)
                          Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
                          ->  Bitmap Index Scan on _id_

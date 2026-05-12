@@ -26,6 +26,7 @@
 
 #include "yb/rocksdb/options.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -88,8 +89,10 @@ yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
 }
 
 bool Env::CleanupFile(const std::string& fname, const std::string& log_prefix) {
-  Status s;
-  WARN_NOT_OK(s = DeleteFile(fname), log_prefix + "Failed to cleanup " + fname);
+  Status s = DeleteFile(fname);
+  if (!s.ok() && !s.IsNotFound()) {
+    WARN_NOT_OK(s, log_prefix + "Failed to cleanup " + fname);
+  }
   return s.ok();
 }
 
@@ -144,18 +147,20 @@ void Logger::Logv(const InfoLogLevel log_level, const char* format, va_list ap) 
 
 void Logger::LogvWithContext(const char* file,
     const int line,
-    const InfoLogLevel log_level,
+    const InfoLogLevel msg_level,
     const char* format,
     va_list ap) {
-  static const char* kInfoLogLevelNames[6] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL", "HEADER"};
+  static const char* kInfoLogLevelNames[7] = {
+    "DEBUG", "DETAIL", "INFO", "WARN", "ERROR", "FATAL", "HEADER"
+  };
   static_assert(
       sizeof(kInfoLogLevelNames) / sizeof(kInfoLogLevelNames[0]) == NUM_INFO_LOG_LEVELS,
       "kInfoLogLevelNames must have an element for each log level");
-  if (log_level < log_level_) {
+  if (!ShouldLog(msg_level, log_level_)) {
     return;
   }
 
-  if (log_level == InfoLogLevel::INFO_LEVEL) {
+  if (msg_level == InfoLogLevel::INFO_LEVEL) {
     // Doesn't print log level if it is INFO level.
     // This is to avoid unexpected performance regression after we add
     // the feature of log level. All the logs before we add the feature
@@ -165,7 +170,7 @@ void Logger::LogvWithContext(const char* file,
   } else {
     char new_format[500];
     snprintf(new_format, sizeof(new_format) - 1, "[%s] %s",
-        kInfoLogLevelNames[log_level], format);
+        kInfoLogLevelNames[msg_level], format);
     Logv(new_format, ap);
   }
 }
@@ -173,18 +178,18 @@ void Logger::LogvWithContext(const char* file,
 
 void LogWithContext(const char* file,
                     const int line,
-                    const InfoLogLevel log_level,
+                    const InfoLogLevel msg_level,
                     Logger* info_log,
                     const char* format,
                     ...) {
-  if (info_log && info_log->GetInfoLogLevel() <= log_level) {
+  if (info_log && ShouldLog(msg_level, info_log->GetInfoLogLevel())) {
     va_list ap;
     va_start(ap, format);
 
-    if (log_level == InfoLogLevel::HEADER_LEVEL) {
+    if (msg_level == InfoLogLevel::HEADER_LEVEL) {
       info_log->LogHeaderWithContext(file, line, format, ap);
     } else {
-      info_log->LogvWithContext(file, line, log_level, format, ap);
+      info_log->LogvWithContext(file, line, msg_level, format, ap);
     }
 
     va_end(ap);

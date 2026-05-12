@@ -16,11 +16,13 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueFactory;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,13 +37,19 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
 
   private final M scope;
 
-  public RuntimeConfig(Config config) {
-    this(null, config);
+  // Listener to any changes to this runtime config.
+  private final BiConsumer<ScopeType, RuntimeConfigEntry> changeListener;
+
+  public RuntimeConfig(
+      Config resolvedConfig, BiConsumer<ScopeType, RuntimeConfigEntry> changeListener) {
+    this(null, resolvedConfig, changeListener);
   }
 
-  RuntimeConfig(M scope, Config config) {
-    super(config.resolve());
+  RuntimeConfig(
+      M scope, Config resolvedConfig, BiConsumer<ScopeType, RuntimeConfigEntry> changeListener) {
+    super(resolvedConfig);
     this.scope = scope;
+    this.changeListener = changeListener;
   }
 
   /**
@@ -63,35 +71,52 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
 
   private RuntimeConfig<M> setValueOrObj(
       String path, String strValue, Supplier<ConfigValue> valueSupplier) {
+    RuntimeConfigEntry entry = null;
+    ScopeType scopeType = ScopeType.GLOBAL;
     if (scope == null) {
-      RuntimeConfigEntry.upsertGlobal(path, strValue);
+      entry = RuntimeConfigEntry.upsertGlobal(path, strValue);
     } else if (scope instanceof Customer) {
-      RuntimeConfigEntry.upsert((Customer) scope, path, strValue);
+      scopeType = ScopeType.CUSTOMER;
+      entry = RuntimeConfigEntry.upsert((Customer) scope, path, strValue);
     } else if (scope instanceof Universe) {
-      RuntimeConfigEntry.upsert((Universe) scope, path, strValue);
+      scopeType = ScopeType.UNIVERSE;
+      entry = RuntimeConfigEntry.upsert((Universe) scope, path, strValue);
     } else if (scope instanceof Provider) {
-      RuntimeConfigEntry.upsert((Provider) scope, path, strValue);
+      scopeType = ScopeType.PROVIDER;
+      entry = RuntimeConfigEntry.upsert((Provider) scope, path, strValue);
     } else {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.setValueInternal(path, valueSupplier.get());
+    if (entry != null) {
+      changeListener.accept(scopeType, entry);
+    }
     LOG.trace("After setValue {}", this);
     return this;
   }
 
   public RuntimeConfig<M> deleteEntry(String path) {
+    RuntimeConfigEntry entry = null;
+    ScopeType scopeType = ScopeType.GLOBAL;
     if (scope == null) {
-      RuntimeConfigEntry.getOrBadRequest(GLOBAL_SCOPE_UUID, path).delete();
+      entry = RuntimeConfigEntry.getOrBadRequest(GLOBAL_SCOPE_UUID, path);
     } else if (scope instanceof Customer) {
-      RuntimeConfigEntry.getOrBadRequest(((Customer) scope).getUuid(), path).delete();
+      scopeType = ScopeType.CUSTOMER;
+      entry = RuntimeConfigEntry.getOrBadRequest(((Customer) scope).getUuid(), path);
     } else if (scope instanceof Universe) {
-      RuntimeConfigEntry.getOrBadRequest(((Universe) scope).getUniverseUUID(), path).delete();
+      scopeType = ScopeType.UNIVERSE;
+      entry = RuntimeConfigEntry.getOrBadRequest(((Universe) scope).getUniverseUUID(), path);
     } else if (scope instanceof Provider) {
-      RuntimeConfigEntry.getOrBadRequest(((Provider) scope).getUuid(), path).delete();
+      scopeType = ScopeType.PROVIDER;
+      entry = RuntimeConfigEntry.getOrBadRequest(((Provider) scope).getUuid(), path);
     } else {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.deleteValueInternal(path);
+    if (entry != null) {
+      entry.delete();
+      changeListener.accept(scopeType, entry);
+    }
     LOG.trace("After deleteEntry {}", this);
     return this;
   }

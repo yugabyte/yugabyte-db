@@ -44,6 +44,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/async_util.h"
 
@@ -55,6 +56,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 
@@ -71,12 +73,14 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock)
 
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
@@ -147,7 +151,11 @@ class ResultFuture {
   }
 
   Result Get() {
-    return std::visit([](auto& future) { return future.get(); }, variant_);
+    const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
+
+    // Check for interrupts are waiting on async RPC.
+    YBCCheckForInterrupts();
+    return result;
   }
 
  private:
@@ -165,21 +173,26 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
+  struct ProxyInitInfo {
+    rpc::ProxyCache& cache;
+    HostPort host_port;
+    MonoDelta resolve_cache_timeout;
+  };
+
   PgClient(
+      const ProxyInitInfo& proxy_init_info,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
       std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
-  Status Start(rpc::ProxyCache* proxy_cache,
-               rpc::Scheduler* scheduler,
-               const tserver::TServerSharedData& tserver_shared_object,
-               std::optional<uint64_t> session_id);
+  Status Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id);
 
-  void Shutdown();
+  void Interrupt();
 
-  void SetTimeout(MonoDelta timeout);
+  void SetTimeout(int timeout_ms);
+  void ClearTimeout();
 
-  void SetLockTimeout(MonoDelta lock_timeout);
+  void SetLockTimeout(int lock_timeout_ms);
 
   uint64_t SessionID() const;
 
@@ -192,6 +205,8 @@ class PgClient {
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
+
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -217,7 +232,16 @@ class PgClient {
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
-                                  uint64_t** backfill_statuses);
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
+
+  struct ReplicationInfo {
+    int32_t version;
+    ReplicationInfoPB value;
+  };
+
+  std::optional<ReplicationInfo> RefreshClusterReplicationInfo(
+      std::optional<int32_t> known_version);
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string& table_id, const std::string& transaction_id);
@@ -235,14 +259,12 @@ class PgClient {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
-                                   bool is_db_catalog_version_mode,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -251,7 +273,6 @@ class PgClient {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
-                                                         bool is_db_catalog_version_mode,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -260,7 +281,7 @@ class PgClient {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      bool is_db_catalog_version_mode, std::optional<uint64_t> read_time = std::nullopt);
+      std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
@@ -275,7 +296,7 @@ class PgClient {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 
@@ -300,6 +321,8 @@ class PgClient {
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
@@ -309,6 +332,7 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
@@ -316,7 +340,8 @@ class PgClient {
       const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode);
 
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
@@ -328,6 +353,9 @@ class PgClient {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   Status SetCronLastMinute(int64_t last_minute);
@@ -337,6 +365,9 @@ class PgClient {
   Result<PgTxnSnapshotPB> ImportTxnSnapshot(
       std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
+
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
@@ -353,6 +384,10 @@ class PgClient {
   Status CancelTransaction(const unsigned char* transaction_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& database_name,
+      const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params);
 
  private:
   class Impl;

@@ -10,29 +10,41 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <utils/lsyscache.h>
-
 #include <nodes/pathnodes.h>
 #include <utils/selfuncs.h>
 #include <metadata/metadata_cache.h>
 #include <planner/mongo_query_operator.h>
 
+#include "query/bson_dollar_selectivity.h"
+#include "aggregation/bson_query_common.h"
+
 extern bool EnableNewOperatorSelectivityMode;
+extern bool EnableCompositeIndexPlanner;
+extern bool LowSelectivityForLookup;
+extern bool SetSelectivityForFullScan;
 
+static bool IsDollarRangeFullScan(List *args);
+static double GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr, double
+									   defaultExprSelectivity);
 
-static double GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr);
-
-static double GetDisableStatisticSelectivity(List *args);
-
-/* The default selectivity Postgres applies for matching clauses. */
-static const double DefaultSelectivity = 0.5;
-
-/* The low selectivity - based on prior guess. */
-static const double LowSelectivity = 0.01;
-
-/* Selectivity when most of the table is accessed (Selectivity max is 1) */
-static const double HighSelectivity = 0.9;
+static double GetDisableStatisticSelectivity(List *args, double
+											 defaultDisabledSelectivity);
 
 PG_FUNCTION_INFO_V1(bson_dollar_selectivity);
+
+
+static inline bool
+IsLookupExtractFuncExpr(Node *expr)
+{
+	if (!IsA(expr, FuncExpr))
+	{
+		return false;
+	}
+
+	FuncExpr *funcExpr = (FuncExpr *) expr;
+	return funcExpr->funcid ==
+		   DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+}
 
 
 /*
@@ -48,12 +60,36 @@ bson_dollar_selectivity(PG_FUNCTION_ARGS)
 	int varRelId = PG_GETARG_INT32(3);
 	Oid collation = PG_GET_COLLATION();
 
-	if (!EnableNewOperatorSelectivityMode)
+	/* The default selectivity Postgres applies for matching clauses. */
+	const double defaultOperatorSelectivity = 0.5;
+	double selectivity = GetDollarOperatorSelectivity(
+		planner, selectivityOpExpr, args, collation, varRelId,
+		defaultOperatorSelectivity);
+
+	PG_RETURN_FLOAT8(selectivity);
+}
+
+
+double
+GetDollarOperatorSelectivity(PlannerInfo *planner, Oid selectivityOpExpr,
+							 List *args, Oid collation, int varRelId,
+							 double defaultExprSelectivity)
+{
+	/* Special case, check if it's a full scan */
+	if (SetSelectivityForFullScan &&
+		selectivityOpExpr == BsonRangeMatchOperatorOid() &&
+		IsDollarRangeFullScan(args))
 	{
-		PG_RETURN_FLOAT8(GetDisableStatisticSelectivity(args));
+		return 1.0;
 	}
 
-	double defaultInputSelectivity = GetStatisticsNoStatsData(args, selectivityOpExpr);
+	if (!EnableNewOperatorSelectivityMode && !EnableCompositeIndexPlanner)
+	{
+		return GetDisableStatisticSelectivity(args, defaultExprSelectivity);
+	}
+
+	double defaultInputSelectivity = GetStatisticsNoStatsData(args, selectivityOpExpr,
+															  defaultExprSelectivity);
 
 	/*
 	 * This is Postgres's default selectivity implementation that looks at statistics
@@ -63,7 +99,27 @@ bson_dollar_selectivity(PG_FUNCTION_ARGS)
 	double selectivity = generic_restriction_selectivity(
 		planner, selectivityOpExpr, collation, args, varRelId, defaultInputSelectivity);
 
-	PG_RETURN_FLOAT8(selectivity);
+	return selectivity;
+}
+
+
+static bool
+IsDollarRangeFullScan(List *args)
+{
+	/* Special case, check if it's a full scan */
+	Node *secondNode = lsecond(args);
+	if (!IsA(secondNode, Const))
+	{
+		return false;
+	}
+
+	Const *secondConst = (Const *) secondNode;
+	pgbsonelement dollarElement;
+	PgbsonToSinglePgbsonElement(
+		DatumGetPgBson(secondConst->constvalue), &dollarElement);
+	DollarRangeParams rangeParams = { 0 };
+	InitializeQueryDollarRange(&dollarElement.bsonValue, &rangeParams);
+	return rangeParams.isFullScan;
 }
 
 
@@ -72,52 +128,70 @@ bson_dollar_selectivity(PG_FUNCTION_ARGS)
  * implementing selectivity.
  */
 static double
-GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr)
+GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr, double defaultExprSelectivity)
 {
 	if (list_length(args) != 2)
 	{
 		/* this is not one of the default operators - return Postgres's default values */
-		return DefaultSelectivity;
+		return defaultExprSelectivity;
 	}
 
 	Node *secondNode = lsecond(args);
 	if (!IsA(secondNode, Const))
 	{
+		if (LowSelectivityForLookup &&
+			IsLookupExtractFuncExpr(secondNode))
+		{
+			/* This means a lookup modified index qual, consider low selectivity */
+			return LowSelectivity;
+		}
+
 		/* Can't determine anything here */
-		return DefaultSelectivity;
+		return defaultExprSelectivity;
 	}
 
 	Const *secondConst = (Const *) secondNode;
-	const MongoIndexOperatorInfo *indexOp;
+	BsonIndexStrategy indexStrategy = BSON_INDEX_STRATEGY_INVALID;
 	if (secondConst->consttype == BsonQueryTypeId())
 	{
 		Oid selectFuncId = get_opcode(selectivityOpExpr);
-		indexOp = GetMongoIndexOperatorInfoByPostgresFuncId(selectFuncId);
+		const MongoIndexOperatorInfo *indexOp = GetMongoIndexOperatorInfoByPostgresFuncId(
+			selectFuncId);
+		indexStrategy = indexOp->indexStrategy;
 	}
 	else
 	{
 		/* This is an index pushdown operator */
-		indexOp = GetMongoIndexOperatorByPostgresOperatorId(selectivityOpExpr);
+		const MongoIndexOperatorInfo *indexOp = GetMongoIndexOperatorByPostgresOperatorId(
+			selectivityOpExpr);
+		indexStrategy = indexOp->indexStrategy;
 	}
 
-	if (indexOp->indexStrategy == BSON_INDEX_STRATEGY_INVALID)
+	if (indexStrategy == BSON_INDEX_STRATEGY_INVALID)
 	{
-		/* Unknown - thunk to PG value */
-		return DefaultSelectivity;
+		if (selectivityOpExpr == BsonRangeMatchOperatorOid())
+		{
+			indexStrategy = BSON_INDEX_STRATEGY_DOLLAR_RANGE;
+		}
+		else
+		{
+			/* Unknown - thunk to PG value */
+			return defaultExprSelectivity;
+		}
 	}
 
 	pgbsonelement dollarElement;
 	PgbsonToSinglePgbsonElement(
 		DatumGetPgBson(secondConst->constvalue), &dollarElement);
 
-	switch (indexOp->indexStrategy)
+	switch (indexStrategy)
 	{
 		case BSON_INDEX_STRATEGY_DOLLAR_EQUAL:
 		{
 			if (dollarElement.bsonValue.value_type == BSON_TYPE_NULL)
 			{
 				/* $eq: null matches paths that don't exist: presume normal selectivity */
-				return DefaultSelectivity;
+				return defaultExprSelectivity;
 			}
 
 			/* Use prior value - assume $eq supports lower selectivity */
@@ -125,12 +199,18 @@ GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr)
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_NOT_EQUAL:
+		{
+			return HighSelectivity;
+		}
+
 		case BSON_INDEX_STRATEGY_DOLLAR_EXISTS:
 		{
 			/* Inverse selectivity of $eq or general exists check
-			 * so assume high selectivity
+			 * so assume high selectivity. Exists false should return the same selectivity as
+			 * equals null above.
 			 */
-			return HighSelectivity;
+			int32_t value = BsonValueAsInt32(&dollarElement.bsonValue);
+			return value > 0 ? HighSelectivity : defaultExprSelectivity;
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_IN:
@@ -143,7 +223,7 @@ GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr)
 				return Min(inElements * LowSelectivity, HighSelectivity);
 			}
 
-			return DefaultSelectivity;
+			return defaultExprSelectivity;
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_RANGE:
@@ -151,12 +231,19 @@ GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr)
 			/* Since $range does a $gt/$lt together, assume that it gives you
 			 * half the selectivity of each $gt/$lt.
 			 */
-			return DefaultSelectivity / 2;
+			DollarRangeParams rangeParams = { 0 };
+			InitializeQueryDollarRange(&dollarElement.bsonValue, &rangeParams);
+			if (rangeParams.isFullScan)
+			{
+				return 1.0;
+			}
+
+			return defaultExprSelectivity / 2;
 		}
 
 		default:
 		{
-			return DefaultSelectivity;
+			return defaultExprSelectivity;
 		}
 	}
 }
@@ -167,28 +254,33 @@ GetStatisticsNoStatsData(List *args, Oid selectivityOpExpr)
  * implementing selectivity.
  */
 static double
-GetDisableStatisticSelectivity(List *args)
+GetDisableStatisticSelectivity(List *args, double defaultExprSelectivity)
 {
 	if (list_length(args) != 2)
 	{
 		/* this is not one of the default operators - return Postgres's default values */
-		return DefaultSelectivity;
+		return defaultExprSelectivity;
 	}
 
 	Node *secondNode = lsecond(args);
 	if (!IsA(secondNode, Const))
 	{
+		if (LowSelectivityForLookup &&
+			IsLookupExtractFuncExpr(secondNode))
+		{
+			/* This means a lookup modified index qual, consider low selectivity */
+			return LowSelectivity;
+		}
+
 		/* Can't determine anything here */
-		return DefaultSelectivity;
+		return defaultExprSelectivity;
 	}
 
 	Const *secondConst = (Const *) secondNode;
-
-	/* dumbest possible implementation: assume 1% of rows are returned */
 	if (secondConst->consttype == BsonQueryTypeId())
 	{
 		/* These didn't have a restrict info so they were using the PG default*/
-		return DefaultSelectivity;
+		return defaultExprSelectivity;
 	}
 	else
 	{

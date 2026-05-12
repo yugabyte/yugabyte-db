@@ -11,10 +11,9 @@
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
 from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod, \
-    ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, \
-    CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
-    VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
-    WaitForConnection, ManageOtelCollector
+    ListInstancesMethod, InitYSQLMethod, CronCheckMethod, AccessDeleteKeyMethod, \
+    TransferXClusterCerts, VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, \
+    RunHooks, WaitForConnection, ManageOtelCollector
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
@@ -79,8 +78,6 @@ class GcpAccessCommand(AccessCommand):
 
     def add_methods(self):
         self.add_method(GcpAccessAddKeyMethod(self))
-        self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AccessDeleteKeyMethod(self))
 
 

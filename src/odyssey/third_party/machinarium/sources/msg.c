@@ -48,6 +48,9 @@ MACHINE_API machine_msg_t *machine_msg_create_or_advance(machine_msg_t *obj,
 
 MACHINE_API inline void machine_msg_free(machine_msg_t *obj)
 {
+	/* YB: No-op in case of NULL */
+	if (obj == NULL)
+		return;
 	mm_msg_t *msg = mm_cast(mm_msg_t *, obj);
 	mm_msgcache_push(&mm_self->msg_cache, msg);
 }

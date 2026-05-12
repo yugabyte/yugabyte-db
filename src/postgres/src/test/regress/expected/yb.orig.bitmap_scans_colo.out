@@ -1,6 +1,13 @@
 --
 -- YB Bitmap Scans on a Colocated DB (bitmap index scans + YB bitmap table scans)
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 CREATE DATABASE colo WITH colocation = true;
 \c colo;
 SET yb_enable_bitmapscan = true;
@@ -9,8 +16,12 @@ CREATE TABLE simple (k INT PRIMARY KEY, ind_a INT, ind_b INT);
 INSERT INTO simple SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 CREATE INDEX ON simple(ind_a ASC);
 CREATE INDEX ON simple(ind_b ASC);
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE k = 1;
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set Q1 '/*+ BitmapScan(simple) */'
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
@@ -18,15 +29,15 @@ SELECT * FROM simple WHERE k = 1;
          Index Cond: (k = 1)
 (3 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE k = 1;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
 (1 row)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;
+\set query ':P :Q1 SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -37,16 +48,16 @@ SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;
                Index Cond: (ind_a < 5)
 (6 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
  2 |     4 |     6
 (2 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
+\set query ':P :Q1 SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=5 loops=1)
@@ -60,8 +71,6 @@ SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
                      Index Cond: (ind_b > 25)
 (9 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
  k  | ind_a | ind_b 
 ----+-------+-------
   1 |     2 |     3
@@ -75,8 +84,11 @@ SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
 -- test cases where we could skip fetching the table rows (TODO: #22044)
 --
 -- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
+\set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -98,16 +110,14 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
                      Storage Index Rows Scanned: 3
 (17 rows)
 
-/*+ BitmapScan(simple) */
-SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
  count 
 -------
      3
 (1 row)
 
 -- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;
+\set query ':explain :Q1 SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;'
+:query
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=3 loops=1)
@@ -128,6 +138,7 @@ SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;
 (15 rows)
 
 -- this query has a recheck condition, so we need to fetch the rows
+-- TODO(#29894): seems "test_skip" in the hint should be "simple".
 /*+ BitmapScan(simple) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
                                    QUERY PLAN                                    
@@ -161,8 +172,10 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 
 -- when the expression can be pushed down, we don't need a recheck but we do
 -- still need to send the request.
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+\set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -185,16 +198,16 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
                      Storage Index Rows Scanned: 3
 (18 rows)
 
-/*+ BitmapScan(simple) */
-SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
  count 
 -------
      2
 (1 row)
 
 -- other aggregates may require the rows
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+\set query ':P :Q1 SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -217,15 +230,15 @@ SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
                      Storage Index Rows Scanned: 3
 (18 rows)
 
-/*+ BitmapScan(simple) */
-SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
  sum 
 -----
    6
 (1 row)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+\set query ':P :Q1 SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -248,16 +261,16 @@ SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
                      Storage Index Rows Scanned: 3
 (18 rows)
 
-/*+ BitmapScan(simple) */
-SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
  max 
 -----
    4
 (1 row)
 
 -- when we don't need the actual value, we can avoid fetching
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+\set query ':P :Q1 SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=2 loops=1)
@@ -278,16 +291,14 @@ SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
                Storage Index Rows Scanned: 3
 (16 rows)
 
-/*+ BitmapScan(simple) */
-SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
  ?column? 
 ----------
         1
         1
 (2 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+\set query ':explain :Q1 SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
+:query
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=2 loops=1)
@@ -311,8 +322,10 @@ SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 --
 -- test primary key queries
 --
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR ind_a = 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
@@ -332,15 +345,15 @@ SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
                Storage Index Rows Scanned: 1
 (15 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
 (1 row)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
+\set query ':P :Q1 SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -363,8 +376,6 @@ SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
                      Storage Index Rows Scanned: 2
 (18 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
@@ -372,8 +383,10 @@ SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
  3 |     6 |     9
 (3 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -406,8 +419,6 @@ SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
                      Storage Index Rows Scanned: 1
 (28 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
@@ -416,8 +427,10 @@ SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
 (3 rows)
 
 -- test non-existent results
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
+\set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -434,8 +447,6 @@ SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
                      Storage Index Read Ops: 1
 (12 rows)
 
-/*+ BitmapScan(simple) */
-SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
  count 
 -------
      0
@@ -444,85 +455,92 @@ SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
 --
 -- test unsatisfiable conditions
 --
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE (k <= 1 AND k = 2);
-                           QUERY PLAN                           
-----------------------------------------------------------------
+SET yb_test_skip_binding_scan_keys = true;
+\set query ':explain :Q1 SELECT * FROM simple WHERE (k <= 1 AND k = 2);'
+:query
+                           QUERY PLAN                            
+-----------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
    Storage Recheck Cond: ((k <= 1) AND (k = 2))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  Bitmap Index Scan on simple_pkey (actual rows=1 loops=1)
+   Storage Table Rows Scanned: 10
+   ->  Bitmap Index Scan on simple_pkey (actual rows=10 loops=1)
          Index Cond: ((k <= 1) AND (k = 2))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 1
+         Storage Table Rows Scanned: 10
 (10 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+\set query ':explain :Q1 SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;'
+:query
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
    Storage Recheck Cond: (((k = 1) AND (k = 2)) OR (ind_b = 0))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  BitmapOr (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on simple_pkey (actual rows=1 loops=1)
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on simple_pkey (actual rows=10 loops=1)
                Index Cond: ((k = 1) AND (k = 2))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
-               Storage Table Rows Scanned: 1
-         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
+               Storage Table Rows Scanned: 10
+         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=10 loops=1)
                Index Cond: (ind_b = 0)
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-(15 rows)
+               Storage Index Rows Scanned: 10
+(16 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE (ind_a <= 1 AND ind_a = 2);
-                             QUERY PLAN                              
----------------------------------------------------------------------
+\set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a <= 1 AND ind_a = 2);'
+:query
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
    Storage Recheck Cond: ((ind_a <= 1) AND (ind_a = 2))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
+   Storage Table Rows Scanned: 10
+   ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
          Index Cond: ((ind_a <= 1) AND (ind_a = 2))
          Storage Index Read Requests: 1
          Storage Index Read Ops: 1
-         Storage Index Rows Scanned: 1
+         Storage Index Rows Scanned: 10
 (10 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+\set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;'
+:query
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
    Storage Recheck Cond: (((ind_a = 2) AND (ind_a = 2)) OR (ind_b = 0))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  BitmapOr (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
                Index Cond: ((ind_a = 2) AND (ind_a = 2))
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-               Storage Index Rows Scanned: 1
-         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
+               Storage Index Rows Scanned: 10
+         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=10 loops=1)
                Index Cond: (ind_b = 0)
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-(15 rows)
+               Storage Index Rows Scanned: 10
+(16 rows)
 
+RESET yb_test_skip_binding_scan_keys;
 --
 -- #21793: test row compare expressions
 --
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set query ':P :Q1 SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
@@ -535,8 +553,6 @@ SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;
                Index Cond: (ind_a IS NULL)
 (8 rows)
 
-/*+ BitmapScan(simple) */
-SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
@@ -565,8 +581,11 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
 --
 -- #22065: test pushdowns on Subplans
 --
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple_1) BitmapScan(simple) */
-SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
+\set Q1 '/*+ BitmapScan(simple_1) BitmapScan(simple) */'
+\set query ':P :Q1 SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple simple_1 (actual rows=0 loops=1)
@@ -579,8 +598,6 @@ SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHER
          Storage Index Filter: (ind_a <> $0)
 (8 rows)
 
-/*+ BitmapScan(simple_1) BitmapScan(simple) */
-SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
  k | ind_a | ind_b 
 ---+-------+-------
 (0 rows)
@@ -588,8 +605,9 @@ SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHER
 --
 -- test UPDATE
 --
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-UPDATE simple SET ind_a = NULL WHERE ind_a < 10 OR ind_b > 25;
+\set Q1 '/*+ BitmapScan(simple) */'
+\set query ':explain :Q1 UPDATE simple SET ind_a = NULL WHERE ind_a < 10 OR ind_b > 25;'
+:query
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Update on simple (actual rows=0 loops=1)
@@ -601,8 +619,10 @@ UPDATE simple SET ind_a = NULL WHERE ind_a < 10 OR ind_b > 25;
                      Index Cond: (ind_b > 25)
 (7 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
+\set query ':P :Q1 SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -618,8 +638,6 @@ SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 
                      Index Cond: (ind_b < 15)
 (11 rows)
 
-/*+ BitmapScan(simple) */
-SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
  ind_a | ind_b 
 -------+-------
        |     3
@@ -630,27 +648,28 @@ SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 
        |    30
 (6 rows)
 
-SET yb_pushdown_is_not_null = false;
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+-- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
+-- currently used during execution, not just planning.
+SET yb_test_skip_binding_scan_keys = true;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
    Sort Key: k
    Sort Method: quicksort
    ->  YB Bitmap Table Scan on simple (actual rows=6 loops=1)
          Storage Recheck Cond: ((ind_a < 10) OR (ind_a IS NULL) OR (ind_b < 15))
-         ->  BitmapOr (actual rows=6 loops=1)
-               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=0 loops=1)
+         ->  BitmapOr (actual rows=10 loops=1)
+               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
                      Index Cond: (ind_a < 10)
-               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=6 loops=1)
+               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
                      Index Cond: (ind_a IS NULL)
-               ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=4 loops=1)
+               ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=10 loops=1)
                      Index Cond: (ind_b < 15)
 (12 rows)
 
-/*+ BitmapScan(simple) */
-SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
  ind_a | ind_b 
 -------+-------
        |     3
@@ -661,10 +680,10 @@ SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 
        |    30
 (6 rows)
 
-RESET yb_pushdown_is_not_null;
+RESET yb_test_skip_binding_scan_keys;
 -- use Bitmap Scan to delete rows and validate their deletion
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-DELETE FROM simple WHERE ind_a IS NULL OR ind_b < 15;
+\set query ':explain :Q1 DELETE FROM simple WHERE ind_a IS NULL OR ind_b < 15;'
+:query
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Delete on simple (actual rows=0 loops=1)
@@ -676,8 +695,10 @@ DELETE FROM simple WHERE ind_a IS NULL OR ind_b < 15;
                      Index Cond: (ind_b < 15)
 (7 rows)
 
-/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
+\set query ':P :Q1 SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=0 loops=1)
@@ -691,8 +712,6 @@ SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
                      Index Cond: (ind_b < 15)
 (9 rows)
 
-/*+ BitmapScan(simple) */
-SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
  ind_a | ind_b 
 -------+-------
 (0 rows)
@@ -705,8 +724,12 @@ CREATE INDEX ON multi (c ASC) INCLUDE (a);
 CREATE INDEX ON multi (h ASC) INCLUDE (a);
 CREATE INDEX ON multi (b ASC, c ASC);
 INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1, 1000) i;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
+\set Q1 '/*+ BitmapScan(multi) */'
+\set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -729,8 +752,6 @@ SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
                      Storage Table Rows Scanned: 2
 (18 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
   a   |  b   |  c   |  h   
 ------+------+------+------
     1 |    2 |    3 |    4
@@ -738,8 +759,10 @@ SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
  1000 | 2000 | 3000 | 4000
 (3 rows)
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
+\set query ':P :Q1 SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -757,16 +780,16 @@ SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
                Storage Index Rows Scanned: 2
 (13 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
  a | b  | c  | h  
 ---+----+----+----
  4 |  8 | 12 | 16
  5 | 10 | 15 | 20
 (2 rows)
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDER BY a;
+\set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -799,8 +822,6 @@ SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDE
                      Storage Index Rows Scanned: 1
 (28 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8  ORDER BY a;
   a   |  b   |  c   |  h   
 ------+------+------+------
     1 |    2 |    3 |    4
@@ -812,8 +833,11 @@ SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8  ORD
 (6 rows)
 
 -- try some slightly complex nested logical operands queries
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -830,8 +854,6 @@ SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c =
                            Index Cond: ((b > 1797) AND (c = 2997))
 (12 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
   a  |  b   |  c   |  h   
 -----+------+------+------
    1 |    2 |    3 |    4
@@ -840,8 +862,10 @@ SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c =
  999 | 1998 | 2997 | 3996
 (4 rows)
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
+\set query ':P :Q1 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -859,8 +883,6 @@ SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c 
                            Index Cond: ((b = ANY ('{10,270,1800}'::integer[])) AND (c > 2500))
 (13 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
   a  |  b   |  c   |  h   
 -----+------+------+------
    2 |    4 |    6 |    8
@@ -873,8 +895,9 @@ SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c 
 --
 SET yb_fetch_row_limit = 100;
 SET yb_fetch_size_limit = 0;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 200 LIMIT 10;
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
+\set query ':explain :Q1 SELECT * FROM multi WHERE a < 200 LIMIT 10;'
+:query
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -891,8 +914,8 @@ SELECT * FROM multi WHERE a < 200 LIMIT 10;
 
 SET yb_fetch_row_limit = 0;
 SET yb_fetch_size_limit = '1kB';
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 200 LIMIT 10;
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+:query
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -908,8 +931,8 @@ RESET yb_fetch_size_limit;
 --
 INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1001, 10000) i;
 SET work_mem TO '4MB'; -- does not exceed work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+\set query ':explain :Q1 SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;'
+:query
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Sort (actual rows=5999 loops=1)
@@ -927,8 +950,7 @@ SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER 
 (12 rows)
 
 SET work_mem TO '4GB'; -- does not exceed very large work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+:query
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Sort (actual rows=5999 loops=1)
@@ -947,8 +969,7 @@ SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER 
 
 SET work_mem TO '100kB';
 -- normal case
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+:query
 NOTICE:  exceeded work_mem, switching to full table scan
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
@@ -969,8 +990,12 @@ NOTICE:  exceeded work_mem, switching to full table scan
 (14 rows)
 
 -- verify remote filters apply to the table scan when we've exceeded work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;
+-- hint2: verify local filters still apply when pushdown is disabled
+\set Q2 '/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */'
+\set query ':explain :Q SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
 NOTICE:  exceeded work_mem, switching to full table scan
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
@@ -990,9 +1015,6 @@ NOTICE:  exceeded work_mem, switching to full table scan
                            Index Cond: ((b > 0) AND (c > 27000))
 (14 rows)
 
--- verify local filters still apply when pushdown is disabled
-/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;
 NOTICE:  exceeded work_mem, switching to full table scan
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
@@ -1014,8 +1036,8 @@ NOTICE:  exceeded work_mem, switching to full table scan
 (15 rows)
 
 -- where the first bitmap index scan exceeds work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+\set query ':explain :Q1 SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;'
+:query
 NOTICE:  exceeded work_mem, switching to full table scan
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
@@ -1036,8 +1058,8 @@ NOTICE:  exceeded work_mem, switching to full table scan
 (14 rows)
 
 -- where the second bitmap index scan exceeds work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER BY a;
+\set query ':explain :Q1 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER BY a;'
+:query
 NOTICE:  exceeded work_mem, switching to full table scan
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
@@ -1058,8 +1080,8 @@ NOTICE:  exceeded work_mem, switching to full table scan
 (14 rows)
 
 -- where the third bitmap index scan exceeds work_mem
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;
+\set query ':explain :Q1 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;'
+:query
 NOTICE:  exceeded work_mem, switching to full table scan
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
@@ -1082,8 +1104,10 @@ NOTICE:  exceeded work_mem, switching to full table scan
 -- check aggregate pushdown
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = true;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM multi WHERE a > 10;
+\set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
 NOTICE:  exceeded work_mem, switching to full table scan
                              QUERY PLAN                              
 ---------------------------------------------------------------------
@@ -1096,8 +1120,6 @@ NOTICE:  exceeded work_mem, switching to full table scan
                Index Cond: (a > 10)
 (7 rows)
 
-/*+ BitmapScan(multi) */
-SELECT COUNT(*) FROM multi WHERE a > 10;
 NOTICE:  exceeded work_mem, switching to full table scan
  count 
 -------
@@ -1106,8 +1128,10 @@ NOTICE:  exceeded work_mem, switching to full table scan
 
 SET yb_enable_expression_pushdown = false;
 SET yb_enable_index_aggregate_pushdown = true;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM multi WHERE a > 10;
+\set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
 NOTICE:  exceeded work_mem, switching to full table scan
                              QUERY PLAN                              
 ---------------------------------------------------------------------
@@ -1120,8 +1144,6 @@ NOTICE:  exceeded work_mem, switching to full table scan
                Index Cond: (a > 10)
 (7 rows)
 
-/*+ BitmapScan(multi) */
-SELECT COUNT(*) FROM multi WHERE a > 10;
 NOTICE:  exceeded work_mem, switching to full table scan
  count 
 -------
@@ -1130,8 +1152,10 @@ NOTICE:  exceeded work_mem, switching to full table scan
 
 SET yb_enable_expression_pushdown = false;
 SET yb_enable_index_aggregate_pushdown = false;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM multi WHERE a > 10;
+\set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
 NOTICE:  exceeded work_mem, switching to full table scan
                              QUERY PLAN                              
 ---------------------------------------------------------------------
@@ -1144,8 +1168,6 @@ NOTICE:  exceeded work_mem, switching to full table scan
                Index Cond: (a > 10)
 (7 rows)
 
-/*+ BitmapScan(multi) */
-SELECT COUNT(*) FROM multi WHERE a > 10;
 NOTICE:  exceeded work_mem, switching to full table scan
  count 
 -------
@@ -1154,8 +1176,10 @@ NOTICE:  exceeded work_mem, switching to full table scan
 
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = false;
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM multi WHERE a > 10;
+\set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
 NOTICE:  exceeded work_mem, switching to full table scan
                              QUERY PLAN                              
 ---------------------------------------------------------------------
@@ -1168,8 +1192,6 @@ NOTICE:  exceeded work_mem, switching to full table scan
                Index Cond: (a > 10)
 (7 rows)
 
-/*+ BitmapScan(multi) */
-SELECT COUNT(*) FROM multi WHERE a > 10;
 NOTICE:  exceeded work_mem, switching to full table scan
  count 
 -------
@@ -1182,8 +1204,14 @@ RESET work_mem;
 --
 -- test remote pushdown
 --
-/*+ BitmapScan(multi multi_b_c_idx) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
+\set Q1 '/*+ BitmapScan(multi multi_b_c_idx) */'
+\set Q2 '/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */'
+\set query ':P :Q SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -1201,16 +1229,6 @@ SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
                Storage Index Rows Scanned: 4
 (13 rows)
 
-/*+ BitmapScan(multi multi_b_c_idx) */
-SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
- a | b | c  | h  
----+---+----+----
- 2 | 4 |  6 |  8
- 4 | 8 | 12 | 16
-(2 rows)
-
-/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -1229,16 +1247,24 @@ SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
                Storage Index Rows Scanned: 4
 (14 rows)
 
-/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */
-SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
  a | b | c  | h  
 ---+---+----+----
  2 | 4 |  6 |  8
  4 | 8 | 12 | 16
 (2 rows)
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+ a | b | c  | h  
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 4 | 8 | 12 | 16
+(2 rows)
+
+\set Q1 '/*+ BitmapScan(multi) */'
+\set Q2 '/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */'
+\set query ':P :Q SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -1263,17 +1289,6 @@ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER
                      Storage Index Rows Scanned: 3
 (20 rows)
 
-/*+ BitmapScan(multi) */
-SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
- a | b | c  | h  
----+---+----+----
- 2 | 4 |  6 |  8
- 3 | 6 |  9 | 12
- 4 | 8 | 12 | 16
-(3 rows)
-
-/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -1298,8 +1313,13 @@ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER
                      Storage Index Rows Scanned: 3
 (20 rows)
 
-/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */
-SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+ a | b | c  | h  
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 3 | 6 |  9 | 12
+ 4 | 8 | 12 | 16
+(3 rows)
+
  a | b | c  | h  
 ---+---+----+----
  2 | 4 |  6 |  8
@@ -1325,8 +1345,14 @@ insert into recheck_test VALUES
     (8, 'h', 2147483647),
     (9, 'i', 2147483648);
 -- #21930: test recheck conditions on text columns
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
+\set Q1 '/*+ BitmapScan(t) */'
+SELECT $$
+:P :Q1 SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
+$$ AS query \gset
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
@@ -1341,135 +1367,153 @@ SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
          Storage Index Rows Scanned: 1
 (10 rows)
 
-/*+ BitmapScan(t) */
-SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
  text_col 
 ----------
  i
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (5, 6);
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = ANY ('{5,6}'::integer[])))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=1)
-         Index Cond: ((int4_col < 3) AND (int4_col = ANY ('{5,6}'::integer[])))
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col IN (5, 6) AND int4_col < 3;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: ((int4_col = ANY ('{5,6}'::integer[])) AND (int4_col < 3))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=1)
-         Index Cond: ((int4_col = ANY ('{5,6}'::integer[])) AND (int4_col < 3))
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
+-- PxR: explain/run x target (int4_col vs COUNT(*))
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set R1 'int4_col'
+\set R2 'COUNT(*)'
+\set Pnext :iter_R2
+\set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
+   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
    ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
-         Index Cond: ((int4_col < 3) AND (int4_col = 5))
+         Index Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
 (4 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
-         Index Cond: ((int4_col < 3) AND (int4_col = 5))
-(4 rows)
-
--- also test aggregates
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
 (6 rows)
 
- /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);
+ int4_col 
+----------
+        2
+(1 row)
+
  count 
 -------
      1
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;
+\set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
+   Storage Recheck Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+         Index Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
+(4 rows)
+
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
          Storage Recheck Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
                Index Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
 (6 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;
+ int4_col 
+----------
+        2
+(1 row)
+
  count 
 -------
      1
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
+\set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
+         Index Cond: ((int4_col < 3) AND (int4_col = 5))
+(4 rows)
+
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (6 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
+ int4_col 
+----------
+(0 rows)
+
  count 
 -------
      0
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
+\set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
+         Index Cond: ((int4_col < 3) AND (int4_col = 5))
+(4 rows)
+
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (6 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
+ int4_col 
+----------
+(0 rows)
+
  count 
 -------
      0
 (1 row)
 
---
+-- PxQxR: explain/run x expression_pushdown x target
 -- test where casting may cause us to require recheck
---
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483647;
+\set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
+\set Q1 '/*+ BitmapScan(t) */'
+\set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'
+\set Pnext :iter_Q2
+\set Qnext :iter_R2
+\set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483647;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
@@ -1477,18 +1521,6 @@ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483647;
          Index Cond: (int4_col = 2147483647)
 (3 rows)
 
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: (int4_col = '2147483648'::bigint)
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
-         Index Cond: (int4_col = '2147483648'::bigint)
-(4 rows)
-
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -1498,15 +1530,51 @@ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
                Index Cond: (int4_col = 2147483647)
 (5 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
+         Index Cond: (int4_col = 2147483647)
+(3 rows)
+
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
+               Index Cond: (int4_col = 2147483647)
+(4 rows)
+
+ int4_col 
+----------
+(0 rows)
+
  count 
 -------
      0
 (1 row)
 
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+ int4_col 
+----------
+(0 rows)
+
+ count 
+-------
+     0
+(1 row)
+
+\set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483648;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: (int4_col = '2147483648'::bigint)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         Index Cond: (int4_col = '2147483648'::bigint)
+(4 rows)
+
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -1517,40 +1585,6 @@ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                Index Cond: (int4_col = '2147483648'::bigint)
 (6 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
- count 
--------
-     0
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
-SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Nested Loop (actual rows=7 loops=1)
-   ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
-   ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
-         Storage Recheck Cond: (int4_col = s.bigint_col)
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
-               Index Cond: (int4_col = s.bigint_col)
-(6 rows)
-
---
--- test where casting may cause us to require recheck (with expression pushdown disabled)
---
-SET yb_enable_expression_pushdown = false;
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483647;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
-         Index Cond: (int4_col = 2147483647)
-(3 rows)
-
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
@@ -1560,25 +1594,6 @@ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
          Index Cond: (int4_col = '2147483648'::bigint)
 (5 rows)
 
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate (actual rows=1 loops=1)
-   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
-               Index Cond: (int4_col = 2147483647)
-(4 rows)
-
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
- count 
--------
-     0
-(1 row)
-
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -1589,15 +1604,41 @@ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                Index Cond: (int4_col = '2147483648'::bigint)
 (6 rows)
 
-/*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+ int4_col 
+----------
+(0 rows)
+
  count 
 -------
      0
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
-SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
+ int4_col 
+----------
+(0 rows)
+
+ count 
+-------
+     0
+(1 row)
+
+\set Q1 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */'
+\set Q2 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) Set(yb_enable_expression_pushdown false) */'
+\set Qnext :iter_query
+\set query ':explain :Q SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Nested Loop (actual rows=7 loops=1)
+   ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
+         Storage Recheck Cond: (int4_col = s.bigint_col)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+               Index Cond: (int4_col = s.bigint_col)
+(6 rows)
+
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=7 loops=1)
@@ -1609,12 +1650,20 @@ SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.big
                Index Cond: (int4_col = s.bigint_col)
 (7 rows)
 
-RESET yb_enable_expression_pushdown;
 --
 -- #22622: test local recheck of condition for a column that is not a target
 --
-/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set Q1 '/*+ IndexScan(t) */'
+-- the second condition is necessary to force a recheck
+-- the first condition is rechecked locally, so k2 must be fetched.
+\set Q2 '/*+ BitmapScan(t) */'
+SELECT $$
+:explain :Q select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
+$$ AS query \gset
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Index Scan using recheck_test_text_col_idx on recheck_test t (actual rows=1 loops=1)
@@ -1622,10 +1671,6 @@ select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a
    Storage Index Filter: (text_col ~~ 'a%'::text)
 (3 rows)
 
--- the second condition is necessary to force a recheck
--- the first condition is rechecked locally, so k2 must be fetched.
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
@@ -1637,8 +1682,13 @@ select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a
 (6 rows)
 
 -- also check for aggregate pushdowns
-/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
+SELECT $$
+:P :Q select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
+$$ AS query \gset
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -1647,15 +1697,6 @@ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a
          Storage Index Filter: (text_col ~~ 'a%'::text)
 (4 rows)
 
-/*+ IndexScan(t) */
-select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
- count 
--------
-     1
-(1 row)
-
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -1667,8 +1708,11 @@ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a
                Storage Index Filter: (text_col ~~ 'a%'::text)
 (7 rows)
 
-/*+ BitmapScan(t) */
-select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
+ count 
+-------
+     1
+(1 row)
+
  count 
 -------
      1
@@ -1680,8 +1724,15 @@ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a
 CREATE TABLE pk_text (k_text varchar PRIMARY KEY, v_int INT);
 CREATE INDEX ON pk_text(v_int ASC);
 INSERT INTO pk_text SELECT i::text, i FROM generate_series(1, 100) i;
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
+\set Q1 '/*+ BitmapScan(pk_text) */'
+SELECT $$
+:P :Q1 SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
+$$ AS query \gset
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on pk_text (actual rows=1 loops=1)
@@ -1701,15 +1752,17 @@ SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
                Storage Table Rows Scanned: 1
 (15 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
  k_text | v_int 
 --------+-------
  12     |    12
 (1 row)
 
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
+SELECT $$
+:P :Q1 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
+$$ AS query \gset
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                QUERY PLAN                                                                
 -----------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=5 loops=1)
@@ -1734,8 +1787,6 @@ SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%
                      Storage Table Read Ops: 1
 (20 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
  k_text | v_int 
 --------+-------
  1      |     1
@@ -1745,8 +1796,12 @@ SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%
  9      |     9
 (5 rows)
 
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+SELECT $$
+:P :Q1 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+$$ AS query \gset
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -1769,8 +1824,6 @@ SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
                      Storage Table Rows Scanned: 3
 (18 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
  k_text | v_int 
 --------+-------
  1      |     1
@@ -1781,8 +1834,12 @@ SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
  100    |   100
 (6 rows)
 
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
+SELECT $$
+:P :Q1 SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
+$$ AS query \gset
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -1805,8 +1862,6 @@ SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY
                      Storage Table Rows Scanned: 2
 (18 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
  k_text | v_int 
 --------+-------
  11     |    11
@@ -1815,8 +1870,13 @@ SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY
 (3 rows)
 
 -- test count
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+SELECT $$
+:P :Q1 SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
+$$ AS query \gset
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -1829,16 +1889,18 @@ SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
                      Index Cond: ((k_text)::text = ANY ('{11,12}'::text[]))
 (8 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
  count 
 -------
      3
 (1 row)
 
 -- test non-existent results
-/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
+SELECT $$
+:P :Q1 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
+$$ AS query \gset
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -1851,8 +1913,6 @@ SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
                      Index Cond: ((k_text)::text = 'nonexistent'::text)
 (8 rows)
 
-/*+ BitmapScan(pk_text) */
-SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
  count 
 -------
      0
@@ -1877,7 +1937,10 @@ CREATE INDEX ON test_and (b ASC);
 CREATE INDEX ON test_and (c ASC);
 INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 20) i, generate_series(1, 20) j, generate_series(1, 20) k;
 ANALYZE test_and;
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND b < 6;
+\set explain 'EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF)'
+\set Q1 '/*+ BitmapScan(t) */'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND b < 6;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
@@ -1888,7 +1951,8 @@ ANALYZE test_and;
                Index Cond: (a < 6)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND c < 6;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND c < 6;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
@@ -1899,7 +1963,8 @@ ANALYZE test_and;
                Index Cond: (a < 6)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE b < 6 AND c < 6;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE b < 6 AND c < 6;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
@@ -1910,7 +1975,8 @@ ANALYZE test_and;
                Index Cond: (b < 6)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND b < 6 AND c < 7;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND b < 6 AND c < 7;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=150 loops=1)
@@ -1922,7 +1988,8 @@ ANALYZE test_and;
                Index Cond: (a < 6)
 (7 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND b < 10;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND b < 10;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
@@ -1933,7 +2000,8 @@ ANALYZE test_and;
                Index Cond: (a < 10)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND c < 10;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND c < 10;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
@@ -1944,7 +2012,8 @@ ANALYZE test_and;
                Index Cond: (a < 10)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE b < 10 AND c < 10;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE b < 10 AND c < 10;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
@@ -1955,7 +2024,8 @@ ANALYZE test_and;
                Index Cond: (b < 10)
 (6 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND b < 10 AND c < 10;
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND b < 10 AND c < 10;'
+:query
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=729 loops=1)
@@ -1968,7 +2038,8 @@ ANALYZE test_and;
 (7 rows)
 
 -- complex nested queries
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);'
+:query
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=480 loops=1)
@@ -1982,7 +2053,8 @@ ANALYZE test_and;
                      Index Cond: (b > 16)
 (9 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);'
+:query
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=480 loops=1)
@@ -1996,7 +2068,8 @@ ANALYZE test_and;
                      Index Cond: (b > 16)
 (9 rows)
 
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);'
+:query
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=560 loops=1)

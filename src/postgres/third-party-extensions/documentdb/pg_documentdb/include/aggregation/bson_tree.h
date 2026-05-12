@@ -265,7 +265,7 @@ MakeRootNode()
 
 
 /*
- * Returns true if the BsonPathNode is an intermediate node.
+ * Evaluates to true when the BsonPathNode represents an intermediate path node.
  */
 inline static bool
 IsIntermediateNode(const BsonPathNode *node)

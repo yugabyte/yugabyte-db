@@ -1,0 +1,15 @@
+*.o
+*.so
+build.sh
+.idea
+.deps
+.DS_Store
+*.tokens
+*.interp
+*.dylib
+age--*.*.*.sql
+!age--*--*sql
+__pycache__
+**/__pycache__
+
+drivers/python/build

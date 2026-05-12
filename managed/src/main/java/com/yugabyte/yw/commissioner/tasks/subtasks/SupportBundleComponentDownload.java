@@ -66,8 +66,8 @@ public class SupportBundleComponentDownload extends AbstractTaskBase {
       log.error(
           "Error occurred in support bundle collection for component '{}' on {} node",
           taskParams().supportBundleComponent.getClass().getSimpleName(),
-          (taskParams().node == null) ? "YBA" : taskParams().node.getNodeName());
-      e.printStackTrace();
+          (taskParams().node == null) ? "YBA" : taskParams().node.getNodeName(),
+          e);
     }
   }
 }

@@ -69,6 +69,9 @@ typedef struct rf_context
 								 * relation's row filter */
 	Oid			relid;			/* relid of the relation */
 	Oid			parentid;		/* relid of the parent relation */
+
+
+	AttrNumber	yb_minattr;		/* YB: offset used to build bms_replident */
 } rf_context;
 
 static List *OpenTableList(List *tables);
@@ -249,7 +252,8 @@ contain_invalid_rfcolumn_walker(Node *node, rf_context *context)
 			attnum = get_attnum(context->relid, colname);
 		}
 
-		if (!bms_is_member(attnum - FirstLowInvalidHeapAttributeNumber,
+		/* YB: use the same offset that was used to build bms_replident */
+		if (!bms_is_member(attnum - context->yb_minattr,
 						   context->bms_replident))
 			return true;
 	}
@@ -319,6 +323,9 @@ pub_rf_contains_invalid_column(Oid pubid, Relation relation, List *ancestors,
 		context.pubviaroot = pubviaroot;
 		context.parentid = publish_as_relid;
 		context.relid = relid;
+
+		if (IsYugaByteEnabled())
+			context.yb_minattr = YBGetFirstLowInvalidAttributeNumber(relation);
 
 		/* Remember columns that are part of the REPLICA IDENTITY */
 		bms = RelationGetIndexAttrBitmap(relation,
@@ -401,11 +408,14 @@ pub_collist_contains_invalid_column(Oid pubid, Relation relation, List *ancestor
 		 * does not use offset, so we can't do bms_is_subset(). Instead, we
 		 * have to loop over the idattrs and check all of them are in the
 		 * list.
+		 *
+		 * YB: Use the same offset that was used to build the bitmap.
 		 */
+		AttrNumber	yb_minattr = YBGetFirstLowInvalidAttributeNumber(relation);
 		x = -1;
 		while ((x = bms_next_member(idattrs, x)) >= 0)
 		{
-			AttrNumber	attnum = (x + FirstLowInvalidHeapAttributeNumber);
+			AttrNumber	attnum = (x + yb_minattr); /* YB */
 
 			/*
 			 * If pubviaroot is true, we are validating the column list of the

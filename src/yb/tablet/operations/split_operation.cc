@@ -15,6 +15,7 @@
 
 #include "yb/tablet/operations/split_operation.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -54,13 +55,13 @@ void SplitOperation::RemovedFromPending(const TabletPtr& tablet) {
 
 Status SplitOperation::RejectionStatus(
     OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
-    const TabletId& child1, const TabletId& child2) {
+    const std::vector<TabletId>& children) {
   auto status = STATUS_EC_FORMAT(
       IllegalState, consensus::ConsensusError(consensus::ConsensusErrorPB::TABLET_SPLIT),
       "Tablet split has been $0, operation $1 $2 should be retried to new tablets",
       split_op_id.empty() ? "applied" : Format("added to Raft log ($0)", split_op_id),
       OperationType_Name(op_type), rejected_op_id);
-  return status.CloneAndAddErrorCode(SplitChildTabletIdsData({child1, child2}));
+  return status.CloneAndAddErrorCode(SplitChildTabletIdsData(children));
 }
 
 // Returns whether Raft operation of op_type is allowed to be added to Raft log of the tablet
@@ -105,9 +106,8 @@ Status SplitOperation::CheckOperationAllowed(
   // earlier where to retry.
   // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
   // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
-  return RejectionStatus(
-      op_id(), id, op_type, request()->new_tablet1_id().ToBuffer(),
-      request()->new_tablet2_id().ToBuffer());
+  const auto children_ids = GetSplitChildTabletIds(*request());
+  return RejectionStatus(op_id(), id, op_type, children_ids);
 }
 
 Status SplitOperation::Prepare(IsLeaderSide is_leader_side) {

@@ -73,6 +73,7 @@ public class ShellProcessHandler {
   static final String GRPC_KEEPALIVE_TIMEOUT_MS_ENV = "grpc_keepalive_timeout_ms";
   static final String NODE_AGENT_DESCRIBE_POLL_DEADLINE_MS_ENV =
       "node_agent_describe_poll_deadline";
+  static final String NODE_AGENT_REQUEST_LOG_LEVEL = "node_agent_request_log_level";
 
   @Inject
   public ShellProcessHandler(
@@ -138,12 +139,14 @@ public class ShellProcessHandler {
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout);
     Duration describePollDeadline =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribePollDeadline);
+    int requestLogLevel = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel);
     String correlationId = MDC.get(LogUtil.CORRELATION_ID);
     if (StringUtils.isEmpty(correlationId)) {
       correlationId = UUID.randomUUID().toString();
       log.debug("Using correlation ID {}", correlationId);
     }
     envVars.put(LogUtil.CORRELATION_ID.replaceAll("-", "_"), correlationId);
+    envVars.put(NODE_AGENT_REQUEST_LOG_LEVEL, String.valueOf(requestLogLevel));
     envVars.put(GRPC_KEEPALIVE_TIME_MS_ENV, String.valueOf(keepAliveTime.toMillis()));
     envVars.put(GRPC_KEEPALIVE_TIMEOUT_MS_ENV, String.valueOf(keepAliveTimeout.toMillis()));
     envVars.put(

@@ -37,6 +37,7 @@
  */
 #define SIZE_OF_PARENT_OF_ARRAY_FOR_BSON 7
 
+extern bool EnableOperatorVariablesInLookup;
 
 /* --------------------------------------------------------- */
 /* Type declaration */
@@ -50,7 +51,7 @@ typedef struct DollarInArguments
 {
 	AggregationExpressionData *targetValue;
 	AggregationExpressionData *searchArray;
-	char *collationString;
+	const char *collationString;
 } DollarInArguments;
 
 /* State for a $arrayElemAt, $first or $last operator. */
@@ -62,7 +63,7 @@ typedef struct ArrayElemAtArgumentState
 	 * If false, it means it is either $first or $last. */
 	bool isArrayElemAtOperator;
 
-	/* Name of operator for logging purposes. */
+	/* Name of operator */
 	const char *opName;
 } ArrayElemAtArgumentState;
 
@@ -155,7 +156,7 @@ typedef struct DollarReduceArguments
 /* Struct that represents the parsed arguments to a $zip expression. */
 typedef struct DollarZipArguments
 {
-	/* The array input to the $zip expression. */
+	/* The array provided as input to the $zip expression. */
 	AggregationExpressionData inputs;
 
 	/* The boolean value specifies whether the length of the longest array determines the number of arrays in the output array. */
@@ -180,6 +181,14 @@ typedef struct ZipParseInputsResult
 	/* If useLongestLength is false, this will be the length of the shortest subarray in inputs */
 	int outputSubArrayLength;
 } ZipParseInputsResult;
+
+
+/* Struct that represents parsed arguments of $indexOfArray and collation string. */
+typedef struct IndexOfArrayArguments
+{
+	List *argumentsList;
+	const char *collationString;
+} IndexOfArrayArguments;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -246,7 +255,8 @@ static void ValidateArraySizeLimit(int32_t startValue, int32_t endValue,
 								   int32_t stepValue);
 static int32 GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex);
 static int32 FindIndexInArrayFor(bson_value_t *array, bson_value_t *element,
-								 int32 startIndex, int32 endIndex);
+								 int32 startIndex, int32 endIndex,
+								 const char *collationString);
 static void SetResultArrayForDollarReverse(bson_value_t *array, bson_value_t *result);
 static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isFindMax);
@@ -270,6 +280,9 @@ static void SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedIn
 static void ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
 								   bson_value_t *result);
 
+static void RegisterOperatorVariables(ParseAggregationExpressionContext *parentContext,
+									  ParseAggregationExpressionContext *currentContext,
+									  List *operatorVariablesList);
 
 /* --------------------------------------------------------- */
 /* Parse and Handle Pre-parse functions */
@@ -277,7 +290,7 @@ static void ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortCo
 
 /*
  * Parses a $isArray expression.
- * $isArray is expressed as { "$isArray": <expression> }
+ * $isArray is expressed as { "$isArray": <> }
  */
 void
 ParseDollarIsArray(const bson_value_t *argument, AggregationExpressionData *data,
@@ -302,7 +315,7 @@ HandlePreParsedDollarIsArray(pgbson *doc, void *argument,
 
 /*
  * Parses a $size expression.
- * $size is expressed as { "$size": <expression> }
+ * $size is expressed as { "$size": <> }
  */
 void
 ParseDollarSize(const bson_value_t *argument, AggregationExpressionData *data,
@@ -327,7 +340,7 @@ HandlePreParsedDollarSize(pgbson *doc, void *argument,
 
 /*
  * Parses a $objectToArray expression.
- * $objectToArray is expressed as { "$objectToArray": <expression> }
+ * $objectToArray is expressed as { "$objectToArray": <> }
  * $objectToArray does not recursively apply to embedded document fields.
  * i.e:
  *   input: {"a": 1, "b": { "c": 2 } }
@@ -356,7 +369,7 @@ HandlePreParsedDollarObjectToArray(pgbson *doc, void *argument,
 
 /*
  * Parses a $arrayToObject expression.
- * $arrayToObject is expressed as { "$arrayToObject": [ [ {"k": "key", "v": <expression> }, ... ] ] } or
+ * $arrayToObject is expressed as { "$arrayToObject": [ [ {"k": "key", "v": <> }, ... ] ] } or
  * { "$arrayToObject": [ ["key", value], ... ]}
  */
 void
@@ -407,7 +420,7 @@ HandlePreParsedDollarArrayElemAt(pgbson *doc, void *argument,
 
 /*
  * Parses a $first expression.
- * $first is expressed as { "$first": [ <expression> ] }
+ * $first is expressed as { "$first": [ <> ] }
  */
 void
 ParseDollarFirst(const bson_value_t *argument, AggregationExpressionData *data,
@@ -430,7 +443,7 @@ HandlePreParsedDollarFirst(pgbson *doc, void *arguments,
 
 /*
  * Parses a $last expression.
- * $last is an alias of {$arrayElemAt: [ <expression>, -1 ]}, so we just redirect to that operator.
+ * $last is an alias of {$arrayElemAt: [ <>, -1 ]}, so we just redirect to that operator.
  */
 void
 ParseDollarLast(const bson_value_t *argument, AggregationExpressionData *data,
@@ -453,7 +466,7 @@ HandlePreParsedDollarLast(pgbson *doc, void *arguments,
 
 /*
  * Parses a $in expression.
- * $in is expressed as { "$in": [ <expression>, <array> ] }
+ * $in is expressed as { "$in": [ <>, <array> ] }
  */
 void
 ParseDollarIn(const bson_value_t *argument, AggregationExpressionData *data,
@@ -507,14 +520,12 @@ HandlePreParsedDollarIn(pgbson *doc, void *argument, ExpressionResult *expressio
 	AggregationExpressionData *firstArg = state->targetValue;
 	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
 	bson_value_t firstValue = childResult.value;
-	bool hasFieldExpression = childResult.isFieldPathExpression;
 
 	ExpressionResultReset(&childResult);
 
 	AggregationExpressionData *secondArg = state->searchArray;
 	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
 	bson_value_t secondValue = childResult.value;
-	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
 
 	bson_value_t result;
 	ProcessDollarIn(&firstValue, &secondValue, state->collationString, &result);
@@ -701,7 +712,7 @@ HandlePreParsedDollarConcatArrays(pgbson *doc, void *arguments,
 
 
 /* Parses the $filter expression specified in the bson_value_t and stores it in the data argument.
- * $filter is expressed as { "$filter": { input: <array-expression>, cond: <expression>, as: <string>, limit: <num-expression> } }.
+ * $filter is expressed as { "$filter": { input: <array-expression>, cond: <>, as: <string>, limit: <num-expression> } }.
  */
 void
 ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
@@ -710,7 +721,7 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28646), errmsg(
-							"$filter only supports an object as its argument")));
+							"$filter can accept only an object type as its valid argument")));
 	}
 
 	data->operator.returnType = BSON_TYPE_ARRAY;
@@ -744,22 +755,22 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28647), errmsg(
-								"Unrecognized parameter to $filter: %s", key),
+								"Parameter not recognized in $filter: %s", key),
 							errdetail_log(
-								"Unrecognized parameter to $filter, unexpected key")));
+								"Parameter not recognized in $filter, unexpected key provided")));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28648), errmsg(
-							"Missing 'input' parameter to $filter")));
+							"'Input' parameter is missing for $filter")));
 	}
 
 	if (cond.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28650), errmsg(
-							"Missing 'cond' parameter to $filter")));
+							"The 'cond' parameter required by the $filter operator is missing")));
 	}
 
 	bson_value_t aliasValue = {
@@ -799,8 +810,21 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 
 	/* TODO: optimize, if input, limit and cond are constants, we can calculate the result at this phase. */
 	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->limit, &limit, context);
-	ParseAggregationExpressionData(&arguments->cond, &cond, context);
+
+	/* Track alias variables for use during validation*/
+	List *filterVariables = list_make1(aliasValue.value.v_utf8.str);
+	ParseAggregationExpressionContext *filterContext = palloc0(
+		sizeof(ParseAggregationExpressionContext));
+	*filterContext = *context;
+	RegisterOperatorVariables(context, filterContext, filterVariables);
+
+	ParseAggregationExpressionData(&arguments->limit, &limit, filterContext);
+	ParseAggregationExpressionData(&arguments->cond, &cond, filterContext);
+
+	list_free(filterVariables);
+	hash_destroy(filterContext->operatorVariables);
+	pfree(filterContext);
+
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -808,7 +832,7 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of a $filter expression.
- * $filter is expressed as { "$filter": { input: <array-expression>, cond: <expression>, as: <string>, limit: <num-expression> } }
+ * $filter is expressed as { "$filter": { input: <array-expression>, cond: <>, as: <string>, limit: <num-expression> } }
  * We evalute the condition with every element of the input array and filter elements when the expression evaluates to false.
  */
 void
@@ -836,10 +860,10 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 		if (!IsBsonValue32BitInteger(&evaluatedLimit, checkFixedInteger))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION327391), errmsg(
-								"$filter: limit must be represented as a 32-bit integral value: %s",
+								"Operator $filter requires the limit to be specified as a 32-bit integer value: %s",
 								BsonValueToJsonForLogging(&evaluatedLimit)),
 							errdetail_log(
-								"$filter: limit of type %s can't be represented as a 32-bit integral value",
+								"The operator $filter has a limit of type %s that cannot be expressed as a 32-bit integer value.",
 								BsonTypeName(evaluatedLimit.value_type))));
 		}
 
@@ -847,7 +871,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 		if (limit < 1)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION327392), errmsg(
-								"$filter: limit must be greater than 0: %d",
+								"$filter: limit value must be strictly greater than zero: %d",
 								limit)));
 		}
 	}
@@ -858,7 +882,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 
 	bson_value_t evaluatedInputArg = childExpression.value;
 
-	/* In native mongo if the input array is null or an undefined path the result is null. */
+	/* If the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
 	{
 		bson_value_t nullValue = {
@@ -872,10 +896,12 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28651), errmsg(
-							"input to $filter must be an array not %s", BsonTypeName(
+							"Expected 'array' type as input to $filter but found '%s' type",
+							BsonTypeName(
 								evaluatedInputArg.value_type)),
-						errdetail_log("input to $filter must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
+						errdetail_log(
+							"Expected 'array' type as input to $filter but found '%s' type",
+							BsonTypeName(evaluatedInputArg.value_type))));
 	}
 
 	StringView aliasName = {
@@ -938,7 +964,6 @@ ParseDollarFirstN(const bson_value_t *inputDocument, AggregationExpressionData *
 	if (IsAggregationExpressionConstant(&arguments->input) &&
 		IsAggregationExpressionConstant(&arguments->elementsToFetch))
 	{
-		/* Validating the n expression to throw error codes wrt native mongo in case of discrepancy. */
 		ValidateElementForFirstAndLastN(&arguments->elementsToFetch.value,
 										"$firstN");
 
@@ -977,7 +1002,6 @@ HandlePreParsedDollarFirstN(pgbson *doc, void *arguments,
 									  isNullOnEmpty);
 	bson_value_t evaluatedElementsToFetch = childExpression.value;
 
-	/* Validating the n expression to throw error codes wrt native mongo in case of discrepancy. */
 	ValidateElementForFirstAndLastN(&evaluatedElementsToFetch, "$firstN");
 
 	ExpressionResultReset(&childExpression);
@@ -1018,7 +1042,6 @@ ParseDollarLastN(const bson_value_t *inputDocument, AggregationExpressionData *d
 	if (IsAggregationExpressionConstant(&arguments->input) &&
 		IsAggregationExpressionConstant(&arguments->elementsToFetch))
 	{
-		/* Validating the n expression to throw error codes wrt native mongo in case of discrepancy. */
 		ValidateElementForFirstAndLastN(&arguments->elementsToFetch.value,
 										"$lastN");
 
@@ -1115,7 +1138,6 @@ HandlePreParsedDollarLastN(pgbson *doc, void *arguments,
 									  isNullOnEmpty);
 	bson_value_t evaluatedElementsToFetch = childExpression.value;
 
-	/* Validating the n expression to throw error codes wrt native mongo in case of discrepancy. */
 	ValidateElementForFirstAndLastN(&evaluatedElementsToFetch, "$lastN");
 
 	ExpressionResultReset(&childExpression);
@@ -1135,7 +1157,7 @@ HandlePreParsedDollarLastN(pgbson *doc, void *arguments,
 
 /*
  * Parses an $range expression.
- * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
+ * $range is expressed as { "$range": [ <>, <>, <optional> ] }
  */
 void
 ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data,
@@ -1196,7 +1218,7 @@ ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $range expression.
- * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
+ * $range is expressed as { "$range": [ <>, <>, <optional> ] }
  * We evaluate the inner expressions and then return the final array.
  */
 void
@@ -1244,7 +1266,7 @@ HandlePreParsedDollarRange(pgbson *doc, void *arguments,
 
 /*
  * This function parses the input for operator $min.
- * The input is specified of type {$min: <expression>} where expression can be any expression.
+ * The input is specified of type {$min: <>} where expression can be any expression.
  * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
  */
 void
@@ -1279,7 +1301,7 @@ HandlePreParsedDollarMin(pgbson *doc, void *arguments,
 
 /*
  * This function parses the input for operator $max.
- * The input is specified of type {$max: <expression>} where expression can be any expression.
+ * The input is specified of type {$max: <>} where expression can be any expression.
  * In case the expression is an array it gives the maximum element in array otherwise returns the resolved expression as it is.
  */
 void
@@ -1314,7 +1336,7 @@ HandlePreParsedDollarMax(pgbson *doc, void *arguments,
 
 /*
  * This function parses the input for operator $sum.
- * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * The input is specified of type {$sum: <>} where expression can be any expression.
  * In case the expression is an array it gives the sum of elements in array.
  */
 void
@@ -1349,7 +1371,7 @@ HandlePreParsedDollarSum(pgbson *doc, void *arguments,
 
 /*
  * This function parses the input for operator $avg.
- * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * The input is specified of type {$sum: <>} where expression can be any expression.
  * In case the expression is an array it gives the sum of elements in array.
  */
 void
@@ -1471,17 +1493,17 @@ ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData 
 			data->value = result;
 			data->kind = AggregationExpressionKind_Constant;
 
-			/* free the list */
+			/* Release the allocated list memory */
 			list_free_deep(argsList);
 			return;
 		}
 		else if (arrExpressionData->value.value_type != BSON_TYPE_ARRAY)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40090), errmsg(
-								"$indexOfArray requires an array as a first argument, found: %s",
+								"$indexOfArray expects the first argument to be an array, but received: %s",
 								BsonTypeName(arrExpressionData->value.value_type)),
 							errdetail_log(
-								"$indexOfArray requires an array as a first argument, found: %s",
+								"$indexOfArray expects the first argument to be an array, but received: %s",
 								BsonTypeName(arrExpressionData->value.value_type))));
 		}
 
@@ -1504,17 +1526,29 @@ ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData 
 		result.value.v_int32 = FindIndexInArrayFor(&arrExpressionData->value,
 												   &searchExpressionData->value,
 												   startIndex,
-												   endIndex);
+												   endIndex,
+												   context->collationString);
 
 		data->value = result;
 		data->kind = AggregationExpressionKind_Constant;
 
-		/* free the list */
+		/* Release the allocated list memory */
 		list_free_deep(argsList);
 
 		return;
 	}
-	data->operator.arguments = argsList;
+
+	IndexOfArrayArguments *parsedArguments = palloc0(
+		sizeof(IndexOfArrayArguments));
+
+	if (IsCollationApplicable(context->collationString))
+	{
+		parsedArguments->collationString = pstrdup(context->collationString);
+	}
+
+	parsedArguments->argumentsList = argsList;
+	data->operator.arguments = parsedArguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
 
 
@@ -1527,7 +1561,9 @@ void
 HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
 								  ExpressionResult *expressionResult)
 {
-	List *argsList = (List *) arguments;
+	IndexOfArrayArguments *parsedArguments = arguments;
+	List *argsList = parsedArguments->argumentsList;
+	const char *collationString = parsedArguments->collationString;
 
 	/* evaluating the array argument expression */
 	AggregationExpressionData *arrExpressionData = list_nth(argsList, 0);
@@ -1546,10 +1582,10 @@ HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
 	else if (childResult.value.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40090), errmsg(
-							"$indexOfArray requires an array as a first argument, found: %s",
+							"$indexOfArray expects the first argument to be an array, but received: %s",
 							BsonTypeName(arrExpressionData->value.value_type)),
 						errdetail_log(
-							"$indexOfArray requires an array as a first argument, found: %s",
+							"$indexOfArray expects the first argument to be an array, but received: %s",
 							BsonTypeName(arrExpressionData->value.value_type)
 							)));
 	}
@@ -1595,7 +1631,7 @@ HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
 	bson_value_t result = { .value_type = BSON_TYPE_INT32 };
 	result.value.v_int32 = FindIndexInArrayFor(&arrayExpression, &element,
 											   startIndex,
-											   endIndex);
+											   endIndex, collationString);
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -1609,7 +1645,8 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16878), errmsg(
-							"$map only supports an object as its argument")));
+							"Expected 'document' type for $map but found '%s' type",
+							BsonTypeName(argument->value_type))));
 	}
 
 	data->operator.returnType = BSON_TYPE_ARRAY;
@@ -1638,22 +1675,22 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16879), errmsg(
-								"Unrecognized parameter to $map: %s", key),
+								"Unrecognized parameter provided to $map: %s", key),
 							errdetail_log(
-								"Unrecognized parameter to $map, unexpected key")));
+								"Unrecognized parameter provided to $map, key not expected")));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16880), errmsg(
-							"Missing 'input' parameter to $map")));
+							"'input' parameter required for operators $map")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16882), errmsg(
-							"Missing 'in' parameter to $map")));
+							"'in' parameter must be specified for $map")));
 	}
 
 	bson_value_t aliasValue = {
@@ -1686,7 +1723,21 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 	arguments->as.value = aliasValue;
 
 	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->in, &in, context);
+
+	/* Track 'as' variables to prevent error-ing in top-level let validation for $lookup */
+	List *mapVariables = list_make1(aliasValue.value.v_utf8.str);
+
+	ParseAggregationExpressionContext *mapContext = palloc0(
+		sizeof(ParseAggregationExpressionContext));
+	*mapContext = *context;
+	RegisterOperatorVariables(context, mapContext, mapVariables);
+
+	ParseAggregationExpressionData(&arguments->in, &in, mapContext);
+
+	list_free(mapVariables);
+	hash_destroy(mapContext->operatorVariables);
+	pfree(mapContext);
+
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -1695,7 +1746,7 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 /*
  * Evaluates the output of a $map expression.
  * $map is expressed as:
- * { $map: { input: <expression>, as: <string>, in: <expression> } }
+ * { $map: { input: <>, as: <string>, in: <> } }
  */
 void
 HandlePreParsedDollarMap(pgbson *doc, void *arguments,
@@ -1712,7 +1763,6 @@ HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 
 	bson_value_t evaluatedInputArg = childExpression.value;
 
-	/* In native mongo if the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
 	{
 		bson_value_t nullValue = {
@@ -1726,10 +1776,12 @@ HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16883), errmsg(
-							"input to $map must be an array not %s", BsonTypeName(
+							"The $map operator requires an array input, but received %s instead",
+							BsonTypeName(
 								evaluatedInputArg.value_type)),
-						errdetail_log("input to $map must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
+						errdetail_log(
+							"The $map operator requires an array input, but received %s instead",
+							BsonTypeName(evaluatedInputArg.value_type))));
 	}
 
 	StringView aliasName = {
@@ -1782,7 +1834,7 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40075), errmsg(
-							"$reduce only supports an object as its argument")));
+							"Expected 'document' type for $reduce")));
 	}
 
 	data->operator.returnType = BSON_TYPE_ARRAY;
@@ -1811,35 +1863,50 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40076), errmsg(
-								"Unrecognized parameter to $reduce: %s", key),
+								"Parameter not recognized by $reduce: %s", key),
 							errdetail_log(
-								"Unrecognized parameter to $reduce, unexpected key")));
+								"Parameter not recognized by $reduce, unexpected key")));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40077), errmsg(
-							"Missing 'input' parameter to $reduce")));
+							"The 'input' parameter required for $reduce is missing")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40079), errmsg(
-							"Missing 'in' parameter to $reduce")));
+							"Missing 'in' argument for operator $reduce")));
 	}
 
 	if (initialValue.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40078), errmsg(
-							"Missing 'initialValue' parameter to $reduce")));
+							"The 'initialValue' parameter required by $reduce is missing.")));
 	}
 
 	DollarReduceArguments *arguments = palloc0(sizeof(DollarReduceArguments));
-
 	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->in, &in, context);
-	ParseAggregationExpressionData(&arguments->initialValue, &initialValue, context);
+
+	/* $$this and $$value variables are available for use in $reduce.in expressions */
+	/* $$this refers to the current document */
+	/* $$value refers to the accumulated value so far */
+	List *reduceVariables = list_make2("this", "value");
+	ParseAggregationExpressionContext *reduceContext = palloc0(
+		sizeof(ParseAggregationExpressionContext));
+	*reduceContext = *context;
+	RegisterOperatorVariables(context, reduceContext, reduceVariables);
+
+	ParseAggregationExpressionData(&arguments->in, &in, reduceContext);
+	ParseAggregationExpressionData(&arguments->initialValue, &initialValue,
+								   reduceContext);
+
+	list_free(reduceVariables);
+	hash_destroy(reduceContext->operatorVariables);
+	pfree(reduceContext);
+
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -1848,7 +1915,7 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 /*
  * Evaluates the output of a $reduce expression.
  * $reduce is expressed as:
- * { $reduce: { input: <expression>, as: <string>, in: <expression> } }
+ * { $reduce: { input: <>, as: <string>, in: <> } }
  */
 void
 HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
@@ -1865,7 +1932,7 @@ HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
 
 	bson_value_t evaluatedInputArg = childExpression.value;
 
-	/* In native mongo if the input array is null or an undefined path the result is null. */
+	/* If the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
 	{
 		bson_value_t nullValue = {
@@ -1879,10 +1946,12 @@ HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40080), errmsg(
-							"input to $reduce must be an array not %s", BsonTypeName(
+							"The input provided to $reduce must be an array, not %s",
+							BsonTypeName(
 								evaluatedInputArg.value_type)),
-						errdetail_log("input to $reduce must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
+						errdetail_log(
+							"The input provided to $reduce must be an array, not %s",
+							BsonTypeName(evaluatedInputArg.value_type))));
 	}
 
 	ExpressionResultReset(&childExpression);
@@ -1893,7 +1962,7 @@ HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
 
 	bson_value_t evaluatedInitialValueArg = childExpression.value;
 
-	/* In native mongo if the input array is null or an undefined path the result is null. */
+	/* If the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(&evaluatedInitialValueArg))
 	{
 		bson_value_t nullValue = {
@@ -1948,10 +2017,10 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942500), errmsg(
-							"$sortArray requires an object as an argument, found: %s",
+							"Expected 'document' type for $sortArray but found '%s' type",
 							BsonTypeName(argument->value_type)),
 						errdetail_log(
-							"$sortArray requires an object as an argument, found: %s",
+							"Expected 'document' type for $sortArray but found '%s' type",
 							BsonTypeName(argument->value_type))));
 	}
 
@@ -1976,22 +2045,24 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942501), errmsg(
-								"$sortArray found an unknown argument: %s", key),
+								"$sortArray encountered an unrecognized argument: %s",
+								key),
 							errdetail_log(
-								"$sortArray found an unknown argument: %s", key)));
+								"$sortArray encountered an unrecognized argument: %s",
+								key)));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942502), errmsg(
-							"$sortArray requires 'input' to be specified")));
+							"$sortArray needs the 'input' parameter to be explicitly provided")));
 	}
 
 	if (sortby.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942503), errmsg(
-							"$sortArray requires 'sortBy' to be specified")));
+							"The $sortArray needs the 'sortBy' parameter to be explicitly specified")));
 	}
 
 	DollarSortArrayArguments *arguments = palloc0(sizeof(DollarSortArrayArguments));
@@ -1999,8 +2070,13 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 	ParseAggregationExpressionData(&arguments->input, &input, context);
 
 	/* Validate $sort spec, and all nested values if value is object */
-	SortContext sortContext;
+	SortContext sortContext = { 0 };
 	ValidateSortSpecAndSetSortContext(sortby, &sortContext);
+
+	if (IsCollationApplicable(context->collationString))
+	{
+		sortContext.collationString = pstrdup(context->collationString);
+	}
 	arguments->sortContext = sortContext;
 
 	if (IsAggregationExpressionConstant(&arguments->input))
@@ -2009,6 +2085,10 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 							   &data->value);
 		data->kind = AggregationExpressionKind_Constant;
 
+		if (IsCollationApplicable(arguments->sortContext.collationString))
+		{
+			pfree((char *) arguments->sortContext.collationString);
+		}
 		pfree(arguments);
 	}
 	else
@@ -2044,7 +2124,7 @@ HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
 
 /*
  * This function parses the input for operator $zip.
- * The input to this function is of the following format { $zip: { inputs: <expression(array of arrays)>, useLongestLength: <bool>, defaults: <expression> } }.
+ * The input to this function is of the following format { $zip: { inputs: <array of arrays>, useLongestLength: <bool>, defaults: <> } }.
  * useLongestLength and defaults are optional arguments.
  * useLongestLength must be true if defaults is specified.
  */
@@ -2055,11 +2135,11 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34460), errmsg(
-							"$zip only supports an object as an argument, found %s",
+							"Expected 'document' type for $zip but found '%s' type",
 							BsonTypeName(
 								argument->value_type)),
 						errdetail_log(
-							"$zip only supports an object as an argument, found %s",
+							"Expected 'document' type for $zip but found '%s' type",
 							BsonTypeName(
 								argument->value_type))));
 	}
@@ -2090,15 +2170,16 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34464), errmsg(
-								"$zip found an unknown argument: %s", key),
-							errdetail_log("$zip found an unknown argument: %s", key)));
+								"$zip encountered an unrecognized argument: %s", key),
+							errdetail_log("$zip encountered an unrecognized argument: %s",
+										  key)));
 		}
 	}
 
 	if (inputs.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34465), errmsg(
-							"$zip requires at least one input array")));
+							"$zip needs at least one provided input array")));
 	}
 
 	if (useLongestLength.value_type == BSON_TYPE_EOD)
@@ -2109,11 +2190,13 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 	else if (useLongestLength.value_type != BSON_TYPE_BOOL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34463), errmsg(
-							"useLongestLength must be a bool, found %s", BsonTypeName(
+							"useLongestLength must be a boolean value, but a %s type was given",
+							BsonTypeName(
 								useLongestLength.value_type)),
-						errdetail_log("useLongestLength must be a bool, found %s",
-									  BsonTypeName(
-										  useLongestLength.value_type))));
+						errdetail_log(
+							"useLongestLength must be a boolean value, but a %s type was given",
+							BsonTypeName(
+								useLongestLength.value_type))));
 	}
 
 	DollarZipArguments *arguments = palloc0(sizeof(DollarZipArguments));
@@ -2230,10 +2313,10 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTALLMUSTBEOBJECTS),
 						errmsg(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
+							"$arrayToObject needs a consistent format of input; every element should be either entirely arrays or entirely objects. An object was initially detected, but the following element was found: %s",
 							BsonTypeName(element->value_type)),
 						errdetail_log(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
+							"$arrayToObject needs a consistent format of input; every element should be either entirely arrays or entirely objects. An object was initially detected, but the following element was found: %s",
 							BsonTypeName(element->value_type))));
 	}
 
@@ -2243,10 +2326,10 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 		ereport(ERROR, (errcode(
 							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTINCORRECTNUMBEROFKEYS),
 						errmsg(
-							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
+							"$arrayToObject needs object keys named 'k' and 'v', but an incorrect number of keys was detected: %d",
 							keyCount),
 						errdetail_log(
-							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
+							"$arrayToObject needs object keys named 'k' and 'v', but an incorrect number of keys was detected: %d",
 							keyCount)));
 	}
 
@@ -2266,10 +2349,10 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 				ereport(ERROR, (errcode(
 									ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTOBJECTKEYMUSTBESTRING),
 								errmsg(
-									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
+									"$arrayToObject needs an input object containing keys 'k' and 'v', with 'k' specifically required to be a string type. Detected type: %s",
 									BsonTypeName(resultKey->value_type)),
 								errdetail_log(
-									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
+									"$arrayToObject needs an input object containing keys 'k' and 'v', with 'k' specifically required to be a string type. Detected type: %s",
 									BsonTypeName(resultKey->value_type))));
 			}
 
@@ -2285,10 +2368,10 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 			ereport(ERROR, (errcode(
 								ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTREQUIRESOBJECTWITHKANDV),
 							errmsg(
-								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: %s",
+								"$arrayToObject needs an object containing both 'k' and 'v' keys, but one or both of these required keys are missing from: %s",
 								BsonValueToJsonForLogging(element)),
 							errdetail_log(
-								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys")));
+								"$arrayToObject needs an object containing both 'k' and 'v' keys, but one or both of these required keys are missing.")));
 		}
 	}
 
@@ -2303,10 +2386,10 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTALLMUSTBEARRAYS),
 						errmsg(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
+							"$arrayToObject needs a consistent format of input. All elements must either be arrays or objects exclusively. An array was identified initially, but the following element was found: %s",
 							BsonTypeName(element->value_type)),
 						errdetail_log(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
+							"$arrayToObject needs a consistent format of input. All elements must either be arrays or objects exclusively. An array was identified initially, but the following element was found: %s",
 							BsonTypeName(element->value_type))));
 	}
 
@@ -2316,10 +2399,10 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 		ereport(ERROR, (errcode(
 							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTINCORRECTARRAYLENGTH),
 						errmsg(
-							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
+							"$arrayToObject needs an array containing exactly two elements, but received one with size: %d",
 							arrayLength),
 						errdetail_log(
-							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
+							"$arrayToObject needs an array containing exactly two elements, but received one with size: %d",
 							arrayLength)));
 	}
 
@@ -2334,10 +2417,10 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 		ereport(ERROR, (errcode(
 							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTARRAYKEYMUSTBESTRING),
 						errmsg(
-							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
+							"Expected 'string' type for $arrayToObject entries but found '%s' type",
 							BsonTypeName(currentKey->value_type)),
 						errdetail_log(
-							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
+							"Expected 'string' type for $arrayToObject entries but found '%s' type",
 							BsonTypeName(currentKey->value_type))));
 	}
 
@@ -2409,10 +2492,10 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787900), errmsg(
-							"specification must be an object; found %s: %s", operatorName,
-							BsonValueToJsonForLogging(argument)),
+							"Specification must correspond to an object; operator name: %s, but encountered type: %s",
+							operatorName, BsonValueToJsonForLogging(argument)),
 						errdetail_log(
-							"specification must be an object; found opname:%s input type:%s",
+							"Specification must correspond to an object; operator name: %s, but encountered type: %s",
 							operatorName, BsonTypeName(argument->value_type))));
 	}
 
@@ -2437,22 +2520,24 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787901), errmsg(
-								"Unknown argument for 'n' operator: %s", key),
+								"Unrecognized parameter supplied for 'n' operator: %s",
+								key),
 							errdetail_log(
-								"Unknown argument for 'n' operator: %s", key)));
+								"Unrecognized parameter supplied for 'n' operator: %s",
+								key)));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787907), errmsg(
-							"Missing value for 'input'")));
+							"No value provided for 'input'")));
 	}
 
 	if (count.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787906), errmsg(
-							"Missing value for 'n'")));
+							"Required value for 'n' is not provided")));
 	}
 
 	DollarMaxMinNArguments *arguments = palloc0(sizeof(DollarMaxMinNArguments));
@@ -2535,23 +2620,23 @@ ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
 		if (evaluatedDefaultsArg.value_type != BSON_TYPE_ARRAY)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34462), errmsg(
-								"defaults must be an array of expressions, found %s",
+								"defaults are expected to be provided as an array of expressions, but received %s",
 								BsonTypeName(
 									evaluatedDefaultsArg.value_type)),
 							errdetail_log(
-								"defaults must be an array of expressions, found %s",
+								"defaults are expected to be provided as an array of expressions, but received %s",
 								BsonTypeName(
 									evaluatedDefaultsArg.value_type))));
 		}
 		else if (useLongestLengthArgBoolValue == false)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34466), errmsg(
-								"cannot specify defaults unless useLongestLength is true")));
+								"defaults can only be specified when useLongestLength is set to true")));
 		}
 		else if (BsonDocumentValueCountKeys(&evaluatedDefaultsArg) != rowNum)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34467), errmsg(
-								"defaults and inputs must have the same length")));
+								"defaults and inputs are required to be of identical length")));
 		}
 	}
 
@@ -2561,7 +2646,7 @@ ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
 	bson_value_t *defaultsElements = (bson_value_t *) palloc0(rowNum *
 															  sizeof(bson_value_t));
 
-	/* In native mongo, if defaults is empty or not specified, $zip uses null as the default value. */
+	/* If defaults is empty or not specified, null is used as the default value. */
 	if (IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
 	{
 		for (int i = 0; i < rowNum; i++)
@@ -2609,7 +2694,7 @@ ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
 		/* The length of current subarray in inputs */
 		int currentSubArrayLen = 0;
 
-		/* In native mongo, if any of the inputs arrays resolves to a value of null or refers to a missing field, $zip returns null. */
+		/* If any of the inputs arrays resolves to a value of null or refers to a missing field, $zip returns null. */
 		if (IsExpressionResultNullOrUndefined(inputsElem))
 		{
 			ZipParseInputsResult nullValue;
@@ -2619,14 +2704,14 @@ ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
 			return nullValue;
 		}
 
-		/* In native mongo, if any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
+		/* If any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
 		else if (inputsElem->value_type != BSON_TYPE_ARRAY)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34468), errmsg(
-								"$zip found a non-array expression in input: %s",
+								"The $zip encountered an input that is not an array: %s",
 								BsonValueToJsonForLogging(inputsElem)),
 							errdetail_log(
-								"$zip found a non-array expression in input: %s",
+								"The $zip encountered an input that is not an array: %s",
 								BsonValueToJsonForLogging(inputsElem))));
 		}
 		else
@@ -2796,15 +2881,11 @@ ProcessDollarIn(bson_value_t *targetValue, const bson_value_t *searchArray,
 	if (searchArray->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARINREQUIRESARRAY), errmsg(
-							"$in requires an array as a second argument, found: %s",
-							searchArray->value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(searchArray->value_type)),
+							"Expected 'array' type for $in operator but found '%s' type",
+							BsonTypeNameExtended(searchArray->value_type)),
 						errdetail_log(
-							"$in requires an array as a second argument, found: %s",
-							searchArray->value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(searchArray->value_type))));
+							"Expected 'array' type for $in operator but found '%s' type",
+							BsonTypeNameExtended(searchArray->value_type))));
 	}
 
 	bool found = false;
@@ -2861,10 +2942,10 @@ ProcessDollarSlice(void *state, bson_value_t *result)
 	if (sourceArray->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDINPUT), errmsg(
-							"First argument to $slice must be an array, but is of type: %s",
+							"The first parameter provided to $slice must be an array, but a value of type %s was received instead.",
 							BsonTypeName(sourceArray->value_type)),
 						errdetail_log(
-							"First argument to $slice must be an array, but is of type: %s",
+							"The first parameter provided to $slice must be an array, but a value of type %s was received instead.",
 							BsonTypeName(sourceArray->value_type))));
 	}
 
@@ -2902,10 +2983,10 @@ ProcessDollarSlice(void *state, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDSIGNTHIRDARG),
 							errmsg(
-								"Third argument to $slice must be positive: %s",
+								"The third argument provided to the $slice operator must have a positive value: %s",
 								BsonValueToJsonForLogging(currentElement)),
 							errdetail_log(
-								"Third argument to $slice must be positive but found negative")));
+								"The third argument for the $slice operator must be a positive value, but a negative number was provided.")));
 		}
 		numToReturn = BsonValueAsInt32(currentElement);
 	}
@@ -2958,30 +3039,25 @@ ProcessDollarArrayElemAt(void *state, bson_value_t *result)
 						errmsg(
 							elemAtState->isArrayElemAtOperator ?
 							"%s's first argument must be an array, but is %s" :
-							"%s's argument must be an array, but is %s",
+							"The argument provided for %s must be of array type, yet it is actually %s.",
 							elemAtState->opName,
 							BsonTypeName(array.value_type)),
 						errdetail_log(elemAtState->isArrayElemAtOperator ?
 									  "%s's first argument must be an array, but is %s" :
-									  "%s's argument must be an array, but is %s",
+									  "The argument provided for %s must be of array type, yet it is actually %s.",
 									  elemAtState->opName,
 									  BsonTypeName(array.value_type))));
 	}
 	if (elemAtState->isArrayElemAtOperator && !BsonTypeIsNumber(indexValue.value_type))
 	{
-		bool isUndefined = IsExpressionResultUndefined(&indexValue);
 		ereport(ERROR, (errcode(
 							ERRCODE_DOCUMENTDB_DOLLARARRAYELEMATSECONDARGARGMUSTBENUMERIC),
 						errmsg(
-							"$arrayElemAt's second argument must be a numeric value, but is %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(indexValue.value_type)),
+							"The second argument of $arrayElemAt must be a numeric type value, but it is %s instead.",
+							BsonTypeNameExtended(indexValue.value_type)),
 						errdetail_log(
-							"$arrayElemAt's second argument must be a numeric value, but is %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(indexValue.value_type))));
+							"The second argument of $arrayElemAt must be a numeric type value, but it is %s instead.",
+							BsonTypeNameExtended(indexValue.value_type))));
 	}
 
 	bool checkFixedInteger = true;
@@ -2991,7 +3067,7 @@ ProcessDollarArrayElemAt(void *state, bson_value_t *result)
 		ereport(ERROR, (errcode(
 							ERRCODE_DOCUMENTDB_DOLLARARRAYELEMATSECONDARGARGMUSTBE32BIT),
 						errmsg(
-							"$arrayElemAt's second argument must be representable as a 32-bit integer: %s",
+							"The second argument of $arrayElemAt must be a valid 32-bit integer value: %s",
 							BsonValueToJsonForLogging(&indexValue)),
 						errdetail_log(
 							"$arrayElemAt's second argument of type %s can't be representable as a 32-bit integer",
@@ -3068,17 +3144,12 @@ ProcessDollarSize(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		bool isUndefined = IsExpressionResultUndefined(currentValue);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSIZEREQUIRESARRAY), errmsg(
-							"The argument to $size must be an array, but was of type: %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(currentValue->value_type)),
+							"$size requires an array argument, but received a value of type: %s",
+							BsonTypeNameExtended(currentValue->value_type)),
 						errdetail_log(
-							"The argument to $size must be an array, but was of type: %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(currentValue->value_type))));
+							"$size requires an array argument, but received a value of type: %s",
+							BsonTypeNameExtended(currentValue->value_type))));
 	}
 
 	int size = 0;
@@ -3109,10 +3180,11 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTREQUIRESARRAY),
 						errmsg(
-							"$arrayToObject requires an array input, found: %s",
+							"$arrayToObject needs an array as input, but a different type was provided: %s",
 							BsonTypeName(currentValue->value_type)),
-						errdetail_log("$arrayToObject requires an array input, found: %s",
-									  BsonTypeName(currentValue->value_type))));
+						errdetail_log(
+							"$arrayToObject needs an array as input, but a different type was provided: %s",
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	bson_iter_t arrayIter;
@@ -3129,10 +3201,10 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 			ereport(ERROR, (errcode(
 								ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTBADINPUTTYPEFORMAT),
 							errmsg(
-								"Unrecognised input type format for $arrayToObject: %s",
+								"The input type format provided for $arrayToObject: %s is not recognized",
 								BsonIterTypeName(&arrayIter)),
 							errdetail_log(
-								"Unrecognised input type format for $arrayToObject: %s",
+								"The input type format provided for $arrayToObject: %s is not recognized",
 								BsonIterTypeName(&arrayIter))));
 		}
 
@@ -3158,7 +3230,7 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 													   ERRCODE_DOCUMENTDB_LOCATION4940400;
 
 				ereport(ERROR, (errcode(errorCode), errmsg(
-									"Key field cannot contain an embedded null byte")));
+									"Key field must not include an embedded null byte")));
 			}
 
 			PgbsonElementHashEntry searchEntry = {
@@ -3218,7 +3290,7 @@ static void
 ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
 					   bson_value_t *result)
 {
-	/* In native mongo if the input array is null or an undefined path the result is null. */
+	/* If the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(inputValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
@@ -3228,10 +3300,10 @@ ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
 	if (inputValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942504), errmsg(
-							"The input argument to $sortArray must be an array, but was of type: %s",
+							"The provided input for the $sortArray operator must be an array, but a value of type %s was received instead.",
 							BsonTypeName(inputValue->value_type)),
 						errdetail_log(
-							"The input argument to $sortArray must be an array, but was of type: %s",
+							"The provided input for the $sortArray operator must be an array, but a value of type %s was received instead.",
 							BsonTypeName(inputValue->value_type))));
 	}
 
@@ -3288,12 +3360,13 @@ ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestL
 	if (evaluatedInputsArg.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34461), errmsg(
-							"inputs must be an array of expressions, found %s",
+							"Inputs must be provided as an array of expressions, but %s was encountered instead.",
 							BsonTypeName(
 								evaluatedInputsArg.value_type)),
-						errdetail_log("inputs must be an array of expressions, found %s",
-									  BsonTypeName(
-										  evaluatedInputsArg.value_type))));
+						errdetail_log(
+							"Inputs must be provided as an array of expressions, but %s was encountered instead.",
+							BsonTypeName(
+								evaluatedInputsArg.value_type))));
 	}
 
 	int rowNum = BsonDocumentValueCountKeys(&evaluatedInputsArg);
@@ -3301,7 +3374,7 @@ ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestL
 	if (rowNum == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34465), errmsg(
-							"$zip requires at least one input array")));
+							"$zip needs at least one provided input array")));
 	}
 
 	bool useLongestLengthArgBoolValue = evaluatedLongestLengthArg.value.v_bool;
@@ -3357,34 +3430,36 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 		if (!IsBsonValue64BitInteger(evaluatedLimit, checkFixedInteger))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
-								"Can't coerce out of range value %s to long",
+								"Unable to convert out-of-range value %s into a long type",
 								BsonValueToJsonForLogging(evaluatedLimit)),
 							errdetail_log(
-								"Can't coerce out of range value to long")));
+								"Unable to convert out-of-range value to long")));
 		}
 
 		if (nValue < 1)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787908), errmsg(
-								"'n' must be greater than 0, found %ld",
+								"'n' cannot be less than 0, but the current value is %ld",
 								nValue),
 							errdetail_log(
-								"'n' must be greater than 0, found %ld",
+								"'n' cannot be less than 0, but the current value is %ld",
 								nValue)));
 		}
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787902), errmsg(
-							"Value for 'n' must be of integral type, but found %s",
+							"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+							BsonTypeName(evaluatedLimit->value_type),
 							BsonValueToJsonForLogging(evaluatedLimit)),
 						errdetail_log(
-							"Value for 'n' must be of integral type, but found %s",
-							BsonTypeName(evaluatedLimit->value_type))));
+							"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+							BsonTypeName(evaluatedLimit->value_type),
+							BsonValueToJsonForLogging(evaluatedLimit))));
 	}
 
 
-	/* In native mongo if the input array is null or an undefined path the result is null. */
+	/* If the input array is null or an undefined path the result is null. */
 	if (IsExpressionResultNullOrUndefined(evaluatedInput))
 	{
 		result->value_type = BSON_TYPE_NULL;
@@ -3394,7 +3469,7 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 	if (evaluatedInput->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788200)), errmsg(
-					"Input must be an array"));
+					"Expected 'array' type as input"));
 	}
 
 	bson_iter_t arrayIter;
@@ -3484,10 +3559,10 @@ ProcessDollarObjectToArray(const bson_value_t *currentValue, bson_value_t *resul
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLAROBJECTTOARRAYREQUIRESOBJECT),
 						errmsg(
-							"$objectToArray requires a document input, found: %s",
+							"$objectToArray expression requires a document input, but received: %s",
 							BsonTypeName(currentValue->value_type)),
 						errdetail_log(
-							"$objectToArray requires a document input, found: %s",
+							"$objectToArray expression requires a document input, but received: %s",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -3542,10 +3617,11 @@ ProcessDollarConcatArraysElement(const bson_value_t *currentValue, void *state,
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28664), errmsg(
-							"$concatArrays only supports arrays, not %s",
+							"$concatArrays requires array inputs, but a value of type %s was provided",
 							BsonTypeName(currentValue->value_type)),
-						errdetail_log("$concatArrays only supports arrays, not %s",
-									  BsonTypeName(currentValue->value_type))));
+						errdetail_log(
+							"$concatArrays requires array inputs, but a value of type %s was provided",
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	ConcatArraysState *concatArraysState = state;
@@ -3593,25 +3669,27 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 			if (IsBsonValueNaN(elementsToFetch))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
-									"Can't coerce out of range value %s to long",
+									"Unable to convert out-of-range value %s into a long type",
 									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (IsBsonValueInfinity(elementsToFetch) != 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
-									"Can't coerce out of range value %s to long",
+									"Unable to convert out-of-range value %s into a long type",
 									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (!IsBsonValueFixedInteger(elementsToFetch))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787903), errmsg(
-									"Value for 'n' must be of integral type, but found %s",
+									"Expected 'integer' type for 'n' field but found '%s' type for value '%s'",
+									BsonTypeName(elementsToFetch->value_type),
 									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
-									"Value for 'n' must be of integral type, but found of type %s",
-									BsonTypeName(elementsToFetch->value_type))));
+									"Expected 'integer' type for 'n' field but found '%s' type for value '%s'",
+									BsonTypeName(elementsToFetch->value_type),
+									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			/* This is done as elements to fetch must only be int64. */
@@ -3623,10 +3701,10 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 			if (elementsToFetch->value.v_int64 <= 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787908), errmsg(
-									"'n' must be greater than 0, found %s",
+									"The value of 'n' must be strictly greater than 0, but the current value is %s",
 									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
-									"'n' must be greater than 0 found %ld for %s operator",
+									"The value of 'n' must be greater than 0, but received %ld for the %s operator",
 									elementsToFetch->value.v_int64, opName)));
 			}
 			break;
@@ -3635,10 +3713,10 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787902), errmsg(
-								"Value for 'n' must be of integral type, but found %s",
+								"Expected 'integer' type for 'n' field but found '%s' type",
 								BsonValueToJsonForLogging(elementsToFetch)),
 							errdetail_log(
-								"Value for 'n' must be of integral type, but found of type %s",
+								"Expected 'integer' type for 'n' field but found '%s' type",
 								BsonTypeName(elementsToFetch->value_type))));
 		}
 	}
@@ -3661,7 +3739,7 @@ FillResultForDollarFirstAndLastN(bson_value_t *input,
 	if (input->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788200), errmsg(
-							"Input must be an array")));
+							"Expected 'array' type as input")));
 	}
 	int64_t elements_to_skip = 0;
 
@@ -3719,17 +3797,18 @@ GetStartValueForDollarRange(bson_value_t *startValue)
 	bool checkFixedInteger = true;
 	if (!BsonTypeIsNumber(startValue->value_type))
 	{
+		char *typeName = BsonTypeNameExtended(startValue->value_type);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34443), errmsg(
-							"$range requires a numeric starting value, found value of type: %s",
-							BsonTypeName(startValue->value_type)),
+							"$range expression requires a numeric start value but encountered a value of type: %s",
+							typeName),
 						errdetail_log(
-							"$range requires a numeric starting value, found value of type: %s",
-							BsonTypeName(startValue->value_type))));
+							"$range expression requires a numeric start value but encountered a value of type: %s",
+							typeName)));
 	}
 	else if (!IsBsonValue32BitInteger(startValue, checkFixedInteger))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34444), errmsg(
-							"$range requires a starting value that can be represented as a 32-bit integer, found value: %s",
+							"The $range operator needs a starting value that fits within a 32-bit integer, but the provided value was: %s",
 							BsonValueToJsonForLogging(startValue))));
 	}
 	else
@@ -3753,14 +3832,15 @@ GetEndValueForDollarRange(bson_value_t *endValue)
 	bool checkFixedInteger = true;
 	if (!BsonTypeIsNumber(endValue->value_type))
 	{
+		char *typeName = BsonTypeNameExtended(endValue->value_type);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34445), errmsg(
-							"$range requires a numeric ending value, found value of type: %s",
-							BsonTypeName(endValue->value_type))));
+							"$range expression needs a numeric ending value, but a value of type %s was provided",
+							typeName)));
 	}
 	else if (!IsBsonValue32BitInteger(endValue, checkFixedInteger))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34446), errmsg(
-							"$range requires a ending value that can be represented as a 32-bit integer, found value: %s",
+							"$range needs an ending value representable as a 32-bit integer, but encountered value: %s",
 							BsonValueToJsonForLogging(endValue))));
 	}
 	else
@@ -3780,17 +3860,18 @@ GetStepValueForDollarRange(bson_value_t *stepValue)
 	int32_t stepValInt32;
 	if (!BsonTypeIsNumber(stepValue->value_type))
 	{
+		char *typeName = BsonTypeNameExtended(stepValue->value_type);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34447), errmsg(
-							"$range requires a numeric step value, found value of type: %s",
-							BsonTypeName(stepValue->value_type)),
+							"Expression $range needs a numeric step value, but received a value of type: %s",
+							typeName),
 						errdetail_log(
-							"$range requires a numeric step value, found value of type: %s",
-							BsonTypeName(stepValue->value_type))));
+							"Expression $range needs a numeric step value, but received a value of type: %s",
+							typeName)));
 	}
 	else if (!IsBsonValue32BitInteger(stepValue, checkFixedInteger))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34448), errmsg(
-							"$range requires a step value that can be represented as a 32-bit integer, found value: %s",
+							"$range operator needs a step value that fits within a 32-bit integer, but the provided value was: %s",
 							BsonValueToJsonForLogging(stepValue))));
 	}
 	else
@@ -3802,7 +3883,7 @@ GetStepValueForDollarRange(bson_value_t *stepValue)
 	if (stepValInt32 == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34449), errmsg(
-							"$range requires a non-zero step value")));
+							"$range requires a step value that cannot be zero")));
 	}
 
 	return stepValInt32;
@@ -3858,11 +3939,11 @@ SetResultArrayForDollarRange(int32_t startValue, int32_t endValue, int32_t stepV
 
 
 /*
- * This function ensures the size of array should not exceed the limits for native mongo.
- * Currently, native mongo has checks the array size should not go beyond 100MB and 64MB when writing the array. 64MB is an optimization before writing.
- * All calculation in this function is done to compute the bytes used if the array were to be written.
- * This function computes size exactly replicating libbson bson_append_value functions used in  PgbsonArrayWriterWriteValue.
- * Size calculation logic is based on (size of empty array +  size of keys in array + size of values in array).
+ * This function ensures the size of the array does not exceed internal limits.
+ * The array size should not go beyond 100MB, with a 64MB limit as an optimization before writing.
+ * All calculations in this function compute the bytes used if the array were to be written.
+ * This function computes size to match the logic used in PgbsonArrayWriterWriteValue.
+ * Size calculation logic is based on (size of empty array + size of keys in array + size of values in array).
  */
 static void
 ValidateArraySizeLimit(int32_t startValue, int32_t endValue, int32_t stepValue)
@@ -3903,17 +3984,17 @@ ValidateArraySizeLimit(int32_t startValue, int32_t endValue, int32_t stepValue)
 	if (totalSizeOfArray > BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT), errmsg(
-							"$range would use too much memory (%ld bytes) and cannot spill to disk. Memory limit: 104857600 bytes",
+							"$range requires excessive memory (%ld bytes) and cannot be offloaded to disk, exceeding the memory limit of 104857600 bytes.",
 							totalSizeOfArray),
 						errdetail_log(
-							"$range would use too much memory (%ld bytes) and cannot spill to disk. Memory limit: 104857600 bytes",
+							"$range requires excessive memory (%ld bytes) and cannot be offloaded to disk, exceeding the memory limit of 104857600 bytes.",
 							totalSizeOfArray)));
 	}
 
 	if (totalSizeOfArray > MAX_BUFFER_SIZE_DOLLAR_RANGE)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13548), errmsg(
-							"$range: the size of buffer to store output exceeded the 64MB limit")));
+							"$range: The buffer size required to store the output has gone beyond the allowed 64MB maximum limit.")));
 	}
 }
 
@@ -3980,12 +4061,12 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 	if (!BsonTypeIsNumber(arg->value_type) || !IsBsonValueFixedInteger(arg))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40096), errmsg(
-							"$indexOfArray requires an integral %s index, found a value of type: %s, with value: %s",
+							"The $indexOfArray operator needs an integer %s index, but encountered a value of type %s with the value %s.",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type),
 							BsonValueToJsonForLogging(arg)),
 						errdetail_log(
-							"$indexOfArray requires an integral %s index, found a value of type: %s",
+							"$indexOfArray needs an integer %s index but encountered a value of type: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type)
 							)));
@@ -3996,12 +4077,12 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 	if (result > INT32_MAX)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40096), errmsg(
-							"$indexOfArray requires an integral %s index, found a value of type: %s, with value: %s",
+							"The $indexOfArray operator needs an integer %s index, but encountered a value of type %s with the value %s.",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type),
 							BsonValueToJsonForLogging(arg)),
 						errdetail_log(
-							"$indexOfArray requires an integral %s index, found a value of type: %s",
+							"$indexOfArray needs an integer %s index but encountered a value of type: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type)
 							)));
@@ -4009,7 +4090,7 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 	else if (result < 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40097), errmsg(
-							"$indexOfArray requires a nonnegative %s index, found: %s",
+							"Operator $indexOfArray needs a nonnegative %s index value, but received: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonValueToJsonForLogging(arg)),
 						errdetail_log(
@@ -4028,7 +4109,7 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
  */
 static int32
 FindIndexInArrayFor(bson_value_t *array, bson_value_t *element, int32 startIndex,
-					int32 endIndex)
+					int32 endIndex, const char *collationString)
 {
 	if (startIndex >= endIndex)
 	{
@@ -4047,7 +4128,8 @@ FindIndexInArrayFor(bson_value_t *array, bson_value_t *element, int32 startIndex
 
 	while (bson_iter_next(&arrayIterator) && currentIndex < endIndex)
 	{
-		if (BsonValueEquals(bson_iter_value(&arrayIterator), element))
+		if (BsonValueEqualsWithCollation(bson_iter_value(&arrayIterator), element,
+										 collationString))
 		{
 			return currentIndex;
 		}
@@ -4070,11 +4152,11 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDTYPESECONDARG :
 								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDTYPETHIRDARG),
 						errmsg(
-							"%s argument to $slice must be numeric, but is of type: %s",
+							"The %s argument for the $slice needs to be a numeric value; however, it is currently of type: %s",
 							isSecondArg ? "Second" : "Third",
 							BsonTypeName(inputValue->value_type)),
 						errdetail_log(
-							"%s argument to $slice must be numeric, but is of type: %s",
+							"The %s argument for the $slice needs to be a numeric value; however, it is currently of type: %s",
 							isSecondArg ? "Second" : "Third",
 							BsonTypeName(inputValue->value_type))));
 	}
@@ -4087,11 +4169,11 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDVALUESECONDARG :
 								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDVALUETHIRDARG),
 						errmsg(
-							"%s argument to $slice can't be represented as a 32-bit integer: %s",
+							"The %s value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: %s",
 							isSecondArg ? "Second" : "Third",
 							BsonValueToJsonForLogging(inputValue)),
 						errdetail_log(
-							"%s argument of type %s to $slice can't be represented as a 32-bit integer",
+							"%s argument of type %s to $slice cannot be expressed as a 32-bit integer",
 							isSecondArg ? "Second" : "Third",
 							BsonTypeName(inputValue->value_type))));
 	}
@@ -4289,7 +4371,7 @@ SetResultValueForDollarSumAvg(const bson_value_t *inputArgument, bson_value_t *r
 
 		if (!BsonValueIsNumber(arrayElem))
 		{
-			/* Skip non-numeric values */
+			/* Ignore any values that are not numeric */
 			continue;
 		}
 
@@ -4310,5 +4392,45 @@ SetResultValueForDollarSumAvg(const bson_value_t *inputArgument, bson_value_t *r
 		{
 			*result = currentSum;
 		}
+	}
+}
+
+
+/*
+ * Register operator variables (like $$this and 'as' aliases) for the current operator context.
+ * These variables will be used during validation of a let variableSpec
+ */
+static void
+RegisterOperatorVariables(ParseAggregationExpressionContext *parentContext,
+						  ParseAggregationExpressionContext *currentContext,
+						  List *operatorVariablesList)
+{
+	if (!EnableOperatorVariablesInLookup)
+	{
+		return;
+	}
+
+	/* We need to override the shallow copy of the parent's variables */
+	currentContext->operatorVariables = CreateStringViewHashSet();
+	if (parentContext->operatorVariables)
+	{
+		HASH_SEQ_STATUS hashSeq;
+		StringView *key;
+		hash_seq_init(&hashSeq, parentContext->operatorVariables);
+		while ((key = (StringView *) hash_seq_search(&hashSeq)) != NULL)
+		{
+			StringView *keyCopy = palloc0(sizeof(StringView));
+			*keyCopy = *key;
+			hash_search(currentContext->operatorVariables, keyCopy, HASH_ENTER, NULL);
+		}
+	}
+
+	/* Add the entries in the current operator's variables list */
+	ListCell *lc;
+	foreach(lc, operatorVariablesList)
+	{
+		char *varName = (char *) lfirst(lc);
+		StringView varNameView = CreateStringViewFromString(varName);
+		hash_search(currentContext->operatorVariables, &varNameView, HASH_ENTER, NULL);
 	}
 }

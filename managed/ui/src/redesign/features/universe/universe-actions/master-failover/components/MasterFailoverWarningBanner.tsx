@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Box, Typography } from '@material-ui/core';
 import { YBButton } from '../../../../../components';
 import { preFinalizeStateStyles as masterFailoverStyles } from '../../rollback-upgrade/utils/RollbackUpgradeStyles';
-import WarningIcon from '../../../../../assets/warning-triangle.svg';
+import WarningIcon from '../../../../../assets/warning-triangle.svg?img';
 
 interface MasterFailoverWarningBannerProps {
   duration: string;

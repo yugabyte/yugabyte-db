@@ -3,15 +3,16 @@ package systemd
 import (
 	"fmt"
 
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 )
 
 func LingerEnable() error {
-	return runLoginctlCmd("enable-linger")
+	return runLoginctlCmd("enable-linger", viper.GetString("service_username"))
 }
 
 func LingerDisable() error {
-	return runLoginctlCmd("disable-linger")
+	return runLoginctlCmd("disable-linger", viper.GetString("service_username"))
 }
 
 func runLoginctlCmd(cmd string, args ...string) error {

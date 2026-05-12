@@ -21,6 +21,9 @@ PG_FUNCTION_INFO_V1(bson_operator_selectivity);
 Datum
 bson_operator_selectivity(PG_FUNCTION_ARGS)
 {
-	/* dumbest possible implementation: assume 1% of rows are returned */
+	/*
+	 * Note: This method is superceded by pg_documentdb/src/query/bson_dollar_selectivity.c
+	 * for the core operators. This is left for back-compatibility for the schema.
+	 * dumbest possible implementation: assume 1% of rows are returned */
 	PG_RETURN_FLOAT8(0.01);
 }

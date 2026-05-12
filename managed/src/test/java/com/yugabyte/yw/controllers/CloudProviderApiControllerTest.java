@@ -1386,7 +1386,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             node.nodeIdx = idx;
             universeDetails.nodeDetailsSet.add(node);
           }
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     u = Universe.saveDetails(u.getUniverseUUID(), updater);

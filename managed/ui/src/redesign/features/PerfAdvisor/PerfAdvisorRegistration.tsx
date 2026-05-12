@@ -18,9 +18,11 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
   // useForm hook definition
   const formMethods = useForm<any>({
     defaultValues: {
-      tpUrl: '',
+      paUrl: '',
       ybaUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : baseUrl,
       metricsUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9090' : `${baseUrl}:9090`,
+      metricsUsername: '',
+      metricsPassword: '',
       apiToken: '',
       tpApiToken: '',
       metricsScrapePeriodSecs: 10
@@ -33,9 +35,11 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
   const registerTpService = useMutation(
     (payload: any) =>
       PerfAdvisorAPI.registerYBAToPerfAdvisor(
-        payload.tpUrl,
+        payload.paUrl,
         payload.ybaUrl,
         payload.metricsUrl,
+        payload.metricsUsername,
+        payload.metricsPassword,
         payload.apiToken,
         payload.tpApiToken,
         payload.metricsScrapePeriodSecs
@@ -68,12 +72,12 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="300px" dataTestId="RegisterTSService-Label">
-              {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
+              {t('clusterDetail.troubleshoot.paServiceUrlLabel')}
             </YBLabel>
             <Box flex={1}>
               <YBInputField
                 control={control}
-                name="tpUrl"
+                name="paUrl"
                 style={{ width: '300px' }}
                 placeholder={t('clusterDetail.troubleshoot.urlPlaceholder')}
                 type="text"
@@ -123,6 +127,34 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
 
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="300px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsUsernameLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsUsername"
+                style={{ width: '300px' }}
+                type="text"
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsPasswordLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsPassword"
+                style={{ width: '300px' }}
+                type="text"
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
               {t('clusterDetail.troubleshoot.apiTokenLabel')}
             </YBLabel>
             <Box flex={1}>
@@ -134,20 +166,6 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
                 rules={{
                   required: t('clusterDetail.troubleshoot.apiTokenRequired')
                 }}
-              />
-            </Box>
-          </Box>
-
-          <Box display="flex" flexDirection={'row'} mt={2}>
-            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
-              {t('clusterDetail.troubleshoot.tpApiTokenLabel')}
-            </YBLabel>
-            <Box flex={1}>
-              <YBInputField
-                control={control}
-                name="tpApiToken"
-                style={{ width: '300px' }}
-                type="text"
               />
             </Box>
           </Box>

@@ -73,6 +73,7 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         try {
+          LOG.info("Executing query: {}", query);
           statement.execute(query);
         } catch (Throwable throwable) {
           if(isTestRunningWithConnectionManager())
@@ -86,6 +87,7 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         Thread.sleep(100); // Allow the query execution a headstart before killing
+        LOG.info("Sending signal {} to backend pid {}", signal, pid);
         ProcessUtil.signalProcess(pid, signal);
       });
       MiscUtil.runInParallel(cmds, startSignal, 60);
@@ -151,8 +153,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
     // (DB-12741) Test is flaky with connection manager irrespective of warmup
     // mode. Disable the test for now when running with connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR);
 
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start

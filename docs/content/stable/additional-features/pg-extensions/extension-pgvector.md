@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgvector
 ---
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
@@ -196,8 +198,10 @@ YugabyteDB currently supports the `vector` type.
 
 You can fine-tune HNSW indexing using the following parameters:
 
-- `m` - specifies the maximum number of connections per layer.
-- `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| m | Maximum number of connections per layer. Valid range: 5–64. | 32 |
+| ef_construction | Size of the dynamic candidate list for constructing the graph. Valid range: 50–1000. | 200 |
 
 For example:
 
@@ -209,12 +213,21 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ### Limitations
 
-- Concurrent index creation is not supported yet.
+- Concurrent index creation is not currently supported. For example, the following syntax falls back to non-concurrent implementation:
+
+    ```sql
+    CREATE INDEX CONCURRENLTY on <table> USING ybhnsq (vec vector_l2_ops);
+    ```
+
+    Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
+
 - Partial indexes on vector columns are not supported yet.
+- Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
+- [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
 
 ## Learn more
 
-- Tutorial: [Build and Learn](/preview/develop/tutorials/build-and-learn/)
-- Tutorials: [Build scalable generative AI applications with YugabyteDB](/preview/develop/tutorials/ai/)
+- Tutorial: [Build and Learn](/stable/develop/tutorials/build-and-learn/)
+- Tutorials: [Build scalable generative AI applications with YugabyteDB](/stable/develop/ai/)
 - [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
 - [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)

@@ -30,8 +30,10 @@
 
 DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 
+DEFINE_RUNTIME_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec, 60 * 60,
+    "Timeout for YSQL Create Table DDL operations on xCluster automatic target databases.");
+
 DECLARE_int32(max_num_tablets_for_table);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 
 namespace yb::pggate {
@@ -44,6 +46,24 @@ CoarseTimePoint DdlDeadline() {
   return CoarseMonoClock::now() + (FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
+CoarseTimePoint CreateTableDeadline(
+    const PgSessionPtr& pg_session, const tserver::PgCreateTableRequestPB& req) {
+  // Check if this is an xCluster automatic target and use longer timeout if so.
+  // This is needed because new tables on the target need to be added to replication and also catch
+  // up to the xCluster safe time during this timeout (see AddTableToXClusterTargetTask).
+  const auto table_id = PgObjectId::FromPB(req.table_id());
+  if (table_id.IsValid()) {
+    const auto xcluster_role_result =
+        pg_session->pg_client().GetXClusterRole(table_id.database_oid);
+    if (xcluster_role_result.ok() && *xcluster_role_result == XCLUSTER_ROLE_AUTOMATIC_TARGET) {
+      return CoarseMonoClock::now() +
+             (FLAGS_xcluster_automatic_target_create_table_ddl_rpc_timeout_sec * 1s);
+    }
+  }
+
+  return DdlDeadline();
+}
+
 CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
   // Creating the database through clone workflow has a different deadline compared to non-clone
   // workflow to account for extra time to clone the schema objects.
@@ -51,13 +71,13 @@ CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
                                             : FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
-} // namespace
+}  // namespace
 
 //--------------------------------------------------------------------------------------------------
 // PgCreateDatabase
 //--------------------------------------------------------------------------------------------------
 
-PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
+PgCreateDatabase::PgCreateDatabase(const PgSessionPtr& pg_session,
                                    const char *database_name,
                                    PgOid database_oid,
                                    PgOid source_database_oid,
@@ -89,18 +109,22 @@ Status PgCreateDatabase::Exec() {
 }
 
 PgDropDatabase::PgDropDatabase(
-    const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid)
+    const PgSessionPtr& pg_session, const char* database_name, PgOid database_oid)
     : BaseType(pg_session),
       database_name_(database_name),
       database_oid_(database_oid) {
 }
 
 Status PgDropDatabase::Exec() {
-  return pg_session_->DropDatabase(database_name_, database_oid_, DdlDeadline());
+  tserver::PgDropDatabaseRequestPB req;
+  req.set_database_name(database_name_);
+  req.set_database_oid(database_oid_);
+
+  return pg_session_->pg_client().DropDatabase(&req, DdlDeadline());
 }
 
 PgAlterDatabase::PgAlterDatabase(
-    const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid)
+    const PgSessionPtr& pg_session, const char* database_name, PgOid database_oid)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
@@ -119,7 +143,7 @@ void PgAlterDatabase::RenameDatabase(const char *newname) {
 //--------------------------------------------------------------------------------------------------
 
 PgCreateTablegroup::PgCreateTablegroup(
-    const PgSession::ScopedRefPtr& pg_session, const char* database_name, const PgOid database_oid,
+    const PgSessionPtr& pg_session, const char* database_name, const PgOid database_oid,
     const PgOid tablegroup_oid, const PgOid tablespace_oid, bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
@@ -134,7 +158,7 @@ Status PgCreateTablegroup::Exec() {
 }
 
 PgDropTablegroup::PgDropTablegroup(
-    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+    const PgSessionPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
     bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_use_regular_transaction_block(use_regular_transaction_block);
@@ -151,7 +175,7 @@ Status PgDropTablegroup::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgCreateTableBase::PgCreateTableBase(
-    const PgSession::ScopedRefPtr& pg_session,
+    const PgSessionPtr& pg_session,
     const char* database_name,
     const char* schema_name,
     const char* table_name,
@@ -271,7 +295,8 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 
 Status PgCreateTableBase::Exec() {
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
-  RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
+  RETURN_NOT_OK(
+      pg_session_->pg_client().CreateTable(&req_, CreateTableDeadline(pg_session_, req_)));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
   if (base_table_id.IsValid()) {
@@ -281,7 +306,7 @@ Status PgCreateTableBase::Exec() {
 }
 
 PgCreateTable::PgCreateTable(
-    const PgSession::ScopedRefPtr& pg_session,
+    const PgSessionPtr& pg_session,
     const char* database_name,
     const char* schema_name,
     const char* table_name,
@@ -307,7 +332,7 @@ PgCreateTable::PgCreateTable(
           old_relfilenode_oid, is_truncate, use_transaction, use_regular_transaction_block) {}
 
 PgCreateIndex::PgCreateIndex(
-    const PgSession::ScopedRefPtr& pg_session,
+    const PgSessionPtr& pg_session,
     const char* database_name,
     const char* schema_name,
     const char* table_name,
@@ -344,7 +369,7 @@ PgCreateIndex::PgCreateIndex(
 //--------------------------------------------------------------------------------------------------
 
 PgDropTable::PgDropTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+    const PgSessionPtr& pg_session, const PgObjectId& table_id, bool if_exist,
     bool use_regular_transaction_block)
     : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist),
       use_regular_transaction_block_(use_regular_transaction_block) {
@@ -364,7 +389,7 @@ Status PgDropTable::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgTruncateTable::PgTruncateTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id)
+    const PgSessionPtr& pg_session, const PgObjectId& table_id)
     : BaseType(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
 }
@@ -378,7 +403,7 @@ Status PgTruncateTable::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgDropIndex::PgDropIndex(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
+    const PgSessionPtr& pg_session, const PgObjectId& index_id, bool if_exist,
     bool ddl_rollback_enabled, bool use_regular_transaction_block)
     : BaseType(pg_session),
       index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled),
@@ -406,7 +431,7 @@ Status PgDropIndex::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgAlterTable::PgAlterTable(
-    const PgSession::ScopedRefPtr& pg_session,
+    const PgSessionPtr& pg_session,
     const PgObjectId& table_id,
     bool use_transaction,
     bool use_regular_transaction_block)
@@ -500,7 +525,7 @@ void PgAlterTable::InvalidateTableCacheEntry() {
 //--------------------------------------------------------------------------------------------------
 
 PgDropSequence::PgDropSequence(
-    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid sequence_oid)
+    const PgSessionPtr& pg_session, PgOid database_oid, PgOid sequence_oid)
     : BaseType(pg_session), database_oid_(database_oid), sequence_oid_(sequence_oid) {
 }
 
@@ -508,7 +533,7 @@ Status PgDropSequence::Exec() {
   return pg_session_->pg_client().DeleteSequenceTuple(database_oid_, sequence_oid_);
 }
 
-PgDropDBSequences::PgDropDBSequences(const PgSession::ScopedRefPtr& pg_session,  PgOid database_oid)
+PgDropDBSequences::PgDropDBSequences(const PgSessionPtr& pg_session,  PgOid database_oid)
     : BaseType(pg_session), database_oid_(database_oid) {
 }
 
@@ -520,7 +545,7 @@ Status PgDropDBSequences::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
-    const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
+    const PgSessionPtr& pg_session, const char* slot_name, const char* plugin_name,
     PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
     YbcOrderingMode yb_ordering_mode)
     : BaseType(pg_session) {
@@ -583,7 +608,7 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgCreateReplicationSlot::Exec
 //--------------------------------------------------------------------------------------------------
 
 PgDropReplicationSlot::PgDropReplicationSlot(
-    const PgSession::ScopedRefPtr& pg_session, const char* slot_name)
+    const PgSessionPtr& pg_session, const char* slot_name)
     : BaseType(pg_session) {
   req_.set_replication_slot_name(slot_name);
 }

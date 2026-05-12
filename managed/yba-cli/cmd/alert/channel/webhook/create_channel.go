@@ -32,7 +32,7 @@ var createWebhookChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(webhookURL)) == 0 {
+		if util.IsEmptyString(webhookURL) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No webhook URL specified to create alert channel\n",
@@ -53,7 +53,7 @@ var createWebhookChannelAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(username)) == 0 || len(strings.TrimSpace(password)) == 0 {
+			if util.IsEmptyString(username) || util.IsEmptyString(password) {
 				logrus.Fatal(
 					formatter.Colorize(
 						"No username or password specified to create alert channel with basic authentication\n",
@@ -69,7 +69,7 @@ var createWebhookChannelAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(tokenValue)) == 0 || len(strings.TrimSpace(tokenHeader)) == 0 {
+			if util.IsEmptyString(tokenValue) || util.IsEmptyString(tokenHeader) {
 				logrus.Fatal(
 					formatter.Colorize(
 						"No token header or value specified to create alert channel with token authentication\n",

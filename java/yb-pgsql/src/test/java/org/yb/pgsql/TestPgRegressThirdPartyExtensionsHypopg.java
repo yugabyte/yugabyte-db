@@ -22,6 +22,8 @@ import java.io.File;
 import java.util.Collections;
 import java.util.Map;
 
+import static org.yb.AssertionWrappers.*;
+
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsHypopg extends BasePgRegressTest {
   @Override
@@ -40,6 +42,13 @@ public class TestPgRegressThirdPartyExtensionsHypopg extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_pg_conf_csv", "yb_enable_cbo=OFF");
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    String enable_auto_analyze = miniCluster.getClient().getFlag(
+        miniCluster.getTabletServers().keySet().iterator().next(),
+        "ysql_enable_auto_analyze");
+    assertTrue("ysql_enable_auto_analyze should remain at default value false",
+        enable_auto_analyze.equals("false"));
+
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/hypopg"),
                      "yb_old_cost_model_schedule");
@@ -50,6 +59,13 @@ public class TestPgRegressThirdPartyExtensionsHypopg extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_pg_conf_csv", "yb_enable_cbo=ON");
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    String enable_auto_analyze = miniCluster.getClient().getFlag(
+        miniCluster.getTabletServers().keySet().iterator().next(),
+        "ysql_enable_auto_analyze");
+    assertTrue("ysql_enable_auto_analyze should be auto set to true",
+        enable_auto_analyze.equals("true"));
+
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/hypopg"),
                      "yb_schedule");

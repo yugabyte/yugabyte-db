@@ -385,7 +385,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     if (CoarseMonoClock::Now() > deadline_) {
       return true;
     }
-    auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
+    auto refresh_waiter_timeout = FLAGS_refresh_waiter_timeout_ms * 1ms;
     if (IsSingleShard()) {
       if (refresh_waiter_timeout.count() > 0) {
         refresh_waiter_timeout = std::min(refresh_waiter_timeout, GetMaxSingleShardWaitDuration());
@@ -1801,7 +1801,7 @@ class WaitQueue::Impl {
   }
 
   void SignalCommitted(const TransactionId& id, HybridTime commit_ht) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+    if (PREDICT_FALSE(FLAGS_TEST_drop_participant_signal)) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping commit signal " << id;
       return;
     }
@@ -1811,7 +1811,7 @@ class WaitQueue::Impl {
   }
 
   void SignalAborted(const TransactionId& id) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+    if (PREDICT_FALSE(FLAGS_TEST_drop_participant_signal)) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping abort signal " << id;
       return;
     }

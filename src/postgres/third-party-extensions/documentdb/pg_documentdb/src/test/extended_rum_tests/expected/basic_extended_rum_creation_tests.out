@@ -1,0 +1,71 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 100;
+SET documentdb.next_collection_index_id TO 100;
+-- create a collection
+SELECT documentdb_api.insert_one('exrumdb','index_creation_tests', '{"_id": 1, "a": "hello world"}');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create an index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exrumdb', '{ "createIndexes": "index_creation_tests", "indexes": [ { "key": { "a": 1 }, "name": "a_1" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a composite index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exrumdb', '{ "createIndexes": "index_creation_tests", "indexes": [ { "key": { "a": 1, "b": -1 }, "name": "a_1_b_-1" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exrumdb', '{ "createIndexes": "index_creation_tests", "indexes": [ { "key": { "c": 1 }, "name": "c_1", "unique": true } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- validate they're all ordered indexes and using the appropriate index handler
+\d documentdb_data.documents_101
+           Table "documentdb_data.documents_101"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_101" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_102" documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "a" ]', tl='2691'))
+    "documents_rum_index_103" documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "a", { "b" : -1 } ]', tl='2691'))
+    "documents_rum_index_104" EXCLUDE USING documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "c" ]', tl='2691') WITH =?=, documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "c" : { "$numberInt" : "1" } }'::bson, false, true) documentdb_extended_rum_catalog.bson_extended_rum_unique_shard_path_ops (cmp='true') WITH OPERATOR(documentdb_api_internal.=#=))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '101'::bigint)
+
+-- validate they're used in queries
+set enable_seqscan to off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exrumdb', '{ "find": "index_creation_tests", "filter": { "a": "hello world" } }');
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Index Scan using a_1 on documents_101 collection
+   Index Cond: (document @= '{ "a" : "hello world" }'::bson)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exrumdb', '{ "find": "index_creation_tests", "filter": { "c": "hello world" } }');
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Index Scan using c_1 on documents_101 collection
+   Index Cond: (document @= '{ "c" : "hello world" }'::bson)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exrumdb', '{ "find": "index_creation_tests", "filter": { "a": "hello world", "b": "myfoo" } }');
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Index Scan using "a_1_b_-1" on documents_101 collection
+   Index Cond: ((document @= '{ "a" : "hello world" }'::bson) AND (document @= '{ "b" : "myfoo" }'::bson))
+(2 rows)
+

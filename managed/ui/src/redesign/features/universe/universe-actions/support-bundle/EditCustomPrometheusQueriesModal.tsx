@@ -3,8 +3,8 @@ import { SubmitHandler, useFieldArray, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
 import { YBButton, YBInputField, YBModal, YBModalProps } from '../../../../components';
-import { ReactComponent as DeleteIcon } from '../../../../assets/delete2.svg';
-import { ReactComponent as AddIcon } from '../../../../assets/add2.svg';
+import DeleteIcon from '../../../../assets/delete2.svg';
+import AddIcon from '../../../../assets/add2.svg';
 
 interface CustomPrometheusQueries {
   folderName: string;

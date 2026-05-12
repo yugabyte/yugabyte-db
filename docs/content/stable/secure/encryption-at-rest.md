@@ -4,6 +4,8 @@ headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: Enable encryption at rest in a YugabyteDB cluster with a user-generated key.
 headcontent: Encrypt your YugabyteDB cluster
+aliases:
+  - /secure/encryption-at-rest
 menu:
   stable:
     identifier: encryption-at-rest
@@ -15,7 +17,7 @@ type: docs
 {{< page-finder/head text="Encryption at rest" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/security/enable-encryption-at-rest/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
 {{< /page-finder/head >}}
 
 You can enable and disable encryption at rest in a YugabyteDB cluster with a self-generated key.
@@ -143,6 +145,6 @@ You can disable cluster-wide encryption as follows:
 
 {{< note title="Note" >}}
 
-Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster, 
+Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster,
 you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)
 {{< /note >}}

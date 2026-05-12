@@ -129,7 +129,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     auto* server = cluster_->mini_tablet_server(0)->server();
     auto& pool = server->TransactionPool();
     auto txn = VERIFY_RESULT(pool.TakeAndInit(SNAPSHOT_ISOLATION, TransactionRpcDeadline()));
-    RETURN_NOT_OK(txn->SetPgTxnStart(server->Clock()->Now().GetPhysicalValueMicros()));
+    RETURN_NOT_OK(txn->SetPgTxnStart(server->Clock()->Now().GetPhysicalValueMicros(), false));
     return txn;
   }
 
@@ -327,7 +327,7 @@ TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
 
   // Release all locks.
   ASSERT_OK(session->TEST_ApplyAndFlush(
-      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOp(kDBOid))));
+      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOps(kDBOid))));
   // Should be just txn metadata left unremoved.
   CheckNumIntents(cluster_.get(), 1, table_->id());
 

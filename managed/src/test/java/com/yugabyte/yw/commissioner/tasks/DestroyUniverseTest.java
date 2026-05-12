@@ -16,7 +16,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
@@ -29,7 +28,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -471,8 +469,8 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
   public void testOnpremDecommissionTest(
       CloudType cloudType, boolean setPrivateIp, boolean failDestroy) {
     if (failDestroy) {
-      reset(mockNodeManager);
-      when(mockNodeManager.nodeCommand(eq(NodeCommandType.Destroy), any()))
+      reset(mockNodeAgentClient);
+      when(mockNodeAgentClient.runDestroyServer(any(), any(), any()))
           .thenThrow(RuntimeException.class);
     }
     Set<UUID> nodeInstances = new HashSet<>();

@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
@@ -317,7 +318,7 @@ public class CloudProviderEdit extends CloudTaskBase {
 
     for (AccessKey accessKey : accessKeys) {
       if (!Strings.isNullOrEmpty(accessKey.getKeyInfo().sshPrivateKeyContent)
-          && accessKey.getIdKey() == null) {
+          && isAccessKeyIdEmpty(accessKey.getIdKey())) {
         /*
          * If the user has provided the accessKey content, this will be the case of
          * Self Managed Keys, create a new Key, & append with other keys.
@@ -328,6 +329,18 @@ public class CloudProviderEdit extends CloudTaskBase {
     }
 
     return result;
+  }
+
+  /**
+   * Checks if an AccessKeyId is empty (null or has null/empty fields). This handles the case where
+   * the Go client sends an empty idKey object ({}) instead of null, which Jackson deserializes as
+   * an AccessKeyId with null fields.
+   */
+  private boolean isAccessKeyIdEmpty(AccessKeyId idKey) {
+    if (idKey == null) {
+      return true;
+    }
+    return Strings.isNullOrEmpty(idKey.keyCode) && idKey.providerUUID == null;
   }
 
   private void updateImageBundles(Provider provider, Provider editProviderReq) {

@@ -44,6 +44,7 @@ type ReplicatedMigrationState struct {
 type Config struct {
 	Hostname       string `json:"hostname"`
 	SelfSignedCert bool   `json:"self_signed_cert"`
+	AsRoot         bool   `json:"as_root"`
 }
 
 type Services struct {
@@ -68,6 +69,7 @@ func New() *State {
 		CurrentStatus: UninstalledStatus,
 		Config: Config{
 			SelfSignedCert: false, // Default to false
+			AsRoot:         common.HasSudoAccess(),
 		},
 		// Initialize to false, inistall will set it to true
 		Services: Services{

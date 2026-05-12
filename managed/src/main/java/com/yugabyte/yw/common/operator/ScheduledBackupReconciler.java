@@ -4,12 +4,14 @@ package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue.ResourceAction;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
@@ -24,8 +26,10 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.yugabyte.operator.v1alpha1.BackupSchedule;
+import io.yugabyte.operator.v1alpha1.BackupScheduleStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -65,6 +69,23 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     return this.scheduleTaskMap.getOrDefault(key, null);
   }
 
+  private void updateStatus(
+      BackupSchedule backupSchedule, String taskUUID, String scheduleUUID, String message) {
+    BackupScheduleStatus status = backupSchedule.getStatus();
+    if (status == null) {
+      status = new BackupScheduleStatus();
+    }
+    // BackupScheduleStatus has no dedicated message field; surface the message
+    // through the state field so it's visible on the CR.
+    status.setState(message);
+    // Don't override the schedule UUID once set.
+    if (status.getScheduleUUID() == null) {
+      status.setScheduleUUID(scheduleUUID);
+    }
+    backupSchedule.setStatus(status);
+    resourceClient.inNamespace(namespace).resource(backupSchedule).replaceStatus();
+  }
+
   // Delete the backup Schedule
   @Override
   protected void handleResourceDeletion(
@@ -73,11 +94,28 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
     UUID universeUUID =
         UUID.fromString(backupSchedule.getMetadata().getAnnotations().get("universeUUID"));
-    Optional<Schedule> optSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            operatorUtils.getYbaResourceName(backupSchedule.getMetadata()),
-            universeUUID,
-            cust.getUuid());
+    String scheduleName = operatorUtils.getYbaResourceName(backupSchedule.getMetadata());
+    if (backupSchedule.getSpec().getName() != null) {
+      scheduleName = OperatorUtils.kubernetesCompatName(backupSchedule.getSpec().getName());
+    }
+    Optional<Schedule> optSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(scheduleName, universeUUID, cust.getUuid());
+    }
     boolean requeueNoOp = (action == ResourceAction.NO_OP);
     boolean scheduleRemoved = false;
     if (optSchedule.isPresent()) {
@@ -134,18 +172,48 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
     Universe universe =
         Universe.getOrBadRequest(scheduleParams.getScheduleParams().getUniverseUUID(), cust);
     if (!optionalSchedule.isPresent() && !universe.universeIsLocked()) {
       log.info("Creating new backupSchedule {}", ybaScheduleName);
+      // First Validate the table
+      try {
+        backupHelper.validateTables(
+            new ArrayList<>(),
+            universe,
+            backupSchedule.getSpec().getKeyspace(),
+            scheduleParams.getScheduleParams().backupType);
+      } catch (PlatformServiceException e) {
+        log.error("Got Exception in validating tables", e);
+        updateStatus(backupSchedule, "", "", "Failed in validating tables " + e.getMessage());
+        return;
+      }
       createScheduleTask(scheduleParams, backupSchedule, cust, universe);
     } else {
       Schedule schedule = optionalSchedule.get();
+      OperatorUtils.maybeAddYbaResourceId(
+          backupSchedule, schedule.getScheduleUUID(), resourceClient);
       log.debug("Schedule: {} current state: {}", schedule.getScheduleName(), schedule.getStatus());
       if (schedule.getStatus() == Schedule.State.Error && !universe.universeIsLocked()) {
         // TODO(Vivek): Improve on this once we have the "prevState" of schedule available
@@ -178,11 +246,27 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
     if (!optionalSchedule.isPresent()) {
       log.debug("Schedule does not exist, ignoring update");
       return;
@@ -216,11 +300,27 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
 
     TaskInfo taskInfo = getCurrentTaskInfo(backupSchedule);
     if (taskInfo != null) {

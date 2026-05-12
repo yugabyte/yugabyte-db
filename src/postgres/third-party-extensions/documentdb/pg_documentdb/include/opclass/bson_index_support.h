@@ -31,6 +31,8 @@ typedef struct ReplaceFunctionContextInput
 
 	/* CollectionId of the base collection if it's known */
 	uint64 collectionId;
+
+	Index rteIndex;
 } ReplaceFunctionContextInput;
 
 
@@ -38,16 +40,24 @@ typedef struct ReplaceFunctionContextInput
 typedef enum ForceIndexOpType
 {
 	/* No index pushdown required */
-	ForceIndexOpType_None,
+	ForceIndexOpType_None = 0,
 
 	/* Index pushdown required due to $text */
-	ForceIndexOpType_Text,
+	ForceIndexOpType_Text = 1,
 
 	/* Index pushdown required due to $geoNear */
-	ForceIndexOpType_GeoNear,
+	ForceIndexOpType_GeoNear = 2,
 
 	/* Index pushdown required for a vectorSearch */
-	ForceIndexOpType_VectorSearch
+	ForceIndexOpType_VectorSearch = 3,
+
+	/* Index pushdown required for a index hint */
+	ForceIndexOpType_IndexHint = 4,
+
+	/* Index pushdown required for a primary key lookup */
+	ForceIndexOpType_PrimaryKeyLookup = 5,
+
+	ForceIndexOpType_Max,
 } ForceIndexOpType;
 
 /*
@@ -71,6 +81,17 @@ typedef struct ForceIndexQueryOperatorData
 	void *opExtraState;
 } ForceIndexQueryOperatorData;
 
+/* Context persisted during walking the query for order by scenarios */
+typedef struct
+{
+	/* Equality on shardKey if available */
+	RestrictInfo *shardKeyEqualityExpr;
+
+	/* Whether this is an unsharded equality */
+	bool isShardKeyEqualityOnUnsharded;
+} PlannerQueryOrderByData;
+
+
 /*
  * Context object passed between ReplaceExtensionFunctionOperatorsInPaths
  * and ReplaceExtensionFunctionOperatorsInRestrictionPaths. This takes context
@@ -84,6 +105,9 @@ typedef struct ReplaceExtensionFunctionContext
 	/* Whether or not the index paths/restriction paths have vector search query */
 	bool hasVectorSearchQuery;
 
+	/* Whether or not the rel pathlist has streaming cursor scan filters */
+	bool hasStreamingContinuationScan;
+
 	/* Whether or not the index paths already has a primary key lookup */
 	IndexPath *primaryKeyLookupPath;
 
@@ -92,6 +116,8 @@ typedef struct ReplaceExtensionFunctionContext
 
 	/* The index data for operators can be put inside this, which are mutually exclusive and should require index */
 	ForceIndexQueryOperatorData forceIndexQueryOpData;
+
+	PlannerQueryOrderByData plannerOrderByData;
 } ReplaceExtensionFunctionContext;
 
 /* Type of the parent node in the query plan of a query for $in optimization. This is not
@@ -114,9 +140,36 @@ List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 void ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
 											  List *pathsList, PlanParentType parentType,
 											  ReplaceExtensionFunctionContext *context);
-void ForceIndexForQueryOperators(PlannerInfo *root, RelOptInfo *rel,
-								 ReplaceExtensionFunctionContext *context);
+Path * ForceIndexForQueryOperators(PlannerInfo *root, RelOptInfo *rel,
+								   ReplaceExtensionFunctionContext *context);
 
+void ConsiderIndexOrderByPushdownForId(PlannerInfo *root, RelOptInfo *rel,
+									   RangeTblEntry *rte,
+									   Index rti,
+									   ReplaceExtensionFunctionContext *context);
+void ConsiderIndexOnlyScan(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte,
+						   Index rti, ReplaceExtensionFunctionContext *context);
+bool IsOpExprShardKeyForUnshardedCollections(Expr *expr, uint64 collectionId);
+
+IndexPath * TrimIndexRestrictInfoForBtreePath(PlannerInfo *root,
+											  IndexPath *indexPath,
+											  bool *hasNonIdClauses);
+
+void WalkPathsForIndexOperations(List *pathsList,
+								 ReplaceExtensionFunctionContext *context);
+void WalkRestrictionPathsForIndexOperations(List *restrictInfo,
+											List *joinInfo,
+											ReplaceExtensionFunctionContext *context);
 
 bool IsBtreePrimaryKeyIndex(struct IndexOptInfo *indexInfo);
+bool InMatchIsEquvalentTo(ScalarArrayOpExpr *opExpr, const bson_value_t *arrayValue);
+
+OpExpr * GetOpExprClauseFromIndexOperator(const
+										  MongoIndexOperatorInfo *operator, List *args,
+										  bytea *indexOptions);
+
+void documentdb_btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
+							   Cost *indexStartupCost, Cost *indexTotalCost,
+							   Selectivity *indexSelectivity, double *indexCorrelation,
+							   double *indexPages);
 #endif

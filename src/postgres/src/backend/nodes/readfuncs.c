@@ -1641,6 +1641,7 @@ _readPlannedStmt(void)
 	READ_LOCATION_FIELD(stmt_location);
 	READ_INT_FIELD(yb_num_referenced_relations);
 	READ_INT_FIELD(stmt_len);
+	READ_UINT64_FIELD(ybPlanId);
 
 	READ_DONE();
 }
@@ -1863,6 +1864,9 @@ ReadCommonScan(Scan *local_node)
 	ReadCommonPlan(&local_node->plan);
 
 	READ_UINT_FIELD(scanrelid);
+
+	/* YB */
+	READ_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -1969,6 +1973,7 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(yb_pushdown.quals);
 	READ_NODE_FIELD(yb_pushdown.colrefs);
 	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_INT_FIELD(yb_num_decoded_pk_cols);
 
 	READ_DONE();
 }
@@ -2614,6 +2619,9 @@ _readHash(void)
 	READ_BOOL_FIELD(skewInherit);
 	READ_FLOAT_FIELD(rows_total);
 
+	/* YB */
+	READ_STRING_FIELD(ybSkewTableName);
+
 	READ_DONE();
 }
 
@@ -2959,6 +2967,43 @@ _readYbUpdateAffectedEntities(void)
 	READ_DONE();
 }
 
+static YbMergeScanInfo *
+_readYbMergeScanInfo(void)
+{
+	READ_LOCALS(YbMergeScanInfo);
+
+	READ_NODE_FIELD(saop_cols);
+	READ_NODE_FIELD(sort_cols);
+
+	READ_DONE();
+}
+
+static YbMergeScanSaopColInfo *
+_readYbMergeScanSaopColInfo(void)
+{
+	READ_LOCALS(YbMergeScanSaopColInfo);
+
+	READ_NODE_FIELD(saop);
+	READ_INT_FIELD(indexcol);
+	READ_INT_FIELD(num_elems);
+
+	READ_DONE();
+}
+
+static YbSortInfo *
+_readYbSortInfo(void)
+{
+	READ_LOCALS(YbSortInfo);
+
+	READ_INT_FIELD(numCols);
+	READ_ATTRNUMBER_ARRAY(sortColIdx, local_node->numCols);
+	READ_OID_ARRAY(sortOperators, local_node->numCols);
+	READ_OID_ARRAY(collations, local_node->numCols);
+	READ_BOOL_ARRAY(nullsFirst, local_node->numCols);
+
+	READ_DONE();
+}
+
 /*
  * parseNodeString
  *
@@ -3242,12 +3287,20 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("PARTITIONPRUNESTEPFUNCOP", 24))
+		return_value = _readYbPartitionPruneStepFuncOp();
 	else if (MATCH("YBEXPRCOLREFDESC", 16))
 		return_value = _readYbExprColrefDesc();
 	else if (MATCH("YBSKIPPABLEENTITIES", 19))
 		return_value = _readYbSkippableEntities();
 	else if (MATCH("YBUPDATEAFFECTEDENTITIES", 24))
 		return_value = _readYbUpdateAffectedEntities();
+	else if (MATCH("YBMERGESCANINFO", 15))
+		return_value = _readYbMergeScanInfo();
+	else if (MATCH("YBMERGESCANSAOPCOLINFO", 22))
+		return_value = _readYbMergeScanSaopColInfo();
+	else if (MATCH("YBSORTINFO", 10))
+		return_value = _readYbSortInfo();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

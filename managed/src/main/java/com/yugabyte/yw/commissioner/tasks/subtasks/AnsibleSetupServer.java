@@ -87,7 +87,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     }
 
     if (skipProvision) {
-      log.info("Skipping ansible provision.");
+      log.info("Skipping node provisioning");
     } else {
       // Execute the ansible command.
       getNodeManager()

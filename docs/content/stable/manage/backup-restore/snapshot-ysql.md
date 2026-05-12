@@ -103,7 +103,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
     The following is a sample output:
 
     ```output
-     yb_catalog_version 
+     yb_catalog_version
     --------------------
                     13
     ```

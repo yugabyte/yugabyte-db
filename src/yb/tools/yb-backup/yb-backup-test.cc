@@ -93,20 +93,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
-  DoTestYSQLRestoreBackup(std::nullopt /* db_catalog_version_mode */);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-// TODO (#19975): Enable read committed isolation
-TEST_F(YBBackupTestWithReadCommittedDisabled,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
-  DoTestYSQLRestoreBackup(true /* db_catalog_version_mode */);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToGlobalCatalogVersionMode)) {
-  DoTestYSQLRestoreBackup(false /* db_catalog_version_mode */);
+  DoTestYSQLRestoreBackup();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -713,10 +700,10 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithLB)
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
 
-  // Add in a new tserver to trigger the load balancer.
+  // Add in a new tserver to trigger the cluster balancer.
   ASSERT_OK(cluster_->AddTabletServer());
 
-  // Start running the restore while the load balancer is balancing the load.
+  // Start running the restore while the cluster balancer is balancing the load.
   // Use the --TEST_sleep_during_download_dir param to inject a sleep before the rsync calls.
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
@@ -758,7 +745,7 @@ TEST_F(YBBackupTest, DISABLED_TestYSQLBackupWithLearnerTS) {
   bool learner_found = false;
   int num_new_ts = 0;
   for (int round = 0; round < 300; ++round) {
-    // Add a new TS every 60 seconds to trigger the load balancer and
+    // Add a new TS every 60 seconds to trigger the cluster balancer and
     // so to trigger creation of new peers for existing tables.
     if (round % 60 == 0 && num_new_ts < 3) {
       ++num_new_ts;
@@ -973,6 +960,106 @@ TEST_F(YBBackupTest,
         (5 rows)
       )#"
   ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(YBFailColocationTest)) {
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE db WITH colocation=true"));
+
+  const std::string main_script = R"(
+CREATE TABLE employees_hash(id text, name text, age int) PARTITION BY RANGE (age);
+CREATE TABLE employees_hash_age_changes_25 PARTITION OF employees_hash FOR VALUES FROM (0) TO (25);
+INSERT INTO employees_hash(id, name, age) VALUES (1, 'Hermione', 15);
+ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, age);
+  )";
+
+  SetDbName("db");
+
+  ASSERT_RESULT(RunPsqlCommand(main_script));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db2", "restore"}));
+
+  SetDbName("db");
+  auto query = R"(
+SELECT /*+ IndexOnlyScan(employees_hash_age_changes_25 employees_hash_age_changes_25_id_age_key) */
+COUNT(*) FROM employees_hash_age_changes_25;
+  )";
+  Result<std::string> result{""};
+  ASSERT_NO_FATALS(result = RunPsqlCommand(query));
+  ASSERT_OK(result);
+  LOG(INFO) << "result: " << *result;
+
+  SetDbName("db2");
+  ASSERT_NO_FATALS(RunPsqlCommand(query, *result));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupTestCboEnabled : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_cbo=on");
+  }
+};
+
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupRestoreStats),
+          YBBackupTestCboEnabled) {
+  const string kTableName = "stats_tbl";
+  const string restore_db = "backup_stats_restored_db";
+
+  auto cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+
+  ASSERT_NO_FATALS(
+      CreateTable(Format("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)",
+                         kTableName)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX ON $0 (value)", kTableName)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format(
+          "INSERT INTO $0 (id, value) "
+          "SELECT i, md5(i::TEXT) FROM generate_series(1, 1000) AS i",
+          kTableName),
+      1000));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("ANALYZE $0", kTableName), "ANALYZE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT relpages, reltuples, relallvisible "
+             "FROM pg_class WHERE oid = '$0'::regclass",
+             kTableName),
+      R"#(
+         relpages | reltuples | relallvisible
+        ----------+-----------+---------------
+                0 |      1000 |             0
+        (1 row)
+      )#"));
+
+  auto get_relation_stats = [this, kTableName]() {
+    return RunPsqlCommand(Format(
+        "SELECT relpages, reltuples, relallvisible FROM pg_class "
+        "WHERE oid = '$0'::regclass",
+        kTableName));
+  };
+
+  const auto initial_relation_stats = ASSERT_RESULT(get_relation_stats());
+  LOG(INFO) << "Relation stats before backup: " << initial_relation_stats;
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db), "restore"}));
+
+  SetDbName(restore_db);
+  cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+  ASSERT_EQ(initial_relation_stats, ASSERT_RESULT(get_relation_stats()));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

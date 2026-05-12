@@ -27,8 +27,10 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/dockv/partial_row.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -385,7 +387,7 @@ void YBSingleThreadedWriter::ConfigureSession() {
 
 bool YBSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
-  auto insert = table_->NewInsertOp();
+  auto insert = table_->NewInsertOp(session_->arena());
   // Generate a Put for key_str, value_str
   QLAddStringHashValue(insert->mutable_request(), key_str);
   table_->AddStringColumnValue(insert->mutable_request(), "v", value_str);
@@ -569,7 +571,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   uint64_t read_ts = client_->GetLatestObservedHybridTime();
 
   for (int i = 1;; ++i) {
-    auto read_op = table_->NewReadOp();
+    auto read_op = table_->NewReadOp(session_->arena());
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
     auto status = session_->TEST_ApplyAndFlush(read_op);

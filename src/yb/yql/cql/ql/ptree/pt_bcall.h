@@ -75,7 +75,7 @@ class PTBcall : public PTExpr {
   }
 
   // BCall result set column type in QL format.
-  void rscol_type_PB(QLTypePB *pb_type) const override;
+  void rscol_type_PB(QLTypeMsg *pb_type) const override;
 
   virtual Status CheckOperator(SemContext *sem_context) override;
 

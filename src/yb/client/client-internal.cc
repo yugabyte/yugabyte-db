@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <fstream>
 #include <functional>
-#include <limits>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -53,18 +51,15 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_info.h"
 
-#include "yb/qlexpr/index.h"
 #include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/tablespace_parser.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -72,25 +67,22 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/master_encryption.proxy.h"
-#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master_error.h"
+#include "yb/master/master_encryption.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_util.h"
 
+#include "yb/qlexpr/index.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tools/yb-admin_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -120,7 +112,7 @@ DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
 
@@ -286,6 +278,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlYbSystemTableInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletsMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
@@ -318,6 +311,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertHistoricalColocatedSchemaPacking);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertPackedSchemaForXClusterTarget);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, HandleNewSchemaForAutomaticXClusterTarget);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterReportNewAutoFlagConfigVersion);
@@ -681,7 +675,7 @@ Status YBClient::Data::DeleteTable(
     DCHECK(!wait);
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -803,6 +797,8 @@ Status YBClient::Data::TruncateTables(
   // Spin until the table is fully truncated, if requested.
   if (wait) {
     for (const auto& table_id : table_ids) {
+      // For YCQL tables this call also must wait for the related indexes.
+      // See CatalogManager::IsTruncateTableDone for details.
       RETURN_NOT_OK(WaitForTruncateTableToFinish(client, table_id, deadline));
     }
   }
@@ -868,7 +864,7 @@ Status YBClient::Data::CreateTablegroup(
   if (txn) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -954,7 +950,7 @@ Status YBClient::Data::DeleteTablegroup(
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
     wait = false;
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -1416,13 +1412,17 @@ Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
     }
 
     replica_statuses.push_back(TabletReplicaFullCompactionStatus{
-        replica_status.ts_id(), replica_status.tablet_id(), replica_status.full_compaction_state(),
-        HybridTime(replica_status.last_full_compaction_time())});
+        .ts_id = replica_status.ts_id(),
+        .tablet_id = replica_status.tablet_id(),
+        .full_compaction_state = replica_status.full_compaction_state(),
+        .last_full_compaction_time = HybridTime(replica_status.last_full_compaction_time())});
   }
 
   return TableCompactionStatus{
-      resp.full_compaction_state(), HybridTime(resp.last_full_compaction_time()),
-      HybridTime(resp.last_request_time()), std::move(replica_statuses)};
+      .full_compaction_state = resp.full_compaction_state(),
+      .last_full_compaction_time = HybridTime(resp.last_full_compaction_time()),
+      .last_request_time = HybridTime(resp.last_request_time()),
+      .replica_statuses = std::move(replica_statuses)};
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
@@ -1452,7 +1452,7 @@ class GetTableSchemaRpc
                     master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
-                    const TableId& table_id,
+                    TableIdView table_id,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     master::IncludeHidden include_hidden,
@@ -1460,7 +1460,7 @@ class GetTableSchemaRpc
 
   std::string ToString() const override;
 
-  virtual ~GetTableSchemaRpc();
+  ~GetTableSchemaRpc() override;
 
  private:
   GetTableSchemaRpc(YBClient* client,
@@ -1492,7 +1492,7 @@ class GetTablegroupSchemaRpc
 
   std::string ToString() const override;
 
-  virtual ~GetTablegroupSchemaRpc();
+  ~GetTablegroupSchemaRpc() override;
 
  private:
   GetTablegroupSchemaRpc(YBClient* client,
@@ -1517,9 +1517,9 @@ master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
   return id;
 }
 
-master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
+master::TableIdentifierPB ToTableIdentifierPB(TableIdView table_id) {
   master::TableIdentifierPB id;
-  id.set_table_id(table_id);
+  id.set_table_id(table_id.data(), table_id.size());
   return id;
 }
 
@@ -1585,7 +1585,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
-                                     const TableId& table_id,
+                                     TableIdView table_id,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      master::IncludeHidden include_hidden,
@@ -1709,7 +1709,7 @@ class CreateXClusterStreamRpc
 
   string ToString() const override;
 
-  virtual ~CreateXClusterStreamRpc();
+  ~CreateXClusterStreamRpc() override;
 
  private:
   void CallRemoteMethod() override;
@@ -1764,7 +1764,7 @@ class DeleteCDCStreamRpc
 
   string ToString() const override;
 
-  virtual ~DeleteCDCStreamRpc();
+  ~DeleteCDCStreamRpc() override;
 
  private:
   void CallRemoteMethod() override;
@@ -1824,7 +1824,7 @@ class CreateSnapshotRpc
     return Format("CreateSnapshotRpc(num_attempts: $0)", num_attempts());
   }
 
-  virtual ~CreateSnapshotRpc() {}
+  ~CreateSnapshotRpc() override {}
 
  private:
   void CallRemoteMethod() override {
@@ -1864,7 +1864,8 @@ class CreateSnapshotRpc
 };
 
 class BootstrapProducerRpc
-    : public ClientMasterRpc<BootstrapProducerRequestPB, BootstrapProducerResponsePB> {
+    : public ClientMasterRpc<
+          master::BootstrapProducerRequestPB, master::BootstrapProducerResponsePB> {
  public:
   BootstrapProducerRpc(
       YBClient* client, BootstrapProducerCallback user_cb, CoarseTimePoint deadline)
@@ -1910,7 +1911,7 @@ class BootstrapProducerRpc
         num_attempts());
   }
 
-  virtual ~BootstrapProducerRpc() {}
+  ~BootstrapProducerRpc() override {}
 
  private:
   void CallRemoteMethod() override {
@@ -1976,7 +1977,7 @@ class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB
 
   std::string ToString() const override;
 
-  virtual ~GetCDCDBStreamInfoRpc() = default;
+  ~GetCDCDBStreamInfoRpc() override = default;
 
  private:
   void CallRemoteMethod() override;
@@ -2035,7 +2036,7 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
 
   std::string ToString() const override;
 
-  virtual ~GetCDCStreamRpc();
+  ~GetCDCStreamRpc() override;
 
  private:
   void CallRemoteMethod() override;
@@ -2114,7 +2115,7 @@ class DeleteNotServingTabletRpc
         num_attempts());
   }
 
-  virtual ~DeleteNotServingTabletRpc() = default;
+  ~DeleteNotServingTabletRpc() override = default;
 
  private:
   void CallRemoteMethod() override {
@@ -2155,7 +2156,7 @@ class GetTableLocationsRpc
         req_.require_tablets_running(), num_attempts());
   }
 
-  virtual ~GetTableLocationsRpc() = default;
+  ~GetTableLocationsRpc() override = default;
 
  private:
   void CallRemoteMethod() override {
@@ -2244,7 +2245,7 @@ class GetXClusterStreamsRpc
         req_.replication_group_id(), num_attempts());
   }
 
-  virtual ~GetXClusterStreamsRpc() {}
+  ~GetXClusterStreamsRpc() override {}
 
  private:
   void CallRemoteMethod() override {
@@ -2299,7 +2300,7 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
         req_.replication_group_id(), num_attempts());
   }
 
-  virtual ~IsXClusterBootstrapRequiredRpc() {}
+  ~IsXClusterBootstrapRequiredRpc() override {}
 
  private:
   void CallRemoteMethod() override {
@@ -2350,7 +2351,7 @@ class AcquireObjectLocksGlobalRpc
         num_attempts());
   }
 
-  virtual ~AcquireObjectLocksGlobalRpc() {}
+  ~AcquireObjectLocksGlobalRpc() override {}
 
  private:
   Status ResponseStatus() override {
@@ -2404,7 +2405,7 @@ class ReleaseObjectLocksGlobalRpc
         num_attempts());
   }
 
-  virtual ~ReleaseObjectLocksGlobalRpc() {}
+  ~ReleaseObjectLocksGlobalRpc() override {}
 
  private:
   Status ResponseStatus() override {
@@ -2449,7 +2450,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 }
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
-                                      const TableId& table_id,
+                                      TableIdView table_id,
                                       CoarseTimePoint deadline,
                                       YBTableInfo* info,
                                       master::IncludeHidden include_hidden,
@@ -2484,7 +2485,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 }
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
-                                      const TableId& table_id,
+                                      TableIdView table_id,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,
@@ -2965,7 +2966,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
   {
     auto str = addr.ToString();
     std::lock_guard l(master_server_addrs_lock_);
-    auto it = std::find(master_server_addrs_.begin(), master_server_addrs_.end(), str);
+    auto it = std::ranges::find(master_server_addrs_, str);
     if (it != master_server_addrs_.end()) {
       master_server_addrs_.erase(it, it + str.size());
     }
@@ -3043,7 +3044,8 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
     return StatusFromPB(resp.error().status());
   }
 
-  return TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  return TableSizeInfo{
+      .table_size = resp.size(), .num_missing_tablets = resp.num_missing_tablets()};
 }
 
 Status YBClient::Data::ReportYsqlDdlTxnStatus(

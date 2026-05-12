@@ -52,11 +52,11 @@ class PgDmlWrite : public PgDml {
 
  protected:
   PgDmlWrite(
-      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+      const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting,
       bool packed = false);
 
   // Prepare write operations.
-  Status Prepare(const PgObjectId& table_id, bool is_region_local);
+  Status Prepare(const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info);
 
   // Allocate column expression.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
@@ -79,7 +79,7 @@ class PgDmlWrite : public PgDml {
  private:
   [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;
 
-  Status DeleteEmptyPrimaryBinds();
+  Status DeleteEmptyKeyBinds();
 
   virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 

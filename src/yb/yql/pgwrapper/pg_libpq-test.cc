@@ -44,17 +44,18 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
-
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -81,6 +82,7 @@ METRIC_DECLARE_counter(transaction_not_found);
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::pgwrapper {
 
@@ -155,14 +157,15 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
 
+  Status TestPagingReadRestart(
+      size_t alter_count, size_t reader_count, bool expect_retryable_errors);
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetPostmasterPidViaShell(pid_t backend_pid);
   Result<string> GetPostmasterPidViaShell(PGConn* conn);
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
-
-  Result<YsqlMetric> GetCatCacheTableMissMetric(const std::string& table_name);
 
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
@@ -944,14 +947,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   // First run is to warm up the cache.
   RETURN_NOT_OK(conn.FetchRow<std::string>(query));
   // Second run is the real test.
-  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  rapidjson::Document explain_json;
-  explain_json.Parse(explain_str.c_str());
-  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  auto explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  auto scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Catalog Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of catalog read requests");
 
@@ -962,19 +963,18 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute(
       "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(
       "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
       " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Limit",
             IllegalState,
             "Unexpected scan type");
-  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Plans"][0]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -986,13 +986,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
   query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -1001,13 +1000,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
     RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
     RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
     RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
-    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-    explain_json.Parse(explain_str.c_str());
-    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+    scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
     SCHECK_EQ(scan_type, "Index Scan",
               IllegalState,
               "Unexpected scan type");
-    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+    SCHECK_GT(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
               IllegalState,
               "Unexpected number of storage read requests");
   }
@@ -1158,19 +1156,22 @@ TEST_F(PgLibPqTest, BulkCopy) {
 
   int customer_key = 0;
   for (int i = 0; i != kNumBatches; ++i) {
-    ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-    for (int j = 0; j != kBatchSize; ++j) {
-      conn.CopyStartRow(7);
-      conn.CopyPutInt32(++customer_key);
-      conn.CopyPutString(Format("Name $0 $1", i, j));
-      conn.CopyPutString(Format("Address $0 $1", i, j));
-      conn.CopyPutInt32(i);
-      conn.CopyPutString(std::to_string(999999876543210 + customer_key));
-      conn.CopyPutString(std::to_string(9876543210 + customer_key));
-      conn.CopyPutString(Format("Comment $0 $1", i, j));
-    }
-
-    ASSERT_OK(conn.CopyEnd());
+    ASSERT_OK(conn.CopyFromStdin(
+        kTableName,
+        [i, &customer_key](
+            PGConn::RowMaker<int32_t, std::string_view, std::string_view, int32_t,
+                             std::string_view, std::string_view, std::string_view>& row) {
+          for (int j = 0; j != kBatchSize; ++j) {
+            ++customer_key;
+            row(customer_key,
+                Format("Name $0 $1", i, j),
+                Format("Address $0 $1", i, j),
+                i,
+                std::to_string(999999876543210 + customer_key),
+                std::to_string(9876543210 + customer_key),
+                Format("Comment $0 $1", i, j));
+          }
+        }));
   }
 
   LOG(INFO) << "Finished copy";
@@ -1280,7 +1281,7 @@ Result<TableId> GetColocationOrTablegroupParentTableId(
     const std::string& database_name,
     const std::string& tablegroup_id) {
   master::GetNamespaceInfoResponsePB resp;
-  Status s = client->GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp);
+  Status s = client->GetNamespaceInfo(database_name, YQL_DATABASE_PGSQL, &resp);
   if (!s.ok()) {
     return s;
   }
@@ -1866,27 +1867,6 @@ Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
-}
-
-Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& table_name) {
-  auto hostport = Format("$0:$1", pg_ts->bind_host(), pg_ts->pgsql_http_port());
-  EasyCurl c;
-  faststring buf;
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  RETURN_NOT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
-  auto found_it =
-      std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
-        return (
-            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
-            metric.labels["table_name"] == table_name);
-      });
-  if (found_it == json_metrics.end()) {
-    return STATUS(NotFound, "metric for " + table_name + " not found");
-  }
-  return *found_it;
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -2535,7 +2515,7 @@ namespace {
 
 class PgLibPqTestRF1: public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.emplace_back("--replication_factor=1");
+    options->replication_factor = 1;
   }
 
   int GetNumMasters() const override {
@@ -2999,10 +2979,6 @@ TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
 class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   }
@@ -3282,30 +3258,44 @@ class CoordinatedRunner {
 
 } // namespace
 
-TEST_F(PgLibPqTest, PagingReadRestart) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
-  const size_t reader_count = 20;
+Status PgLibPqTest::TestPagingReadRestart(
+    size_t alter_count, size_t reader_count, bool expect_retryable_errors) {
+  auto conn = VERIFY_RESULT(Connect());
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
   std::vector<CoordinatedRunner::RepeatableCommand> commands;
-  commands.reserve(reader_count + 1);
-  commands.emplace_back(
-      [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
-        RETURN_NOT_OK(connection->Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100"));
-        RETURN_NOT_OK(connection->Execute("ALTER TABLE t DROP COLUMN v"));
-        return Status::OK();
-  });
+  commands.reserve(reader_count + alter_count);
+  for (size_t i = 0; i < alter_count; ++i) {
+    commands.emplace_back(
+        [connection = std::make_shared<PGConn>(VERIFY_RESULT(Connect())), i] -> Status {
+          RETURN_NOT_OK(connection->ExecuteFormat(
+              "ALTER TABLE t ADD COLUMN v$0 INT DEFAULT 100", i));
+          return connection->ExecuteFormat("ALTER TABLE t DROP COLUMN v$0", i);
+    });
+  }
   for (size_t i = 0; i < reader_count; ++i) {
     commands.emplace_back(
-        [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+        [connection = std::make_shared<PGConn>(VERIFY_RESULT(Connect())),
+         expect_retryable_errors] -> Status {
           const auto res = connection->Fetch("SELECT key FROM t");
+          if (!expect_retryable_errors) {
+            return ResultToStatus(res);
+          }
           return (res.ok() || IsRetryable(res.status())) ? Status::OK() : res.status();
     });
   }
   CoordinatedRunner runner(std::move(commands));
   std::this_thread::sleep_for(10s);
   runner.Stop();
-  ASSERT_FALSE(runner.HasError());
+  SCHECK(!runner.HasError(), IllegalState, "Expected to not see any error");
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, PagingReadRestart) {
+  const auto is_object_locking_enabled = ASSERT_RESULT(
+      cluster_->tablet_server(0)->GetFlag("enable_object_locking_for_table_locks")) == "true";
+  ASSERT_OK(TestPagingReadRestart(
+      1 /* alter_count */, 20 /* reader_count */, !is_object_locking_enabled));
 }
 
 TEST_F(PgLibPqTest, CollationRangePresplit) {
@@ -3351,6 +3341,23 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
 Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
   auto backend_pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
   return GetPostmasterPidViaShell(static_cast<pid_t>(backend_pid));
+}
+
+class PgLibPqConcurrentDdlDml : public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F(PgLibPqConcurrentDdlDml, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+  ASSERT_OK(TestPagingReadRestart(
+      5 /* alter_count */, 15 /* reader_count */, false /* expect_retryable_errors */));
 }
 
 // The motive of this test is to prove that when a postgres backend crashes
@@ -3441,6 +3448,107 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   std::string oom_score_adj;
   getline(fPtr, oom_score_adj);
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
+}
+
+class PgLibPqPgssQtextLeakTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 1;
+    // Auto-analyze tries to create its backing table at RF3, which fails
+    // with only one tserver and causes cascading backend crashes.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_enable_memory_tracking=true");
+  }
+
+  int GetNumMasters() const override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+};
+
+// Verify that repeatedly hitting an encoding error in pg_stat_statements does
+// not leak the qtext file buffer. Before the palloc_extended fix, the buffer
+// was allocated with malloc and freed only on the normal exit path. An
+// ereport(ERROR) from pg_any_to_server would longjmp past the free(), leaking
+// the entire buffer on every call.
+TEST_F(PgLibPqPgssQtextLeakTest, TestNoMemoryLeakOnCorruptedPgssQtext) {
+  constexpr int kNumPopulateQueries = 500;
+  constexpr int kPgMaxIdentifierLen = 63;  // NAMEDATALEN - 1
+  const int kLeakIterations = RegularBuildVsSanitizers(2000, 500);
+  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 200) * 1024;
+  constexpr size_t kCorruptOffset = 500;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"));
+  ASSERT_OK(conn.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Populate pg_stat_statements with unique queries so the qtext file grows large.
+  // Each query uses a padded CTE name to maximize per-entry size.
+  for (int i = 0; i < kNumPopulateQueries; ++i) {
+    std::string cte_name = Format("q_$0", i);
+    while (cte_name.size() < kPgMaxIdentifierLen) {
+      cte_name += '_';
+    }
+    ASSERT_OK(conn.FetchFormat(
+        "WITH $0 AS (SELECT 1) SELECT * FROM $0 a1, $0 a2, $0 a3", cte_name));
+  }
+
+  auto entry_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%q\\_%' ESCAPE '\\'"));
+  LOG(INFO) << "pg_stat_statements populated with " << entry_count << " entries";
+  ASSERT_EQ(entry_count, kNumPopulateQueries);
+
+  auto data_dir = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW data_directory"));
+  std::string qtext_path = JoinPathSegments(data_dir, "pg_stat_tmp/pgss_query_texts.stat");
+
+  // Inject an invalid UTF-8 byte (0xFF) into the qtext file. This causes
+  // pg_any_to_server to throw ERROR on the entry that spans this offset.
+  std::string file_contents;
+  {
+    std::ifstream ifs(qtext_path, std::ios::binary);
+    ASSERT_TRUE(ifs.good()) << "Failed to open qtext file: " << qtext_path;
+    file_contents.assign(
+        std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+  }
+  LOG(INFO) << "Query text file: " << qtext_path << " (" << file_contents.size() << " bytes)";
+  ASSERT_GT(file_contents.size(), kCorruptOffset);
+
+  file_contents[kCorruptOffset] = static_cast<char>(0xFF);
+  {
+    std::ofstream ofs(qtext_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(ofs.good()) << "Failed to write qtext file: " << qtext_path;
+    ofs.write(file_contents.data(), file_contents.size());
+  }
+
+  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  auto get_backend_rss_kb = [&conn, backend_pid]() -> Result<int64_t> {
+    auto rss_bytes = VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT yb_pg_stat_get_backend_rss_mem_bytes(beid) "
+        "FROM pg_stat_get_backend_idset() AS beid "
+        "WHERE pg_stat_get_backend_pid(beid) = $0", backend_pid)));
+    return rss_bytes / 1024;
+  };
+
+  auto rss_before = ASSERT_RESULT(get_backend_rss_kb());
+  LOG(INFO) << "Backend PID: " << backend_pid << ", RSS before: " << rss_before << " KB";
+
+  for (int i = 0; i < kLeakIterations; ++i) {
+    auto result = conn.Fetch("SELECT count(*) FROM pg_stat_statements");
+    ASSERT_NOK(result);
+    ASSERT_STR_CONTAINS(result.status().ToString(), "invalid byte sequence");
+  }
+
+  auto rss_after = ASSERT_RESULT(get_backend_rss_kb());
+  int64_t rss_growth_kb = rss_after - rss_before;
+  LOG(INFO) << "RSS before: " << rss_before << " KB, after: " << rss_after
+            << " KB, growth: " << rss_growth_kb << " KB";
+
+  ASSERT_LT(rss_growth_kb, kMaxRssGrowthKb)
+      << Format(
+             "RSS grew by $0 KB ($1 MB) after $2 iterations - likely memory leak. "
+             "File was $3 bytes; theoretical leak if unfixed: ~$4 MB.",
+             rss_growth_kb, rss_growth_kb / 1024, kLeakIterations, file_contents.size(),
+             (static_cast<int64_t>(file_contents.size()) * kLeakIterations) / (1024 * 1024));
 }
 
 TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
@@ -3929,8 +4037,7 @@ TEST_F(PgOidCollisionReservedNormalOid, PgOidCollisionSystemPostgresTest) {
   ASSERT_TRUE(user_created_db_oids == expected) << yb::ToString(user_created_db_oids);
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   master::GetNamespaceInfoResponsePB namespace_info;
-  ASSERT_OK(client->GetNamespaceInfo(
-      "" /* namespace_id */, "system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
+  ASSERT_OK(client->GetNamespaceInfo("system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
 
   const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(
       namespace_info.namespace_().id()));
@@ -4022,18 +4129,18 @@ TEST_F(PgLibPqTest, DropSequenceTest) {
 
   // Verify that if DROP SEQUENCE fails, the sequence is actually not
   // dropped.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('foo')")), 1);
 
   // Verify same behavior for sequences created using CREATE TABLE.
   ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 1);
 
   // Verify same behavior is seen while trying to drop the table.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP TABLE t"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 2);
 
@@ -4244,22 +4351,55 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     // Check that the sum of the cache misses for all the indexes on each table is equal to the
     // table-level cache miss metric.
     int64_t total_table_cache_misses = 0;
+    std::unordered_map<std::string, int64_t> per_table_table_misses;
     for (const auto& metric : metrics) {
       if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
         auto table_name = metric.labels.at("table_name");
         ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
             << "Expected sum of index cache misses for table " << table_name
             << " to be equal to the table cache misses";
+        per_table_table_misses[table_name] = metric.value;
         total_table_cache_misses += metric.value;
         LOG_IF(INFO, metric.value > 0)
             << "Table " << table_name << " has " << metric.value << " cache misses";
       }
     }
     ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
+
+    // Verify that list miss and neg miss metrics are exported and
+    // that list_misses + neg_misses <= total table misses for each table.
+    int64_t total_list_misses = 0;
+    int64_t total_neg_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        total_list_misses += metric.value;
+        ASSERT_LE(metric.value, per_table_table_misses[table_name])
+            << "List misses for " << table_name << " should not exceed total table misses";
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " list cache misses";
+      }
+      if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        total_neg_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " negative cache misses";
+      }
+    }
+    LOG(INFO) << "Total list misses: " << total_list_misses
+              << ", total neg misses: " << total_neg_misses;
+    ASSERT_GT(total_list_misses + total_neg_misses, 0)
+        << "Expected at least some list or neg misses";
   }
 }
 
 class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+ public:
+  enum class NegCacheTestType {
+    kPreload,
+    kNoPreload,
+    kNegCache
+  };
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4267,26 +4407,43 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
-  void TestAmopNegCacheMiss(bool preloaded) {
+  struct AmopMetrics {
+    int64_t total;
+    int64_t negative;
+  };
+
+  void TestAmopNegCacheMiss(NegCacheTestType test_type) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
     auto conn2 = ASSERT_RESULT(Connect());
-    auto runQueryAndGetMetricLambda = [&]() -> Result<int64_t> {
-      // This query currently causes a cache lookup on pg_amop for a row that doesn't exist
+    auto runQueryAndGetMetrics = [&]() -> Result<AmopMetrics> {
       auto str = VERIFY_RESULT(
           conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
       LOG(INFO) << "output " << str;
 
-      auto value = VERIFY_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_amop"));
-      LOG(INFO) << "metric value for pg_amop misses " << value.value;
-      return value.value;
+      AmopMetrics m;
+      m.total = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
+      m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric("pg_amop"));
+      LOG(INFO) << "pg_amop total misses " << m.total
+                << ", neg misses " << m.negative;
+      return m;
     };
 
-    int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-    int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics());
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics());
 
-    ASSERT_GT(value2, value1);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        ASSERT_EQ(m2.total, m1.total);
+        ASSERT_EQ(m2.negative, m1.negative);
+      break;
+      case NegCacheTestType::kPreload: FALLTHROUGH_INTENDED;
+      case NegCacheTestType::kNoPreload:
+        ASSERT_GT(m2.total, m1.total);
+        ASSERT_GT(m2.negative, m1.negative);
+        break;
+    }
 
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
@@ -4298,20 +4455,39 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     LOG(INFO) << "Completed invalid tests";
 
     ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
-    int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics());
 
-    if (preloaded) {
-      // When preloaded, allowing neg caching already returns a neg cache hit
-      // so we should see no further misses on pg_amop at this point.
-      ASSERT_EQ(value3, value2);
-    } else {
-      // When not preloaded, we need one additional query to create the neg
-      // cache entry, after which we should see no further misses.
-      ASSERT_GT(value3, value2);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        ASSERT_EQ(m3.total, m1.total);
+        ASSERT_EQ(m3.negative, m1.negative);
+      break;
+      case NegCacheTestType::kPreload:
+        // When preloaded and neg caching now allowed, the table scan is
+        // skipped (fully loaded), so neither total nor neg misses
+        // increase.
+        ASSERT_EQ(m3.total, m2.total);
+        ASSERT_EQ(m3.negative, m2.negative);
+        break;
+      case NegCacheTestType::kNoPreload:
+        ASSERT_GT(m3.total, m2.total);
+        ASSERT_GT(m3.negative, m2.negative);
 
-      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-      ASSERT_EQ(value4, value3);
+        auto m4 = ASSERT_RESULT(runQueryAndGetMetrics());
+        ASSERT_EQ(m4.total, m3.total);
+        ASSERT_EQ(m4.negative, m3.negative);
+        break;
     }
+  }
+};
+
+class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
@@ -4319,17 +4495,82 @@ class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false");
+    options->extra_tserver_flags.emplace_back(
         "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
+// Default behavior: negative caching is enabled.
 TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
-  TestAmopNegCacheMiss(false);
+  TestAmopNegCacheMiss(NegCacheTestType::kNegCache);
 }
 
-TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(true);
+// Disable negative caching.
+TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kNoPreload);
+}
+
+// Disable negative caching and preload pg_amop.
+TEST_F_EX(PgLibPqTest, PgAmopPreloadCacheTest, PgLibPqAmopPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kPreload);
+}
+
+class PgLibPqOperatorCacheLazyListTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_catalog_preload_additional_table_list=pg_operator");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgOperatorCacheLazyList, PgLibPqOperatorCacheLazyListTest) {
+  // Phase 1: With yb_catcache_list_from_preloaded_limit = 100000 (default),
+  // the lazy list build should satisfy the list miss locally -- no RPC misses.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_catcache_list_from_preloaded_limit = 100000"));
+
+    auto start_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto start_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+
+    auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 2 + 2"));
+    ASSERT_EQ(result, 4);
+
+    auto end_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto end_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+    LOG(INFO) << "Lazy build (limit=100K): table misses " << start_misses
+              << " -> " << end_misses
+              << ", list misses " << start_list << " -> " << end_list;
+    ASSERT_EQ(end_misses, 0);
+    ASSERT_EQ(end_list, 0);
+  }
+
+  // Phase 2: With yb_catcache_list_from_preloaded_limit = 0, the lazy build
+  // is disabled and the list miss must go to the master -- expect misses.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_catcache_list_from_preloaded_limit = 0"));
+
+    auto start_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto start_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+
+    auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 2 + 2"));
+    ASSERT_EQ(result, 4);
+
+    auto end_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto end_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+    LOG(INFO) << "No lazy build (limit=0): table misses " << start_misses
+              << " -> " << end_misses
+              << ", list misses " << start_list << " -> " << end_list;
+    ASSERT_GT(end_misses, start_misses);
+    ASSERT_GT(end_list, start_list);
+  }
 }
 
 class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
@@ -4354,25 +4595,33 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
       "CREATE UNIQUE INDEX ON foo (v1, r);"
       "INSERT INTO foo VALUES (1,1,1,1);"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_total = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_neg = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_inherits"));
 
     // Run the query on a fresh conn
     auto conn2 = ASSERT_RESULT(Connect());
     auto str = conn2.FetchAllAsString(
         "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
         "v2=foo.v2+1");
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_total = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_neg = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_inherits"));
+
+    LOG(INFO) << "pg_inherits total misses: " << start_total << " -> " << end_total
+              << ", neg misses: " << start_neg << " -> " << end_neg;
 
     int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "SELECT v2 FROM foo WHERE h=1 AND r=1"));
     ASSERT_EQ(2, updated_v2);
 
-    // Given we are preloaded, we should not have any cache misses (incl neg misses)
-    // for the query above which should cause lookups for ancestors of a table in pg_inherits
-    if (!minimal_preload)
-      ASSERT_EQ(end_value.value, start_value.value);
-    else
-      ASSERT_GT(end_value.value, start_value.value);
+    if (!minimal_preload) {
+      ASSERT_EQ(end_total, start_total);
+      ASSERT_EQ(end_neg, start_neg);
+    } else {
+      ASSERT_GT(end_total, start_total);
+      // Some of the misses under minimal preload should be negative (lookups
+      // for non-existent parent relations).
+      ASSERT_GE(end_neg, start_neg);
+    }
   }
 };
 
@@ -4405,7 +4654,7 @@ class BasePgEnumTest : public PgLibPqTest {
         "CREATE TABLE e (c color);"
         "INSERT INTO e VALUES ('cerulean');"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
     auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4415,15 +4664,15 @@ class BasePgEnumTest : public PgLibPqTest {
     // Trigger ENUMOID via enum->text output.
     auto s2 = ASSERT_RESULT(conn2.FetchAllAsString("SELECT c::text FROM e"));
 
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
-    LOG(INFO) << "pg_enum cache misses start value: " << start_value.value
-              << " end value: " << end_value.value;
+    LOG(INFO) << "pg_enum cache misses start value: " << start_value
+              << " end value: " << end_value;
 
     if (is_pg_enum_preloaded) {
-      ASSERT_EQ(end_value.value, start_value.value);
+      ASSERT_EQ(end_value, start_value);
     } else {
-      ASSERT_EQ(end_value.value, start_value.value + 2);
+      ASSERT_EQ(end_value, start_value + 2);
     }
   }
 };
@@ -4458,6 +4707,94 @@ TEST_F_EX(PgLibPqTest, PgEnumPreloadMinPreloadTest, BasePgEnumPreloadMinimalPrel
   RunTest(false /* preloaded */);
 }
 
+// Test that negative caching works correctly when ysql_minimal_catalog_caches_preload=true.
+TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimalPreloadTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create a user-defined enum type.
+  ASSERT_OK(conn.Execute(
+      "CREATE TYPE user_color AS ENUM ('red', 'green', 'blue');"
+      "CREATE TABLE user_enum_table (c user_color);"
+    ));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='23,24'"));
+  ASSERT_OK(conn2.Execute("INSERT INTO user_enum_table VALUES ('red')"));
+
+  auto neg_before = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_enum"));
+
+  auto result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT c::text FROM user_enum_table"));
+  ASSERT_EQ(result, "red");
+
+  auto cast_result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT 'green'::user_color::text"));
+  ASSERT_EQ(cast_result, "green");
+
+  auto neg_after = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_enum"));
+  LOG(INFO) << "pg_enum neg misses: " << neg_before << " -> " << neg_after;
+
+  // pg_enum is preloaded and the enum values exist, so there should be
+  // no neg misses (all lookups find the tuple).
+  ASSERT_EQ(neg_after, 0);
+}
+
+// Test fixture with ysql_catalog_preload_additional_tables=true (preloads pg_proc, pg_cast, etc.)
+// and ysql_minimal_catalog_caches_preload=true.
+class PgMinimalPreloadAdditionalTablesTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_catalog_preload_additional_tables=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// Test that user-defined functions whose name collides with a builtin can be
+// resolved correctly when minimal preloading + additional table preload are on.
+// gen_random_uuid is a builtin (pg_catalog) and is commonly also installed in
+// the public schema via the pgcrypto extension.
+TEST_F_EX(PgLibPqTest, PgProcMinPreloadBuiltinNameCollision,
+          PgMinimalPreloadAdditionalTablesTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create a user-defined function that shadows a builtin name.
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION public.gen_random_uuid() "
+      "RETURNS uuid AS $$ SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid $$ "
+      "LANGUAGE sql"));
+
+  // Open a new connection so catcache lists are freshly loaded from preload.
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // The direct call goes through FuncnameGetCandidates ->
+  // SearchSysCacheList(PROCNAMEARGSNSP, ...) and should invoke the
+  // user-defined version, not the pg_catalog builtin.
+  auto uuid = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT public.gen_random_uuid()::text"));
+  ASSERT_EQ(uuid, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
+}
+
+// Test that a user-defined function with a unique name (no builtin collision)
+// works correctly with minimal preloading + additional table preload.
+TEST_F_EX(PgLibPqTest, PgProcMinPreloadUniqueUserFunc,
+          PgMinimalPreloadAdditionalTablesTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION my_custom_add(a int, b int) RETURNS int AS $$ "
+      "SELECT a + b $$ LANGUAGE sql"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  auto result = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      "SELECT my_custom_add(3, 4)"));
+  ASSERT_EQ(result, 7);
+}
+
 // Test that preloading pg_range prevents cache misses on the RANGEMULTIRANGE catcache.
 class PgRangeTest : public PgLibPqTest,
       public ::testing::WithParamInterface<bool> {
@@ -4484,7 +4821,7 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
       "    resource_id    INT PRIMARY KEY,"
       "    active_hours   INT4MULTIRANGE)"));
 
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
   auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4492,15 +4829,15 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
   ASSERT_OK(conn2.Execute("INSERT INTO resource_schedule (resource_id, active_hours)"
                           "VALUES (101, '{[9,12), [13,17)}')"));
 
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
-  LOG(INFO) << "pg_range cache misses start value: " << start_value.value
-            << " end value: " << end_value.value;
+  LOG(INFO) << "pg_range cache misses start value: " << start_value
+            << " end value: " << end_value;
 
   if (is_pg_range_preloaded) {
-    ASSERT_EQ(end_value.value, start_value.value);
+    ASSERT_EQ(end_value, start_value);
   } else {
-    ASSERT_EQ(end_value.value, start_value.value + 2);
+    ASSERT_EQ(end_value, start_value + 2);
   }
 };
 
@@ -4521,11 +4858,21 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   auto conn2 = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&conn1]() -> void {
-    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)"));
+    // Retry on 40001 (serialization failure) which can occur due to
+    // running CREATE TABLE concurrently with the other thread.
+    Status s;
+    do {
+      s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
   });
   thread_holder.AddThreadFunctor([&conn2]() -> void {
-    ASSERT_OK(conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)"));
+    Status s;
+    do {
+      s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
@@ -4898,7 +5245,16 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   result = ASSERT_RESULT(conn.FetchAllAsString(
     "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
   LOG(INFO) << "result: " << result;
-  std::string tmpname = std::tmpnam(nullptr);
+
+  std::unique_ptr<WritableFile> file_handle;
+  std::string tmpname;
+  ASSERT_OK(yb::Env::Default()->NewTempWritableFile(
+    WritableFileOptions(),
+    "/tmp/tmp_fileXXXXXX",
+    &tmpname,
+    &file_handle));
+  ASSERT_OK(file_handle->Close());
+
   auto hostport = cluster_->ysql_hostport(0);
   std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
   std::string ysql_dump_cmd = Format(
@@ -5004,12 +5360,7 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_utf8_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_utf8_db result: " << result;
-  // MacOS and Linux have different sort order of en_US.UTF-8 collation.
-#if defined(__linux__)
   ASSERT_EQ(result, utf8_expected);
-#else
-  ASSERT_EQ(result, c_expected);
-#endif
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_x_icu_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
@@ -5069,11 +5420,7 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // TODO(#28742): Fix interaction with ysql_yb_ddl_transaction_block_enabled here.
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
@@ -5085,9 +5432,10 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
 // StartTransactionCommand and CommitTransactionCommand are called internally by ANALYZE
 // for (1) the ANALYZE command itself and
 //     (2) analyzing each individual table selected by the ANALYZE.
-// In read committed isolation, we retry aborted DDL queries. An unclean retry of ANALYZE having
-// set SecurityRestrictionContext causes assertion failure in StartTransactionCommand, making
-// its connection FATAL.
+// In read committed isolation, we used to retry aborted ANALYZE queries.
+// An unclean retry of ANALYZE having set SecurityRestrictionContext, in_progress_list_len, or
+// other variables causes assertion failure in StartTransactionCommand, making
+// its connection FATAL. So, retries on `ANALYZE` are disabled.
 TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) {
   auto conn = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -5108,11 +5456,10 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
         // Setting yb_use_internal_auto_analyze_service_conn simulates ANALYZE command
         // as ANALYZE command run by auto analyze service -- auto-ANALYZE command has
         // a lower txn priority than regular DDLs, so that ANALYZE in this thread
-        // is always aborted by DROP TABLE and retries later on.
+        // is always aborted by DROP TABLE.
         ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = TRUE"));
         ASSERT_OK(conn.Execute("SET yb_debug_log_internal_restarts=TRUE"));
         ASSERT_OK(conn.Execute("SET log_min_messages=DEBUG3"));
-        ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=300"));
         auto status = conn.Execute("ANALYZE");
     }
   });
@@ -5124,6 +5471,102 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
   stop = true;
   analyze_thread.join();
   ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+// Test dumping tablet data works for leaders and followers and each returns the same XOR hash.
+TEST_F(PgLibPqTest, DumpTabletData) {
+  ASSERT_OK(EnsureClientCreated());
+
+  const auto namespace_name = "yugabyte";
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(namespace_name));
+  const auto table_name = "tbl1";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", table_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", table_name));
+
+  std::vector<TabletId> tablet_ids;
+  auto table_names = ASSERT_RESULT(client_->ListTables(table_name));
+  ASSERT_EQ(table_names.size(), 1);
+  const auto yb_table_name = table_names.front();
+  ASSERT_OK(client_->GetTablets(yb_table_name, 0 /* max_tablets */, &tablet_ids, NULL));
+  ASSERT_EQ(tablet_ids.size(), 1);
+  const auto tablet_id = tablet_ids.front();
+
+  // Wait for rows to get replicated to followers.
+  SleepFor(1s * kTimeMultiplier);
+
+  ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
+}
+
+// Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
+// tablets, but same data returns the same XOR hash.
+TEST_F(PgLibPqTest, TestGetTableXorHash) {
+  ASSERT_OK(EnsureClientCreated());
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto namespace_name = "colocated_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", namespace_name));
+  conn = ASSERT_RESULT(ConnectToDB(namespace_name));
+
+  // Non-colocated table with 1 tablet.
+  const auto tbl1 = "tbl1";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 1 "
+      "TABLETS",
+      tbl1));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", tbl1));
+  const auto tbl1_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
+
+  // Non-colocated table with 5 tablets.
+  const auto tbl2 = "tbl2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 5 "
+      "TABLETS",
+      tbl2));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", tbl2, tbl1));
+  const auto tbl2_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
+
+  // Colocated table with 1 tablet.
+  const auto colocated_tbl = "colocated_tbl";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT)", colocated_tbl));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", colocated_tbl, tbl1));
+  const auto colocated_tbl_id =
+      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, colocated_tbl));
+
+  auto tbl1_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl1_id)));
+  auto tbl2_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl2_id)));
+  auto colocated_tbl_output =
+      ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", colocated_tbl_id)));
+
+  auto extract_from_output = [&](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    LOG(INFO) << "Command output: " << output;
+    // Extract the row count from the output.
+    // Total row count: 100
+    // Total XOR hash: 1234567890
+    const auto total_row_count_prefix = "Total row count: ";
+    const auto total_xor_hash_prefix = "Total XOR hash: ";
+    auto row_count_pos = output.find(total_row_count_prefix);
+    auto xor_hash_pos = output.find(total_xor_hash_prefix);
+    auto row_count = std::stoull(output.substr(row_count_pos + strlen(total_row_count_prefix)));
+    auto xor_hash = std::stoull(output.substr(xor_hash_pos + strlen(total_xor_hash_prefix)));
+    LOG(INFO) << "Row count: " << row_count << ", XOR hash: " << xor_hash;
+    return std::make_pair(row_count, xor_hash);
+  };
+  auto [tbl1_row_count, tbl1_xor_hash] = extract_from_output(tbl1_output);
+  auto [tbl2_row_count, tbl2_xor_hash] = extract_from_output(tbl2_output);
+  auto [colocated_tbl_row_count, colocated_tbl_xor_hash] =
+      extract_from_output(colocated_tbl_output);
+
+  ASSERT_EQ(tbl1_row_count, 10);
+  ASSERT_NE(tbl1_xor_hash, 0);
+
+  ASSERT_EQ(tbl2_row_count, 10);
+  ASSERT_EQ(tbl1_xor_hash, tbl2_xor_hash);
+
+  ASSERT_EQ(colocated_tbl_row_count, 10);
+  ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
 }
 
 } // namespace yb::pgwrapper

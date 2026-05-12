@@ -2,8 +2,8 @@ import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 
-import documentationIcon from '../../../redesign/assets/documentation.svg';
-import lightBulbIcon from '../images/lightbulb.svg';
+import DocumentationIcon from '../../../redesign/assets/documentation.svg?img';
+import LightBulbIcon from '../images/lightbulb.svg?img';
 import { EXTERNAL_LINKS } from '../helpers/constants';
 import { IndexSchemaRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
@@ -37,14 +37,14 @@ export const IndexSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary }
             target="_blank"
             rel="noopener noreferrer"
           >
-            <img src={documentationIcon} alt="more" className="learnMoreImage" />
+            <img src={DocumentationIcon} alt="more" className="learnMoreImage" />
             <p className="learnPerfAdvisorText">
               {t('clusterDetail.performance.advisor.IndexPerformanceTuning')}
             </p>
           </a>
         </div>
         <div className="recommendationAdvice">
-          <img src={lightBulbIcon} alt="more" className="learnMoreImage" />
+          <img src={LightBulbIcon} alt="more" className="learnMoreImage" />
           <p className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}

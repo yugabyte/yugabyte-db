@@ -249,7 +249,7 @@ As defined in the policy, the `current_user` can only access their own row.
 
 ## Step 6. Bypass row-level security
 
-YugabyteDB has **BYPASSRLS** and **NOBYPASSRLS** permissions, which can be assigned to a role. By default, table owner and superuser have `BYPASSRLS` permissions assigned, so these users can skip the row-level security. The other roles in a database will have `NOBYPASSRLS` assigned to them by default.
+YugabyteDB has **BYPASSRLS** and **NOBYPASSRLS** attributes, which can be assigned to a role. By default, table owner and superuser have `BYPASSRLS` assigned, so these users can skip the row-level security. The other roles in a database will have `NOBYPASSRLS` assigned to them by default.
 
 Assign `BYPASSRLS` to user `joe` so they can see all the rows in the employees table.
 

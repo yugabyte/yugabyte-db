@@ -1,8 +1,10 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Transient;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -26,4 +28,10 @@ public class UpdatePitrConfigParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time interval between snapshots")
   @Constraints.Required
   public long intervalInSeconds = 86400L;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  @Transient
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

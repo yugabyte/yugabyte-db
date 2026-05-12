@@ -85,19 +85,19 @@ SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":12} }', '{"result": { "$bson
 
 -- $bsonSize operator negative tests
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": [1,2] }}');
-ERROR:  Expression $bsonSize takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $bsonSize requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": [1] }}');
-ERROR:  $bsonSize requires a document input, found: int
+ERROR:  Expected 'document' type for $bsonSize but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": 11 }}');
-ERROR:  $bsonSize requires a document input, found: int
+ERROR:  Expected 'document' type for $bsonSize but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": true }}');
-ERROR:  $bsonSize requires a document input, found: bool
+ERROR:  Expected 'document' type for $bsonSize but found 'bool' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": "12absd" }}');
-ERROR:  $bsonSize requires a document input, found: string
+ERROR:  Expected 'document' type for $bsonSize but found 'string' type
 SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$bsonSize": "$a" }}');
-ERROR:  $bsonSize requires a document input, found: int
+ERROR:  Expected 'document' type for $bsonSize but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"$regex": "a*b", "$options":""} }}');
-ERROR:  $bsonSize requires a document input, found: regex
+ERROR:  Expected 'document' type for $bsonSize but found 'regex' type
 -- $binarySize operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "" }}');
           bson_dollar_project          
@@ -168,7 +168,7 @@ SELECT * FROM bson_dollar_project(('{"input" : "' || LPAD('', 16000000, 'a') || 
 
 -- $binarySize operator , document based tests
 SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$binarySize": "$a" }}');
-ERROR:  $binarySize requires a string or BinData argument, found: int
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: int
 SELECT * FROM bson_dollar_project('{"a":"temp", "b":{"a":12} }', '{"result": { "$binarySize": "$a" }}');
           bson_dollar_project          
 ---------------------------------------------------------------------
@@ -183,14 +183,14 @@ SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":"world!"} }', '{"result": { 
 
 -- $binarySize operator negative tests
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": [1,2] }}');
-ERROR:  Expression $binarySize takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $binarySize requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": [1] }}');
-ERROR:  $binarySize requires a string or BinData argument, found: int
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": 11 }}');
-ERROR:  $binarySize requires a string or BinData argument, found: int
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": true }}');
-ERROR:  $binarySize requires a string or BinData argument, found: bool
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: bool
 SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$binarySize": "$a" }}');
-ERROR:  $binarySize requires a string or BinData argument, found: int
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$regex": "a*b", "$options":""} }}');
-ERROR:  $binarySize requires a string or BinData argument, found: regex
+ERROR:  The $binarySize operator expects either a string or BinData argument, but received: regex

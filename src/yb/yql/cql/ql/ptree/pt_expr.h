@@ -144,7 +144,7 @@ class PTExpr : public TreeNode {
   }
 
   // Expression return result set column type in QL format.
-  virtual void rscol_type_PB(QLTypePB *pb_type ) const;
+  virtual void rscol_type_PB(QLTypeMsg *pb_type ) const;
 
   virtual void set_ql_type(const std::shared_ptr<QLType>& ql_type) {
     ql_type_ = ql_type;
@@ -848,9 +848,12 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   Status ToDouble(long double *value, bool negate) const;
   Status ToDecimal(util::Decimal *value, bool negate) const;
   Status ToDecimal(std::string *value, bool negate) const;
+  Result<Slice> ToDecimal(ThreadSafeArena& arena, bool negate) const;
   Status ToVarInt(std::string *value, bool negate) const;
+  Result<Slice> ToVarInt(ThreadSafeArena& arena, bool negate) const;
 
   std::string ToString() const;
+  Slice ToString(ThreadSafeArena& arena) const;
 
   Status ToString(std::string *value) const;
   Status ToTimestamp(int64_t *value, const QLMetrics *ql_metrics) const;
@@ -858,6 +861,10 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   Status ToTime(int64_t *value) const;
 
   Status ToInetaddress(InetAddress *value) const;
+
+ private:
+  template <class T>
+  Result<T> FromString(bool negate) const;
 };
 
 // Class representing a json operator.
@@ -1278,7 +1285,7 @@ class PTExprAlias : public PTOperator1 {
   }
 
   // Alias result set column type in QL format.
-  virtual void rscol_type_PB(QLTypePB *pb_type) const override {
+  virtual void rscol_type_PB(QLTypeMsg *pb_type) const override {
     return op1_->rscol_type_PB(pb_type);
   }
 

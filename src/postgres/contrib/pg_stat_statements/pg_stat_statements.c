@@ -140,7 +140,8 @@ typedef enum pgssVersion
 	PGSS_V1_9,
 	PGSS_V1_10,
 	YB_PGSS_V1_10,
-	YB_V2_0_PGSS_V1_10
+	YB_V2_0_PGSS_V1_10,
+	YB_V2_1_PGSS_V1_10,
 } pgssVersion;
 
 /*
@@ -200,6 +201,10 @@ typedef enum YbIntCounters
 	YB_INT_READ_RESTART_RETRIES,
 	YB_INT_TOTAL_RETRIES,
 	YB_INT_DOCDB_ROWS_RETURNED,
+	YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED,
+	YB_INT_DOCDB_SEEKS,
+	YB_INT_DOCDB_NEXTS,
+	YB_INT_DOCDB_PREVS,
 
 	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
 } YbIntCounters;
@@ -211,6 +216,8 @@ typedef enum YbDoubleCounters
 {
 	YB_DBL_CATALOG_WAIT_TIME_MS,
 	YB_DBL_DOCDB_WAIT_TIME_MS,
+	YB_DBL_DOCDB_READ_TIME_MS,
+	YB_DBL_DOCDB_WRITE_TIME_MS,
 
 	YB_DBL_COUNTERS_LAST = YB_NUM_COUNTERS_DBL
 } YbDoubleCounters;
@@ -345,6 +352,37 @@ static int	exec_nested_level = 0;
 /* Current nesting depth of planner calls */
 static int	plan_nested_level = 0;
 
+/*
+ * YB: Session-local set of queryIds whose queries contain constants that
+ * require normalization (i.e. clocations_count > 0 at parse time).
+ *
+ * An entry is added by pgss_post_parse_analyze when the query has constants
+ * needing normalization.
+ *
+ * pgss_store consults this set when the shared hash table entry is missing and
+ * jstate is NULL: if the queryId is present, the entry was evicted or reset
+ * and we discard stats rather than storing unnormalized text; if absent, the
+ * query never needed normalization and raw text is stored normally.
+ *
+ * A hash set keyed on queryId (rather than a single boolean) is needed so that
+ * the extended query protocol — where multiple queries with different
+ * normalization needs can be parsed before any are executed — is handled
+ * correctly.
+ *
+ * The set is session-local because it tracks what this backend has parsed;
+ * every backend must parse a query before executing it, so the set is always
+ * populated before it is read.  Session-local storage also avoids the need for
+ * shared-memory sizing, locking, and cleanup on backend exit.
+ *
+ * queryIds are never removed from this set; once recorded, an id remains until
+ * backend exit.  That is safe: at worst a recycled queryId is treated as
+ * needing normalization and we discard a few stats, never the reverse error of
+ * storing unnormalized text.
+ */
+typedef uint64 YbPgssQueryNeedingNormalization;
+
+static HTAB *yb_pgss_queries_needing_normalization = NULL;
+
 /* Saved hook values in case of unload */
 static shmem_request_hook_type prev_shmem_request_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
@@ -381,7 +419,7 @@ static const struct config_enum_entry track_options[] =
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
-#define YB_DEFAULT_QTEXT_LIMIT_KB (512 * 1024)
+#define YB_DEFAULT_QTEXT_LIMIT_KB -1
 
 static int	pgss_max;			/* max # statements to track */
 static int	pgss_track;			/* tracking level */
@@ -443,6 +481,7 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_0_pg_stat_statements_1_10);
+PG_FUNCTION_INFO_V1(yb_2_1_pg_stat_statements_1_10);
 
 static void pgss_shmem_request(void);
 static void pgss_shmem_startup(void);
@@ -515,6 +554,10 @@ static int	query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 static void enforce_bucket_factor(int *value);
 static bool yb_track_nested_queries(void);
 static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
+static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
+												   int *query_len_p);
+static void yb_pgss_mark_needs_normalization(uint64 queryId);
+static bool yb_pgss_needs_normalization(uint64 queryId);
 
 /*
  * Module load callback
@@ -761,6 +804,9 @@ getYsqlStatementStats(void *cb_arg)
 	Size		qbuffer_size = 0;
 	pgssEntry  *entry;
 
+	/*
+	 * TODO(gauravsingh): Add memory context cleanup to prevent memory leak.
+	 */
 	qbuffer = qtext_load_file(&qbuffer_size);
 	if (qbuffer == NULL)
 		return;
@@ -823,7 +869,7 @@ getYsqlStatementStats(void *cb_arg)
 
 	LWLockRelease(pgss->lock);
 
-	free(qbuffer);
+	pfree(qbuffer);
 }
 
 /*
@@ -1330,7 +1376,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	if (fwrite(&pgss->stats, sizeof(pgssGlobalStats), 1, file) != 1)
 		goto error;
 
-	free(qbuffer);
+	pfree(qbuffer);
 	qbuffer = NULL;
 
 	if (FreeFile(file))
@@ -1355,11 +1401,51 @@ error:
 			 errmsg("could not write file \"%s\": %m",
 					PGSS_DUMP_FILE ".tmp")));
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 	if (file)
 		FreeFile(file);
 	unlink(PGSS_DUMP_FILE ".tmp");
 	unlink(PGSS_TEXT_FILE);
+}
+
+/*
+ * YB: Lazily initialize the session-local hash set that tracks which queryIds
+ * need normalization.
+ *
+ * There is no extension hook at connection startup to allocate this table, and
+ * many backends never execute a query with normalizable constants, so we create
+ * the hash on first use rather than at shared-memory attach time.
+ */
+static void
+yb_pgss_init_normalization_set(void)
+{
+	HASHCTL		ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(YbPgssQueryNeedingNormalization);
+	ctl.entrysize = sizeof(YbPgssQueryNeedingNormalization);
+	ctl.hcxt = TopMemoryContext;
+	yb_pgss_queries_needing_normalization = hash_create("YB pgss queries needing normalization",
+												16,
+												&ctl,
+												HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
+static void
+yb_pgss_mark_needs_normalization(uint64 queryId)
+{
+	if (!yb_pgss_queries_needing_normalization)
+		yb_pgss_init_normalization_set();
+	hash_search(yb_pgss_queries_needing_normalization, &queryId, HASH_ENTER, NULL);
+}
+
+static bool
+yb_pgss_needs_normalization(uint64 queryId)
+{
+	if (!yb_pgss_queries_needing_normalization)
+		return false;
+	return hash_search(yb_pgss_queries_needing_normalization, &queryId,
+					   HASH_FIND, NULL) != NULL;
 }
 
 /*
@@ -1395,6 +1481,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
+	{
+		yb_pgss_mark_needs_normalization(query->queryId);
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1407,6 +1495,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   NULL,
 				   jstate,
 				   false /* yb_is_sensitive_stmt */ );
+	}
 }
 
 /*
@@ -1736,19 +1825,47 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * YB note: UTILITY statements are the only kind that are treated as
 		 * sensitive. The other pgss hooks (planner, analyze, end-of-execution)
 		 * are not invoked for utility statements.
+		 *
+		 * For BACKFILL INDEX commands, generate a normalized query string so
+		 * that all backfill calls for the same index are aggregated.
 		 */
-		pgss_store(queryString,
-				   saved_queryId,
-				   saved_stmt_location,
-				   saved_stmt_len,
-				   PGSS_EXEC,
-				   INSTR_TIME_GET_MILLISEC(duration),
-				   rows,
-				   &bufusage,
-				   &walusage,
-				   NULL,
-				   NULL,
-				   true /* yb_is_sensitive_stmt */ );
+		if (IsA(parsetree, YbBackfillIndexStmt))
+		{
+			char	   *norm_query;
+			int			norm_query_len;
+
+			YbBackfillIndexStmt *bf_stmt =
+				(YbBackfillIndexStmt *) parsetree;
+			norm_query = yb_generate_normalized_backfill_query(bf_stmt, &norm_query_len);
+			pgss_store(norm_query,
+					   saved_queryId,
+					   0,
+					   norm_query_len,
+					   PGSS_EXEC,
+					   INSTR_TIME_GET_MILLISEC(duration),
+					   rows,
+					   &bufusage,
+					   &walusage,
+					   NULL,
+					   NULL,
+					   false /* yb_is_sensitive_stmt */ );
+			pfree(norm_query);
+		}
+		else
+		{
+			pgss_store(queryString,
+					   saved_queryId,
+					   saved_stmt_location,
+					   saved_stmt_len,
+					   PGSS_EXEC,
+					   INSTR_TIME_GET_MILLISEC(duration),
+					   rows,
+					   &bufusage,
+					   &walusage,
+					   NULL,
+					   NULL,
+					   true /* yb_is_sensitive_stmt */ );
+		}
 	}
 	else
 	{
@@ -1864,6 +1981,17 @@ pgss_store(const char *query, uint64 queryId,
 												   query_location,
 												   &query_len);
 			LWLockAcquire(pgss->lock, LW_SHARED);
+		}
+		else if (yb_pgss_needs_normalization(queryId))
+		{
+			/*
+			 * YB: This query has constants that require normalization, but its
+			 * shared hash table entry has been evicted or reset.  We can't
+			 * normalize without jstate, so discard the execution stats rather
+			 * than storing unnormalized literals.  The entry will be re-created
+			 * with proper normalization on the next full parse cycle.
+			 */
+			goto done;
 		}
 
 		/* Append new query text to file with only shared lock held */
@@ -2040,6 +2168,34 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
 				YbGetRetryCount(YB_TXN_RESTART_READ);
 			e->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
+
+			if (yb_instr.read_metrics.version)
+			{
+				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+					yb_instr.read_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
+					yb_instr.read_metrics.events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
+			}
+
+			if (yb_instr.write_metrics.version)
+			{
+				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+					yb_instr.write_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
+					yb_instr.write_metrics.events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
+			}
 		}
 
 		SpinLockRelease(&e->mutex);
@@ -2100,7 +2256,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
 #define YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10	55
-#define PG_STAT_STATEMENTS_COLS			55	/* maximum of above */
+#define YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10	61
+#define PG_STAT_STATEMENTS_COLS			61	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -2128,6 +2285,16 @@ yb_2_0_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_V2_0_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_1_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_1_PGSS_V1_10, showtext);
 
 	return (Datum) 0;
 }
@@ -2284,6 +2451,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			if (api_version != YB_V2_0_PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
+		case YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10:
+			if (api_version != YB_V2_1_PGSS_V1_10)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
 		default:
 			elog(ERROR, "incorrect number of output arguments");
 	}
@@ -2348,7 +2519,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			pgss->gc_count != gc_count)
 		{
 			if (qbuffer)
-				free(qbuffer);
+				pfree(qbuffer);
 			qbuffer = qtext_load_file(&qbuffer_size);
 		}
 	}
@@ -2519,7 +2690,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		}
 
 		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10 ||
-			api_version == YB_V2_0_PGSS_V1_10)
+			api_version == YB_V2_0_PGSS_V1_10 || api_version == YB_V2_1_PGSS_V1_10)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
 													  entry->key.userid,
@@ -2542,6 +2713,16 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_TOTAL_RETRIES]);
 		}
 
+		if (api_version >= YB_V2_1_PGSS_V1_10)
+		{
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_SEEKS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_NEXTS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_PREVS]);
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS]);
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS]);
+		}
+
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
 					 api_version == PGSS_V1_1 ? PG_STAT_STATEMENTS_COLS_V1_1 :
 					 api_version == PGSS_V1_2 ? PG_STAT_STATEMENTS_COLS_V1_2 :
@@ -2552,6 +2733,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == YB_PGSS_V1_4 ? YB_PG_STAT_STATEMENTS_COLS_V1_4 :
 					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_0_PGSS_V1_10 ? YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10 :
+					 api_version == YB_V2_1_PGSS_V1_10 ? YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -2560,7 +2742,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 	LWLockRelease(pgss->lock);
 
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 }
 
 /* Number of output arguments (columns) for pg_stat_statements_info */
@@ -2873,7 +3055,7 @@ error:
 }
 
 /*
- * Read the external query text file into a malloc'd buffer.
+ * Read the external query text file into a palloc'd buffer.
  *
  * Returns NULL (without throwing an error) if unable to read, eg
  * file not there or insufficient memory.
@@ -2918,7 +3100,7 @@ qtext_load_file(Size *buffer_size)
 		!AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
 	else
-		buf = (char *) malloc(stat.st_size);
+		buf = (char *) palloc_extended(stat.st_size, MCXT_ALLOC_HUGE | MCXT_ALLOC_NO_OOM);
 
 	if (buf == NULL)
 	{
@@ -2956,7 +3138,7 @@ qtext_load_file(Size *buffer_size)
 						(errcode_for_file_access(),
 						 errmsg("could not read file \"%s\": %m",
 								PGSS_TEXT_FILE)));
-			free(buf);
+			pfree(buf);
 			CloseTransientFile(fd);
 			return NULL;
 		}
@@ -3171,7 +3353,7 @@ gc_qtexts(void)
 	else
 		pgss->mean_query_len = ASSUMED_LENGTH_INIT;
 
-	free(qbuffer);
+	pfree(qbuffer);
 
 	/*
 	 * OK, count a garbage collection cycle.  (Note: even though we have
@@ -3189,7 +3371,7 @@ gc_fail:
 	if (qfile)
 		FreeFile(qfile);
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 
 	/*
 	 * Since the contents of the external file are now uncertain, mark all
@@ -3813,13 +3995,68 @@ YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *norm
 		ereport(LOG,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("could not load pgss query text file")));
-		free(qbuffer);
+		pfree(qbuffer);
 		return YB_DIAGNOSTICS_ERROR;
 	}
 
 	memcpy(normalized_query, fetched_query, query_len);
 	normalized_query[query_len] = '\0'; /* Ensure null-termination */
 
-	free(qbuffer);
+	pfree(qbuffer);
 	return YB_DIAGNOSTICS_SUCCESS;
+}
+
+/*
+ * YB: Generate a normalized query string for a BACKFILL command.
+ *
+ * Replaces varying parameters (bfinstr, partition key, row keys) with $N
+ * parameter placeholders so that all BACKFILL calls for the same index are
+ * represented by a single normalized query in pg_stat_statements.
+ *
+ * Returns a palloc'd string.
+ */
+static char *
+yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
+									  int *query_len_p)
+{
+	StringInfoData buf;
+	ListCell   *lc;
+	bool		first = true;
+	int			param_num = 1;
+
+	initStringInfo(&buf);
+
+	appendStringInfoString(&buf, "BACKFILL INDEX ");
+
+	/* Append OID list (these are part of the query identity, not abstracted) */
+	foreach(lc, stmt->oid_list)
+	{
+		if (!first)
+			appendStringInfoString(&buf, ", ");
+		appendStringInfo(&buf, "%u", lfirst_oid(lc));
+		first = false;
+	}
+
+	/* Append normalized parameters */
+	if (stmt->bfinfo->bfinstr)
+		appendStringInfo(&buf, " WITH $%d", param_num++);
+
+	/* Read time is consistent for backfills of a given CREATE INDEX */
+	appendStringInfo(&buf, " READ TIME " UINT64_FORMAT,
+					(uint64) stmt->bfinfo->read_time);
+
+	if (stmt->bfinfo->row_bounds)
+	{
+		if (stmt->bfinfo->row_bounds->partition_key)
+			appendStringInfo(&buf, " PARTITION $%d", param_num++);
+
+		if (stmt->bfinfo->row_bounds->row_key_start)
+			appendStringInfo(&buf, " FROM $%d", param_num++);
+
+		if (stmt->bfinfo->row_bounds->row_key_end)
+			appendStringInfo(&buf, " TO $%d", param_num++);
+	}
+
+	*query_len_p = buf.len;
+	return buf.data;
 }

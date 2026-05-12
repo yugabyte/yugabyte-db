@@ -7,7 +7,7 @@ summary: Reference for YSQL API
 menu:
   v2.20_api:
     identifier: api-ysql-keywords
-    parent: api-ysql
+    parent: ysql-language-elements
     weight: 90
 type: docs
 ---

@@ -3,8 +3,10 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
@@ -32,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -62,6 +65,8 @@ public class AZUtilTest {
     MockitoAnnotations.openMocks(this);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.numCloudYbaBackupsRetention)))
         .thenReturn(2);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.allowYbaRestoreWithOldBackup)))
+        .thenReturn(false);
     when(mockBlobContainerClient.getBlobClient(any())).thenReturn(mockBlobClient);
   }
 
@@ -241,7 +246,7 @@ public class AZUtilTest {
       azData.backupLocation = "https://test-account.blob.core.windows.net/test-container/backup";
       when(mockAZUtil.getSplitLocationValue(any())).thenCallRealMethod();
       mockedStaticAZUtil
-          .when(() -> AZUtil.createBlobContainerClient(any(), any(), any()))
+          .when(() -> AZUtil.createBlobContainerClient(anyString(), anyString(), anyString()))
           .thenReturn(mockBlobContainerClient);
 
       // Mock the listBlobs method to throw exception
@@ -424,7 +429,7 @@ public class AZUtilTest {
   }
 
   @Test
-  public void testDownloadYbaBackup() throws Exception {
+  public void testDownloadYbaBackupOldFailure() throws Exception {
     try (MockedStatic<AZUtil> mockedStaticAZUtil = mockStatic(AZUtil.class)) {
       // Setup test data
       CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
@@ -459,13 +464,133 @@ public class AZUtilTest {
           .thenReturn(OffsetDateTime.of(2025, 3, 26, 12, 0, 0, 0, ZoneOffset.UTC));
       blobs.add(backupBlob1);
 
+      // Create a mock Page
+      PagedIterable<BlobItem> mockPage = mock(PagedIterable.class);
+      when(mockPage.iterator()).thenReturn(blobs.iterator());
+      when(mockBlobContainerClient.listBlobs(any(), any())).thenReturn(mockPage);
+
+      assertThrows(
+          "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+              + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue",
+          PlatformServiceException.class,
+          () -> {
+            mockAZUtil.downloadYbaBackup(azData, "test-backup-dir", tempBackupPath);
+          });
+    }
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoBackupsFound() throws Exception {
+    try (MockedStatic<AZUtil> mockedStaticAZUtil = mockStatic(AZUtil.class)) {
+      CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+      azData.azureSasToken = "test-token";
+      azData.backupLocation =
+          "https://test-account.blob.core.windows.net/test-container/backup/cloudPath";
+      when(mockAZUtil.getSplitLocationValue(any())).thenCallRealMethod();
+
+      mockedStaticAZUtil
+          .when(
+              () ->
+                  AZUtil.createBlobContainerClient(
+                      eq("https://test-account.blob.core.windows.net"),
+                      any(),
+                      eq("test-container")))
+          .thenReturn(mockBlobContainerClient);
+
+      Path tempBackupPath = Files.createTempDirectory("test-backup");
+      tempBackupPath.toFile().deleteOnExit();
+
+      PagedIterable<BlobItem> mockPage = mock(PagedIterable.class);
+      when(mockPage.iterator()).thenReturn(Collections.emptyIterator());
+      when(mockBlobContainerClient.listBlobs(any(), any())).thenReturn(mockPage);
+
+      assertThrows(
+          "Could not find YB Anywhere backup in Azure container",
+          PlatformServiceException.class,
+          () -> mockAZUtil.downloadYbaBackup(azData, "test-backup-dir", tempBackupPath));
+    }
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoMatchingBackup() throws Exception {
+    try (MockedStatic<AZUtil> mockedStaticAZUtil = mockStatic(AZUtil.class)) {
+      CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+      azData.azureSasToken = "test-token";
+      azData.backupLocation =
+          "https://test-account.blob.core.windows.net/test-container/backup/cloudPath";
+      when(mockAZUtil.getSplitLocationValue(any())).thenCallRealMethod();
+
+      mockedStaticAZUtil
+          .when(
+              () ->
+                  AZUtil.createBlobContainerClient(
+                      eq("https://test-account.blob.core.windows.net"),
+                      any(),
+                      eq("test-container")))
+          .thenReturn(mockBlobContainerClient);
+
+      Path tempBackupPath = Files.createTempDirectory("test-backup");
+      tempBackupPath.toFile().deleteOnExit();
+
+      List<BlobItem> blobs = new ArrayList<>();
+      BlobItem nonBackupBlob = mock(BlobItem.class);
+      when(nonBackupBlob.getName()).thenReturn("backup/cloudPath/test-backup-dir/readme.txt");
+      blobs.add(nonBackupBlob);
+
+      PagedIterable<BlobItem> mockPage = mock(PagedIterable.class);
+      when(mockPage.iterator()).thenReturn(blobs.iterator());
+      when(mockBlobContainerClient.listBlobs(any(), any())).thenReturn(mockPage);
+
+      assertThrows(
+          "Could not find YB Anywhere backup in Azure container",
+          PlatformServiceException.class,
+          () -> mockAZUtil.downloadYbaBackup(azData, "test-backup-dir", tempBackupPath));
+    }
+  }
+
+  @Test
+  public void testDownloadYbaBackup() throws Exception {
+    try (MockedStatic<AZUtil> mockedStaticAZUtil = mockStatic(AZUtil.class)) {
+      // Setup test data
+      CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+      azData.azureSasToken = "test-token";
+      azData.backupLocation =
+          "https://test-account.blob.core.windows.net/test-container/backup/cloudPath";
+      when(mockAZUtil.getSplitLocationValue(any())).thenCallRealMethod();
+
+      // Verify container name parsing
+      mockedStaticAZUtil
+          .when(
+              () ->
+                  AZUtil.createBlobContainerClient(
+                      eq("https://test-account.blob.core.windows.net"),
+                      any(),
+                      eq("test-container")))
+          .thenReturn(mockBlobContainerClient);
+
+      // Create a temporary directory for the backup
+      Path tempBackupPath = Files.createTempDirectory("test-backup");
+      tempBackupPath.toFile().deleteOnExit();
+
+      // Create mock blobs for backup files
+      List<BlobItem> blobs = new ArrayList<>();
+
+      BlobItem backupBlob1 = mock(BlobItem.class);
+      when(backupBlob1.getName())
+          .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_11-00-00.tgz");
+      BlobItemProperties mockProperties = mock(BlobItemProperties.class);
+      when(backupBlob1.getProperties()).thenReturn(mockProperties);
+      when(mockProperties.getLastModified())
+          .thenReturn(OffsetDateTime.now().minus(2, ChronoUnit.HOURS));
+      blobs.add(backupBlob1);
+
       BlobItem backupBlob2 = mock(BlobItem.class);
       when(backupBlob2.getName())
           .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_12-00-00.tgz");
       BlobItemProperties mockProperties2 = mock(BlobItemProperties.class);
       when(backupBlob2.getProperties()).thenReturn(mockProperties2);
       when(mockProperties2.getLastModified())
-          .thenReturn(OffsetDateTime.of(2025, 3, 27, 12, 0, 0, 0, ZoneOffset.UTC));
+          .thenReturn(OffsetDateTime.now().minus(1, ChronoUnit.HOURS));
       blobs.add(backupBlob2);
 
       BlobItem backupBlob3 = mock(BlobItem.class);
@@ -578,7 +703,9 @@ public class AZUtilTest {
     CloudLocationInfoAzure cLInfo =
         mockAZUtil.new CloudLocationInfoAzure(azureUrl, bucket, cloudPath);
     doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
-    doReturn(mockBlobContainerClient).when(mockAZUtil).createBlobContainerClient(any(), any());
+    doReturn(mockBlobContainerClient)
+        .when(mockAZUtil)
+        .createBlobContainerClient(any(CustomerConfigStorageAzureData.class), anyString());
     UUID randomFile = UUID.randomUUID();
     when(mockAZUtil.getRandomUUID()).thenReturn(randomFile);
     mockAZUtil.validate(azData, new ArrayList<>());

@@ -16,7 +16,7 @@ import { YBProgress, YBProgressBarState } from '../../../../components/YBProgres
 import { getErrorTaskTitle } from '../../TaskUtils';
 import { TaskBannerCompProps } from './dtos';
 import { useBannerCommonStyles } from './BannerStyles';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   root: {

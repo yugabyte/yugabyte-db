@@ -12,6 +12,9 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -34,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
+import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import org.yb.minicluster.LogErrorListener;
@@ -117,6 +121,10 @@ public class TestPgAutoExplain extends BasePgSQLTest {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 
+  private static MetricsCheckerBuilder makeMetricsBuilder() {
+    return JsonUtil.makeCheckerBuilder(MetricsCheckerBuilder.class, false);
+  }
+
   private void testAutoExplain(
       String query, Checker checker) throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -137,6 +145,26 @@ public class TestPgAutoExplain extends BasePgSQLTest {
       LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
 
       // Find conflicts and log them as well
+      List<String> conflicts = JsonUtil.findConflicts(json, checker);
+      assertTrue("Json conflicts:\n" + String.join("\n", conflicts),
+                 conflicts.isEmpty());
+    }
+  }
+
+  private void testAutoExplainDml(
+      String query, Checker checker) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      autoExplainResults.discard();
+
+      LOG.info("Query: " + query);
+      stmt.execute(query);
+      List<JsonElement> jsonResults = autoExplainResults.popAll();
+
+      assertEquals(1, jsonResults.size());
+      JsonElement json = jsonResults.get(0);
+
+      LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
+
       List<String> conflicts = JsonUtil.findConflicts(json, checker);
       assertTrue("Json conflicts:\n" + String.join("\n", conflicts),
                  conflicts.isEmpty());
@@ -207,6 +235,57 @@ public class TestPgAutoExplain extends BasePgSQLTest {
                 // Use JsonUtil since AbsenceChecker is not public
                 .actualStartupTime(JsonUtil.absenceCheckerOnNull(null))
                 .actualTotalTime(JsonUtil.absenceCheckerOnNull(null))
+                .build())
+            .build());
+  }
+
+  @Test
+  public void testDebugOnRead() throws Exception {
+    setAutoExplainOption("log_analyze", "true");
+    setAutoExplainOption("log_dist", "true");
+    setAutoExplainOption("log_debug", "true");
+
+    testAutoExplain(
+        String.format(
+            "SELECT * FROM %s WHERE c1 = 1 AND c2 = 1 AND c3 = 1",
+            TABLE_NAME),
+        makeTopLevelBuilder()
+            .plan(makePlanBuilder()
+                .nodeType(NODE_INDEX_SCAN)
+                .relationName(TABLE_NAME)
+                .alias(TABLE_NAME)
+                .readMetrics(makeMetricsBuilder()
+                    .metric("rocksdb_number_db_seek", Checkers.equal(1.0))
+                    .metric("docdb_keys_found", Checkers.equal(1.0))
+                    .build())
+                .build())
+            .build());
+  }
+
+  @Test
+  public void testDebugOnWrite() throws Exception {
+    setAutoExplainOption("log_analyze", "true");
+    setAutoExplainOption("log_dist", "true");
+    setAutoExplainOption("log_debug", "true");
+
+    PlanCheckerBuilder insertNodeChecker = makePlanBuilder()
+        .nodeType(NODE_MODIFY_TABLE)
+        .relationName(TABLE_NAME)
+        .alias(TABLE_NAME);
+
+    PlanCheckerBuilder resultNodeChecker = makePlanBuilder()
+        .nodeType(NODE_RESULT)
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1.0))
+            .build());
+
+    testAutoExplainDml(
+        String.format(
+            "INSERT INTO %s VALUES (9999, 9999, 9999, 'test')",
+            TABLE_NAME),
+        makeTopLevelBuilder()
+            .plan(insertNodeChecker
+                .plans(resultNodeChecker.build())
                 .build())
             .build());
   }

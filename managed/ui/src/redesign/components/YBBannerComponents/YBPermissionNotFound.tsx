@@ -1,5 +1,5 @@
 import { Box } from '@material-ui/core';
-import { ReactComponent as LockIcon } from '../../assets/lock.svg';
+import LockIcon from '../../assets/lock.svg';
 
 export const YBPermissionNotFound = () => {
   return (

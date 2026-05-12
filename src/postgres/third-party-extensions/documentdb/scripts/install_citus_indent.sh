@@ -5,23 +5,37 @@ set -u
 # exit immediately if a command exits with a non-zero status
 set -e
 
+pushd $INSTALL_DEPENDENCIES_ROOT
+
+source="${BASH_SOURCE[0]}"
+while [[ -h $source ]]; do
+   scriptroot="$( cd -P "$( dirname "$source" )" && pwd )"
+   source="$(readlink "$source")"
+
+   # if $source was a relative symlink, we need to resolve it relative to the path where the
+   # symlink file was located
+   [[ $source != /* ]] && source="$scriptroot/$source"
+done
+scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
+
 # Install uncrustify.
+. $scriptDir/setup_versions.sh
+UNCRUSTIFY_REF=$(GetUncrustifyVersion)
 #
 # Uncrustify changes the way it formats code every release a bit. To make
 # sure everyone formats consistently, we use version 0.68.1 as mentioned in
 # CONTRIBUTING.md:
-pushd $INSTALL_DEPENDENCIES_ROOT
 rm -rf citus_indent
 mkdir citus_indent
 cd citus_indent
-git clone https://github.com/uncrustify/uncrustify.git
-cd uncrustify
-# the commit of version 0.68.1
-git checkout 8c80bd84d023d9ae220c2721e68b09d10403bb41
+curl -L https://github.com/uncrustify/uncrustify/archive/${UNCRUSTIFY_REF}.tar.gz | tar xz
+cd uncrustify-${UNCRUSTIFY_REF}/
 mkdir build
-cd build/
+cd build
 cmake ..
-make clean && make -sj$(cat /proc/cpuinfo | grep -c "processor") install
+make -j5
+make install
+cd ../..
 
 # Install citus_indent.
 git clone https://github.com/citusdata/tools.git

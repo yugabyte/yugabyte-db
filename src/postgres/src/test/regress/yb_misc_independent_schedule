@@ -8,9 +8,9 @@
 test: yb.orig.catalog_version
 test: yb.orig.alter_operator
 test: yb.orig.boolean
-test: yb.orig.disabled
 test: yb.orig.errors
 test: yb.orig.truncate
 test: yb.orig.local_tablets
 test: yb.orig.generated
 test: yb.orig.tablet_metadata
+test: yb.orig.yb_get_tablet_for_key

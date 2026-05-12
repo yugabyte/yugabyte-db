@@ -21,7 +21,7 @@ import {
 } from '../constants';
 import { getIsTransactionalAtomicitySupported } from '../ReplicationUtils';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
-import InfoMessageIcon from '../../../redesign/assets/info-message.svg';
+import InfoMessageIcon from '../../../redesign/assets/info-message.svg?img';
 import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 

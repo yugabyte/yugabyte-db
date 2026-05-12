@@ -46,10 +46,12 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
@@ -87,11 +89,12 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/read_result.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_dump_helper.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -108,6 +111,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "yb/tserver/ysql_call_home_stats.h"
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
@@ -143,10 +147,11 @@
 #include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
-#include "yb/util/ysql_binary_runner.h"
 
+#include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -185,6 +190,10 @@ TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 
 DEFINE_test_flag(int32, index_backfill_fail_after_random_wait_upto_ms, 0,
     "If set to > 0 BackfillIndex calls will be failed after randomly waiting.");
+
+DEFINE_test_flag(bool, block_backfill_before_index_map, false,
+    "If true, BackfillIndex will block right before looking up the index_map. "
+    "Used to test the race between table drop and backfill to repro GH#29830.");
 
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
@@ -229,8 +238,14 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
     "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
 
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_1, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_2, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_uint64(rpc_max_message_size);
 
 DEFINE_UNKNOWN_bool(enable_ysql, true,
     "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
@@ -263,7 +278,8 @@ DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
     "Inject delay to slowdown handling of updates in transaction status location.");
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
+DEFINE_test_flag(bool, block_apply_intent, false,
+    "When set, block handling of UpdateTransaction(APPLYING) until the flag is cleared.");
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
     "Skip aborting active transactions during schema change");
@@ -290,6 +306,9 @@ DEFINE_test_flag(uint32, clone_pg_schema_delay_ms, 0,
 
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
     "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
+
+DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
+    "Used in tests to sleep before executing a remote PG query.");
 
 #if defined ADDRESS_SANITIZER
 // ASAN tests run on machines with limited disk space, so disable disk full checks.
@@ -349,12 +368,13 @@ using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::CloneTabletRequestPB;
+using tablet::OnlyAbortTxnsNotUsingTableLocks;
+using tablet::OperationCompletionCallback;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
-using tablet::OperationCompletionCallback;
 
 namespace {
 
@@ -426,7 +446,7 @@ Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
 }
 
 Status PrintYSQLWriteRequest(
-    const WriteRequestPB& req, const RpcContext& context, const Tablet& tablet) {
+    const WriteRequestMsg& req, const RpcContext& context, const Tablet& tablet) {
   if (req.pgsql_write_batch_size() == 0) {
     return Status::OK();
   }
@@ -460,21 +480,27 @@ Status PrintYSQLWriteRequest(
       ss << ", ";
     }
     if (!entry.range_column_values().empty()) {
-      ss << "range [" << pb_util::JoinRepeatedPBs(entry.range_column_values()) << "]";
+      ss << "range " << AsString(entry.range_column_values());
     }
     ss << std::endl;
     if (!entry.column_new_values().empty() || !entry.column_values().empty()) {
       ss << "\tColumns: ";
-      ss << pb_util::JoinRepeatedPBs(entry.column_new_values());
+      ss << AsString(entry.column_new_values());
       if (!entry.column_new_values().empty() && !entry.column_values().empty()) {
         ss << ", ";
       }
-      ss << pb_util::JoinRepeatedPBs(entry.column_values());
+      ss << AsString(entry.column_values());
       ss << std::endl;
     }
   }
   LOG(INFO) << ss.str();
   return Status::OK();
+}
+
+template <typename Req>
+std::optional<uint64_t> GetRecipientLeaseEpoch(const Req& req) {
+  return req.has_recipient_lease_epoch() ? std::optional(req.recipient_lease_epoch())
+                                         : std::nullopt;
 }
 
 } // namespace
@@ -487,7 +513,7 @@ class WriteQueryCompletionCallback {
   WriteQueryCompletionCallback(
       tablet::TabletPeerPtr tablet_peer,
       std::shared_ptr<rpc::RpcContext> context,
-      WriteResponsePB* response,
+      WriteResponseMsg* response,
       tablet::WriteQuery* query,
       const server::ClockPtr& clock,
       bool trace,
@@ -520,9 +546,14 @@ class WriteQueryCompletionCallback {
         status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
       }
 
-      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      if (status.IsTryAgain()) {
+          LOG(DETAIL) << "Write failed: " << status;
+      } else {
+          LOG(INFO) << "Write failed: " << status;
+      }
+
       if (include_trace_ && trace_) {
-        response_->set_trace_buffer(trace_->DumpToString(true));
+        response_->dup_trace_buffer(trace_->DumpToString(true));
       }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
@@ -542,7 +573,7 @@ class WriteQueryCompletionCallback {
     }
 
     if (include_trace_ && trace_) {
-      response_->set_trace_buffer(trace_->DumpToString(true));
+      response_->dup_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer_, query_->client_request(), response_);
@@ -551,7 +582,7 @@ class WriteQueryCompletionCallback {
   }
 
  private:
-  TabletServerErrorPB* get_error() const {
+  TabletServerErrorMsg* get_error() const {
     return response_->mutable_error();
   }
 
@@ -559,9 +590,10 @@ class WriteQueryCompletionCallback {
     auto tablet_metrics = query_->scoped_tablet_metrics();
     auto statistics = query_->scoped_statistics();
 
-    if (auto* resp = query_->GetPgsqlResponseForMetricsCapture()) {
-      tablet_metrics.CopyToPgsqlResponse(resp);
-      statistics.CopyToPgsqlResponse(resp);
+    auto [resp_ptr, metrics_capture] = query_->GetPgsqlResponseAndMetricsCapture();
+    if (resp_ptr) {
+      tablet_metrics.CopyToPgsqlResponse(resp_ptr, metrics_capture);
+      statistics.CopyToPgsqlResponse(resp_ptr, metrics_capture);
     }
   }
 
@@ -577,7 +609,7 @@ class WriteQueryCompletionCallback {
 
   tablet::TabletPeerPtr tablet_peer_;
   const std::shared_ptr<rpc::RpcContext> context_;
-  WriteResponsePB* const response_;
+  WriteResponseMsg* const response_;
   tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
@@ -622,9 +654,9 @@ class ScanResultChecksummer {
 };
 
 Result<std::shared_ptr<tablet::AbstractTablet>> TabletServiceImpl::GetTabletForRead(
-  const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+  TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-  tserver::ReadResponsePB* resp) {
+  tserver::ReadResponseMsg* resp) {
   return GetTablet(server_->tablet_peer_lookup(), tablet_id, std::move(tablet_peer),
                    consistency_level, allow_split_tablet, resp);
 }
@@ -640,7 +672,7 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
 }
 
 std::string TabletServiceAdminImpl::LogPrefix() const {
-  return Format("P $0: ", server_->permanent_uuid());
+  return server::MakeServerLogPrefix(server_->permanent_uuid());
 }
 
 void TabletServiceAdminImpl::BackfillDone(
@@ -741,7 +773,13 @@ void TabletServiceAdminImpl::GetSafeTime(
       VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht;
       if (min_running_ht < min_hybrid_time) {
         VLOG(2) << "Aborting Txns that started prior to " << min_hybrid_time;
-        auto s = txn_particpant->StopActiveTxnsPriorTo(min_hybrid_time, deadline);
+        OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks =
+            req->has_only_abort_txns_not_using_table_locks() &&
+                    req->only_abort_txns_not_using_table_locks()
+                ? OnlyAbortTxnsNotUsingTableLocks::kTrue
+                : OnlyAbortTxnsNotUsingTableLocks::kFalse;
+        auto s = txn_particpant->StopActiveTxnsPriorTo(
+            only_abort_txns_not_using_table_locks, min_hybrid_time, deadline);
         if (!s.ok()) {
           SetupErrorAndRespond(resp->mutable_error(), s, &context);
           return;
@@ -841,7 +879,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  auto max_sleep_ms = GetAtomicFlag(&FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms);
+  auto max_sleep_ms = FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms;
   if (max_sleep_ms > 0) {
     auto rand_wait = RandomUniformInt(0, max_sleep_ms);
     LOG(INFO) << "Randomly sleeping for " << rand_wait << " ms before failing";
@@ -859,7 +897,22 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const auto index_map = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  while (FLAGS_TEST_block_backfill_before_index_map) {
+    constexpr auto kSpinWait = 100ms;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Blocking BackfillIndex before index_map lookup";
+    SleepFor(kSpinWait);
+  }
+  auto index_map_result = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  if (!index_map_result.ok()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(
+            NotFound, "Indexed table $0 not found in tablet $1 metadata: $2",
+            req->indexed_table_id(), req->tablet_id(), index_map_result.status().ToString()),
+        TabletServerErrorPB::TABLET_NOT_FOUND, &context);
+    return;
+  }
+  const auto& index_map = *index_map_result;
   std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
@@ -917,7 +970,8 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  uint64_t number_rows_processed = 0;
+  uint64_t num_rows_read_from_table_for_backfill = 0;
+  double num_rows_backfilled_in_index = 0.0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -943,8 +997,11 @@ void TabletServiceAdminImpl::BackfillIndex(
     bool is_xcluster_automatic_mode_target =
         server_->GetXClusterContext().IsTargetAndInAutomaticMode(*namespace_id);
 
+    DCHECK_EQ(indexes_to_backfill.size(), 1)
+        << "We don't support batching index backfill in YSQL yet";
+    const qlexpr::IndexInfo& index_to_backfill = indexes_to_backfill[0];
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
-        indexes_to_backfill,
+        index_to_backfill,
         req->start_key(),
         deadline,
         read_at,
@@ -952,22 +1009,23 @@ void TabletServiceAdminImpl::BackfillIndex(
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
-        &number_rows_processed,
+        &num_rows_read_from_table_for_backfill,
+        &num_rows_backfilled_in_index,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
-      DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
-      for (const auto& idx_info : indexes_to_backfill) {
-        failed_indexes.insert(idx_info.table_id());
-      }
+      failed_indexes.insert(index_to_backfill.table_id());
       DCHECK_EQ(failed_indexes.size(), 1) << "We don't support batching in YSQL yet";
     }
+
+    resp->mutable_num_rows_backfilled_in_index()->insert(
+        {index_to_backfill.table_id(), num_rows_backfilled_in_index});
   } else if (tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE) {
     backfill_status = tablet.tablet->BackfillIndexes(
         indexes_to_backfill,
         req->start_key(),
         deadline,
         read_at,
-        &number_rows_processed,
+        &num_rows_read_from_table_for_backfill,
         &backfilled_until,
         &failed_indexes);
   } else {
@@ -984,7 +1042,7 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  resp->set_number_rows_processed(number_rows_processed);
+  resp->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill);
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
@@ -1106,7 +1164,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   ScopedRWOperationPause pause_writes;
   if (!req->has_retention_requester_id() &&
       ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
-       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
+       !FLAGS_disable_alter_vs_write_mutual_exclusion) ||
       tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
@@ -1140,14 +1198,20 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           CoarseMonoClock::Now() +
           MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
       TransactionId txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
-      LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff
-                << " for tablet id " << req->tablet_id()
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks =
+          req->has_only_abort_txns_not_using_table_locks() &&
+                  req->only_abort_txns_not_using_table_locks()
+              ? OnlyAbortTxnsNotUsingTableLocks::kTrue
+              : OnlyAbortTxnsNotUsingTableLocks::kFalse;
+      LOG(INFO) << "Aborting transactions "
+                << (only_abort_txns_not_using_table_locks ? "not using table locks " : "")
+                << "that started prior to " << max_cutoff << " for tablet id " << req->tablet_id()
                 << " excluding transaction with id " << txn_id;
       // There could be a chance where a transaction does not appear by transaction_participant
       // but has already begun replicating through Raft. Such transactions might succeed rather
       // than get aborted. This race codnition is dismissable for this intermediate solution.
       Status status = tablet.tablet->transaction_participant()->StopActiveTxnsPriorTo(
-            max_cutoff, deadline, &txn_id);
+          only_abort_txns_not_using_table_locks, max_cutoff, deadline, &txn_id);
       if (!status.ok() || PREDICT_FALSE(FLAGS_TEST_fail_alter_schema_after_abort_transactions)) {
         auto status = STATUS(TryAgain, "Transaction abort failed for tablet " + req->tablet_id());
         LOG(WARNING) << status;
@@ -1354,6 +1418,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   if (req->state().status() == TransactionStatus::APPLYING ||
       req->state().status() == TransactionStatus::PROMOTING ||
       cleanup) {
+    if (req->state().status() == TransactionStatus::APPLYING &&
+        tablet.tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_block_apply_intent);
+    }
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
       participant->Handle(std::move(state), tablet.leader_term);
@@ -1494,61 +1562,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
         }
         SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
       });
-}
-
-void TabletServiceImpl::UpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    rpc::RpcContext context) {
-  TRACE("UpdateTransactionStatusLocation");
-
-  VLOG(1) << "UpdateTransactionStatusLocation: " << req->ShortDebugString()
-          << ", context: " << context.ToString();
-
-  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
-  auto status = HandleUpdateTransactionStatusLocation(req, resp, context_ptr);
-  if (!status.ok()) {
-    LOG(WARNING) << status;
-    SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
-  }
-}
-
-Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    std::shared_ptr<rpc::RpcContext> context) {
-  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
-      << __func__ << " missing propagated hybrid time for transaction status location update";
-  UpdateClock(*req, server_->Clock());
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms > 0)) {
-    std::this_thread::sleep_for(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms * 1ms);
-  }
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
-      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
-    } else {
-      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
-    }
-  }
-
-  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
-
-  auto tablet = LookupLeaderTabletOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, context.get());
-  if (!tablet) {
-    return Status::OK();
-  }
-
-  auto* participant = tablet.tablet->transaction_participant();
-  if (!participant) {
-    return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
-  }
-
-  RETURN_NOT_OK(participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id()));
-  context->RespondSuccess();
-  return Status::OK();
 }
 
 void TabletServiceImpl::UpdateTransactionWaitingForStatus(
@@ -1712,14 +1725,14 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   dockv::Partition::FromPB(req->partition(), &partition);
 
   LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
-            << " (table=" << req->table_name()
-            << " [id=" << req->table_id() << "]), partition="
-            << partition_schema.PartitionDebugString(partition, schema);
+            << " (table=" << req->table_name() << " [id=" << req->table_id()
+            << "]), partition=" << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
-      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
+      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->namespace_id(),
+      req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
       0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
@@ -1840,10 +1853,15 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
   std::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TransactionId> txn_id;
+  if (req->has_transaction_id()) {
+    txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
+  }
   Status s = server_->tablet_manager()->DeleteTablet(
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
-      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code);
+      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
+      std::move(txn_id));
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2306,12 +2324,17 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
       req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
       HybridTime(req->restore_ht())));
-  VLOG(2) << "Dump output: " << dump_output;
+  VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.
   YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
-  RETURN_NOT_OK(
-      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */));
+  auto result =
+      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */);
+  if (!result.ok()) {
+    LOG(INFO) << "Failed executing ysql_dump output: " << dump_output;
+    return result.status();
+  }
+
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
@@ -2333,7 +2356,8 @@ Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
+      pgwrapper::PqEscapeLiteral(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =
@@ -2390,6 +2414,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
     return;
   }
 
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_1);
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_2);
+
   const PgOid database_oid = req->database_oid();
   const uint64_t catalog_version = req->catalog_version();
   const int prev_num_lagging_backends = req->prev_num_lagging_backends();
@@ -2416,26 +2443,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   bool first_run = true;
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
-        // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
-        // sure to handle that case if initdb ever goes through this codepath.
-        bool perdb_mode = false;
-        if (FLAGS_ysql_enable_db_catalog_version_mode) {
-          const std::optional<bool> catalog_version_table_in_perdb_mode =
-            server_->catalog_version_table_in_perdb_mode();
-          if (!catalog_version_table_in_perdb_mode.has_value()) {
-            // This is a temporary known case when this tserver hasn't get the answer
-            // from master yet via heartbeat response.
-            return false;
-          }
-          perdb_mode = catalog_version_table_in_perdb_mode.value();
-        }
-        if (perdb_mode) {
-          server_->get_ysql_db_catalog_version(
-              database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        } else {
-          server_->get_ysql_catalog_version(
-              &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        }
+        server_->get_ysql_db_catalog_version(
+            database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         if (ts_catalog_version >= catalog_version) {
           return true;
         }
@@ -2486,6 +2495,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   const std::string num_lagging_backends_query = Format(
       "SELECT count(*) FROM pg_stat_activity WHERE"
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
+      " AND backend_type != 'yb auto analyze backend'"
+      " AND backend_type != 'yb index backfill'"
+      " AND backend_type != 'yb matview refresh'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
@@ -2557,23 +2569,22 @@ void TabletServiceAdminImpl::GetPgSocketDir(
   context.RespondSuccess();
 }
 
-bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
+bool EmptyWriteBatch(const docdb::KeyValueWriteBatchMsg& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();
 }
 
 Status TabletServiceImpl::PerformWrite(
-    const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext* context) {
+    const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext* context) {
   if (req->include_trace()) {
     context->EnsureTraceCreated();
   }
   ADOPT_TRACE(context->trace());
   TRACE("Start Write");
-  TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
-               "tablet_id", req->tablet_id());
-  VLOG(2) << "Received Write RPC: " << req->DebugString();
+  TRACE_EVENT1("tserver", "TabletServiceImpl::Write", "tablet_id", std::string(req->tablet_id()));
+  VLOG(2) << "Received Write RPC: " << AsString(*req);
 
   UpdateClock(*req, server_->Clock());
-  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestPB*>(req));
+  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestMsg*>(req));
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
@@ -2629,28 +2640,34 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
-  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
-                               ? req->leader_term()
-                               : tablet.leader_term;
+  auto leader_term = tablet.leader_term;
+  if (req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm) {
+    leader_term = req->leader_term();
+    if (leader_term != tablet.leader_term) {
+      auto status =
+          STATUS_FORMAT(InvalidArgument, "Tablet $0 Leader term changed", req->tablet_id());
+      SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
+      return Status::OK();
+    }
+  }
 
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
-    LOG(INFO) << "Responding with a failure to " << req->DebugString();
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_failed_probability)) {
+    LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
     tablet.peer->WriteAsync(std::move(query));
     auto status = STATUS(LeaderHasNoLease, "TEST: Random failure");
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
     return Status::OK();
   }
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
-    LOG(INFO) << "Responding with transaction aborted failure to " << req->DebugString();
-    SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
-        Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-        "Transaction expired or aborted by a conflict"), context_ptr.get());
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_with_abort_probability)) {
+    LOG(INFO) << "Responding with transaction aborted failure to " << req->ShortDebugString();
+    SetupErrorAndRespond(resp->mutable_error(),
+        CreateExpiredStatus("Transaction expired or aborted by a conflict"), context_ptr.get());
     return Status::OK();
   }
 
@@ -2666,8 +2683,8 @@ Status TabletServiceImpl::PerformWrite(
   return Status::OK();
 }
 
-void TabletServiceImpl::Write(const WriteRequestPB* req,
-                              WriteResponsePB* resp,
+void TabletServiceImpl::Write(const WriteRequestMsg* req,
+                              WriteResponseMsg* resp,
                               rpc::RpcContext context) {
   if (FLAGS_TEST_tserver_noop_read_write) {
     for ([[maybe_unused]] const auto& batch : req->ql_write_batch()) {
@@ -2707,8 +2724,8 @@ void TabletServiceImpl::WaitForAsyncWrite(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
 
-void TabletServiceImpl::Read(const ReadRequestPB* req,
-                             ReadResponsePB* resp,
+void TabletServiceImpl::Read(const ReadRequestMsg* req,
+                             ReadResponseMsg* resp,
                              rpc::RpcContext context) {
 #ifndef NDEBUG
   if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {
@@ -2732,6 +2749,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  VLOG(5) << "Read req: " << req->ShortDebugString();
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
@@ -3041,11 +3059,9 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  if (!resp->has_error()) {
+  if (resp->has_error()) {
     LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " failed. Resp code="
               << TabletServerErrorPB::Code_Name(resp->error().code());
-  } else {
-    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " succeeded";
   }
   scope.CheckStatus(s, resp);
 }
@@ -3369,7 +3385,7 @@ void TabletServiceImpl::GetSplitKey(
         const auto& tablet = leader_tablet_peer.tablet;
         if (!req->is_manual_split() &&
             FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+            tablet->schema()->table_properties().HasEffectiveDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(
               TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
@@ -3377,12 +3393,17 @@ void TabletServiceImpl::GetSplitKey(
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }
-        std::string partition_split_hash_key;
-        const auto split_encoded_key =
-            VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey(&partition_split_hash_key));
-        resp->set_split_encoded_key(split_encoded_key);
-        resp->set_split_partition_key(partition_split_hash_key.size() ? partition_split_hash_key
-                                                                      : split_encoded_key);
+
+        const auto split_factor =
+            req->has_split_factor() ? req->split_factor() : kDefaultNumSplitParts;
+        const auto split_keys = VERIFY_RESULT(tablet->GetSplitKeys(split_factor));
+        const auto& encoded_keys = split_keys.encoded_keys;
+        const auto& partition_keys = split_keys.partition_keys;
+
+        resp->set_deprecated_split_encoded_key(encoded_keys.front());
+        resp->set_deprecated_split_partition_key(partition_keys.front());
+        resp->mutable_split_encoded_keys()->Add(encoded_keys.begin(), encoded_keys.end());
+        resp->mutable_split_partition_keys()->Add(partition_keys.begin(), partition_keys.end());
         return Status::OK();
   });
 }
@@ -3492,6 +3513,58 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   }
   vector<TserverMetricsInfoPB> metrics = result.get();
   *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::PgRemoteExec(
+    const PgRemoteExecRequestPB* req, PgRemoteExecResponsePB* resp,
+    rpc::RpcContext context) {
+  VLOG(1) << "received remote pg exec query: " << req->query();
+
+  // TODO(#30396): Maintain a pool of connections instead of creating a new connection
+  auto conn = server_->CreateInternalPGConn(
+      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
+  if (!conn.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
+    return;
+  }
+
+  if (FLAGS_TEST_pause_remote_pg_query_execution_ms > 0) {
+    SleepFor(FLAGS_TEST_pause_remote_pg_query_execution_ms * 1ms);
+  }
+
+  // c_str() pointers borrow from req's protobuf strings, valid for the
+  // lifetime of this RPC handler.
+  std::vector<const char*> params;
+  params.reserve(req->params_size());
+  for (const auto& p : req->params()) {
+    if (p.has_value()) {
+      params.push_back(p.value().c_str());
+    } else {
+      params.push_back(nullptr);
+    }
+  }
+  // Postgres_fdw expects results in TEXT format
+  auto result = conn->Fetch(req->query(), pgwrapper::PGResultFormat::kText, params);
+
+  auto* result_pb = resp->mutable_pg_result();
+  if (!result.ok()) {
+    // TODO(#30482): Fetch the error status from PGresult
+    result_pb->set_exec_status(PGRES_FATAL_ERROR);
+    result_pb->set_error_message(result.status().message().ToBuffer());
+    context.RespondSuccess();
+    return;
+  }
+
+  auto* pg_result = result->get();
+  // 1 KB is kept aside for RPC headers
+  const auto max_resp_size = FLAGS_rpc_max_message_size - 1_KB;
+  if (!pggate::PgResultToPB(pg_result, result_pb, max_resp_size)) {
+    resp->set_reached_size_limit(true);
+    VLOG(1) << "Reached RPC size limit (" << FLAGS_rpc_max_message_size
+            << " bytes). Encoded " << result_pb->rows_size()
+            << " out of " << PQntuples(pg_result) << " rows";
+  }
   context.RespondSuccess();
 }
 
@@ -3774,26 +3847,35 @@ void TabletServiceImpl::ClearMetacache(
   }
 }
 
+void TabletServiceImpl::ClearYCQLMetaDataCacheOnServer(
+    const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+    ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  auto s = server_->ClearYCQLMetaDataCache();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_ysql_enable_object_locking_infra) {
-    return SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotSupported,
-               "Object locking is not available until the cluster upgrade is finalized."),
-        &context);
-  }
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    return SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
-  }
   TRACE("Start AcquireObjectLocks");
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
-
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. Ignoring acquire request.";
+    return context.RespondSuccess();
+  }
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
     return SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
@@ -3808,18 +3890,28 @@ void TabletServiceImpl::ReleaseObjectLocks(
     rpc::RpcContext context) {
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. Ignoring release request.";
+    return context.RespondSuccess();
+  }
 
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
     resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
     return;
   }
-  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req, context.GetClientDeadline());
+  auto res = ts_local_lock_manager->ReleaseObjectLocks(*req, context.GetClientDeadline());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  if (!s.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  if (!res.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
   } else {
     context.RespondSuccess();
   }
@@ -3841,7 +3933,8 @@ void TabletServiceImpl::AdminExecutePgsql(
     rpc::RpcContext context) {
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
-    auto pg_conn = VERIFY_RESULT(server->CreateInternalPGConn(req->database_name(), deadline));
+    auto pg_conn = VERIFY_RESULT(
+        server->CreateInternalPGConn(req->database_name(), false, deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");
@@ -3856,6 +3949,18 @@ void TabletServiceImpl::AdminExecutePgsql(
   } else {
     context.RespondSuccess();
   }
+}
+
+void TabletServiceImpl::CollectYsqlCallHomeStats(
+    const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto result = CollectYsqlClusterStatsJson(server_);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  resp->set_json_stats(*result);
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::GetLocalPgTxnSnapshot(
@@ -3922,6 +4027,67 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     RETURN_NOT_OK(tablet->vector_indexes().Verify());
   }
   return VerifyVectorIndexesResponsePB();
+}
+
+Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
+    const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) {
+  LOG(INFO) << "DumpTabletData request: " << req.ShortDebugString();
+  auto peer_tablet =
+      VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()));
+  uint64_t read_ht = 0;
+  if (req.has_read_ht()) {
+    read_ht = req.read_ht();
+  }
+
+  auto peer_role = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus())->role();
+
+  std::unique_ptr<WritableFile> file;
+  if (!req.dest_path().empty()) {
+    RETURN_NOT_OK(Env::Default()->NewWritableFile(req.dest_path(), &file));
+    RETURN_NOT_OK(file->Append(Format("Tablet ID: $0\n", req.tablet_id())));
+    RETURN_NOT_OK(
+        file->Append(Format("Peer UUID: $0\n", peer_tablet.tablet_peer->permanent_uuid())));
+    RETURN_NOT_OK(file->Append(Format("Peer Role: $0\n", PeerRole_Name(peer_role))));
+  }
+
+  uint64_t row_count = 0;
+  uint64_t xor_hash = 0;
+  RETURN_NOT_OK(
+      tablet::DumpTabletData(
+          *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
+          row_count));
+  DumpTabletDataResponsePB resp;
+  resp.set_row_count(row_count);
+  resp.set_xor_hash(xor_hash);
+
+  if (file) {
+    RETURN_NOT_OK(file->Append(Format("\nRow count: $0\n", row_count)));
+    RETURN_NOT_OK(file->Append(Format("XOR hash: $0\n", xor_hash)));
+    RETURN_NOT_OK(file->Close());
+  }
+  return resp;
+}
+
+Result<ConnectivityStateResponsePB> TabletServiceImpl::ConnectivityState(
+    const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) {
+  return server_->ConnectivityState();
+}
+
+Status TabletServiceImpl::CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch) {
+  if (!recipient_lease_epoch.has_value()) {
+    return Status::OK();
+  }
+  auto local_lease_info = VERIFY_RESULT(server_->GetYSQLLeaseInfo());
+  if (local_lease_info.is_live && local_lease_info.lease_epoch == *recipient_lease_epoch) {
+    return Status::OK();
+  }
+  auto msg = !local_lease_info.is_live
+                 ? "TServer does not have a live lease"
+                 : Format(
+                       "Expected lease epoch in request $0 does not match TServer's local "
+                       "lease epoch $1",
+                       *recipient_lease_epoch, local_lease_info.lease_epoch);
+  return STATUS(IllegalState, msg);
 }
 
 }  // namespace yb::tserver

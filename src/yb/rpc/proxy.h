@@ -157,6 +157,10 @@ class Proxy {
 
   scoped_refptr<MetricEntity> metric_entity() const;
 
+  const HostPort& remote() const {
+    return remote_;
+  }
+
  private:
   void Resolve();
   void HandleResolve(const Result<IpAddress>& result);

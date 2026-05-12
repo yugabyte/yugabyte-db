@@ -159,9 +159,6 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbCreateMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 static void
@@ -206,9 +203,6 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbDeleteMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 void
@@ -602,7 +596,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	YbcPgStatement handle = NULL;
 	ListCell   *listptr;
 	bool		is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
-	Oid			databaseId = YBCGetDatabaseOidFromShared(is_shared_relation);
+	Oid			databaseId =
+		YBCGetDatabaseOidFromShared(is_shared_relation,
+									/* belongs_to_yb_system_db= */ false);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
 		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
@@ -858,6 +854,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	}
 
 	YbOptSplit *split_options = stmt->split_options;
+
 	bool		is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																		 namespaceId,
 																		 schema_name);
@@ -944,8 +941,7 @@ YBCDropTable(Relation relation)
 	 * safeguard against NotFound errors.
 	 */
 
-	YbcPgStatement handle = NULL;
-	Oid			databaseId = YBCGetDatabaseOid(relation);
+	bool not_found = false;
 
 	/*
 	 * Create table-level tombstone for colocated (via DB or tablegroup)
@@ -953,24 +949,15 @@ YBCDropTable(Relation relation)
 	 */
 	if (yb_props->is_colocated)
 	{
-		bool		not_found = false;
-
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   YbGetRelfileNodeId(relation),
-															   false, &handle,
-															   YB_TRANSACTIONAL),
-									 &not_found);
+		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(relation, YB_TRANSACTIONAL);
 		/*
-		 * Since the creation of the handle could return a 'NotFound' error,
+		 * Since the creation of the handle could return a NULL in case of 'NotFound' error,
 		 * execute the statement only if the handle is valid.
 		 */
-		const bool	valid_handle = !not_found;
-
-		if (valid_handle)
+		if (handle)
 		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
-			int			rows_affected_count = 0;
-
+			int rows_affected_count = 0;
 			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
 										 &not_found);
 		}
@@ -978,9 +965,9 @@ YBCDropTable(Relation relation)
 
 	/* Drop the table */
 	{
-		bool		not_found = false;
+		YbcPgStatement handle = NULL;
 
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(YBCGetDatabaseOid(relation),
 													   YbGetRelfileNodeId(relation),
 													   false /* if_exists */ ,
 													   &handle),
@@ -1071,22 +1058,13 @@ YbOnTruncateUpdateCatalog(Relation rel)
 void
 YbUnsafeTruncate(Relation rel)
 {
-	YbcPgStatement handle;
-	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
-	Oid			databaseId = YBCGetDatabaseOid(rel);
-	bool		isRegionLocal = YBCIsRegionLocal(rel);
-
 	if (IsSystemRelation(rel) || YbGetTableProperties(rel)->is_colocated)
 	{
 		/*
 		 * Create table-level tombstone for colocated/tablegroup/syscatalog
 		 * relations.
 		 */
-		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-												 relfileNodeId,
-												 isRegionLocal,
-												 &handle,
-												 YB_TRANSACTIONAL));
+		YbcPgStatement handle = YbNewTruncateColocated(rel, YB_TRANSACTIONAL);
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int			rows_affected_count = 0;
 
@@ -1094,10 +1072,10 @@ YbUnsafeTruncate(Relation rel)
 	}
 	else
 	{
+		YbcPgStatement handle;
 		/* Send truncate table RPC to master for non-colocated relations */
-		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
-											 relfileNodeId,
-											 &handle));
+		HandleYBStatus(YBCPgNewTruncateTable(YBCGetDatabaseOid(rel),
+											 YbGetRelfileNodeId(rel), &handle));
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
@@ -1589,7 +1567,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					Relation	r = relation_openrv(partition_rv, AccessExclusiveLock);
 					char		relkind = r->rd_rel->relkind;
 
-					relation_close(r, AccessShareLock);
+					relation_close(r, AccessExclusiveLock);
 					/*
 					 * If alter is performed on an index as opposed to a table
 					 * skip schema version increment.
@@ -1792,6 +1770,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				break;
 			}
 
+		case AT_SetStorage:
+			yb_switch_fallthrough();
 		case AT_SetLogged:
 			yb_switch_fallthrough();
 		case AT_SetUnLogged:
@@ -1800,9 +1780,31 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 		case AT_SetRelOptions:
 		case AT_ResetRelOptions:
-			*needsYBAlter = false;
-			ereport(NOTICE,
-					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			{
+				*needsYBAlter = false;
+				/*
+				 * Emit one NOTICE per unsupported parameter so the user
+				 * knows exactly which option(s) have no effect.
+				 */
+				ListCell   *lc;
+
+				foreach(lc, (List *) cmd->def)
+				{
+					DefElem    *def = (DefElem *) lfirst(lc);
+
+					if (strncmp(def->defname, "yb_auto_analyze_",
+								strlen("yb_auto_analyze_")) == 0)
+						continue;
+
+					if (strcmp(def->defname, "yb_presplit") == 0)
+						continue;
+
+					ereport(NOTICE,
+							(errmsg("storage parameter %s is currently ignored "
+									"for ALTER TABLE in YugabyteDB",
+									def->defname)));
+				}
+			}
 			break;
 
 		case AT_AddOf:
@@ -1976,27 +1978,16 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	YbcPgStatement handle;
-	Oid			indexRelfileNodeId = YbGetRelfileNodeId(index);
-	Oid			databaseId = YBCGetDatabaseOid(index);
-
 	/*
 	 * Create table-level tombstone for colocated (via DB or tablegroup)
 	 * indexes
 	 */
+	bool not_found = false;
+
 	if (yb_props->is_colocated)
 	{
-		bool		not_found = false;
-
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   indexRelfileNodeId,
-															   false,
-															   &handle,
-															   YB_TRANSACTIONAL),
-									 &not_found);
-		const bool	valid_handle = !not_found;
-
-		if (valid_handle)
+		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
+		if (handle)
 		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int			rows_affected_count = 0;
@@ -2008,12 +1999,12 @@ YBCDropIndex(Relation index)
 
 	/* Drop the index table */
 	{
-		bool		not_found = false;
+		YbcPgStatement handle;
 
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
-													   indexRelfileNodeId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(YBCGetDatabaseOid(index),
+													   YbGetRelfileNodeId(index),
 													   false,	/* if_exists */
-													   YbDdlRollbackEnabled(),	/* ddl_rollback_enabled */
+													   YbDdlRollbackEnabled(),
 													   &handle),
 									 &not_found);
 		if (not_found)
@@ -2053,6 +2044,9 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
+	double		index_tuples;
+	Datum		values[2];
+	bool		nulls[2] = {0};
 
 	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
@@ -2110,12 +2104,12 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	indexInfo->ii_BrokenHotChain = false;
 
 	out_param = YbCreateExecOutParam();
-	index_backfill(heapRel,
-				   indexRel,
-				   indexInfo,
-				   false,
-				   stmt->bfinfo,
-				   out_param);
+	index_tuples = yb_index_backfill(heapRel,
+									 indexRel,
+									 indexInfo,
+									 false,
+									 stmt->bfinfo,
+									 out_param);
 
 	index_close(indexRel, RowExclusiveLock);
 	table_close(heapRel, AccessShareLock);
@@ -2126,10 +2120,15 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
-	/* output tuples */
+	/* output tuple */
 	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt),
 									  &TTSOpsVirtual);
-	do_text_output_oneline(tstate, out_param->bfoutput->data);
+
+	values[0] = CStringGetTextDatum(out_param->bfoutput->data);
+	values[1] = Float8GetDatum(index_tuples);
+
+	/* send it to dest */
+	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 }
 
@@ -2137,69 +2136,25 @@ TupleDesc
 YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 {
 	TupleDesc	tupdesc;
-	Oid			result_type = TEXTOID;
 
-	/* Need a tuple descriptor representing a single TEXT or XML column */
-	tupdesc = CreateTemplateTupleDesc(1);
+	tupdesc = CreateTemplateTupleDesc(2);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
-					   result_type, -1, 0);
+					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ROWS INSERTED",
+					   FLOAT8OID, -1, 0);
 	return tupdesc;
-}
-
-void
-YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel,
-					   AttrMap *new_to_old_attmap)
-{
-	Relation	index_rel = index_open(index_oid, AccessExclusiveLock);
-
-	/* Construct the new CREATE INDEX stmt */
-	IndexStmt  *index_stmt = generateClonedIndexStmt(NULL,	/* heapRel, we provide
-															 * an oid instead */
-													 index_rel,
-													 new_to_old_attmap,
-													 NULL); /* parent constraint OID
-															 * pointer */
-
-	const char *index_name = RelationGetRelationName(index_rel);
-	const char *index_namespace_name = get_namespace_name(index_rel->rd_rel->relnamespace);
-
-	index_stmt->idxname = pstrdup(index_name);
-
-	index_close(index_rel, AccessExclusiveLock);
-
-	/* Drop old index */
-
-	DropStmt   *stmt = makeNode(DropStmt);
-
-	stmt->removeType = OBJECT_INDEX;
-	stmt->missing_ok = false;
-	stmt->objects = list_make1(list_make2(makeString(pstrdup(index_namespace_name)),
-										  makeString(pstrdup(index_name))));
-	stmt->behavior = DROP_CASCADE;
-	stmt->concurrent = false;
-
-	RemoveRelations(stmt);
-
-	/* Create the new index */
-
-	DefineIndex(new_rel_id,
-				index_stmt,
-				InvalidOid,		/* no predefined OID */
-				InvalidOid,		/* no parent index */
-				InvalidOid,		/* no parent constraint */
-				false,			/* is_alter_table */
-				false,			/* check_rights */
-				false,			/* check_not_in_use */
-				false,			/* skip_build */
-				true /* quiet */ );
 }
 
 /* ------------------------------------------------------------------------- */
 /*  System validation. */
 void
-YBCValidatePlacement(const char *placement_info, bool check_satisfiable)
+YBCValidatePlacements(const char *live_placement_info,
+					  const char *read_replica_placement_info,
+					  bool check_satisfiable)
 {
-	HandleYBStatus(YBCPgValidatePlacement(placement_info, check_satisfiable));
+	HandleYBStatus(YBCPgValidatePlacements(live_placement_info,
+										   read_replica_placement_info,
+										   check_satisfiable));
 }
 
 /* ------------------------------------------------------------------------- */
@@ -2211,7 +2166,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
 						 YbCRSLsnType lsn_type,
-						 YbCRSOrderingMode yb_ordering_mode)
+						 YbCRSOrderingMode yb_ordering_mode,
+						 Oid database_oid)
 {
 	YbcPgStatement handle;
 
@@ -2247,7 +2203,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
-												 MyDatabaseId,
+												 database_oid,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
 												 repl_slot_ordering_mode,
@@ -2277,6 +2233,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 }
 
 void
+YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+				   size_t *num_slot_entries)
+{
+	HandleYBStatus(YBCPgListSlotEntries(slot_entries, num_slot_entries));
+}
+
+void
 YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots)
 {
@@ -2284,33 +2247,51 @@ YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 											 numreplicationslots));
 }
 
-void
+bool
 YBCGetReplicationSlot(const char *slot_name,
-					  YbcReplicationSlotDescriptor **replication_slot)
+					  YbcReplicationSlotDescriptor **replication_slot,
+					  bool if_exists)
 {
+	YbcStatus status = YBCPgGetReplicationSlot(slot_name, replication_slot);
+
+	if (if_exists && YBCStatusIsNotFound(status))
+	{
+		elog(LOG, "replication slot \"%s\" not found", slot_name);
+		YBCFreeStatus(status);
+		return false;
+	}
+
 	char		error_message[NAMEDATALEN + 64] = "";
 
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
 
-	HandleYBStatusWithCustomErrorForNotFound(YBCPgGetReplicationSlot(slot_name,
-																	 replication_slot),
-											 error_message);
+	HandleYBStatusWithCustomErrorForNotFound(status, error_message);
+	return true;
 }
 
 void
-YBCDropReplicationSlot(const char *slot_name)
+YBCDropReplicationSlot(const char *slot_name, bool if_exists)
 {
 	YbcPgStatement handle;
+	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name, &handle));
+
+	YbcStatus status = YBCPgExecDropReplicationSlot(handle);
+
+	if (if_exists && YBCStatusIsNotFound(status))
+	{
+		elog(LOG, "replication slot \"%s\" does not exist, skipping drop",
+			 slot_name);
+		YBCFreeStatus(status);
+		return;
+	}
+
 	char		error_message[NAMEDATALEN + 64] = "";
 
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
 
-	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
-											   &handle));
-	HandleYBStatusWithCustomErrorForNotFound(YBCPgExecDropReplicationSlot(handle),
-											 error_message);
+	HandleYBStatusWithCustomErrorForNotFound(status, error_message);
 }
 
 /*

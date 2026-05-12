@@ -23,7 +23,8 @@ set(PGWRAPPER_LIBS
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
-               DEPS ${PGWRAPPER_LIBS})
+               DEPS ${PGWRAPPER_LIBS}
+               NONLINK_DEPS postgres)
 
 include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
@@ -50,6 +51,7 @@ add_dependencies(
   )
 
 set(PQ_UTILS_SRCS
+    libpq_test_utils.cc
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
     pq
@@ -58,6 +60,15 @@ set(PQ_UTILS_DEPS
 ADD_YB_LIBRARY(pq_utils
                SRCS ${PQ_UTILS_SRCS}
                DEPS ${PQ_UTILS_DEPS})
+
+set(YSQL_BINARY_RUNNER_SRCS
+    ysql_binary_runner.cc)
+set(YSQL_BINARY_RUNNER_LIBS
+    yb_util
+    yb_pgwrapper)
+ADD_YB_LIBRARY(yb_ysql_binary_runner
+               SRCS ${YSQL_BINARY_RUNNER_SRCS}
+               DEPS ${YSQL_BINARY_RUNNER_LIBS})
 
 set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
@@ -68,7 +79,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_ddl_atomicity_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
-    yb_client_test_util)
+    yb_client_test_util
+    yb_ysql_binary_runner)
 ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
@@ -107,15 +119,19 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
-    pg_locks_test_base rocksdb_tools yb-backup-test_base
+    pg_locks_test_base rocksdb_test_util rocksdb_tools yb-backup-test_base yb-tserver_util
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(clockbound_clock-test)
 ADD_YB_TEST(colocation-test)
+ADD_YB_TEST(create_abort-test)
+ADD_YB_TEST(dist_trace-test)
+YB_TEST_TARGET_LINK_LIBRARIES(dist_trace-test opentelemetry_proto)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
-ADD_YB_TEST(pg_alter_add_column_default-test)
+ADD_YB_TEST(libpq_utils-test)
+ADD_YB_TEST(pg_alter_table-test)
 ADD_YB_TEST(pg_analyze-test)
 ADD_YB_TEST(pg_analyze_read_time-test)
 ADD_YB_TEST(pg_anonymizer-test)
@@ -124,11 +140,18 @@ ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_misc_conflicts-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_call_home-test)
 ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
+ADD_YB_TEST(pg_cbo_dependent_flags-test)
+if (NOT APPLE)
+  # We disable this test when running on Apple platform as it does not support cgroups.
+  ADD_YB_TEST(pg_cgroups-test)
+endif()
 ADD_YB_TEST(pg_clock_skew-test)
+ADD_YB_TEST(pg_concurrent_ddls-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_copy-test)
 ADD_YB_TEST(pg_create_database-test)
@@ -145,6 +168,7 @@ ADD_YB_TEST(pg_heap_snapshot-test)
 ADD_YB_TEST(pg_hint_table-test)
 ADD_YB_TEST(pg_index-test)
 ADD_YB_TEST(pg_get_lock_status-test)
+ADD_YB_TEST(pg_global_views-test)
 ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_last_seen_ht_rollback-test)
 ADD_YB_TEST(pg_libpq-test)
@@ -158,20 +182,25 @@ ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_object_locks-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_op_processing_order-test)
 ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_perf-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
 ADD_YB_TEST(pg_read_time-test)
+ADD_YB_TEST(pg_relcache_corruption_fallback-test)
 ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_server_restart-test)
 ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
 ADD_YB_TEST(pg_stat_activity-test)
+ADD_YB_TEST(pg_stat_statements-test)
 ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
+ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
@@ -183,6 +212,12 @@ ADD_YB_TEST(orphaned_tablet_cleanup-test)
 ADD_YB_TEST(pg_retryable_request-test)
 ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
+ADD_YB_TEST(pg_skip_prefix_lock-test)
+ADD_YB_TEST(pg_intents_flush_opid_modify-test)
+ADD_YB_TEST(transaction_status_check-test)
+ADD_YB_TEST(ysqlsh_history-test)
+
+ADD_YB_TEST_DEPENDENCIES(pg_packed_row-test log-dump)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

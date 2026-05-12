@@ -2,8 +2,10 @@
 title: Get started with CDC logical replication in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
-description: Get started with Change Data Capture in YugabyteDB.
+description: Start using CDC with logical replication in YugabyteDB.
 headcontent: Start using CDC with logical replication
+aliases:
+  - /stable/explore/change-data-capture/using-logical-replication/get-started/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication
@@ -77,7 +79,7 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 At this point, you have started Zookeeper and Kafka, but you still need a database server from which the connector can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
-Follow the [Quick Start](/preview/quick-start/macos/) to start an instance using yugabyted.
+Follow the [Quick Start](/stable/quick-start/macos/) to start an instance using yugabyted.
 
 {{< note title="Note" >}}
 

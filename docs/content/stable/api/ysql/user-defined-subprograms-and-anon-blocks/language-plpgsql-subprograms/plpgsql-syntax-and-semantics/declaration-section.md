@@ -185,7 +185,7 @@ This is the result:
  90
 ```
 
-Here,  the _refcursor_ variable _r_  (declared using the _plpgsql_bound_refcursor_declaration_ syntax) is referred to as a _bound refcursor variable_ because its _subquery_ is irrevocably determined at declaration time. This allows it to be used in a _cursor for loop_. A _bound refcursor variable_ can also be used as the argument of an explicit _open_ statement. But here you cannot (re)specify the already-specified _subquery_.
+Here, the _refcursor_ variable _r_  (declared using the _plpgsql_bound_refcursor_declaration_ syntax) is referred to as a _bound refcursor variable_ because its _subquery_ is irrevocably determined at declaration time. This allows it to be used in a _cursor for loop_. A _bound refcursor variable_ can also be used as the argument of an explicit _open_ statement. But here you cannot (re)specify the already-specified _subquery_.
 
 Notice that the way you list the optional formal arguments in the declaration of a _bound refcursor variable_ differs from how this is done for a user-defined subprogram in that you _must_ name each argument and you cannot provide an _in/out_ mode or a default value. This means that all the arguments are mandatory and that you must provide an actual argument value for each: with a _cursor for loop_ as part of its _in_ clause; or in the explicit _open_ statement.
 

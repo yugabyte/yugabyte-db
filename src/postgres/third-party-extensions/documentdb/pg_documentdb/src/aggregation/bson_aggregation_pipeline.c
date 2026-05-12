@@ -43,6 +43,7 @@
 #include <nodes/supportnodes.h>
 #include <parser/parse_relation.h>
 #include <parser/parse_func.h>
+#include <funcapi.h>
 
 #include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -56,8 +57,10 @@
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "aggregation/bson_query.h"
+#include "metadata/index.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
+#include "aggregation/bson_bucket_auto.h"
 #include "api_hooks.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
@@ -71,12 +74,14 @@
 #include "api_hooks.h"
 
 extern bool EnableCursorsOnAggregationQueryRewrite;
-extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
 extern bool DefaultInlineWriteOperations;
-extern bool EnableSimplifyGroupAccumulators;
-extern bool EnableSortbyIdPushDownToPrimaryKey;
 extern int MaxAggregationStagesAllowed;
+extern bool EnableIndexOrderbyPushdown;
+extern bool EnableConversionStreamableToSingleBatch;
+extern bool EnableFindProjectionAfterOffset;
+extern bool EnableNewCountAggregates;
+extern bool EnableUseLookupNewProjectInlineMethod;
 
 /* GUC to config tdigest compression */
 extern int TdigestCompressionAccuracy;
@@ -97,7 +102,8 @@ typedef void (*PipelineStagesPreCheckFunc)(const bson_value_t *existingValue,
 /*
  * Whether or not the stage requires persistence on the cursor.
  */
-typedef bool (*RequiresPersistentCursorFunc)(const bson_value_t *existingValue);
+typedef bool (*RequiresPersistentCursorFunc)(const bson_value_t *existingValue,
+											 bool *isSingleRowResult);
 
 /*
  * Whether or not the stage can be inlined for a lookup stage
@@ -111,7 +117,7 @@ typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
  */
 typedef struct AggregationStageDefinition
 {
-	/* The stage name in Mongo format (e.g. $addFields, $project) */
+	/* The stage name (e.g. $addFields, $project) */
 	const char *stage;
 
 	/* The function that will modify the pipeline for that stage - NULL if unsupported */
@@ -172,6 +178,9 @@ static Query * HandleBucket(const bson_value_t *existingValue, Query *query,
 							AggregationPipelineBuildContext *context);
 static Query * HandleCount(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
+static Query * HandleCountCore(const bson_value_t *existingValue, Query *query,
+							   AggregationPipelineBuildContext *context, bool
+							   isCountCommand);
 static Query * HandleFill(const bson_value_t *existingValue, Query *query,
 						  AggregationPipelineBuildContext *context);
 static Query * HandleLimit(const bson_value_t *existingValue, Query *query,
@@ -207,15 +216,23 @@ static Query * HandleMatchAggregationStage(const bson_value_t *existingValue,
 										   Query *query,
 										   AggregationPipelineBuildContext *context);
 
-static bool RequiresPersistentCursorFalse(const bson_value_t *pipelineValue);
-static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue);
-static bool RequiresPersistentCursorLimit(const bson_value_t *pipelineValue);
-static bool RequiresPersistentCursorSkip(const bson_value_t *pipelineValue);
+static bool RequiresPersistentCursorFalse(const bson_value_t *pipelineValue,
+										  bool *isSingleRowResult);
+static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue,
+										 bool *isSingleRowResult);
+static bool RequiresPersistentCursorLimit(const bson_value_t *pipelineValue,
+										  bool *isSingleRowResult);
+static bool RequiresPersistentCursorSkip(const bson_value_t *pipelineValue,
+										 bool *isSingleRowResult);
+static bool RequiresPersistentCursorFalseNoSingleRow(const bson_value_t *pipelineValue,
+													 bool *isSingleRowResult);
+static bool RequiresPersistentCursorTrueSingleRow(const bson_value_t *pipelineValue,
+												  bool *isSingleRowResult);
 
-static bool HasShardKeyFilterWalker(Node *node, void *state);
-static bool CanSortByObjectId(Query *query, AggregationPipelineBuildContext *context);
-static bool CanInlineLookupStageProjection(const bson_value_t *stageValue, const
-										   StringView *lookupPath, bool hasLet);
+static bool CanInlineLookupStageSetAddFields(const bson_value_t *stageValue, const
+											 StringView *lookupPath, bool hasLet);
+static bool CanInlineLookupStageProject(const bson_value_t *stageValue, const
+										StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageUnset(const bson_value_t *stageValue, const
 									  StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
@@ -294,7 +311,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.stage = "$addFields",
 		.mutateFunc = &HandleAddFields,
 		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
-		.canInlineLookupStageFunc = &CanInlineLookupStageProjection,
+		.canInlineLookupStageFunc = &CanInlineLookupStageSetAddFields,
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
@@ -318,7 +335,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$bucketAuto",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleBucketAuto,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
@@ -332,7 +349,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$changeStream",
 		.mutateFunc = &HandleChangeStream,
-		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
+		.requiresPersistentCursor = &RequiresPersistentCursorFalseNoSingleRow,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
@@ -345,7 +362,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$collStats",
 		.mutateFunc = &HandleCollStats,
-		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+		.requiresPersistentCursor = &RequiresPersistentCursorTrueSingleRow,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
@@ -358,7 +375,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$count",
 		.mutateFunc = &HandleCount,
-		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+		.requiresPersistentCursor = &RequiresPersistentCursorTrueSingleRow,
 
 		/* Changes the projector - can't be inlined */
 		.canInlineLookupStageFunc = NULL,
@@ -506,7 +523,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$inverseMatch",
 		.mutateFunc = &HandleInverseMatch,
-		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
+		.requiresPersistentCursor = &RequiresPersistentCursorFalseNoSingleRow,
 
 		/* can always be inlined since it doesn't change the projector */
 		.canInlineLookupStageFunc = &CanInlineLookupStageTrue,
@@ -625,7 +642,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.stage = "$project",
 		.mutateFunc = &HandleProject,
 		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
-		.canInlineLookupStageFunc = &CanInlineLookupStageProjection,
+		.canInlineLookupStageFunc = &CanInlineLookupStageProject,
 
 		/* Project does not change the output format */
 		.preservesStableSortOrder = true,
@@ -728,7 +745,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.stage = "$set",
 		.mutateFunc = &HandleAddFields,
 		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
-		.canInlineLookupStageFunc = &CanInlineLookupStageProjection,
+		.canInlineLookupStageFunc = &CanInlineLookupStageSetAddFields,
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
@@ -775,7 +792,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		/* can always be inlined since it doesn't change the projector */
 		.canInlineLookupStageFunc = &CanInlineLookupStageTrue,
 
-		/* Sort sets the ordering state */
+		/* Sorting determines the current ordering state */
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
@@ -800,7 +817,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$unionWith",
 		.mutateFunc = &HandleUnionWith,
-		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
+		.requiresPersistentCursor = &RequiresPersistentCursorFalseNoSingleRow,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
@@ -837,7 +854,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$vectorSearch",
-		.mutateFunc = &HandleMongoNativeVectorSearch,
+		.mutateFunc = &HandleNativeVectorSearch,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 
 		/* can always be inlined since it doesn't change the projector */
@@ -860,6 +877,7 @@ static const int AggregationStageCount = sizeof(StageDefinitions) /
 static const int MaxEvenFunctionArguments = ((int) (FUNC_MAX_ARGS / 2)) * 2;
 
 PG_FUNCTION_INFO_V1(command_bson_aggregation_pipeline);
+PG_FUNCTION_INFO_V1(command_bson_aggregation_getmore);
 PG_FUNCTION_INFO_V1(command_api_collection);
 PG_FUNCTION_INFO_V1(command_aggregation_support);
 PG_FUNCTION_INFO_V1(documentdb_core_bson_to_bson);
@@ -936,8 +954,9 @@ CheckMaxAllowedAggregationStages(int numberOfStages)
 	if (numberOfStages > MaxAggregationStagesAllowed)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION7749501),
-						errmsg("Pipeline length must be no longer than %d stages.",
-							   MaxAggregationStagesAllowed)));
+						errmsg(
+							"The pipeline length cannot exceed a maximum of %d stages.",
+							MaxAggregationStagesAllowed)));
 	}
 }
 
@@ -950,7 +969,20 @@ CheckMaxAllowedAggregationStages(int numberOfStages)
 Datum
 command_bson_aggregation_pipeline(PG_FUNCTION_ARGS)
 {
-	/* dumbest possible implementation: assume 1% of rows are returned */
+	ereport(ERROR, (errmsg(
+						"bson_aggregation function should have been processed by the planner. This is an internal error")));
+	PG_RETURN_BOOL(false);
+}
+
+
+/*
+ * command_bson_aggregation_pipeline is a wrapper function that carries with it the
+ * aggregation pipeline for a getmore. This is replaced in the planner and so shouldn't
+ * ever be called in the runtime.
+ */
+Datum
+command_bson_aggregation_getmore(PG_FUNCTION_ARGS)
+{
 	ereport(ERROR, (errmsg(
 						"bson_aggregation function should have been processed by the planner. This is an internal error")));
 	PG_RETURN_BOOL(false);
@@ -1034,21 +1066,42 @@ CreateNamespaceName(text *databaseName, const StringView *collectionName)
 }
 
 
+static void
+ProcessIndexHint(bson_iter_t *iterator, bson_value_t *targetHintValue)
+{
+	ReportFeatureUsage(FEATURE_INDEX_HINT);
+	const bson_value_t *value = bson_iter_value(iterator);
+	if (value->value_type == BSON_TYPE_UTF8 ||
+		value->value_type == BSON_TYPE_DOCUMENT)
+	{
+		/* The mongo index is specified as a utf8 string index name */
+		*targetHintValue = *value;
+	}
+	else
+	{
+		EnsureTopLevelFieldType("hint", iterator,
+								BSON_TYPE_UTF8);
+	}
+}
+
+
 /*
  * Validates the sanity of an aggregation pipeline.
  * For this we simply create the query from it and let the validation take place.
  */
 void
-ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollection,
+ValidateAggregationPipeline(text *databaseDatum, const StringView *baseCollection,
 							const bson_value_t *pipelineValue)
 {
 	AggregationPipelineBuildContext validationContext = { 0 };
 	validationContext.databaseNameDatum = databaseDatum;
 
 	pg_uuid_t *collectionUuid = NULL;
+	bson_value_t *indexHint = NULL;
 	Query *validationQuery = GenerateBaseTableQuery(databaseDatum,
 													baseCollection,
 													collectionUuid,
+													indexHint,
 													&validationContext);
 	List *stages = ExtractAggregationStages(pipelineValue,
 											&validationContext);
@@ -1079,10 +1132,10 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg(
-								"{aggregate: 1} is not valid for '%s'; a collection is required.",
+								"The value '{aggregate: 1}' is invalid for the '%s'; a collection input is necessary.",
 								stageName),
 							errdetail_log(
-								"{aggregate: 1} is not valid for '%s'; a collection is required.",
+								"The value '{aggregate: 1}' is invalid for the '%s'; a collection input is necessary.",
 								stageName)));
 		}
 
@@ -1122,7 +1175,8 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
 
 		context->requiresPersistentCursor =
 			context->requiresPersistentCursor ||
-			definition->requiresPersistentCursor(&stage->stageValue);
+			definition->requiresPersistentCursor(&stage->stageValue,
+												 &context->isSingleRowResult);
 
 		if (!definition->preservesStableSortOrder)
 		{
@@ -1147,7 +1201,7 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
  * to match the contents of the provided aggregation pipeline.
  */
 Query *
-GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *queryData,
+GenerateAggregationQuery(text *database, pgbson *aggregationSpec, QueryData *queryData,
 						 bool addCursorParams, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
@@ -1161,6 +1215,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	StringView collectionName = { 0 };
 	bson_value_t pipelineValue = { 0 };
 	bson_value_t let = { 0 };
+	bson_value_t indexHint = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
 	bool explain = false;
@@ -1210,10 +1265,12 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		}
 		else if (StringViewEqualsCString(&keyView, "hint"))
 		{
-			/* We ignore this for now (TODO Support this) */
+			ProcessIndexHint(&aggregationIterator, &indexHint);
 		}
 		else if (StringViewEqualsCString(&keyView, "let"))
 		{
+			ReportFeatureUsage(FEATURE_LET_TOP_LEVEL);
+
 			bool hasValue = EnsureTopLevelFieldTypeNullOkUndefinedOK("let",
 																	 &aggregationIterator,
 																	 BSON_TYPE_DOCUMENT);
@@ -1230,18 +1287,22 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 				value->value.v_binary.data_len != 16)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-									"field collectionUUID must be of UUID type")));
+									"field collectionUUID must be a UUID")));
 			}
 
 			collectionUuid = palloc(sizeof(pg_uuid_t));
 			memcpy(&collectionUuid->data, value->value.v_binary.data, 16);
 		}
-		else if (EnableCollation && StringViewEqualsCString(&keyView, "collation"))
+		else if (StringViewEqualsCString(&keyView, "collation"))
 		{
-			EnsureTopLevelFieldType("collation", &aggregationIterator,
-									BSON_TYPE_DOCUMENT);
 			ReportFeatureUsage(FEATURE_COLLATION);
-			ParseAndGetCollationString(value, context.collationString);
+			if (EnableCollation)
+			{
+				/* Ignore collation until enabled for aggregate */
+				EnsureTopLevelFieldType("collation", &aggregationIterator,
+										BSON_TYPE_DOCUMENT);
+				ParseAndGetCollationString(value, context.collationString);
+			}
 		}
 		else if (setStatementTimeout &&
 				 StringViewEqualsCString(&keyView, "maxTimeMS"))
@@ -1249,12 +1310,34 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 			EnsureTopLevelFieldIsNumberLike("find.maxTimeMS", value);
 			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
+		else if (StringViewEqualsCString(&keyView, "$db"))
+		{
+			/* BackCompat: Ignore if provided top level */
+			if (context.databaseNameDatum == NULL)
+			{
+				/* Extract the database out of $db */
+				EnsureTopLevelFieldType("$db", &aggregationIterator, BSON_TYPE_UTF8);
+
+				uint32_t databaseLength = 0;
+				const char *databaseName = bson_iter_utf8(&aggregationIterator,
+														  &databaseLength);
+				context.databaseNameDatum = cstring_to_text_with_len(databaseName,
+																	 databaseLength);
+				database = context.databaseNameDatum;
+			}
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("%*s is an unknown field",
+							errmsg("%*s is not a recognized field",
 								   keyView.length, keyView.string)));
 		}
+	}
+
+	if (context.databaseNameDatum == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"Required field database must be valid")));
 	}
 
 	if (pipelineValue.value_type != BSON_TYPE_ARRAY)
@@ -1269,14 +1352,13 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 							"Required variables aggregate must be valid")));
 	}
 
+	bool isWriteCommand = false;
 	pgbson *parsedVariables = ParseAndGetTopLevelVariableSpec(&let,
 															  &queryData->
-															  timeSystemVariables);
+															  timeSystemVariables,
+															  isWriteCommand);
 
-	if (parsedVariables != NULL && !IsPgbsonEmptyDocument(parsedVariables))
-	{
-		context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
-	}
+	context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
 
 	List *aggregationStages = ExtractAggregationStages(&pipelineValue,
 													   &context);
@@ -1284,11 +1366,12 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	Query *query;
 	if (isCollectionAgnosticQuery)
 	{
-		query = GenerateBaseAgnosticQuery(database, &context);
+		query = GenerateBaseAgnosticQuery(context.databaseNameDatum, &context);
 	}
 	else
 	{
-		query = GenerateBaseTableQuery(database, &collectionName, collectionUuid,
+		query = GenerateBaseTableQuery(context.databaseNameDatum, &collectionName,
+									   collectionUuid, &indexHint,
 									   &context);
 	}
 
@@ -1311,6 +1394,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	else if (query->commandType == CMD_MERGE)
 	{
 		/* CMD_MERGE is case when pipeline has output stage ($merge or $out) result will be always single batch. */
+		ThrowIfServerOrTransactionReadOnly();
 		queryData->cursorKind = QueryCursorType_SingleBatch;
 	}
 	else if (queryData->cursorKind == QueryCursorType_Unspecified)
@@ -1320,6 +1404,13 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 			QueryCursorType_Persistent : QueryCursorType_Streamable;
 	}
 
+	if (queryData->cursorKind == QueryCursorType_Streamable &&
+		context.isSingleRowResult && EnableConversionStreamableToSingleBatch &&
+		queryData->batchSize >= 1)
+	{
+		queryData->cursorKind = QueryCursorType_SingleBatch;
+	}
+
 	queryData->namespaceName = context.namespaceName;
 
 	/* This is validated *after* the pipeline parsing happens */
@@ -1327,7 +1418,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
-							"The 'cursor' option is required, except for aggregate with the explain argument")));
+							"The 'cursor' option is required, except for aggregate with explain")));
 	}
 
 	if (addCursorParams)
@@ -1352,11 +1443,31 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 }
 
 
+inline static bool
+IsNaturalSortHint(const bson_value_t *hintValue)
+{
+	if (hintValue == NULL ||
+		hintValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		return false;
+	}
+
+	pgbsonelement indexHintElement;
+	bson_iter_t indexHintIterator;
+	BsonValueInitIterator(hintValue, &indexHintIterator);
+	return hintValue->value_type == BSON_TYPE_DOCUMENT &&
+		   TryGetSinglePgbsonElementFromBsonIterator(&indexHintIterator,
+													 &indexHintElement) &&
+		   strcmp(indexHintElement.path, "$natural") == 0 &&
+		   BsonValueAsInt32(&indexHintElement.bsonValue) != 0;
+}
+
+
 /*
  * Applies a find spec against a query and expands it into the underlying SQL AST.
  */
 Query *
-GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, bool
+GenerateFindQuery(text *databaseDatum, pgbson *findSpec, QueryData *queryData, bool
 				  addCursorParams, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
@@ -1379,6 +1490,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	bson_value_t sort = { 0 };
 	bson_value_t skip = { 0 };
 	bson_value_t let = { 0 };
+	bson_value_t indexHint = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
 	/* For finds, we can generally query the shard directly if available. */
@@ -1388,129 +1500,295 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		StringView keyView = bson_iter_key_string_view(&findIterator);
 		const bson_value_t *value = bson_iter_value(&findIterator);
 
-		if (StringViewEqualsCString(&keyView, "find"))
+		/*
+		 * Key off of the first character to avoid the several "if/else" checks for every
+		 * key. If any letter becomes to long, we should add another lookup table
+		 * block to speed up the comparison.
+		 */
+		switch (keyView.string[0])
 		{
-			hasFind = true;
-			EnsureTopLevelFieldType("find", &findIterator, BSON_TYPE_UTF8);
-			collectionName.string = bson_iter_utf8(&findIterator, &collectionName.length);
-		}
-		else if (StringViewEqualsCString(&keyView, "filter"))
-		{
-			EnsureTopLevelFieldType("filter", &findIterator, BSON_TYPE_DOCUMENT);
-			filter = *value;
-		}
-		else if (StringViewEqualsCString(&keyView, "limit"))
-		{
-			/* In case ntoreturn is present and has been parsed already we throw this error */
-			if (!isNtoReturnSupported && hasNtoreturn)
+			case '$':
 			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg(
-									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+				if (StringViewEqualsCString(&keyView, "$db"))
+				{
+					/* BackCompat: Ignore if provided top level */
+					if (context.databaseNameDatum == NULL)
+					{
+						/* Extract the database out of $db */
+						EnsureTopLevelFieldType("$db", &findIterator, BSON_TYPE_UTF8);
+
+						uint32_t databaseLength = 0;
+						const char *databaseName = bson_iter_utf8(&findIterator,
+																  &databaseLength);
+						context.databaseNameDatum = cstring_to_text_with_len(databaseName,
+																			 databaseLength);
+						databaseDatum = context.databaseNameDatum;
+					}
+
+					continue;
+				}
+
+				goto default_find_case;
 			}
 
-			/* Validation handled in the stage processing */
-			limit = *value;
-		}
-		else if (StringViewEqualsCString(&keyView, "projection"))
-		{
-			/* Validation handled in the stage processing */
-			/* TODO - Mongo validates projection even if collection is not present */
-			/* to align with that we may need to validate projection here, like $elemMatch envolve $jsonSchema */
-			projection = *value;
-		}
-		else if (StringViewEqualsCString(&keyView, "skip"))
-		{
-			/* Validation handled in the stage processing */
-			skip = *value;
-		}
-		else if (StringViewEqualsCString(&keyView, "sort"))
-		{
-			EnsureTopLevelFieldType("sort", &findIterator, BSON_TYPE_DOCUMENT);
-			sort = *value;
-		}
-		else if (EnableCollation && StringViewEqualsCString(&keyView, "collation"))
-		{
-			EnsureTopLevelFieldType("collation", &findIterator, BSON_TYPE_DOCUMENT);
-			ReportFeatureUsage(FEATURE_COLLATION);
-			ParseAndGetCollationString(value, context.collationString);
-		}
-		else if (StringViewEqualsCString(&keyView, "singleBatch"))
-		{
-			EnsureTopLevelFieldType("singleBatch", &findIterator, BSON_TYPE_BOOL);
-			if (value->value.v_bool)
+			case 'a':
 			{
-				queryData->cursorKind = QueryCursorType_SingleBatch;
-			}
-		}
-		else if (StringViewEqualsCString(&keyView, "batchSize"))
-		{
-			/* In case ntoreturn is present and has been parsed already we throw this error */
-			if (!isNtoReturnSupported && hasNtoreturn)
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg(
-									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
-			}
-			SetBatchSize("batchSize", value, queryData);
-			hasBatchSize = !isNtoReturnSupported;
-		}
-		else if (StringViewEqualsCString(&keyView, "ntoreturn"))
-		{
-			/* In case of versions <6.0 we support ntoreturn */
-			if (isNtoReturnSupported)
-			{
-				SetBatchSize("ntoreturn", value, queryData);
+				if (StringViewEqualsCString(&keyView, "allowDiskUse") ||
+					StringViewEqualsCString(&keyView, "allowPartialResults"))
+				{
+					/* We ignore this for now (TODO Support this?) */
+					continue;
+				}
+
+				goto default_find_case;
 			}
 
-			/* In case ntoreturn is the last option in the find command we first check if batchSize or limit is present */
-			if (limit.value_type != BSON_TYPE_EOD || hasBatchSize)
+			case 'b':
 			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg(
-									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+				if (StringViewEqualsCString(&keyView, "batchSize"))
+				{
+					/* In case ntoreturn is present and has been parsed already we throw this error */
+					if (!isNtoReturnSupported && hasNtoreturn)
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+										errmsg(
+											"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+					}
+					SetBatchSize("batchSize", value, queryData);
+					hasBatchSize = !isNtoReturnSupported;
+					continue;
+				}
+
+				goto default_find_case;
 			}
-			hasNtoreturn = !isNtoReturnSupported;
+
+			case 'c':
+			{
+				if (StringViewEqualsCString(&keyView, "collation"))
+				{
+					ReportFeatureUsage(FEATURE_COLLATION);
+					if (EnableCollation)
+					{
+						/* Ignore collation until enabled for find */
+						EnsureTopLevelFieldType("collation", &findIterator,
+												BSON_TYPE_DOCUMENT);
+						ParseAndGetCollationString(value, context.collationString);
+					}
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'f':
+			{
+				if (StringViewEqualsCString(&keyView, "find"))
+				{
+					hasFind = true;
+					EnsureTopLevelFieldType("find", &findIterator, BSON_TYPE_UTF8);
+					collectionName.string = bson_iter_utf8(&findIterator,
+														   &collectionName.length);
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "filter"))
+				{
+					EnsureTopLevelFieldType("filter", &findIterator, BSON_TYPE_DOCUMENT);
+					filter = *value;
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'h':
+			{
+				if (StringViewEqualsCString(&keyView, "hint"))
+				{
+					ProcessIndexHint(&findIterator, &indexHint);
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'l':
+			{
+				if (StringViewEqualsCString(&keyView, "limit"))
+				{
+					/* In case ntoreturn is present and has been parsed already we throw this error */
+					if (!isNtoReturnSupported && hasNtoreturn)
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+										errmsg(
+											"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+					}
+
+					/* Validation handled in the stage processing */
+					limit = *value;
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "let"))
+				{
+					ReportFeatureUsage(FEATURE_LET_TOP_LEVEL);
+
+					EnsureTopLevelFieldType("let", &findIterator, BSON_TYPE_DOCUMENT);
+
+					let = *value;
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "lsid"))
+				{
+					/* Commonly ignored spec, add here to not pay cost of bsearch for hotpaths */
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'm':
+			{
+				if (StringViewEqualsCString(&keyView, "min") ||
+					StringViewEqualsCString(&keyView, "max"))
+				{
+					/* We ignore this for now (TODO Support this?) */
+					continue;
+				}
+				else if (setStatementTimeout &&
+						 StringViewEqualsCString(&keyView, "maxTimeMS"))
+				{
+					EnsureTopLevelFieldIsNumberLike("find.maxTimeMS", value);
+					SetExplicitStatementTimeout(BsonValueAsInt32(value));
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'n':
+			{
+				if (StringViewEqualsCString(&keyView, "ntoreturn"))
+				{
+					/* In case hook requests, we support ntoreturn */
+					if (isNtoReturnSupported)
+					{
+						SetBatchSize("ntoreturn", value, queryData);
+					}
+
+					/* In case ntoreturn is the last option in the find command we first check if batchSize or limit is present */
+					if (limit.value_type != BSON_TYPE_EOD || hasBatchSize)
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+										errmsg(
+											"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+					}
+					hasNtoreturn = !isNtoReturnSupported;
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "noCursorTimeout"))
+				{
+					/* We ignore this for now (TODO Support this?) */
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'p':
+			{
+				if (StringViewEqualsCString(&keyView, "projection"))
+				{
+					/* Validation handled in the stage processing */
+					/* TODO - Protocol behavior validates projection even if collection is not present */
+					/* to align with that we may need to validate projection here, like $elemMatch envolve $jsonSchema */
+					projection = *value;
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 'r':
+			{
+				if (StringViewEqualsCString(&keyView, "returnKey"))
+				{
+					if (BsonValueAsBool(value))
+					{
+						/* fail if returnKey or showRecordId are present and with boolean value true, else ignore */
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+										errmsg("The key %.*s is currently not supported",
+											   keyView.length, keyView.string),
+										errdetail_log(
+											"The key %.*s is currently not supported",
+											keyView.length, keyView.string)));
+					}
+
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+			case 's':
+			{
+				if (StringViewEqualsCString(&keyView, "skip"))
+				{
+					/* Validation handled in the stage processing */
+					skip = *value;
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "sort"))
+				{
+					EnsureTopLevelFieldType("sort", &findIterator, BSON_TYPE_DOCUMENT);
+					sort = *value;
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "singleBatch"))
+				{
+					EnsureTopLevelFieldType("singleBatch", &findIterator, BSON_TYPE_BOOL);
+					if (value->value.v_bool)
+					{
+						queryData->cursorKind = QueryCursorType_SingleBatch;
+					}
+					continue;
+				}
+				else if (StringViewEqualsCString(&keyView, "showRecordId"))
+				{
+					if (BsonValueAsBool(value))
+					{
+						/* fail if returnKey or showRecordId are present and with boolean value true, else ignore */
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+										errmsg("The key %.*s is currently not supported",
+											   keyView.length, keyView.string),
+										errdetail_log(
+											"The key %.*s is currently not supported",
+											keyView.length, keyView.string)));
+					}
+
+					continue;
+				}
+
+				goto default_find_case;
+			}
+
+default_find_case:
+			default:
+			{
+				if (!IsCommonSpecIgnoredField(keyView.string))
+				{
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+									errmsg("%.*s is an unknown field",
+										   keyView.length, keyView.string),
+									errdetail_log("%.*s is an unknown field",
+												  keyView.length, keyView.string)));
+				}
+			}
 		}
-		else if (StringViewEqualsCString(&keyView, "let"))
-		{
-			EnsureTopLevelFieldType("let", &findIterator, BSON_TYPE_DOCUMENT);
-			let = *value;
-		}
-		else if (StringViewEqualsCString(&keyView, "hint") ||
-				 StringViewEqualsCString(&keyView, "min") ||
-				 StringViewEqualsCString(&keyView, "max") ||
-				 StringViewEqualsCString(&keyView, "allowPartialResults") ||
-				 StringViewEqualsCString(&keyView, "allowDiskUse") ||
-				 StringViewEqualsCString(&keyView, "noCursorTimeout"))
-		{
-			/* We ignore this for now (TODO Support this?) */
-		}
-		else if ((StringViewEqualsCString(&keyView, "returnKey") ||
-				  StringViewEqualsCString(&keyView, "showRecordId")) &&
-				 BsonValueAsBool(value))
-		{
-			/* fail if returnKey or showRecordId are present and with boolean value true, else ignore */
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("key %.*s is not supported yet",
-								   keyView.length, keyView.string),
-							errdetail_log("key %.*s is not supported yet",
-										  keyView.length, keyView.string)));
-		}
-		else if (setStatementTimeout &&
-				 StringViewEqualsCString(&keyView, "maxTimeMS"))
-		{
-			EnsureTopLevelFieldIsNumberLike("find.maxTimeMS", value);
-			SetExplicitStatementTimeout(BsonValueAsInt32(value));
-		}
-		else if (!IsCommonSpecIgnoredField(keyView.string))
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("%.*s is an unknown field",
-								   keyView.length, keyView.string),
-							errdetail_log("%.*s is an unknown field",
-										  keyView.length, keyView.string)));
-		}
+	}
+
+	if (context.databaseNameDatum == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"Required field database must be valid")));
 	}
 
 	if (!hasFind)
@@ -1521,14 +1799,14 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	else if (collectionName.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Collection name can't be empty.")));
+						errmsg("Collection name must not be left empty.")));
 	}
 
 	/* In case only ntoreturn is present we give a different error.*/
 	if (!isNtoReturnSupported && hasNtoreturn)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5746102),
-						errmsg("Command is not supported for mongo version >= 5.1")));
+						errmsg("Command is not supported for cluster version >= 5.1")));
 	}
 
 	/* Find supports negative limit (as well as count) */
@@ -1546,31 +1824,44 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 	}
 
+	bool isWriteCommand = false;
 	pgbson *parsedVariables = ParseAndGetTopLevelVariableSpec(&let,
 															  &queryData->
-															  timeSystemVariables);
+															  timeSystemVariables,
+															  isWriteCommand);
 
-	if (parsedVariables != NULL && !IsPgbsonEmptyDocument(parsedVariables))
-	{
-		context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
-	}
+	context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
 
+	context.isSingleRowResult = false;
 	if (sort.value_type != BSON_TYPE_EOD)
 	{
 		context.requiresPersistentCursor = true;
 	}
 
-	if (RequiresPersistentCursorSkip(&skip))
+	if (RequiresPersistentCursorSkip(&skip, &context.isSingleRowResult))
 	{
 		context.requiresPersistentCursor = true;
 	}
 
-	if (RequiresPersistentCursorLimit(&limit))
+	if (RequiresPersistentCursorLimit(&limit, &context.isSingleRowResult))
 	{
 		context.requiresPersistentCursor = true;
 	}
 
-	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
+	if (indexHint.value_type != BSON_TYPE_EOD)
+	{
+		/* Validate hint */
+		if (!IsNaturalSortHint(&indexHint) &&
+			IsNaturalSortHint(&sort))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg(
+								"Cannot provide natural sort with a non-natural index hint")));
+		}
+	}
+
+	Query *query = GenerateBaseTableQuery(context.databaseNameDatum, &collectionName,
+										  collectionUuid, &indexHint,
 										  &context);
 	Query *baseQuery = query;
 
@@ -1601,16 +1892,28 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		context.stageNum++;
 	}
 
-	/* finally update projection */
-	if (projection.value_type != BSON_TYPE_EOD)
-	{
-		query = HandleProjectFind(&projection, &filter, query, &context);
-	}
-
 	/* $near and $nearSphere add sort clause to query, for them we need persistent cursor. */
 	if (query->sortClause)
 	{
 		context.requiresPersistentCursor = true;
+	}
+
+	/* finally update projection */
+	if (projection.value_type != BSON_TYPE_EOD)
+	{
+		/* Before applying projection - check if we need to
+		 * push to a subquery. We do this only if we have
+		 * skip to avoid projecting on documents we won't need.
+		 */
+		if (context.requiresSubQuery &&
+			context.requiresPersistentCursor &&
+			query->limitOffset != NULL &&
+			EnableFindProjectionAfterOffset)
+		{
+			query = MigrateQueryToSubQuery(query, &context);
+		}
+
+		query = HandleProjectFind(&projection, &filter, query, &context);
 	}
 
 	if (rt_fetch(1, query->rtable)->rtekind != RTE_RELATION)
@@ -1635,6 +1938,13 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		queryData->cursorKind = QueryCursorType_PointRead;
 	}
 
+	if (queryData->cursorKind == QueryCursorType_Streamable &&
+		context.isSingleRowResult && EnableConversionStreamableToSingleBatch &&
+		queryData->batchSize >= 1)
+	{
+		queryData->cursorKind = QueryCursorType_SingleBatch;
+	}
+
 	if (addCursorParams)
 	{
 		bool addCursorAsConst = false;
@@ -1652,11 +1962,97 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 }
 
 
+Query *
+BuildAggregationCursorGetMoreQuery(text *database, pgbson *getMoreSpec,
+								   pgbson *continuationSpec)
+{
+	/* Form a funcExpr query that is just calling the getMore function
+	 * these cursor kinds don't really execute a brand new query on the getMore
+	 * and they simply drain what was persisted in the first phase.
+	 */
+	Query *query = makeNode(Query);
+	query->commandType = CMD_SELECT;
+	query->querySource = QSRC_ORIGINAL;
+	query->canSetTag = true;
+
+	List *colNames = list_make2(makeString("cursorpage"), makeString("continuation"));
+	RangeTblEntry *rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_FUNCTION;
+	rte->relid = InvalidOid;
+
+	rte->eref = makeAlias("collection", colNames);
+	rte->lateral = false;
+	rte->inFromCl = true;
+	rte->functions = NIL;
+	rte->inh = false;
+#if PG_VERSION_NUM >= 160000
+	rte->perminfoindex = 0;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
+	rte->rellockmode = AccessShareLock;
+	rte->coltypes = list_make2_oid(BsonTypeId(), BsonTypeId());
+	rte->coltypmods = list_make2_int(-1, -1);
+	rte->colcollations = list_make2_oid(InvalidOid, InvalidOid);
+	rte->ctename = NULL;
+	rte->ctelevelsup = 0;
+
+	Const *databaseConst = makeConst(TEXTOID, -1, DEFAULT_COLLATION_OID, -1,
+									 PointerGetDatum(database),
+									 false, false);
+	List *queryArgs = list_make3(databaseConst, MakeBsonConst(getMoreSpec), MakeBsonConst(
+									 continuationSpec));
+
+	/* Now create the rtfunc*/
+	FuncExpr *rangeFunc = makeFuncExpr(CursorGetMoreFunctionOid(), RECORDOID, queryArgs,
+									   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+	RangeTblFunction *rangeTableFunction = makeNode(RangeTblFunction);
+	rangeTableFunction->funccolcount = 2;
+	rangeTableFunction->funccolnames = colNames;
+	rangeTableFunction->funccoltypes = list_make2_oid(BsonTypeId(), BsonTypeId());
+	rangeTableFunction->funccoltypmods = list_make2_int(-1, -1);
+	rangeTableFunction->funccolcollations = list_make2_oid(InvalidOid, InvalidOid);
+	rangeTableFunction->funcparams = NULL;
+	rangeTableFunction->funcexpr = (Node *) rangeFunc;
+
+	/* Add the RTFunc to the RTE */
+	rte->functions = list_make1(rangeTableFunction);
+
+	query->rtable = list_make1(rte);
+
+	RangeTblRef *rtr = makeNode(RangeTblRef);
+	rtr->rtindex = 1;
+	query->jointree = makeFromExpr(list_make1(rtr), NULL);
+
+	Var *documentEntry = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
+	Var *continuationEntry = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *documentTargetEntry = makeTargetEntry((Expr *) documentEntry, 1,
+													   "cursorpage",
+													   false);
+	TargetEntry *continuationTargetEntry = makeTargetEntry((Expr *) continuationEntry, 2,
+														   "continuation",
+														   false);
+	query->targetList = list_make2(documentTargetEntry, continuationTargetEntry);
+	return query;
+}
+
+
+inline static bool
+CanUseNewCountAggregates()
+{
+	return EnableNewCountAggregates &&
+		   (IsClusterVersionAtLeastPatch(DocDB_V0, 106, 2) ||
+			IsClusterVersionAtLeastPatch(DocDB_V0, 107, 1) ||
+			IsClusterVersionAtleast(DocDB_V0, 108, 0));
+}
+
+
 /*
- * Generates a query that is akin to the MongoDB $count query command
+ * Generates a query that is akin to $count command protocol.
  */
 Query *
-GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTimeout)
+GenerateCountQuery(text *databaseDatum, pgbson *countSpec, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -1668,9 +2064,12 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 	bson_value_t filter = { 0 };
 	bson_value_t limit = { 0 };
 	bson_value_t skip = { 0 };
+	bson_value_t indexHint = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
+	bool appendOkResult = false;
 	bool hasQueryModifier = false;
+	context.allowShardBaseTable = true;
 	while (bson_iter_next(&countIterator))
 	{
 		StringView keyView = bson_iter_key_string_view(&countIterator);
@@ -1686,7 +2085,9 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 		{
 			EnsureTopLevelFieldType("query", &countIterator, BSON_TYPE_DOCUMENT);
 			filter = *value;
-			hasQueryModifier = true;
+
+			/* Only do runtime count if there's a non-empty filter */
+			hasQueryModifier = hasQueryModifier || !IsBsonValueEmptyDocument(value);
 		}
 		else if (StringViewEqualsCString(&keyView, "limit"))
 		{
@@ -1700,8 +2101,12 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 			skip = *value;
 			hasQueryModifier = true;
 		}
-		else if (StringViewEqualsCString(&keyView, "hint") ||
-				 StringViewEqualsCString(&keyView, "fields"))
+		else if (StringViewEqualsCString(&keyView, "hint"))
+		{
+			hasQueryModifier = true;
+			ProcessIndexHint(&countIterator, &indexHint);
+		}
+		else if (StringViewEqualsCString(&keyView, "fields"))
 		{
 			/* We ignore this for now (TODO Support this?) */
 		}
@@ -1721,16 +2126,15 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 	if (collectionName.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Collection name can't be empty.")));
+						errmsg("Collection name must not be left empty.")));
 	}
 
 	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
-										  &context);
+										  &indexHint, &context);
 
 	/*
 	 * the count() query which has no filter/skip/limit/etc can be done via an estimatedDocumentCount
-	 * per the mongo spec. In this case, we rewrite the query as a collStats aggregation query with
-	 * a project to make it the appropriate output.
+	 * In this case, we rewrite the query as a collStats aggregation query with a project to make it the appropriate output.
 	 */
 	if (!hasQueryModifier && context.mongoCollection != NULL)
 	{
@@ -1752,6 +2156,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 		pgbson *projectSpec = PgbsonWriterGetPgbson(&projectWriter);
 		bson_value_t projectSpecValue = ConvertPgbsonToBsonValue(projectSpec);
 		query = HandleProject(&projectSpecValue, query, &context);
+		appendOkResult = true;
 	}
 	else
 	{
@@ -1771,10 +2176,10 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH)),
 							errmsg(
-								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
+								"The BSON field 'skip' has an incorrect type '%s'; it should be one of the following types: [long, int, decimal, double].",
 								BsonTypeName(skip.value_type)),
 							errdetail_log(
-								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
+								"The BSON field 'skip' has an incorrect type '%s'; it should be one of the following types: [long, int, decimal, double].",
 								BsonTypeName(skip.value_type)));
 				}
 
@@ -1783,10 +2188,10 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51024)),
 							errmsg(
-								"BSON field 'skip' value must be >=0, actual value '%ld'",
+								"The BSON field 'skip' requires a value greater than or equal to 0, but the given value is '%ld'.",
 								skipValue),
 							errdetail_log(
-								"BSON field 'skip' value must be >=0, actual value '%ld'",
+								"The BSON field 'skip' requires a value greater than or equal to 0, but the given value is '%ld'.",
 								skipValue));
 				}
 
@@ -1815,7 +2220,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 		{
 			query = HandleLimit(&limit, query, &context);
 			context.stageNum++;
-			if (RequiresPersistentCursorLimit(&limit))
+			if (RequiresPersistentCursorLimit(&limit, &context.isSingleRowResult))
 			{
 				context.requiresPersistentCursor = true;
 			}
@@ -1826,27 +2231,34 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 		countValue.value_type = BSON_TYPE_UTF8;
 		countValue.value.v_utf8.len = 1;
 		countValue.value.v_utf8.str = "n";
-		query = HandleCount(&countValue, query, &context);
+
+		bool isCountCommand = true;
+		query = HandleCountCore(&countValue, query, &context, isCountCommand);
 	}
 
-	/* Now add the "ok": 1 as an add fields stage. */
-	pgbson_writer addFieldsWriter;
-	PgbsonWriterInit(&addFieldsWriter);
-	PgbsonWriterAppendDouble(&addFieldsWriter, "ok", 2, 1);
-	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
-	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
-	query = HandleSimpleProjectionStage(&addFieldsValue, query, &context, "$addFields",
-										BsonDollaMergeDocumentsFunctionOid(), NULL, NULL);
+	if (appendOkResult || !CanUseNewCountAggregates())
+	{
+		/* Now add the "ok": 1 as an add fields stage. */
+		pgbson_writer addFieldsWriter;
+		PgbsonWriterInit(&addFieldsWriter);
+		PgbsonWriterAppendDouble(&addFieldsWriter, "ok", 2, 1);
+		pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
+		bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
+		query = HandleSimpleProjectionStage(&addFieldsValue, query, &context,
+											"$addFields",
+											BsonDollaMergeDocumentsFunctionOid(), NULL,
+											NULL);
+	}
 
 	return query;
 }
 
 
 /*
- * Generates a query that is akin to the MongoDB $distinct query command
+ * Generates a query that is akin to the $distinct command protocol.
  */
 Query *
-GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec, bool setStatementTimeout)
+GenerateDistinctQuery(text *databaseDatum, pgbson *distinctSpec, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -1857,6 +2269,7 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec, bool setStateme
 	StringView collectionName = { 0 };
 	bool hasDistinct = false;
 	bson_value_t filter = { 0 };
+	bson_value_t indexHint = { 0 };
 	StringView distinctKey = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
@@ -1906,23 +2319,24 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec, bool setStateme
 	else if (collectionName.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Collection name can't be empty.")));
+						errmsg("Collection name must not be left empty.")));
 	}
 
 	if (distinctKey.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("distinct key can't be empty.")));
+						errmsg("A distinct key value must not be left empty.")));
 	}
 
 	if (strlen(distinctKey.string) != distinctKey.length)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_KEYCANNOTCONTAINNULLBYTE),
-						errmsg("Distinct key cannot have embedded nulls")));
+						errmsg(
+							"A distinct key value cannot contain any embedded null characters")));
 	}
 
 	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
-										  &context);
+										  &indexHint, &context);
 
 	/* First apply match */
 	if (filter.value_type != BSON_TYPE_EOD)
@@ -1942,12 +2356,13 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec, bool setStateme
  * with it. Also updates the queryData with cursor related information.
  */
 int64_t
-ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
+ParseGetMore(text **databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
 			 setStatementTimeout)
 {
 	bson_iter_t cursorSpecIter;
 	PgbsonInitIterator(getMoreSpec, &cursorSpecIter);
 	int64_t cursorId = 0;
+	StringView nameView = { 0 };
 	while (bson_iter_next(&cursorSpecIter))
 	{
 		const char *pathKey = bson_iter_key(&cursorSpecIter);
@@ -1967,12 +2382,10 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
 		{
 			const bson_value_t *value = bson_iter_value(&cursorSpecIter);
 			EnsureTopLevelFieldValueType("collection", value, BSON_TYPE_UTF8);
-			StringView nameView = {
+			nameView = (StringView) {
 				.string = value->value.v_utf8.str,
 				.length = value->value.v_utf8.len
 			};
-			queryData->namespaceName = CreateNamespaceName(databaseName,
-														   &nameView);
 		}
 		else if (setStatementTimeout && strcmp(pathKey, "maxTimeMS") == 0)
 		{
@@ -1980,19 +2393,43 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
 			EnsureTopLevelFieldIsNumberLike("getMore.maxTimeMS", value);
 			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
+		else if (strcmp(pathKey, "$db") == 0)
+		{
+			/* BackCompat: Ignore if provided top level */
+			if (*databaseName == NULL)
+			{
+				/* Extract the database out of $db */
+				EnsureTopLevelFieldType("$db", &cursorSpecIter, BSON_TYPE_UTF8);
+
+				uint32_t databaseLength = 0;
+				const char *databaseStr = bson_iter_utf8(&cursorSpecIter,
+														 &databaseLength);
+				*databaseName = cstring_to_text_with_len(databaseStr,
+														 databaseLength);
+			}
+		}
 		else if (!IsCommonSpecIgnoredField(pathKey))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("%s is an unknown field",
+							errmsg("%s is an unrecognized field name",
 								   pathKey)));
 		}
 	}
 
-	if (queryData->namespaceName == NULL)
+	if (nameView.length == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
+						errmsg("Collection name must not be left empty.")));
+	}
+
+	if (*databaseName == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-						errmsg("Required element \"collection\" missing.")));
+						errmsg("Required element \"$db\" missing.")));
 	}
+
+	queryData->namespaceName = CreateNamespaceName(*databaseName,
+												   &nameView);
 
 	if (cursorId == 0)
 	{
@@ -2127,7 +2564,8 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40272),
-						errmsg("%s specification stage must be an object", stageName)));
+						errmsg("The %s specification stage must correspond to an object",
+							   stageName)));
 	}
 
 	/* The first projector is the document */
@@ -2148,31 +2586,35 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 
 	List *args;
 
-	/* if valid collation is specified, we use the function with both let and collation support, if applicable */
+	/* if valid collation is specified, we use the function with both variables and collation support, if applicable */
 	/* else if only variableSpec is given, we use the function with let support, if applicable */
 	/* else the base function */
-	bool addLetAndCollationArg = IsCollationApplicable(context->collationString) &&
-								 functionOidWithLetAndCollation != NULL;
-	bool addOnlyVariableSpecArg = context->variableSpec != NULL && functionOidWithLet !=
-								  NULL;
+	Const *collationConst = IsCollationApplicable(context->collationString) ?
+							MakeTextConst(context->collationString,
+										  strlen(context->collationString)) : NULL;
 
-	if (addLetAndCollationArg && IsClusterVersionAtleast(DocDB_V0, 102, 0))
+	if (collationConst && functionOidWithLetAndCollation)
 	{
-		Const *collationConst = MakeTextConst(context->collationString, strlen(
-												  context->collationString));
-		args = list_make4(currentProjection, addFieldsProcessed, context->variableSpec,
+		args = list_make4(currentProjection,
+						  addFieldsProcessed,
+						  context->variableSpec ? context->variableSpec :
+						  (Expr *) MakeBsonConst(PgbsonInitEmpty()),
 						  collationConst);
 		functionOid = functionOidWithLetAndCollation();
 	}
-	else if (addOnlyVariableSpecArg)
+	else if (context->variableSpec && functionOidWithLet)
 	{
-		args = list_make3(currentProjection, addFieldsProcessed,
-						  context->variableSpec);
+		args = list_make3(currentProjection, addFieldsProcessed, context->variableSpec);
 		functionOid = functionOidWithLet();
 	}
 	else
 	{
 		args = list_make2(currentProjection, addFieldsProcessed);
+		if (functionOid == BsonDollaMergeDocumentsFunctionOid())
+		{
+			bool overrideArrays = false;
+			args = lappend(args, MakeBoolValueConst(overrideArrays));
+		}
 	}
 
 	FuncExpr *resultExpr = makeFuncExpr(
@@ -2201,19 +2643,21 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 		if (strcmp(opName, "$maxN") == 0 || strcmp(opName, "$minN") == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787900),
-							errmsg("specification must be an object; found %s: %s",
-								   opName, BsonValueToJsonForLogging(inputDocument)),
+							errmsg(
+								"Specification should be an object type; encountered %s: %s",
+								opName, BsonValueToJsonForLogging(inputDocument)),
 							errdetail_log(
-								"specification must be an object; opname: %s type found: %s",
+								"specification must be defined as an object; opname: %s type found: %s",
 								opName, BsonTypeName(inputDocument->value_type))));
 		}
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787801),
-							errmsg("specification must be an object; found %s :%s",
-								   opName, BsonValueToJsonForLogging(inputDocument)),
+							errmsg(
+								"specification must be defined as an object, but the provided input was %s :%s",
+								opName, BsonValueToJsonForLogging(inputDocument)),
 							errdetail_log(
-								"specification must be an object; opname: %s type found :%s",
+								"pecification must be defined as an object; opname: %s type found :%s",
 								opName, BsonTypeName(inputDocument->value_type))));
 		}
 	}
@@ -2234,9 +2678,10 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787901),
-							errmsg("%s found an unknown argument: %s", opName, key),
+							errmsg("%s encountered an unrecognized argument value: %s",
+								   opName, key),
 							errdetail_log(
-								"%s found an unknown argument", opName)));
+								"%s encountered an unrecognized argument", opName)));
 		}
 	}
 
@@ -2246,9 +2691,9 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 	if (input->value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787907),
-						errmsg("%s requires an 'input' field", opName),
+						errmsg("%s needs to have an 'input' field", opName),
 						errdetail_log(
-							"%s requires an 'input' field", opName)));
+							"%s needs to have an 'input' field", opName)));
 	}
 
 	if (elementsToFetch->value_type == BSON_TYPE_EOD)
@@ -2277,10 +2722,11 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788001),
-						errmsg("specification must be an object; found %s :%s",
-							   opName, BsonValueToJsonForLogging(inputDocument)),
+						errmsg(
+							"specification must be defined as an object, but the provided input was %s :%s",
+							opName, BsonValueToJsonForLogging(inputDocument)),
 						errdetail_log(
-							"specification must be an object; opname: %s type found :%s",
+							"specification must be defined as an object; opname: %s type found :%s",
 							opName, BsonTypeName(inputDocument->value_type))));
 	}
 	bson_iter_t docIter;
@@ -2304,7 +2750,8 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788002),
-							errmsg("Unknown argument to %s '%s'", opName, key),
+							errmsg("Unrecognized argument passed to %s: '%s'", opName,
+								   key),
 							errdetail_log(
 								"%s found an unknown argument", opName)));
 		}
@@ -2317,7 +2764,7 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 														 strcmp(opName, "$bottomN") == 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788003),
-						errmsg("Missing value for 'n'"),
+						errmsg("Required value for 'n' is not provided"),
 						errdetail_log(
 							"%s requires an 'n' field", opName)));
 	}
@@ -2326,15 +2773,15 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 														 strcmp(opName, "$bottom") == 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788002),
-						errmsg("Unknown argument to %s 'n'", opName),
+						errmsg("Unrecognized argument provided to %s 'n'", opName),
 						errdetail_log(
-							"Unknown argument to %s 'n'", opName)));
+							"Unrecognized argument provided to %s 'n'", opName)));
 	}
 
 	if (output->value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788004),
-						errmsg("Missing value for 'output'"),
+						errmsg("The 'output' parameter is missing a required value"),
 						errdetail_log(
 							"%s requires an 'output' field", opName)));
 	}
@@ -2342,18 +2789,19 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 	if (sortSpec->value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788005),
-						errmsg("Missing value for 'sortBy'"),
+						errmsg("No value provided for 'sortBy'"),
 						errdetail_log(
-							"%s requires a 'sortBy", opName)));
+							"%s needs a 'sortBy' parameter", opName)));
 	}
 	else if (sortSpec->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788604),
 						errmsg(
-							"expected 'sortBy' to already be an object in the arguments to %s",
+							"Expected 'sortBy' parameter to already contain an object within the provided arguments to %s",
 							opName),
 						errdetail_log(
-							"'sortBy' field in %s is not an object", opName)));
+							"Expected 'sortBy' parameter to already contain an object within the provided arguments to %s",
+							opName)));
 	}
 }
 
@@ -2364,7 +2812,7 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
  * @param input:  this is a pointer which after parsing will hold input expression
  * @param p:  this is a pointer which after parsing will hold the p, i.e. the percentile array value
  * @param method: this is a pointer which after parsing will hold method
- * @param isMedianOp: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
+ * @param isMedianOp: this contains the name of the operator for error msg formatting purposes.
  */
 void
 ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
@@ -2378,10 +2826,11 @@ ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
 		int errorcode = isMedianOp ? ERRCODE_DOCUMENTDB_LOCATION7436100 :
 						ERRCODE_DOCUMENTDB_LOCATION7429703;
 		ereport(ERROR, (errcode(errorcode),
-						errmsg("specification must be an object; found %s type: %s",
-							   opName, BsonTypeName(inputDocument->value_type)),
+						errmsg(
+							"Specification must be an object type, but instead received %s with type: %s",
+							opName, BsonTypeName(inputDocument->value_type)),
 						errdetail_log(
-							"%s specification must be an object", opName)));
+							"The %s format requires an object", opName)));
 	}
 	bson_iter_t docIter;
 	BsonValueInitIterator(inputDocument, &docIter);
@@ -2405,19 +2854,20 @@ ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD), errmsg(
-								"BSON field '$%s.%s' is an unknown field.", opName, key),
+								"The BSON field named with operators '$%s.%s' is not recognized.",
+								opName, key),
 							errdetail_log("%s found an unknown argument", opName)));
 		}
 	}
 
-	/* check required fields are present */
+	/* Verify that all necessary fields exist */
 	char *keyName;
 	if (((input->value_type == BSON_TYPE_EOD) && (keyName = "input")) ||
 		(!isMedianOp && (p->value_type == BSON_TYPE_EOD) && (keyName = "p")) ||
 		((method->value_type == BSON_TYPE_EOD) && (keyName = "method")))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414), errmsg(
-							"BSON field '$%s.%s' is missing but is a required field",
+							"The BSON field '$%s.%s' is required but is currently missing from the data structure",
 							opName, keyName)));
 	}
 
@@ -2425,7 +2875,7 @@ ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
 	if (method->value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
-							"BSON field '$%s.method' is the wrong type %s, expected type 'string'",
+							"BSON field %s.method has an incorrect type %s; it should be of type 'string'",
 							opName, BsonTypeName(method->value_type)),
 						errdetail_log(
 							"BSON field '$%s.method' expects type 'string'", opName)));
@@ -2463,26 +2913,30 @@ ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
 			if (IsBsonValueNaN(elementsToFetch))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109),
-								errmsg("Can't coerce out of range value %s to long",
-									   BsonValueToJsonForLogging(elementsToFetch))));
+								errmsg(
+									"Unable to convert out-of-range value %s into a long type",
+									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (IsBsonValueInfinity(elementsToFetch) != 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109),
-								errmsg("Can't coerce out of range value %s to long",
-									   BsonValueToJsonForLogging(elementsToFetch))));
+								errmsg(
+									"Unable to convert out-of-range value %s into a long type",
+									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (!IsBsonValueFixedInteger(elementsToFetch))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787903),
 								errmsg(
-									"Value for 'n' must be of integral type, but found %s",
+									"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+									BsonTypeName(elementsToFetch->value_type),
 									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
-									"Value for 'n' must be of integral type, but found of type %s",
-									BsonTypeName(elementsToFetch->value_type))));
+									"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+									BsonTypeName(elementsToFetch->value_type),
+									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			/* This is done as elements to fetch must only be int64. */
@@ -2494,10 +2948,11 @@ ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
 			if (elementsToFetch->value.v_int64 <= 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787908),
-								errmsg("'n' must be greater than 0, found %s",
-									   BsonValueToJsonForLogging(elementsToFetch)),
+								errmsg(
+									"The value of 'n' must be strictly greater than 0, but the current value is %s",
+									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
-									"'n' must be greater than 0, found %ld",
+									"'n' cannot be less than 0, but the current value is %ld",
 									elementsToFetch->value.v_int64)));
 			}
 			if (elementsToFetch->value.v_int64 > 10)
@@ -2517,11 +2972,14 @@ ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787902),
-							errmsg("Value for 'n' must be of integral type, but found %s",
-								   BsonValueToJsonForLogging(elementsToFetch)),
+							errmsg(
+								"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+								BsonTypeName(elementsToFetch->value_type),
+								BsonValueToJsonForLogging(elementsToFetch)),
 							errdetail_log(
-								"Value for 'n' must be of integral type, but found of type %s",
-								BsonTypeName(elementsToFetch->value_type))));
+								"Expected 'integer' type for 'n' but found '%s' for value '%s'",
+								BsonTypeName(elementsToFetch->value_type),
+								BsonValueToJsonForLogging(elementsToFetch))));
 		}
 	}
 }
@@ -2562,12 +3020,18 @@ HandleAddFields(const bson_value_t *existingValue, Query *query,
 /*
  * Handles the $bucket stage.
  * Converts to a $group stage with $_bucketInternal operator to handle bucket specific logics.
- * See bucket.md for more details.
  */
 static Query *
 HandleBucket(const bson_value_t *existingValue, Query *query,
 			 AggregationPipelineBuildContext *context)
 {
+	if (IsCollationApplicable(context->collationString))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg(
+							"Collation is currently unsupported in the $bucket stage.")));
+	}
+
 	ReportFeatureUsage(FEATURE_STAGE_BUCKET);
 
 	bson_value_t groupSpec = { 0 };
@@ -2645,6 +3109,13 @@ HandleFill(const bson_value_t *existingValue, Query *query,
 		   AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_FILL);
+
+	if (IsCollationApplicable(context->collationString))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg(
+							"collation is not supported in the $fill stage yet.")));
+	}
 
 	bool hasSortBy = false;
 	bool onlyHasValueFill = true;
@@ -2730,10 +3201,10 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40201),
 						errmsg(
-							"Argument to $fill stage must be an object, but found type: %s",
+							"The operator $fill requires an object as its argument, but a value of type %s was provided instead.",
 							BsonTypeName(fillSpec->value_type)),
 						errdetail_log(
-							"Argument to $fill stage must be an object, but found type: %s",
+							"The operator $fill requires an object as its argument, but a value of type %s was provided instead.",
 							BsonTypeName(fillSpec->value_type))));
 	}
 
@@ -2774,9 +3245,12 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
-							errmsg("BSON field '$fill.%s' is an unknown field", key),
-							errdetail_log("BSON field '$fill.%s' is an unknown field",
-										  key)));
+							errmsg(
+								"The BSON field named '$fill.%s' is not recognized as a valid field.",
+								key),
+							errdetail_log(
+								"The BSON field named '$fill.%s' is not recognized as a valid field.",
+								key)));
 		}
 	}
 
@@ -2784,9 +3258,9 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6050204),
 						errmsg(
-							"Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'"),
+							"Only one of 'partitionBy' or 'partitionByFields' is allowed when using the '$fill'."),
 						errdetail_log(
-							"Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'")));
+							"Only one of 'partitionBy' or 'partitionByFields' is allowed when using the '$fill'.")));
 	}
 
 	/* output is a required field in $fill, check it */
@@ -2796,7 +3270,7 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg(
-							"BSON field '$fill.output' is missing but a required field")));
+							"Required field '$fill.output' is missing")));
 	}
 
 
@@ -2871,9 +3345,10 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 				else
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6050202),
-									errmsg("Method must be either locf or linear"),
+									errmsg(
+										"The method must be specified as either locf or linear"),
 									errdetail_log(
-										"Method must be either locf or linear")));
+										"The method must be specified as either locf or linear")));
 				}
 			}
 			else if (strcmp(key, "value") == 0)
@@ -2908,11 +3383,14 @@ RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 			}
 			else
 			{
-				/* unsupported field name */
+				/* Field name is not supported */
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
-								errmsg("BSON field '$fill.%s' is an unknown field", key),
-								errdetail_log("BSON field '$fill.%s' is an unknown field",
-											  key)));
+								errmsg(
+									"The BSON field named '$fill.%s' is not recognized as a valid field.",
+									key),
+								errdetail_log(
+									"The BSON field named '$fill.%s' is not recognized as a valid field.",
+									key)));
 			}
 			PgbsonWriterEndDocument(&outputWriter, &outputFieldSpecWriter);
 		}
@@ -2983,16 +3461,6 @@ HandleRedact(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_REDACT);
 
-	/* Check if redact feature is available according to version. */
-	if (!IsClusterVersionAtleast(DocDB_V0, 24, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg(
-							"Stage $redact is not supported yet in native pipeline"),
-						errdetail_log(
-							"Stage $redact is not supported yet in native pipeline")));
-	}
-
 	Const *redactSpec;
 	Const *redactSpecText;
 
@@ -3023,7 +3491,7 @@ HandleRedact(const bson_value_t *existingValue, Query *query,
 
 	/*
 	 * There is two kind of $redact parameters:
-	 * a. like "$redact: { $cond: { if: { $eq: ["$level", "public"] }, then: "$$KEEP", else: "$$PRUNE" }"
+	 * a. like "$redact: { $cond: { if: { $eq: ["$stuff", "valid"] }, then: "$$KEEP", else: "$$PRUNE" }"
 	 * existingValue->value_type is BSON_TYPE_DOCUMENT.
 	 * BsonDollarRedactWithLetFunctionOid() takes four parameters, currentProjection, redactSpec, redactSpecText, variableSpec.
 	 * redactSpec is the document and redactSpecText is empty
@@ -3041,11 +3509,10 @@ HandleRedact(const bson_value_t *existingValue, Query *query,
 	Oid funcOid = BsonDollarRedactWithLetFunctionOid();
 
 	Expr *variableSpecConst = context->variableSpec == NULL ?
-							  (Expr *) MakeBsonConst(PgbsonInitEmpty()) :
+							  (Expr *) makeNullConst(BsonTypeId(), -1, InvalidOid) :
 							  context->variableSpec;
 
-	if (IsClusterVersionAtleast(DocDB_V0, 102, 0) &&
-		IsCollationApplicable(context->collationString))
+	if (IsCollationApplicable(context->collationString))
 	{
 		Const *collationStringConst = MakeTextConst(context->collationString, strlen(
 														context->collationString));
@@ -3109,19 +3576,25 @@ HandleProjectFind(const bson_value_t *existingValue, const bson_value_t *queryVa
 
 	List *args;
 	Oid funcOid = BsonDollarProjectFindFunctionOid();
-	if (IsCollationApplicable(context->collationString) && IsClusterVersionAtleast(
-			DocDB_V0, 102, 0))
+
+	Const *collationConst = IsCollationApplicable(context->collationString) ?
+							MakeTextConst(context->collationString,
+										  strlen(context->collationString)) : NULL;
+
+	if (collationConst)
 	{
 		pgbson *queryDoc = queryValue->value_type == BSON_TYPE_EOD ? PgbsonInitEmpty() :
 						   PgbsonInitFromDocumentBsonValue(queryValue);
-		Const *collationStringConst = MakeTextConst(context->collationString,
-													strlen(context->collationString));
 
-		args = list_make5(currentProjection, projectProcessed, MakeBsonConst(queryDoc),
-						  context->variableSpec, collationStringConst);
+		args = list_make5(currentProjection,
+						  projectProcessed,
+						  MakeBsonConst(queryDoc),
+						  context->variableSpec ? context->variableSpec :
+						  (Expr *) MakeBsonConst(PgbsonInitEmpty()),
+						  collationConst);
 		funcOid = BsonDollarProjectFindWithLetAndCollationFunctionOid();
 	}
-	else if (context->variableSpec != NULL)
+	else if (context->variableSpec)
 	{
 		pgbson *queryDoc = queryValue->value_type == BSON_TYPE_EOD ? PgbsonInitEmpty() :
 						   PgbsonInitFromDocumentBsonValue(queryValue);
@@ -3180,7 +3653,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	if (!BsonValueIsNumber(existingValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15972),
-						errmsg("Argument to $skip must be a number")));
+						errmsg("$skip requires a numeric argument")));
 	}
 
 	bool checkFixedInteger = true;
@@ -3189,7 +3662,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 		double doubleValue = BsonValueAsDouble(existingValue);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5107200),
 						errmsg(
-							"invalid argument to $skip stage: Cannot represent as a 64-bit integer $skip: %f",
+							"Invalid parameter provided to $skip stage: value cannot be expressed as a 64-bit integer $skip: %f",
 							doubleValue)));
 	}
 
@@ -3198,7 +3671,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5107200),
 						errmsg(
-							"invalid argument to $skip stage: Expected a non-negative number in $skip: %ld",
+							"Invalid argument provided to $skip stage: A non-negative numerical value was expected in $skip, but received %ld.",
 							skipValue)));
 	}
 
@@ -3229,7 +3702,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 												Int64GetDatum(skipValue), false, true);
 	}
 
-	/* Postgres applies OFFSET after other layers. Mongo applies it first. to emulate this we need to
+	/* Postgres applies OFFSET after other layers. Protocol behavior applies it first. to emulate this we need to
 	 * Push down a subquery.
 	 */
 	context->requiresSubQuery = true;
@@ -3259,7 +3732,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 		double doubleValue = BsonValueAsDouble(existingValue);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5107201),
 						errmsg(
-							"invalid argument to $limit stage: Cannot represent as a 64-bit integer: $limit: %f",
+							"Invalid $limit stage argument: value cannot be represented as a 64-bit integer: $limit: %f",
 							doubleValue)));
 	}
 
@@ -3268,14 +3741,14 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5107201),
 						errmsg(
-							"invalid argument to $skip stage: Expected a non - negative number in: $limit: %ld",
+							"Invalid argument passed to the $skip stage: a non-negative number was expected but received in $limit: %ld",
 							limitValue)));
 	}
 
 	if (limitValue == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15958),
-						errmsg("the limit must be positive")));
+						errmsg("The specified limit value must always be positive")));
 	}
 
 	if (query->limitCount != NULL)
@@ -3294,7 +3767,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 	}
 
 	/* PG applies projection before LIMIT - consequently if there was an error in the 11th
-	 * document and you do limit 10, PG would error out, but Mongo would not.
+	 * document and you do limit 10, PG would error out.
 	 * This is a nuance that requires a subquery.
 	 */
 	context->requiresSubQuery = true;
@@ -3318,7 +3791,8 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15959),
-						errmsg("the match filter must be an expression in an object")));
+						errmsg(
+							"The match filter must always be provided as an expression within a object.")));
 	}
 
 	if (query->limitOffset != NULL || query->limitCount != NULL)
@@ -3499,6 +3973,11 @@ PreCheckChangeStreamPipelineStages(const bson_value_t *pipelineValue,
 									  COMPATIBLE_CHANGE_STREAM_STAGES_COUNT,
 									  stageName))
 		{
+			/*
+			 * Compatibility Notice: The text in this error string is copied verbatim from MongoDB output
+			 * to maintain compatibility with existing tools and scripts that rely on specific error message formats.
+			 * Modifying this text may cause unexpected behavior in dependent systems.
+			 */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_ILLEGALOPERATION),
 							errmsg(
 								"Stage %s is not permitted in a $changeStream pipeline",
@@ -3537,10 +4016,10 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 		!StringViewEqualsCString(&context->collectionNameView,
 								 context->mongoCollection->name.collectionName))
 	{
-		/* This is a view */
+		/* This represents a view */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg(
-							"$changeStream is not supported on views.")));
+							"$changeStream cannot be used on views.")));
 	}
 
 	/*Check the first stage and make sure it is $changestream. */
@@ -3548,11 +4027,12 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
-							"$changeStream is only valid as the first stage in the pipeline.")));
+							"$changeStream can only be used as the initial stage in the pipeline.")));
 	}
 
 	Const *databaseConst = makeConst(TEXTOID, -1, InvalidOid, -1,
-									 context->databaseNameDatum, false, false);
+									 PointerGetDatum(context->databaseNameDatum), false,
+									 false);
 	Const *collectionConst = MakeTextConst(context->collectionNameView.string,
 										   context->collectionNameView.length);
 
@@ -3575,7 +4055,7 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
  * where the maximum number of arguments can be larger than MaxEvenFunctionArguments.
  */
 Expr *
-GenerateMultiExpressionRepathExpression(List *repathArgs)
+GenerateMultiExpressionRepathExpression(List *repathArgs, bool overrideArrayInProjection)
 {
 	Assert(repathArgs != NIL && list_length(repathArgs) % 2 == 0);
 
@@ -3609,11 +4089,14 @@ GenerateMultiExpressionRepathExpression(List *repathArgs)
 	Expr *argsRepathExpression = (Expr *) makeFuncExpr(BsonRepathAndBuildFunctionOid(),
 													   BsonTypeId(), args, InvalidOid,
 													   InvalidOid, COERCE_EXPLICIT_CALL);
-	Expr *remainingArgsExprs = GenerateMultiExpressionRepathExpression(remainingArgs);
+	Expr *remainingArgsExprs = GenerateMultiExpressionRepathExpression(remainingArgs,
+																	   overrideArrayInProjection);
 
 	return (Expr *) makeFuncExpr(BsonDollaMergeDocumentsFunctionOid(),
 								 BsonTypeId(),
-								 list_make2(argsRepathExpression, remainingArgsExprs),
+								 list_make3(argsRepathExpression, remainingArgsExprs,
+											MakeBoolValueConst(
+												overrideArrayInProjection)),
 								 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 }
 
@@ -3636,7 +4119,7 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 
 	RangeTblEntry *rtable = rt_fetch(var->varno, query->rtable);
 
-	/* Check that we're still on the base RTE */
+	/* Verify still on base RTE */
 	if (rtable->rtekind != RTE_RELATION ||
 		rtable->relid != context->mongoCollection->relationId)
 	{
@@ -3647,15 +4130,24 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 	bool hasShardKeyFilters = false;
 	if (context->mongoCollection->shardKey != NULL)
 	{
+		bool shardKeyFiltersCollationAware = false;
 		Expr *shardKeyFilters =
 			CreateShardKeyFiltersForQuery(existingValue,
 										  context->mongoCollection->shardKey,
 										  context->mongoCollection->collectionId,
-										  var->varno);
+										  var->varno,
+										  &shardKeyFiltersCollationAware);
 		if (shardKeyFilters != NULL)
 		{
-			hasShardKeyFilters = true;
-			existingQuals = lappend(existingQuals, shardKeyFilters);
+			/* add the shard key filter if the query's shard key value is */
+			/* not collation-sensitive. */
+			/* If it is, we ignore the filter and distribute the execution. */
+			if (!shardKeyFiltersCollationAware ||
+				!IsCollationApplicable(context->collationString))
+			{
+				hasShardKeyFilters = true;
+				existingQuals = lappend(existingQuals, shardKeyFilters);
+			}
 		}
 	}
 	else
@@ -3665,7 +4157,7 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 
 	if (hasShardKeyFilters)
 	{
-		/* Mongo allows collation on _id field. We need to make sure we do that as well. We can't
+		/* Protocol behavior allows collation on _id field. We need to make sure we do that as well. We can't
 		 * push the Id filter to primary key index if the type needs to be collation aware (e.g., _id contains UTF8 )*/
 		bool isCollationAware;
 		bool isPointRead = false;
@@ -3697,7 +4189,9 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 		existingValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31002),
-						errmsg("$unset specification must be a string or an array")));
+						errmsg(
+							"Expected 'string' or 'array' type for $unset but found '%s' type",
+							BsonTypeName(existingValue->value_type))));
 	}
 
 	pgbson_writer writer;
@@ -3708,13 +4202,14 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 		if (existingValue->value.v_utf8.len == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40352),
-							errmsg("FieldPath cannot be constructed with empty string")));
+							errmsg("FieldPath cannot be created from an empty string")));
 		}
 
 		if (existingValue->value.v_utf8.str[0] == '$')
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
-							errmsg("FieldPath field names may not start with '$'")));
+							errmsg(
+								"FieldPath field names cannot begin with the operators symbol '$'.")));
 		}
 
 		/* Add it as an exclude path */
@@ -3733,20 +4228,22 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31120),
 								errmsg(
-									"$unset specification must be a string or an array containing only string values")));
+									"Expected 'string' or 'array' type for $unset but found '%s' type",
+									BsonTypeName(arrayValue->value_type))));
 			}
 
 			if (arrayValue->value.v_utf8.len == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40352),
 								errmsg(
-									"FieldPath cannot be constructed with empty string")));
+									"FieldPath cannot be created from an empty string")));
 			}
 
 			if (arrayValue->value.v_utf8.str[0] == '$')
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
-								errmsg("FieldPath field names may not start with '$'")));
+								errmsg(
+									"FieldPath field names cannot begin with the operators symbol '$'.")));
 			}
 
 			/* Add it as an exclude path */
@@ -3761,7 +4258,7 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31119),
 						errmsg(
-							"$unset specification must be a string or an array with at least one field")));
+							"The $unset operator requires input as either a string or an array containing at least one specified field.")));
 	}
 
 	Const *addFieldsProcessed = MakeBsonConst(excludeBson);
@@ -3818,7 +4315,7 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28810),
 										errmsg(
-											"expected a non-empty string for the includeArrayIndex option to $unwind stage")));
+											"A non-empty string value was expected for the includeArrayIndex option in the $unwind stage.")));
 					}
 
 					StringView includeArrayIndexView = (StringView) {
@@ -3830,14 +4327,14 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28810),
 										errmsg(
-											"expected a non-empty string for the includeArrayIndex option to $unwind stage")));
+											"A non-empty string value was expected for the includeArrayIndex option in the $unwind stage.")));
 					}
 
 					if (StringViewStartsWith(&includeArrayIndexView, '$'))
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28822),
 										errmsg(
-											"includeArrayIndex option to $unwind stage should not be prefixed with a '$': %s",
+											"The includeArrayIndex option used in the $unwind stage must not have a '$' operator at the beginning: %s",
 											includeArrayIndexView.string)));
 					}
 				}
@@ -3847,13 +4344,14 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28809),
 										errmsg(
-											"expected a boolean for the preserveNullAndEmptyArrays option to $unwind stage")));
+											"A boolean value was expected for the preserveNullAndEmptyArrays option used in the $unwind stage.")));
 					}
 				}
 				else
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28811),
-									errmsg("unrecognized option to $unwind stage")));
+									errmsg(
+										"Invalid option specified for $unwind stage")));
 				}
 			}
 
@@ -3864,7 +4362,7 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15981),
 							errmsg(
-								"expected either a string or an object as specification for $unwind stage, got %s",
+								"A string or an object was expected as the specification for the $unwind stage, but instead received %s.",
 								BsonTypeName(existingValue->value_type))));
 		}
 	}
@@ -3872,13 +4370,14 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 	if (pathValue.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28812),
-						errmsg("No path specified to $unwind stage")));
+						errmsg("No path provided for $unwind stage")));
 	}
 	if (pathValue.value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28808),
-						errmsg("Expected a string as the path for $unwind stage, got %s",
-							   BsonTypeName(pathValue.value_type))));
+						errmsg(
+							"A string value was expected as the path in the $unwind stage, but received %s.",
+							BsonTypeName(pathValue.value_type))));
 	}
 
 	StringView pathView = {
@@ -3888,21 +4387,22 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 	if (pathView.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28812),
-						errmsg("No path specified to $unwind stage")));
+						errmsg("No path provided for $unwind stage")));
 	}
 
 	if (!StringViewStartsWith(&pathView, '$') || pathView.length == 1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28818),
 						errmsg(
-							"path option to $unwind stage should be prefixed with a '$': %.*s",
+							"The path option provided to the $unwind stage must start with the '$' symbol: %.*s",
 							pathView.length, pathView.string)));
 	}
 
 	if (pathView.string[1] == '$')
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
-						errmsg("FieldPath field names may not start with '$'.")));
+						errmsg(
+							"FieldPath field names cannot begin with the symbol '$'.")));
 	}
 
 	FuncExpr *resultExpr;
@@ -4027,11 +4527,18 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_GEONEAR);
 
+	if (IsCollationApplicable(context->collationString))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg(
+							"collation is not supported in the $geoNear stage yet.")));
+	}
+
 	if (context->stageNum != 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40603),
 						errmsg(
-							"$geoNear was not the first stage in the pipeline.")));
+							"$geoNear stage must be present before any other stage in the pipeline")));
 	}
 
 
@@ -4040,9 +4547,9 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-					errmsg("$geoNear is only supported on collections."),
+					errmsg("$geoNear can only be used with specific collections."),
 					errdetail_log(
-						"$geoNear is only supported on collections. RTE KIND: %d",
+						"$geoNear can only be used with specific collections. RTE KIND: %d",
 						rte->rtekind)));
 	}
 
@@ -4050,7 +4557,8 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_LOCATION10065),
-					errmsg("invalid parameter: expected an object ($geoNear)")));
+					errmsg(
+						"Invalid parameter: an object was expected for $geoNear.")));
 	}
 
 	pgbson *geoNearQueryDoc = EvaluateGeoNearConstExpression(existingValue,
@@ -4093,7 +4601,7 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 		if (TargetListContainsGeonearOp(query->targetList))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("Too many geoNear expressions")));
+							errmsg("Excessive number of geoNear query expressions")));
 		}
 	}
 
@@ -4163,15 +4671,15 @@ CreateMultiArgAggregate(Oid aggregateFunctionId, List *args, List *argTypes,
 
 /*
  * Handles the $count stage. Injects an aggregate of
- * bsonsum('{ "": 1 }');
+ * bsoncommandcount(*) or bsoncount(*) in the case it needs to repath the count field.
  * First moves existing query to a subquery.
  * Then injects the aggregate projector.
  * We request a new subquery for subsequent stages, but it
  * may not be needed.
  */
 static Query *
-HandleCount(const bson_value_t *existingValue, Query *query,
-			AggregationPipelineBuildContext *context)
+HandleCountCore(const bson_value_t *existingValue, Query *query,
+				AggregationPipelineBuildContext *context, bool isCountCommand)
 {
 	ReportFeatureUsage(FEATURE_STAGE_COUNT);
 	StringView countField = { 0 };
@@ -4184,20 +4692,28 @@ HandleCount(const bson_value_t *existingValue, Query *query,
 	if (countField.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40156),
-						errmsg("the count field must be a non-empty string")));
+						errmsg(
+							"count cannot be empty")));
 	}
 
 	if (StringViewStartsWith(&countField, '$'))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40158),
-						errmsg("the count field cannot be a $-prefixed path")));
+						errmsg(
+							"The count field is not allowed to be a $-prefixed path")));
 	}
 
 	if (StringViewContains(&countField, '.'))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40160),
-						errmsg("the count field cannot contain '.'")));
+						errmsg(
+							"The count field is not allowed to contain '.'.")));
 	}
+
+	bool useNewCountAggregates = CanUseNewCountAggregates();
+
+	/* if it is command count query we can just use BSONCOMMANDCOUNT and avoid the bson repath and build. */
+	bool useCommandCount = useNewCountAggregates && isCountCommand;
 
 	/* Count requires the existing query to move to subquery */
 	query = MigrateQueryToSubQuery(query, context);
@@ -4210,28 +4726,56 @@ HandleCount(const bson_value_t *existingValue, Query *query,
 	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
 	parseState->p_next_resno = firstEntry->resno + 1;
 
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	PgbsonWriterAppendInt32(&writer, "", 0, 1);
-	Expr *constValue = (Expr *) MakeBsonConst(PgbsonWriterGetPgbson(&writer));
-	Aggref *aggref = CreateSingleArgAggregate(BsonSumAggregateFunctionOid(), constValue,
-											  parseState);
-	pfree(parseState);
+	Aggref *aggref = NULL;
+	if (useNewCountAggregates)
+	{
+		Oid aggFuncId = useCommandCount ? BsonCommandCountAggregateFunctionOid()
+						: BsonCountAggregateFunctionOid();
 
-	query->hasAggs = true;
+		Expr *constValue = (Expr *) makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(
+												  1), false, true);
+		aggref = CreateSingleArgAggregate(aggFuncId,
+										  constValue,
+										  parseState);
+		firstEntry->expr = (Expr *) aggref;
+	}
+	else
+	{
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+		PgbsonWriterAppendInt32(&writer, "", 0, 1);
+		Expr *constValue = (Expr *) MakeBsonConst(PgbsonWriterGetPgbson(&writer));
+		aggref = CreateSingleArgAggregate(BsonSumAggregateFunctionOid(), constValue,
+										  parseState);
+	}
 
 	/* We wrap the count in a bson_repath_and_build */
-	Const *countFieldText = MakeTextConst(countField.string, countField.length);
+	if (!useCommandCount)
+	{
+		Const *countFieldText = MakeTextConst(countField.string, countField.length);
 
-	List *args = list_make2(countFieldText, aggref);
-	FuncExpr *expression = makeFuncExpr(BsonRepathAndBuildFunctionOid(), BsonTypeId(),
-										args, InvalidOid, InvalidOid,
-										COERCE_EXPLICIT_CALL);
-	firstEntry->expr = (Expr *) expression;
+		List *args = list_make2(countFieldText, aggref);
+		FuncExpr *expression = makeFuncExpr(BsonRepathAndBuildFunctionOid(), BsonTypeId(),
+											args, InvalidOid, InvalidOid,
+											COERCE_EXPLICIT_CALL);
+		firstEntry->expr = (Expr *) expression;
+	}
+
+	pfree(parseState);
+	query->hasAggs = true;
 
 	/* Having count means the next stage must be a new outer query */
 	context->requiresSubQuery = true;
 	return query;
+}
+
+
+static Query *
+HandleCount(const bson_value_t *existingValue, Query *query,
+			AggregationPipelineBuildContext *context)
+{
+	bool isCountCommand = false;
+	return HandleCountCore(existingValue, query, context, isCountCommand);
 }
 
 
@@ -4252,6 +4796,37 @@ HandleReplaceWith(const bson_value_t *existingValue, Query *query,
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);
 	bson_value_t currentValue = ConvertPgbsonToBsonValue(bson);
 	return HandleReplaceRoot(&currentValue, query, context);
+}
+
+
+/*
+ * Checks if a sort can be pushed to an index explicitly. Typically
+ * index selection happens based on filters. But in the case where there
+ * are no filters, sorts can never be pushed to the index:
+ * e.g.
+ * find('collection: foo, sort: { a.b: 1 })'
+ * In this case, given our sort is bson_orderby() it'll never go through picking
+ * the index. However, we do want the ability to push orderby to available indexes
+ * if possible. So we add a fullscan filter *iff* the sort is against a base table
+ * and it has no filters. If there are any filters, we let the filters determine
+ * index pushdown.
+ */
+static bool
+CanPushSortFilterToIndex(Query *query, AggregationPipelineBuildContext *context)
+{
+	if (list_length(query->jointree->fromlist) != 1)
+	{
+		return false;
+	}
+
+	RangeTblRef *rtref = linitial(query->jointree->fromlist);
+	RangeTblEntry *entry = rt_fetch(rtref->rtindex, query->rtable);
+
+	/* Only push sort to index via meta_qual if it's a mongo collection
+	 * This means catalog tables used in listCollections and such do not
+	 * get the sort.
+	 */
+	return entry->rtekind == RTE_RELATION && context->mongoCollection != NULL;
 }
 
 
@@ -4313,7 +4888,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			if (!BsonValueIsNumber(&element.bsonValue))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("Invalid sort direction %s",
+								errmsg("Sort direction value %s is not valid",
 									   BsonValueToJsonForLogging(
 										   &element.bsonValue))));
 			}
@@ -4344,12 +4919,14 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			nonNaturalCount++;
 			Expr *sortInput = entry->expr;
 			pgbsonelement subOrderingElement;
+			bool isSortByMeta = false;
 			if (element.bsonValue.value_type == BSON_TYPE_DOCUMENT &&
 				TryGetBsonValueToPgbsonElement(&element.bsonValue, &subOrderingElement) &&
 				subOrderingElement.pathLength == 5 &&
 				strncmp(subOrderingElement.path, "$meta", 5) == 0)
 			{
 				RangeTblEntry *rte = linitial(query->rtable);
+				isSortByMeta = true;
 				if (rte->rtekind == RTE_RELATION ||
 					rte->rtekind == RTE_FUNCTION)
 				{
@@ -4359,7 +4936,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 				else
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-									errmsg("Invalid sort direction %s",
+									errmsg("Sort direction value %s is not valid",
 										   BsonValueToJsonForLogging(
 											   &element.bsonValue))));
 				}
@@ -4369,43 +4946,86 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			pgbson *sortDoc = PgbsonElementToPgbson(&element);
 			Const *sortBson = MakeBsonConst(sortDoc);
 			bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
-			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
 
 			bool hasSortById = strcmp(element.path, "_id") == 0;
-			bool canPushdownSortById = false;
-
 			if (hasSortById)
 			{
 				ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID);
-
-				if (CanSortByObjectId(query, context))
-				{
-					canPushdownSortById = true;
-					ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID_PUSHDOWNABLE);
-				}
-			}
-
-			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-			if (EnableSortbyIdPushDownToPrimaryKey && canPushdownSortById)
-			{
-				expr = (Expr *) makeVar(1,
-										DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
-										BsonTypeId(), -1, InvalidOid, 0);
-			}
-			else
-			{
-				/* match mongo behavior. */
-				sortByNulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
-				expr = (Expr *) makeFuncExpr(BsonOrderByFunctionOid(),
-											 BsonTypeId(),
-											 list_make2(sortInput, sortBson),
-											 InvalidOid, InvalidOid,
-											 COERCE_EXPLICIT_CALL);
 			}
 
 			SortBy *sortBy = makeNode(SortBy);
+			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
+			SortByDir sortByDirection = isAscending ? SORTBY_ASC : SORTBY_DESC;
 			sortBy->location = -1;
-			sortBy->sortby_dir = isAscending ? SORTBY_ASC : SORTBY_DESC;
+
+			Oid funcOid = BsonOrderByFunctionOid();
+			List *args = NIL;
+
+			/* apply collation to the sort comparison */
+			if (IsCollationApplicable(context->collationString))
+			{
+				funcOid = BsonOrderByWithCollationFunctionOid();
+				Const *collationConst = MakeTextConst(context->collationString,
+													  strlen(
+														  context->collationString));
+
+				args = list_make3(sortInput, sortBson, collationConst);
+
+				/*
+				 * For ascending order: ORDER BY <value> USING ApiInternalSchemaNameV2.<<<
+				 * For descending order: ORDER BY <value> USING ApiInternalSchemaNameV2.>>>
+				 */
+				sortByDirection = SORTBY_USING;
+				sortBy->useOp = isAscending ?
+								list_make2(makeString(ApiInternalSchemaNameV2),
+										   makeString("<<<")) :
+								list_make2(makeString(ApiInternalSchemaNameV2),
+										   makeString(">>>"));
+			}
+			else
+			{
+				args = list_make2(sortInput, sortBson);
+			}
+
+			sortByNulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
+
+			expr = (Expr *) makeFuncExpr(funcOid,
+										 BsonTypeId(),
+										 args,
+										 InvalidOid, InvalidOid,
+										 COERCE_EXPLICIT_CALL);
+
+			if (EnableIndexOrderbyPushdown && !isSortByMeta)
+			{
+				/*
+				 * If there's an orderby pushdown to the index, add a full scan clause iff
+				 * the query has no filters yet.
+				 */
+				if (CanPushSortFilterToIndex(query, context))
+				{
+					List *rangeArgs = list_make2(sortInput, sortBson);
+					Expr *fullScanExpr = (Expr *) makeFuncExpr(
+						BsonFullScanFunctionOid(), BOOLOID, rangeArgs,
+						InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+					List *currentQuals = make_ands_implicit(
+						(Expr *) query->jointree->quals);
+					currentQuals = lappend(currentQuals, fullScanExpr);
+					query->jointree->quals = (Node *) make_ands_explicit(
+						currentQuals);
+				}
+
+				/* If sort by is descending use the new operators: this allows for
+				 * customization of reverse scan.
+				 */
+				if (!isAscending)
+				{
+					sortByDirection = SORTBY_USING;
+					sortBy->useOp = list_make2(makeString(ApiInternalSchemaNameV2),
+											   makeString(">>>"));
+				}
+			}
+
+			sortBy->sortby_dir = sortByDirection;
 			sortBy->sortby_nulls = sortByNulls;
 			sortBy->node = (Node *) expr;
 
@@ -4431,7 +5051,9 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 
 	if (isNaturalReverseSort || isNaturalSort)
 	{
-		/*server would throw exception Exception while reading from stream if collection is null, directly return query when collection is null*/
+		/* server would throw exception Exception while reading from stream if collection is null,
+		 * directly return query when collection is null
+		 */
 		if (context->mongoCollection == NULL)
 		{
 			return query;
@@ -4464,7 +5086,8 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 	if (sortlist == NIL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15976),
-						errmsg("$sort stage must have at least one sort key")));
+						errmsg(
+							"The $sort stage requires specifying at least one sorting key to proceed")));
 	}
 
 	query->targetList = targetEntryList;
@@ -4483,6 +5106,13 @@ HandleSortByCount(const bson_value_t *existingValue, Query *query,
 				  AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_SORT_BY_COUNT);
+
+	if (IsCollationApplicable(context->collationString))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg(
+							"collation is not supported in the $sortByCount stage yet.")));
+	}
 
 	/* Do validations */
 	bool isInvalidSpec = false;
@@ -4508,7 +5138,7 @@ HandleSortByCount(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40147),
 						errmsg(
-							"the sortByCount field must be defined as a $-prefixed path or an expression inside an object")));
+							"The sortByCount field must be specified either as a $-prefixed path or as a valid expression contained within an object.")));
 	}
 
 	/* Convert to
@@ -4543,58 +5173,6 @@ HandleSortByCount(const bson_value_t *existingValue, Query *query,
 
 	query = HandleSort(&sortValue, query, context);
 	return query;
-}
-
-
-inline static bool
-CanSortByObjectId(Query *query, AggregationPipelineBuildContext *context)
-{
-	RangeTblEntry *rte = linitial(query->rtable);
-	if (context->mongoCollection == NULL ||
-		rte->rtekind != RTE_RELATION ||
-		rte->relid != context->mongoCollection->relationId)
-	{
-		/* We're not querying the base table. */
-		return false;
-	}
-
-	void *walkerState = NULL;
-	return context->mongoCollection->shardKey == NULL ||
-		   expression_tree_walker(query->jointree->quals, HasShardKeyFilterWalker,
-								  walkerState);
-}
-
-
-static bool
-HasShardKeyFilterWalker(Node *node, void *state)
-{
-	CHECK_FOR_INTERRUPTS();
-
-	if (node == NULL)
-	{
-		return false;
-	}
-
-	if (IsA(node, OpExpr))
-	{
-		OpExpr *opExpr = (OpExpr *) node;
-		if (opExpr->opno != BigintEqualOperatorId())
-		{
-			return false;
-		}
-
-		/* We always construct filter as shard_key_value = <const> */
-		Expr *leftOperator = linitial(opExpr->args);
-		if (!IsA(leftOperator, Var))
-		{
-			return false;
-		}
-
-		return ((Var *) leftOperator)->varattno ==
-			   DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
-	}
-
-	return expression_tree_walker(node, HasShardKeyFilterWalker, state);
 }
 
 
@@ -4637,11 +5215,6 @@ static Expr *
 GetDocumentExprForGroupAccumulatorValue(const bson_value_t *accumulatorValue,
 										Expr *docExpr)
 {
-	if (!EnableSimplifyGroupAccumulators)
-	{
-		return docExpr;
-	}
-
 	ParseAggregationExpressionContext parseContext = { 0 };
 	AggregationExpressionData expressionData;
 	memset(&expressionData, 0, sizeof(AggregationExpressionData));
@@ -4694,8 +5267,7 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 		functionId, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
-		IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId())
 	{
 		accumFunc = makeFuncExpr(
 			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(accumFunc),
@@ -4712,6 +5284,49 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 														parseState, identifiers,
 														query, BsonTypeId(),
 														NULL));
+	return repathArgs;
+}
+
+
+inline static List *
+AddSumGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+					   List *repathArgs, Const *accumulatorText,
+					   ParseState *parseState, char *identifiers,
+					   Expr *documentExpr, Expr *variableSpec, Expr *groupIdExpr)
+{
+	bool canUseBsonCountAggregate = CanUseNewCountAggregates() &&
+									IsA(groupIdExpr, Const);
+
+	bool useNewCountAggregate = false;
+	if (canUseBsonCountAggregate &&
+		BsonValueIsNumber(accumulatorValue))
+	{
+		/* use for counting with $sum: 1 only */
+		int64_t countValue = BsonValueAsInt64(accumulatorValue);
+		useNewCountAggregate = countValue == 1;
+	}
+
+	if (!useNewCountAggregate)
+	{
+		return AddSimpleGroupAccumulator(query, accumulatorValue, repathArgs,
+										 accumulatorText, parseState,
+										 identifiers, documentExpr,
+										 BsonSumAggregateFunctionOid(),
+										 variableSpec);
+	}
+
+	Expr *constValue = (Expr *) makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(1),
+										  false, true);
+	Aggref *aggref = CreateSingleArgAggregate(BsonCountAggregateFunctionOid(),
+											  constValue, parseState);
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
+														parseState, identifiers,
+														query, TEXTOID, NULL));
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) aggref,
+														parseState, identifiers,
+														query, BsonTypeId(),
+														NULL));
+
 	return repathArgs;
 }
 
@@ -5158,8 +5773,7 @@ AddPercentileMedianGroupAccumulator(Query *query, const bson_value_t *accumulato
 										pFuncArgs, InvalidOid,
 										InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
-		IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId())
 	{
 		inputAccumFunc = makeFuncExpr(
 			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(
@@ -5212,17 +5826,29 @@ Query *
 HandleGroup(const bson_value_t *existingValue, Query *query,
 			AggregationPipelineBuildContext *context)
 {
+	if (IsCollationApplicable(context->collationString))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("collation is not supported in $group stage yet.")));
+	}
+
 	ReportFeatureUsage(FEATURE_STAGE_GROUP);
 
 	/* Part 1, let's do the group */
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15947),
-						errmsg("a group's fields must be specified in an object")));
+						errmsg(
+							"The fields of a group must be explicitly defined within an object")));
 	}
 
 	/* Push prior stuff to a subquery first since we're gonna aggregate our way */
-	query = MigrateQueryToSubQuery(query, context);
+	if (list_length(query->targetList) > 1 || query->hasAggs ||
+		list_length(query->groupClause) > 0 || list_length(query->sortClause) > 0 ||
+		!EnableIndexOrderbyPushdown)
+	{
+		query = MigrateQueryToSubQuery(query, context);
+	}
 
 	/* Take the current output (That's to be grouped)*/
 	TargetEntry *origEntry = linitial(query->targetList);
@@ -5248,7 +5874,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	if (idValue.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15955),
-						errmsg("a group specification must include an _id")));
+						errmsg("_id is missing from group specification")));
 	}
 
 	pgbson *groupValue = BsonValueToDocumentPgbson(&idValue);
@@ -5278,15 +5904,6 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	FuncExpr *groupFunc = makeFuncExpr(
 		bsonExpressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
-
-	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
-		IsClusterVersionAtleast(DocDB_V0, 24, 0))
-	{
-		groupFunc = makeFuncExpr(
-			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(groupFunc),
-			InvalidOid,
-			InvalidOid, COERCE_EXPLICIT_CALL);
-	}
 
 	/* Now do the projector / accumulators
 	 * We do this in 2 stages to handle citus query generation.
@@ -5324,8 +5941,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		{
 			/* Paths here cannot be dotted paths */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40235),
-							errmsg("The field name %.*s cannot contain '.'",
-								   keyView.length, keyView.string)));
+							errmsg(
+								"The specified field name %.*s is not allowed to include the '.' character.",
+								keyView.length, keyView.string)));
 		}
 
 		Const *accumulatorText = MakeTextConst(keyView.string, keyView.length);
@@ -5335,8 +5953,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			!bson_iter_recurse(&groupIter, &accumulatorIterator))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40234),
-							errmsg("The field '%.*s' must be an accumulator object",
-								   keyView.length, keyView.string)));
+							errmsg(
+								"The field '%.*s' is required to be an accumulator-type object",
+								keyView.length, keyView.string)));
 		}
 
 		pgbsonelement accumulatorElement;
@@ -5344,8 +5963,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													   &accumulatorElement))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40238),
-							errmsg("The field '%.*s' must specify one accumulator",
-								   keyView.length, keyView.string)));
+							errmsg(
+								"The field '%.*s' is required to define exactly one accumulator",
+								keyView.length, keyView.string)));
 		}
 
 		StringView accumulatorName = {
@@ -5353,6 +5973,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		};
 		if (StringViewEqualsCString(&accumulatorName, "$avg"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_AVG);
 			repathArgs = AddSimpleGroupAccumulator(query, &accumulatorElement.bsonValue,
 												   repathArgs,
 												   accumulatorText, parseState,
@@ -5363,16 +5984,18 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$sum"))
 		{
-			repathArgs = AddSimpleGroupAccumulator(query, &accumulatorElement.bsonValue,
-												   repathArgs,
-												   accumulatorText, parseState,
-												   identifiers,
-												   origEntry->expr,
-												   BsonSumAggregateFunctionOid(),
-												   context->variableSpec);
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_SUM);
+			repathArgs = AddSumGroupAccumulator(query, &accumulatorElement.bsonValue,
+												repathArgs,
+												accumulatorText, parseState,
+												identifiers,
+												origEntry->expr,
+												context->variableSpec,
+												groupIdDocumentExpr);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$max"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MAX);
 			repathArgs = AddSimpleGroupAccumulator(query, &accumulatorElement.bsonValue,
 												   repathArgs,
 												   accumulatorText, parseState,
@@ -5383,6 +6006,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$min"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MIN);
 			repathArgs = AddSimpleGroupAccumulator(query, &accumulatorElement.bsonValue,
 												   repathArgs,
 												   accumulatorText, parseState,
@@ -5393,19 +6017,45 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$count"))
 		{
-			bson_value_t countValue = { 0 };
-			countValue.value_type = BSON_TYPE_INT32;
-			countValue.value.v_int32 = 1;
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_COUNT);
+			if (CanUseNewCountAggregates())
+			{
+				/* Use the new BSONCOUNT aggregate. */
+				Expr *constValue = (Expr *) makeConst(INT4OID, -1, InvalidOid, 4,
+													  Int32GetDatum(1), false, true);
+				Aggref *aggref = CreateSingleArgAggregate(
+					BsonCountAggregateFunctionOid(),
+					constValue, parseState);
 
-			repathArgs = AddSimpleGroupAccumulator(query, &countValue, repathArgs,
-												   accumulatorText, parseState,
-												   identifiers,
-												   origEntry->expr,
-												   BsonSumAggregateFunctionOid(),
-												   context->variableSpec);
+				repathArgs = lappend(repathArgs, AddGroupExpression(
+										 (Expr *) accumulatorText,
+										 parseState,
+										 identifiers,
+										 query, TEXTOID,
+										 NULL));
+				repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) aggref,
+																	parseState,
+																	identifiers,
+																	query, BsonTypeId(),
+																	NULL));
+			}
+			else
+			{
+				bson_value_t countValue = { 0 };
+				countValue.value_type = BSON_TYPE_INT32;
+				countValue.value.v_int32 = 1;
+
+				repathArgs = AddSimpleGroupAccumulator(query, &countValue, repathArgs,
+													   accumulatorText, parseState,
+													   identifiers,
+													   origEntry->expr,
+													   BsonSumAggregateFunctionOid(),
+													   context->variableSpec);
+			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$first"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_FIRST);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleGroupAccumulator(query,
@@ -5432,6 +6082,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$last"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_LAST);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleGroupAccumulator(query,
@@ -5458,7 +6109,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$firstN"))
 		{
-			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN);
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_FIRST_N);
 			bson_value_t input = { 0 };
 			bson_value_t elementsToFetch = { 0 };
 			ParseInputForNGroupAccumulators(&accumulatorElement.bsonValue, &input,
@@ -5493,7 +6144,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$lastN"))
 		{
-			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN);
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_LAST_N);
 			bson_value_t input = { 0 };
 			bson_value_t elementsToFetch = { 0 };
 			ParseInputForNGroupAccumulators(&accumulatorElement.bsonValue, &input,
@@ -5528,6 +6179,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$maxN"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MAX_N);
 			repathArgs = AddMaxMinNGroupAccumulator(query,
 													&accumulatorElement.bsonValue,
 													repathArgs,
@@ -5540,6 +6192,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$minN"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MIN_N);
 			repathArgs = AddMaxMinNGroupAccumulator(query,
 													&accumulatorElement.bsonValue,
 													repathArgs,
@@ -5552,6 +6205,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$addToSet"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_ADD_TO_SET);
 			repathArgs = AddSimpleGroupAccumulator(query,
 												   &accumulatorElement.bsonValue,
 												   repathArgs,
@@ -5563,6 +6217,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MERGE_OBJECTS);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleGroupAccumulator(query,
@@ -5590,6 +6245,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_PUSH);
 			char *fieldPath = "";
 			bool handleSingleValue = true;
 			repathArgs = AddArrayAggGroupAccumulator(query,
@@ -5605,13 +6261,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_STDDEV_SAMP);
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40237), errmsg(
-									"The %s accumulator is a unary operator",
+									"The %s accumulator functions as a single-operand operator",
 									accumulatorName.string)),
-						errdetail_log("The %s accumulator is a unary operator",
-									  accumulatorName.string));
+						errdetail_log(
+							"The %s accumulator functions as a single-operand operator",
+							accumulatorName.string));
 			}
 
 			repathArgs = AddSimpleGroupAccumulator(query,
@@ -5625,13 +6283,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevPop"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_STDDEV_POP);
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40237), errmsg(
-									"The %s accumulator is a unary operator",
+									"The %s accumulator functions as a single-operand operator",
 									accumulatorName.string)),
-						errdetail_log("The %s accumulator is a unary operator",
-									  accumulatorName.string));
+						errdetail_log(
+							"The %s accumulator functions as a single-operand operator",
+							accumulatorName.string));
 			}
 
 			repathArgs = AddSimpleGroupAccumulator(query,
@@ -5645,6 +6305,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$top"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_TOP);
 			bson_value_t output = { 0 };
 			bson_value_t elementsToFetch = { 0 };
 			bson_value_t sortSpec = { 0 };
@@ -5664,6 +6325,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$bottom"))
 		{
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_BOTTOM);
 			bson_value_t output = { 0 };
 			bson_value_t elementsToFetch = { 0 };
 			bson_value_t sortSpec = { 0 };
@@ -5683,7 +6345,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$topN"))
 		{
-			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_TOPN);
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_TOP_N);
 
 			/* Parse accumulatorValue to pull output, n and sortBy*/
 			bson_value_t input = { 0 };
@@ -5707,7 +6369,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$bottomN"))
 		{
-			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_BOTTOMN);
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_BOTTOM_N);
 
 			/* Parse accumulatorValue to pull output, n and sortBy*/
 			bson_value_t input = { 0 };
@@ -5731,11 +6393,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$median"))
 		{
-			if (!(IsClusterVersionAtleast(DocDB_V0, 24, 0)))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $median is not supported yet")));
-			}
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_MEDIAN);
 			repathArgs = AddPercentileMedianGroupAccumulator(query,
 															 &accumulatorElement.bsonValue,
 															 repathArgs,
@@ -5747,12 +6405,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$percentile"))
 		{
-			if (!(IsClusterVersionAtleast(DocDB_V0, 24, 0)))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg(
-									"Accumulator $percentile is not supported yet")));
-			}
+			ReportFeatureUsage(FEATURE_AGGREGATE_GROUP_PERCENTILE);
 			repathArgs = AddPercentileMedianGroupAccumulator(query,
 															 &accumulatorElement.bsonValue,
 															 repathArgs,
@@ -5766,9 +6419,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15952),
-							errmsg("Unknown group operator %s",
+							errmsg("Unrecognized group operator %s",
 								   accumulatorElement.path),
-							errdetail_log("Unknown group operator %s",
+							errdetail_log("Unrecognized group operator %s",
 										  accumulatorElement.path)));
 		}
 	}
@@ -5782,6 +6435,41 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	grpcl->hashable = true;
 	query->groupClause = list_make1(grpcl);
 
+	if (EnableIndexOrderbyPushdown)
+	{
+		/* Group by is valid for pushdown iff it's a string expression of a path that's not a variable */
+		bool isGroupByValidForIndexPushdown =
+			idValue.value_type == BSON_TYPE_UTF8 &&
+			idValue.value.v_utf8.len > 1 &&
+			idValue.value.v_utf8.str[0] == '$' &&
+			idValue.value.v_utf8.str[1] != '$';
+
+		/*
+		 * If there's an orderby pushdown to the index, add a full scan clause iff
+		 * the query has no filters yet.
+		 */
+		if (isGroupByValidForIndexPushdown &&
+			CanPushSortFilterToIndex(query, context))
+		{
+			pgbsonelement sortElement = { 0 };
+			sortElement.path = idValue.value.v_utf8.str + 1;
+			sortElement.pathLength = idValue.value.v_utf8.len - 1;
+			sortElement.bsonValue.value_type = BSON_TYPE_INT32;
+			sortElement.bsonValue.value.v_int32 = 1;
+			pgbson *sortSpec = PgbsonElementToPgbson(&sortElement);
+			Const *sortConst = MakeBsonConst(sortSpec);
+			List *rangeArgs = list_make2(origEntry->expr, sortConst);
+			Expr *fullScanExpr = (Expr *) makeFuncExpr(
+				BsonFullScanFunctionOid(), BOOLOID, rangeArgs,
+				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+			List *currentQuals = make_ands_implicit(
+				(Expr *) query->jointree->quals);
+			currentQuals = lappend(currentQuals, fullScanExpr);
+			query->jointree->quals = (Node *) make_ands_explicit(
+				currentQuals);
+		}
+	}
+
 	/* Now that the group + accumulators are done, push to a subquery
 	 * Request preserving the N-entry T-list
 	 */
@@ -5790,11 +6478,14 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 
 	/* Take the output and replace it with the repath_and_build */
 	TargetEntry *entry = linitial(query->targetList);
-	Expr *repathExpression = GenerateMultiExpressionRepathExpression(repathArgs);
+
+	/* $group doesn't allow dotted path so no need to override */
+	bool overrideArrayInProjection = false;
+	Expr *repathExpression = GenerateMultiExpressionRepathExpression(repathArgs,
+																	 overrideArrayInProjection);
 
 	entry->expr = repathExpression;
 	entry->resname = origEntry->resname;
-
 
 	/* Mark new stages to push a new subquery */
 	context->requiresSubQuery = true;
@@ -5939,8 +6630,19 @@ IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields, const
  * A simple function that never requires persistent cursors
  */
 static bool
-RequiresPersistentCursorFalse(const bson_value_t *pipelineValue)
+RequiresPersistentCursorFalse(const bson_value_t *pipelineValue, bool *isSingleRowResult)
 {
+	/* This path doesn't consider singleRow - defers to other stages but doesn't exclude it */
+	return false;
+}
+
+
+static bool
+RequiresPersistentCursorFalseNoSingleRow(const bson_value_t *pipelineValue,
+										 bool *isSingleRowResult)
+{
+	/* This path doesn't consider single row output but excludes singleBatch */
+	*isSingleRowResult = false;
 	return false;
 }
 
@@ -5949,8 +6651,20 @@ RequiresPersistentCursorFalse(const bson_value_t *pipelineValue)
  * A simple function that always requires persistent cursors
  */
 static bool
-RequiresPersistentCursorTrue(const bson_value_t *pipelineValue)
+RequiresPersistentCursorTrue(const bson_value_t *pipelineValue, bool *isSingleRowResult)
 {
+	/* A persisted cursor for now assumes multi-row */
+	*isSingleRowResult = false;
+	return true;
+}
+
+
+static bool
+RequiresPersistentCursorTrueSingleRow(const bson_value_t *pipelineValue,
+									  bool *isSingleRowResult)
+{
+	/* A persisted cursor that produces a single row response */
+	*isSingleRowResult = true;
 	return true;
 }
 
@@ -5959,12 +6673,22 @@ RequiresPersistentCursorTrue(const bson_value_t *pipelineValue)
  * Checks that the limit stage requires persistence (true if it's not limit 1).
  */
 static bool
-RequiresPersistentCursorLimit(const bson_value_t *pipelineValue)
+RequiresPersistentCursorLimit(const bson_value_t *pipelineValue, bool *isSingleRowResult)
 {
 	if (pipelineValue->value_type != BSON_TYPE_EOD &&
 		BsonValueIsNumber(pipelineValue))
 	{
 		int32_t limit = BsonValueAsInt32(pipelineValue);
+		if (limit == 1)
+		{
+			/* For special case limit 1 - this can be a singleBatch cursor
+			 * instead of streaming.
+			 */
+			*isSingleRowResult = true;
+			return false;
+		}
+
+		/* Defer to prior */
 		return limit != 1 && limit != 0;
 	}
 
@@ -5976,8 +6700,9 @@ RequiresPersistentCursorLimit(const bson_value_t *pipelineValue)
  * Checks that the skip stage requires persistence (true if it's not skip 0).
  */
 static bool
-RequiresPersistentCursorSkip(const bson_value_t *pipelineValue)
+RequiresPersistentCursorSkip(const bson_value_t *pipelineValue, bool *isSingleRowResult)
 {
+	/* Skip doesn't make any judgements on singleRowResults */
 	if (pipelineValue->value_type != BSON_TYPE_EOD &&
 		BsonValueIsNumber(pipelineValue))
 	{
@@ -6084,7 +6809,7 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"Each element of the 'pipeline' array must be an object")));
+								"Every item within the 'pipeline' array is required to be an object.")));
 		}
 
 		pgbsonelement stageElement;
@@ -6092,7 +6817,7 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40323),
 							errmsg(
-								"A pipeline stage specification object must contain exactly one field.")));
+								"A pipeline stage specification object is required to have one and only one field.")));
 		}
 
 		/* If lastEncounteredOutputStage isn't NULL, it means we've seen an output stage like $out or $merge before this.
@@ -6100,10 +6825,11 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 		if (lastEncounteredOutputStage != NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40601),
-							errmsg("%s can only be the final stage in the pipeline",
-								   lastEncounteredOutputStage),
+							errmsg(
+								"%s must appear exclusively as the last stage in the pipeline",
+								lastEncounteredOutputStage),
 							errdetail_log(
-								"%s can only be the final stage in the pipeline",
+								"%s must appear exclusively as the last stage in the pipeline",
 								lastEncounteredOutputStage)));
 		}
 
@@ -6116,9 +6842,9 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 		if (definition == NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNRECOGNIZEDCOMMAND),
-							errmsg("Unrecognized pipeline stage name: %s",
+							errmsg("Pipeline stage name not recognized: %s",
 								   stageElement.path),
-							errdetail_log("Unrecognized pipeline stage name: %s",
+							errdetail_log("Pipeline stage name not recognized: %s",
 										  stageElement.path)));
 		}
 		if (definition->pipelineCheckFunc != NULL)
@@ -6171,8 +6897,8 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
  * Updates the base table
  */
 Query *
-GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView,
-					   pg_uuid_t *collectionUuid,
+GenerateBaseTableQuery(text *databaseDatum, const StringView *collectionNameView,
+					   pg_uuid_t *collectionUuid, const bson_value_t *indexHint,
 					   AggregationPipelineBuildContext *context)
 {
 	Query *query = makeNode(Query);
@@ -6180,12 +6906,13 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	query->querySource = QSRC_ORIGINAL;
 	query->canSetTag = true;
 	context->collectionNameView = *collectionNameView;
-	context->namespaceName = CreateNamespaceName(DatumGetTextPP(databaseDatum),
+	context->namespaceName = CreateNamespaceName(databaseDatum,
 												 collectionNameView);
 	Datum collectionNameDatum = PointerGetDatum(
 		cstring_to_text_with_len(collectionNameView->string, collectionNameView->length));
 
-	MongoCollection *collection = GetMongoCollectionOrViewByNameDatum(databaseDatum,
+	MongoCollection *collection = GetMongoCollectionOrViewByNameDatum(PointerGetDatum(
+																		  databaseDatum),
 																	  collectionNameDatum,
 																	  AccessShareLock);
 
@@ -6196,22 +6923,23 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COLLECTIONUUIDMISMATCH),
 							errmsg(
-								"Namespace %s has a mismatch on collectionUUID: Collection does not exist",
+								"Namespace %s contains a mismatch in the collectionUUID identifier: Collection does not exist",
 								context->namespaceName)));
 		}
 
 		if (memcmp(collectionUuid->data, collection->collectionUUID.data, 16) != 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COLLECTIONUUIDMISMATCH),
-							errmsg("Namespace %s has a mismatch on collectionUUID",
-								   context->namespaceName)));
+							errmsg(
+								"Namespace %s contains a mismatch in the collectionUUID identifier",
+								context->namespaceName)));
 		}
 	}
 
 	List *pipelineStages = NIL;
 	if (collection != NULL && collection->viewDefinition != NULL)
 	{
-		collection = ExtractViewDefinitionAndPipeline(databaseDatum,
+		collection = ExtractViewDefinitionAndPipeline(PointerGetDatum(databaseDatum),
 													  collection->viewDefinition,
 													  &pipelineStages,
 													  context);
@@ -6226,8 +6954,8 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 
 	/* Match spec for ApiSchema.collection() function */
-	List *colNames = list_make4(makeString("shard_key_value"), makeString("object_id"),
-								makeString("document"), makeString("creation_time"));
+	List *colNames = list_make3(makeString("shard_key_value"), makeString("object_id"),
+								makeString("document"));
 
 	const char *collectionAlias = "collection";
 	if (context->numNestedLevels > 0 || context->nestedPipelineLevel > 0)
@@ -6243,7 +6971,7 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		/* Here: Special case, if the database is config, try to see if we can create a base
 		 * table out of the system metadata.
 		 */
-		StringView databaseView = CreateStringViewFromText(DatumGetTextPP(databaseDatum));
+		StringView databaseView = CreateStringViewFromText(databaseDatum);
 		if (StringViewEqualsCString(&databaseView, "config"))
 		{
 			Query *returnedQuery = GenerateConfigDatabaseQuery(context);
@@ -6255,9 +6983,6 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 
 		rte->rtekind = RTE_FUNCTION;
 		rte->relid = InvalidOid;
-
-		rte->alias = makeAlias(collectionAlias, NIL);
-		rte->eref = makeAlias(collectionAlias, colNames);
 		rte->lateral = false;
 		rte->inFromCl = true;
 		rte->functions = NIL;
@@ -6272,11 +6997,16 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		/* Now create the rtfunc*/
 		FuncExpr *rangeFunc = makeFuncExpr(BsonEmptyDataTableFunctionId(), RECORDOID, NIL,
 										   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+
 		rangeFunc->funcretset = true;
 		RangeTblFunction *rangeTableFunction = makeNode(RangeTblFunction);
-		rangeTableFunction->funccolcount = 4;
+		rangeTableFunction->funccolcount = 3;
 		rangeTableFunction->funcparams = NULL;
 		rangeTableFunction->funcexpr = (Node *) rangeFunc;
+
+		rte->alias = makeAlias(collectionAlias, NIL);
+		rte->eref = makeAlias(collectionAlias, colNames);
 
 		/* Add the RTFunc to the RTE */
 		rte->functions = list_make1(rangeTableFunction);
@@ -6285,6 +7015,11 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	{
 		rte->rtekind = RTE_RELATION;
 		rte->relid = collection->relationId;
+
+		if (collection->mongoDataCreationTimeVarAttrNumber != -1)
+		{
+			colNames = lappend(colNames, makeString("creation_time"));
+		}
 
 		if (context->allowShardBaseTable)
 		{
@@ -6347,6 +7082,96 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		query->jointree->quals = (Node *) zeroShardKeyFilter;
 	}
 
+	/* Before applying the view stages, apply the hint on the base table */
+	if (collection != NULL && indexHint != NULL &&
+		indexHint->value_type != BSON_TYPE_EOD &&
+		IsClusterVersionAtleast(DocDB_V0, 106, 0))
+	{
+		const char *indexName = NULL;
+		bool isSparse = false;
+		pgbson *indexKeyDocument = NULL;
+		if (indexHint->value_type == BSON_TYPE_UTF8)
+		{
+			indexName = indexHint->value.v_utf8.str;
+			IndexDetails *details = IndexNameGetReadyIndexDetails(
+				collection->collectionId, indexName);
+			if (details == NULL)
+			{
+				/*
+				 * Compatibility Notice: The text in this error string is copied verbatim from MongoDB output to maintain
+				 * compatibility with existing tools and scripts that rely on specific error message formats.
+				 * Modifying this text may cause unexpected behavior in dependent systems.
+				 */
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+								errmsg(
+									"index specified by index hint is not found: hint provided does not correspond to an existing index")));
+			}
+
+			indexKeyDocument = details->indexSpec.indexKeyDocument;
+			isSparse = details->indexSpec.indexSparse;
+		}
+		else if (indexHint->value_type == BSON_TYPE_DOCUMENT)
+		{
+			indexKeyDocument = PgbsonInitFromDocumentBsonValue(indexHint);
+			if (IsNaturalSortHint(indexHint))
+			{
+				/* Index hint is $natural, in this case */
+				indexName = "_id_";
+			}
+			else
+			{
+				List *indexDocs = IndexKeyGetReadyMatchingIndexes(
+					collection->collectionId,
+					indexKeyDocument);
+
+				if (list_length(indexDocs) == 0)
+				{
+					/*
+					 * Compatibility Notice: The text in this error string is copied verbatim from MongoDB output to maintain
+					 * compatibility with existing tools and scripts that rely on specific error message formats.
+					 * Modifying this text may cause unexpected behavior in dependent systems.
+					 */
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+									errmsg(
+										"index specified by index hint is not found: hint provided does not correspond to an existing index")));
+				}
+				else if (list_length(indexDocs) > 1)
+				{
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+									errmsg(
+										"index specified by index hint is ambiguous. please specify hint by name")));
+				}
+
+				IndexDetails *detail = linitial(indexDocs);
+				indexName = pstrdup(detail->indexSpec.indexName);
+				isSparse = detail->indexSpec.indexSparse;
+				list_free_deep(indexDocs);
+			}
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+							errmsg(
+								"Index hint should be provided as either a string or a document")));
+		}
+
+		FuncExpr *indexHintExpr = makeFuncExpr(
+			BsonIndexHintFunctionOid(), BOOLOID,
+			list_make4(documentEntry, MakeTextConst(indexName, strlen(indexName)),
+					   MakeBsonConst(indexKeyDocument), makeBoolConst(isSparse, false)),
+			InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		if (query->jointree->quals == NULL)
+		{
+			query->jointree->quals = (Node *) indexHintExpr;
+		}
+		else
+		{
+			List *currentQuals = make_ands_implicit((Expr *) query->jointree->quals);
+			currentQuals = lappend(currentQuals, indexHintExpr);
+			query->jointree->quals = (Node *) make_ands_explicit(currentQuals);
+		}
+	}
+
 	/* Now if there's pipeline stages, apply the stages in reverse (innermost first) */
 	for (int i = list_length(pipelineStages) - 1; i >= 0; i--)
 	{
@@ -6390,7 +7215,11 @@ AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 
 	/* Add a parameter for the cursor state */
 	Node *cursorNode;
-	if (addCursorAsConst)
+	if (queryData->cursorStateConst != NULL)
+	{
+		cursorNode = (Node *) MakeBsonConst(queryData->cursorStateConst);
+	}
+	else if (addCursorAsConst)
 	{
 		cursorNode = (Node *) MakeBsonConst(PgbsonInitEmpty());
 	}
@@ -6517,7 +7346,8 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28745),
-						errmsg("The $sample stage specification must be an object.")));
+						errmsg(
+							"The $sample stage specification is required to be provided as an object.")));
 	}
 
 	bson_iter_t sampleIter;
@@ -6533,20 +7363,21 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28748),
-							errmsg("unrecognized option to $sample")));
+							errmsg("Option not recognized for $sample")));
 		}
 	}
 
 	if (sizeValue.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28749),
-						errmsg("$sample stage must specify a size")));
+						errmsg("The $sample stage must explicitly define a size value")));
 	}
 
 	if (!BsonValueIsNumber(&sizeValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28746),
-						errmsg("size argument to $sample must be a number")));
+						errmsg(
+							"The size parameter provided to $sample must be a valid numeric value")));
 	}
 
 	double sizeDouble = BsonValueAsDouble(&sizeValue);
@@ -6554,7 +7385,8 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	if (sizeDouble < 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28747),
-						errmsg("size argument to $sample must be a number")));
+						errmsg(
+							"The size parameter provided to $sample must be a valid numeric value")));
 	}
 
 	/* If the sample is against the base RTE - convert to a sample CTE */
@@ -6622,7 +7454,8 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	if (sortlist == NIL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15976),
-						errmsg("$sort stage must have at least one sort key")));
+						errmsg(
+							"The $sort stage requires specifying at least one sorting key to proceed")));
 	}
 
 	query->sortClause = sortlist;
@@ -6761,8 +7594,8 @@ CanInlineLookupStageMatch(const bson_value_t *stageValue, const
  * We can probably do better but that is left as an exercise for later.
  */
 static bool
-CanInlineLookupStageProjection(const bson_value_t *stageValue, const
-							   StringView *lookupPath, bool hasLet)
+CanInlineLookupStageSetAddFields(const bson_value_t *stageValue, const
+								 StringView *lookupPath, bool hasLet)
 {
 	if (stageValue->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -6785,6 +7618,139 @@ CanInlineLookupStageProjection(const bson_value_t *stageValue, const
 		{
 			return false;
 		}
+	}
+
+	return true;
+}
+
+
+/*
+ * Helper for a $project stage on whether it can be inlined for a $lookup.
+ * Can be inlined if all the $project fields does not exclude or overwrite the lookup path.
+ */
+static bool
+CanInlineLookupStageProject(const bson_value_t *stageValue, const
+							StringView *lookupPath, bool hasLet)
+{
+	if (!EnableUseLookupNewProjectInlineMethod)
+	{
+		return CanInlineLookupStageSetAddFields(stageValue, lookupPath, hasLet);
+	}
+
+	if (stageValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		return false;
+	}
+
+	if (hasLet)
+	{
+		return false;
+	}
+
+	bson_iter_t projectIter;
+	BsonValueInitIterator(stageValue, &projectIter);
+
+	bool hasInclusion = false;
+	bool hasExclusion = false;
+	bool foundMatchInInclusion = false;
+	bool foundMatchInExclusion = false;
+	bool isIdModifiedorExcluded = false;
+	bool isJoinOnIdField = StringViewEqualsCString(lookupPath, "_id");
+
+	while (bson_iter_next(&projectIter))
+	{
+		const StringView keyView = bson_iter_key_string_view(&projectIter);
+		const bson_value_t *value = bson_iter_value(&projectIter);
+
+		StringView keyViewPrefix = StringViewFindPrefix(&keyView, '.');
+		if (keyViewPrefix.length != 0 && StringViewEquals(&keyViewPrefix, lookupPath))
+		{
+			/* it's a dotted projection and both prefix are matching so we safely return false */
+			/* TODO: We can probably do better but that is left as an exercise for later. */
+			return false;
+		}
+
+		/* handle _id cases */
+		if (StringViewEqualsCString(&keyView, "_id"))
+		{
+			if (!isJoinOnIdField)
+			{
+				/* join is not on _id so we skip */
+				continue;
+			}
+
+			if (BsonValueIsNumberOrBool(value))
+			{
+				/* join is on _id and excluded */
+				if (BsonValueAsInt32(value) == 0)
+				{
+					isIdModifiedorExcluded = true;
+				}
+			}
+			else
+			{
+				/* join is on _id and modified */
+				isIdModifiedorExcluded = true;
+			}
+			continue;
+		}
+
+		if (BsonValueIsNumberOrBool(value))
+		{
+			if (BsonValueAsInt32(value) == 0)
+			{
+				hasExclusion = true;
+
+				if (StringViewEquals(&keyView, lookupPath))
+				{
+					foundMatchInExclusion = true;
+				}
+			}
+			else
+			{
+				hasInclusion = true;
+
+				if (StringViewEquals(&keyView, lookupPath))
+				{
+					foundMatchInInclusion = true;
+				}
+			}
+		}
+		else
+		{
+			/* If a projection assigns a value (not 1, 0, true, or false) to a field */
+			/* that's used in the join, we cannot inline it as it would overwrite the join field. */
+			hasInclusion = true;
+			if (StringViewEquals(&keyView, lookupPath))
+			{
+				return false;
+			}
+		}
+
+		if (hasInclusion && hasExclusion)
+		{
+			/* Mixed inclusion and exclusion, cannot inline */
+			/* Can we do better fail early, but that is left as an exercise for later.*/
+			return false;
+		}
+	}
+
+	if (isJoinOnIdField && isIdModifiedorExcluded)
+	{
+		/* join is on _id and _id is either excluded or modified */
+		return false;
+	}
+
+	if (hasExclusion && foundMatchInExclusion)
+	{
+		/* Excluding the lookup path */
+		return false;
+	}
+
+	if (hasInclusion && !foundMatchInInclusion)
+	{
+		/* Inclusion but path does not exist */
+		return false;
 	}
 
 	return true;
@@ -6902,7 +7868,7 @@ ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData)
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Unrecognized field: %s",
+							errmsg("Field not recognized: %s",
 								   path)));
 		}
 	}
@@ -7049,8 +8015,7 @@ TryOptimizeAggregationPipelines(List **aggregationStages,
 			allowShardBaseTable = false;
 		}
 
-		if (definition->stageEnum == Stage_Lookup &&
-			EnableLookupUnwindSupport && IsClusterVersionAtleast(DocDB_V0, 24, 0))
+		if (definition->stageEnum == Stage_Lookup)
 		{
 			/* Optimization for $lookup stage
 			 */

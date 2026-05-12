@@ -25,11 +25,17 @@ import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.net.URL;
 import java.util.Objects;
@@ -40,6 +46,9 @@ import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@Api(
+    value = "Platform Instance",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class PlatformInstanceController extends AuthenticatedController {
   @Inject private PlatformReplicationManager replicationManager;
@@ -48,6 +57,18 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject CustomerTaskManager taskManager;
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Create platform instance",
+      response = PlatformInstance.class,
+      nickname = "createInstance")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PlatformInstanceFormRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.PlatformInstanceFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -57,9 +78,10 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createInstance(UUID configUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     PlatformInstance instance =
         HighAvailabilityConfig.doWithLock(
-            configUUID,
+            haConfig.getClusterKey(),
             config -> {
               PlatformInstanceFormData formData =
                   parseJsonAndValidate(request, PlatformInstanceFormData.class);
@@ -99,10 +121,9 @@ public class PlatformInstanceController extends AuthenticatedController {
                       config, formData.getCleanAddress(), formData.is_leader, formData.is_local);
 
               // Mark this instance as "failed over to" initially since it is a leader instance.
-              if (i.getIsLeader()) {
+              if (i.isLeader()) {
                 config.updateLastFailover();
               }
-
               // Reload from DB.
               config.refresh();
               // Save the local HA config before DB record is replaced in backup-restore during
@@ -130,8 +151,9 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           if (!config.isLocalLeader()) {
             throw new PlatformServiceException(
@@ -144,7 +166,7 @@ public class PlatformInstanceController extends AuthenticatedController {
           if (!instanceUUIDValid) {
             throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
           }
-          if (instanceToDelete.get().getIsLocal()) {
+          if (instanceToDelete.get().isLocal()) {
             throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
           }
           // Clear metrics for remote instance
@@ -185,6 +207,17 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(localInstance.get());
   }
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Promote platform instance",
+      nickname = "promoteInstance")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PlatformBackupRestoreRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RestorePlatformBackupFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -204,8 +237,9 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot promote while shutdown is in progress");
     }
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           Optional<PlatformInstance> instance = PlatformInstance.get(instanceUUID);
 
@@ -217,12 +251,12 @@ public class PlatformInstanceController extends AuthenticatedController {
             throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
           }
 
-          if (!instance.get().getIsLocal()) {
+          if (!instance.get().isLocal()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a remote platform instance");
           }
 
-          if (instance.get().getIsLeader()) {
+          if (instance.get().isLeader()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a leader platform instance");
           }
@@ -238,14 +272,6 @@ public class PlatformInstanceController extends AuthenticatedController {
             }
             leader = leaderInstance.get().getAddress();
           }
-          // Validate we can reach current leader if force is not set.
-          if (force) {
-            log.warn("Connection test to the current leader is skipped");
-          } else if (!replicationManager.testConnection(
-              config, leader, config.getAcceptAnyCertificate())) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
-          }
 
           URL leaderUrl = Util.toURL(leader);
           // Make sure the backup file provided exists.
@@ -258,6 +284,35 @@ public class PlatformInstanceController extends AuthenticatedController {
                           new PlatformServiceException(
                               BAD_REQUEST,
                               "Could not find backup file from " + leaderUrl.getHost()));
+
+          // Validate we can reach current leader if force is not set.
+          if (force) {
+            log.warn("Connection test to the current leader is skipped");
+          } else {
+            boolean succeeded = false;
+            try {
+              succeeded = replicationManager.validateRemoteBackup(config, leader, backup.getName());
+            } catch (Exception e) {
+              log.error("Connection test to the current leader {} failed", leader, e);
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
+            }
+            if (succeeded) {
+              log.info(
+                  "Validation succeeded for backup {} from the current leader {}",
+                  backup.getName(),
+                  leader);
+            } else {
+              String errorMsg =
+                  String.format(
+                      "Validation failed for backup %s with the remote leader %s. Backup may be too"
+                          + " old. Force parameter can be set to true to bypass this check, but it"
+                          + " is not recommended",
+                      backup.getName(), leader);
+              log.error(errorMsg);
+              throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+            }
+          }
 
           // Cache local instance address before restore so we can query to new corresponding model.
           String localInstanceAddr = instance.get().getAddress();
@@ -273,19 +328,22 @@ public class PlatformInstanceController extends AuthenticatedController {
             // promotion.
             replicationManager.saveLocalHighAvailabilityConfig(config);
           }
-
           log.info("Restoring YBA DB using backup {}", backup);
-          // Restore the backup.
-          // For K8s, restore Yba DB inline instead of restoring after restart.
-          if (!replicationManager.restoreBackup(backup, false /* k8sRestoreYbaDbOnRestart */)) {
-            throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+          // Restart should clear this flag also.
+          HighAvailabilityConfig.setSwitchOverInProgress(true);
+          try {
+            // Restore the backup.
+            if (!replicationManager.restoreBackupOnStandby(config, backup)) {
+              throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+            }
+            // Handle any incomplete tasks that may be leftover from the backup that was restored.
+            taskManager.handleAllPendingTasks();
+            // Promote the local instance.
+            PlatformInstance.getByAddress(localInstanceAddr)
+                .ifPresent(replicationManager::promoteLocalInstance);
+          } finally {
+            HighAvailabilityConfig.setSwitchOverInProgress(false);
           }
-          // Handle any incomplete tasks that may be leftover from the backup that was restored.
-          taskManager.handleAllPendingTasks();
-
-          // Promote the local instance.
-          PlatformInstance.getByAddress(localInstanceAddr)
-              .ifPresent(replicationManager::promoteLocalInstance);
           return null;
         });
     auditService()

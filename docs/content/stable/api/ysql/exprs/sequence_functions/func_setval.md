@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-exprs-setval
     parent: sequence-functions
+aliases:
+  - /stable/api/ysql/exprs/func_setval
 type: docs
 ---
 

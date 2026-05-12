@@ -104,7 +104,7 @@ Database transactions / sec
 The following metrics are exported when Metrics Export is enabled in YugabyteDB Aeon:
 
 - ybdb_ysql_conn_mgr_active_clients
-- ybdb_ysql_conn_mgr_active_servers 
+- ybdb_ysql_conn_mgr_active_servers
 - ybdb_ysql_conn_mgr_avg_wait_time_ns
 - ybdb_ysql_conn_mgr_idle_servers
 - ybdb_ysql_conn_mgr_last_updated_timestamp

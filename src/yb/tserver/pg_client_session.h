@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <sys/types.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -33,9 +35,11 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -54,23 +58,27 @@ namespace tserver {
     (CreateReplicationSlot) \
     (CreateTable) \
     (CreateTablegroup) \
-    (DeleteDBSequences) \
-    (DeleteSequenceTuple) \
     (DropDatabase) \
     (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FetchSequenceTuple) \
     (FinishTransaction) \
-    (InsertSequenceTuple) \
-    (ReadSequenceTuple) \
     (RollbackToSubTransaction) \
     (TruncateTable) \
-    (UpdateSequenceTuple) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock) \
+    /**/
+
+#define PG_CLIENT_SESSION_LW_METHODS \
+    (DeleteDBSequences) \
+    (DeleteSequenceTuple) \
+    (FetchSequenceTuple) \
+    (InsertSequenceTuple) \
+    (ReadSequenceTuple) \
+    (UpdateSequenceTuple) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -79,11 +87,23 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    /**/
+
+#define PG_CLIENT_SESSION_ASYNC_LW_METHODS \
     (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);
+
+struct PgClientSessionMetrics {
+  explicit PgClientSessionMetrics(MetricEntity* metric_entity);
+
+  EventStatsPtr exchange_response_size;
+  EventStatsPtr vector_index_fetch_us;
+  EventStatsPtr vector_index_collect_us;
+  EventStatsPtr vector_index_reduce_us;
+};
 
 struct PgClientSessionContext {
   // xcluster_context is nullptr on master.
@@ -95,11 +115,16 @@ struct PgClientSessionContext {
   PgResponseCache& response_cache;
   PgSequenceCache& sequence_cache;
   PgSharedMemoryPool& shared_mem_pool;
-  const EventStatsPtr& stats_exchange_response_size;
+  PgClientSessionMetrics metrics;
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
   const TransactionManagerProvider transaction_manager_provider;
+#ifdef __linux__
+  TServerCgroupManager* cgroup_manager;
+#endif
 };
+
+using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
 
 class PgClientSession final {
  private:
@@ -112,8 +137,8 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
-      rpc::Scheduler& scheduler);
+      uint64_t id, pid_t pid, uint64_t lease_epoch,
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
@@ -121,10 +146,12 @@ class PgClientSession final {
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
   void Perform(
-      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      LWPgPerformRequestPB& req, LWPgPerformResponsePB& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables);
 
-  void ProcessSharedRequest(size_t size, SharedExchange* exchange);
+  void ProcessSharedRequest(
+      size_t size, SharedExchange* exchange,
+      const RequestProcessingPreconditionWaiter& precondition_waiter);
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
@@ -139,21 +166,29 @@ class PgClientSession final {
 
   Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
 
-  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, ctx_type, method) \
+  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, ctx_type, prefix, method) \
     ret method( \
-        const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
-        BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+        const YB_PG_CLIENT_METHOD_ARG(prefix, method, Request)& req, \
+        YB_PG_CLIENT_METHOD_ARG(prefix, method, Response)* resp, \
         ctx_type context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data_tuple, method) \
     PG_CLIENT_SESSION_METHOD_DECLARE_IMPL( \
-        BOOST_PP_TUPLE_ELEM(2, 0, data_tuple), BOOST_PP_TUPLE_ELEM(2, 1, data_tuple), method)
+        BOOST_PP_TUPLE_ELEM(3, 0, data_tuple), BOOST_PP_TUPLE_ELEM(3, 1, data_tuple), \
+        BOOST_PP_TUPLE_ELEM(3, 2, data_tuple), method)
 
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, BOOST_PP_NIL),
+        PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, (LW)),
+        PG_CLIENT_SESSION_LW_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE,
-        (void, rpc::RpcContext&&), PG_CLIENT_SESSION_ASYNC_METHODS);
+        (void, rpc::RpcContext&&, BOOST_PP_NIL), PG_CLIENT_SESSION_ASYNC_METHODS);
+BOOST_PP_SEQ_FOR_EACH(
+        PG_CLIENT_SESSION_METHOD_DECLARE,
+        (void, rpc::RpcContext&&, (LW)), PG_CLIENT_SESSION_ASYNC_LW_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL
@@ -164,7 +199,7 @@ class PgClientSession final {
 };
 
 void PreparePgTablesQuery(
-    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
+    const PgPerformRequestMsg& req, boost::container::small_vector_base<TableId>& table_ids);
 
 } // namespace tserver
 } // namespace yb

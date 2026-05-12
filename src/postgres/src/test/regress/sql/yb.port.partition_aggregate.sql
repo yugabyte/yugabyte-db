@@ -6,6 +6,15 @@
 -- any one partitioned table in this test all have different numbers of rows.
 --
 
+-- YB: Use colocated DB and enable parallel execution.
+SET client_min_messages TO 'warning';
+DROP DATABASE IF EXISTS px_colocated WITH (force);
+CREATE DATABASE px_colocated WITH colocation = on;
+ALTER DATABASE px_colocated SET yb_parallel_range_rows = 1000;
+ALTER DATABASE px_colocated SET yb_enable_parallel_append = on;
+ALTER DATABASE px_colocated SET yb_enable_cbo = on;
+\c px_colocated
+
 -- Enable partitionwise aggregate, which by default is disabled.
 SET enable_partitionwise_aggregate TO true;
 -- Enable partitionwise join, which by default is disabled.
@@ -228,17 +237,13 @@ SET parallel_setup_cost = 0;
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
 -- PARTITION KEY, but still we do not see a partial aggregation as array_agg()
 -- is not partial agg safe.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 
 -- Without ORDER BY clause, to test Gather at top-most path
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3;
-*/ -- YB: cannot force parallelism
 
 RESET parallel_setup_cost;
 
@@ -268,25 +273,19 @@ SET parallel_setup_cost TO 0;
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
 -- PARTITION KEY, thus we will have a partial aggregation for them.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 
 -- Partial aggregation at all levels as GROUP BY clause does not match with
 -- PARTITION KEY
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
 
 -- Full aggregation at all levels as GROUP BY clause matches with PARTITION KEY
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
 
 
@@ -311,17 +310,13 @@ INSERT INTO pagg_tab_para SELECT i % 30, i % 20 FROM generate_series(0, 29999) i
 ANALYZE pagg_tab_para;
 
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 
 -- When GROUP BY clause does not match; partial aggregation is performed for each partition.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
 
 -- Test when parent can produce parallel paths but not any (or some) of its children
@@ -330,20 +325,19 @@ ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
 ANALYZE pagg_tab_para;
 
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
 SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
 ANALYZE pagg_tab_para;
 
-/* YB: cannot force parallelism
+-- YB: yet another aggregate is required to "tilt the cost estimates" to get
+-- the desired plan.  Only one more aggregate is not enough because of higher
+-- scan costs relative to vanilla PG's execution nodes.
 EXPLAIN (COSTS OFF)
-SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
-SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
+SELECT x, sum(y), avg(y), sum(x+y), count(*), avg(x+y) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3; -- YB use one more agg
+SELECT x, sum(y), avg(y), sum(x+y), count(*), avg(x+y) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3; -- YB use one more agg
 
 -- Reset parallelism parameters to get partitionwise aggregation plan.
 RESET min_parallel_table_scan_size;

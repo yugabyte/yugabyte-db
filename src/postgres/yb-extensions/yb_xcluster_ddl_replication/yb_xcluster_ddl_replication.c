@@ -31,6 +31,7 @@
 
 PG_MODULE_MAGIC;
 
+#define INSERT_INTO_TABLE_NUM_ARGS 3
 
 /*
  * Extension variables.
@@ -266,9 +267,8 @@ void
 InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 				Jsonb *yb_data)
 {
-	const int	kNumArgs = 3;
-	Oid			arg_types[kNumArgs];
-	Datum		arg_vals[kNumArgs];
+	Oid			arg_types[INSERT_INTO_TABLE_NUM_ARGS];
+	Datum		arg_vals[INSERT_INTO_TABLE_NUM_ARGS];
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
@@ -286,7 +286,7 @@ InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 	arg_types[2] = JSONBOID;
 	arg_vals[2] = PointerGetDatum(yb_data);
 
-	int			exec_res = SPI_execute_with_args(query_buf.data, kNumArgs, arg_types,
+	int			exec_res = SPI_execute_with_args(query_buf.data, INSERT_INTO_TABLE_NUM_ARGS, arg_types,
 												 arg_vals, /* Nulls */ NULL, /* readonly */ false,
 												  /* tuple-count limit */ 1);
 
@@ -480,10 +480,51 @@ HandleSourceDDLStart(EventTriggerData *trig_data)
 	ClearRewrittenTableOidList();
 }
 
+/*
+ * xCluster: Prevent replication from halting on phantom indexes (invalid
+ * indexes that exist on the source but not the target). DDLs referencing them
+ * are silently skipped rather than forcing replication to halt.
+ */
+static void
+yb_xcluster_handle_phantom_indexes(Node *parsetree)
+{
+	if (yb_xcluster_automatic_mode_target_ddl)
+	{
+		switch (nodeTag(parsetree))
+		{
+			case T_DropStmt:
+			{
+				DropStmt *stmt = (DropStmt *) parsetree;
+				if (stmt->removeType == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			case T_RenameStmt:
+			{
+				RenameStmt *stmt = (RenameStmt *) parsetree;
+				if (stmt->renameType == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			case T_AlterTableStmt:
+			{
+				AlterTableStmt *stmt = (AlterTableStmt *) parsetree;
+				if (stmt->objtype == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			default:
+				break;
+		}
+	}
+}
+
 void
 HandleTargetDDLStart(EventTriggerData *trig_data)
 {
 	yb_xcluster_target_ddl_bypass = false;
+
+	yb_xcluster_handle_phantom_indexes(parsetree);
 
 	/* Bypass DDLs executed in manual mode, or from the target poller. */
 	if (enable_manual_ddl_replication || yb_xcluster_automatic_mode_target_ddl)
@@ -493,12 +534,10 @@ HandleTargetDDLStart(EventTriggerData *trig_data)
 	}
 
 	/*
-	 * Allow DDLs related to materialized views.
 	 * Temp relations are bypassed in RecordTempRelationDDL.
 	 * DDLs that are not caught by the trigger (ex CREATE DATABASE) are bypassed
 	 * in XClusterProcessUtility.
 	 */
-	yb_xcluster_target_ddl_bypass = IsMatViewCommand(trig_data->tag);
 }
 
 static char *

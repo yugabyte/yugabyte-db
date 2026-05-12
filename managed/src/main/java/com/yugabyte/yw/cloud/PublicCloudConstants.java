@@ -10,10 +10,15 @@
 
 package com.yugabyte.yw.cloud;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.Pair;
+import java.io.IOException;
 import java.util.EnumSet;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
 public class PublicCloudConstants {
 
@@ -28,12 +33,15 @@ public class PublicCloudConstants {
   public static final String VOLUME_API_NAME_GP2 = "gp2";
   public static final String VOLUME_API_NAME_GP3 = "gp3";
   public static final String VOLUME_API_NAME_IO1 = "io1";
+  public static final String VOLUME_API_NAME_IO2 = "io2";
 
   public static final String GROUP_EBS_IOPS = "EBS IOPS";
   public static final String GROUP_EBS_THROUGHPUT = "EBS Throughput";
 
   public static final String IO1_SIZE = "io1.size";
   public static final String IO1_PIOPS = "io1.piops";
+  public static final String IO2_SIZE = "io2.size";
+  public static final String IO2_PIOPS = "io2.piops";
   public static final String GP2_SIZE = "gp2.size";
   public static final String GP3_SIZE = "gp3.size";
   public static final String GP3_PIOPS = "gp3.piops";
@@ -85,6 +93,20 @@ public class PublicCloudConstants {
       }
       throw new IllegalArgumentException("Unknown architecture: " + strType);
     }
+
+    @Slf4j
+    public static class JSONDeserializer extends JsonDeserializer<Architecture> {
+      @Override
+      public Architecture deserialize(JsonParser p, DeserializationContext ctxt)
+          throws IOException {
+        String text = p.getText();
+        log.trace("Deserializing architecture: {}", text);
+        if (text == null || text.isEmpty()) {
+          return null;
+        }
+        return parse(text);
+      }
+    }
   }
 
   /**
@@ -93,6 +115,7 @@ public class PublicCloudConstants {
    */
   public enum StorageType {
     IO1(Common.CloudType.aws, new Pair<>(100, 64000)),
+    IO2(Common.CloudType.aws, new Pair<>(100, 256000)),
     GP2(Common.CloudType.aws),
     GP3(Common.CloudType.aws, new Pair<>(3000, 16000), new Pair<>(125, 1000)),
     Scratch(Common.CloudType.gcp),

@@ -79,7 +79,7 @@ TEST_F(CompressedStreamTest, BigWrite) {
 
   auto session = NewSession();
   {
-    const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddStringColumnValue(req, kValueColumn, kValue);
@@ -88,7 +88,7 @@ TEST_F(CompressedStreamTest, BigWrite) {
   }
 
   {
-    const auto op = table_.NewReadOp();
+    const auto op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddColumns({kValueColumn}, req);

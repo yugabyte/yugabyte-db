@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -255,11 +256,8 @@ public class PerfAdvisorScheduler {
           databases.add(queryIterator.next().get("datname").asText());
         }
       }
-      Provider provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(
-                  universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
       NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
+      Provider provider = Util.getProviderForNode(tserverNode, universe);
       boolean ysqlAuth =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
       boolean tlsClient =

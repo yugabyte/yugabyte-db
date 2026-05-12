@@ -1,0 +1,414 @@
+SET search_path TO documentdb_api_catalog;
+SET citus.next_shard_id TO 920000;
+SET documentdb.next_collection_id TO 9200;
+SET documentdb.next_collection_index_id TO 9200;
+SELECT documentdb_api.create_collection('collmod','coll_mod_test_hidden');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('collmod','coll_mod_test_hidden', FORMAT('{"_id":"%s", "a": %s }', i, i )::documentdb_core.bson)) FROM generate_series(1, 100) i;
+ count 
+---------------------------------------------------------------------
+   100
+(1 row)
+
+-- cannot create an index as hidden
+SELECT documentdb_api_internal.create_indexes_non_concurrently('collmod', '{"createIndexes": "coll_mod_test_hidden", "indexes": [{"key": {"a": 1}, "name": "my_idx_1", "hidden": true  }]}');
+ERROR:  hidden indexes are not supported yet.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('collmod', '{"createIndexes": "coll_mod_test_hidden", "indexes": [{"key": {"a": 1}, "name": "my_idx_1" }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set citus.show_shards_for_app_name_prefixes to '*';
+\d documentdb_data.documents_9201
+                 Table "documentdb_data.documents_9201"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '9201'::bigint)
+
+\d documentdb_data.documents_9201_920002
+              Table "documentdb_data.documents_9201_920002"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920002" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202_920002" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check_920002" CHECK (shard_key_value = '9201'::bigint)
+
+ANALYZE documentdb_data.documents_9201;
+-- get list index output
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('collmod', '{ "listIndexes": "coll_mod_test_hidden" }');
+                                                                                                              bson_dollar_unwind                                                                                                              
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "my_idx_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+-- the index is used for queries
+set enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                      QUERY PLAN                                      
+---------------------------------------------------------------------
+ Index Scan using my_idx_1 on documents_9201_920002 collection
+   Index Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                   document                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "$numberInt" : "1" } }
+(1 row)
+
+-- now hide the index
+SELECT documentdb_api.coll_mod('collmod', 'coll_mod_test_hidden', '{ "collMod": "coll_mod_test_hidden", "index": { "name": "my_idx_1", "hidden": true } }');
+                                   coll_mod                                   
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "hidden_old" : false, "hidden_new" : true }
+(1 row)
+
+-- print the status
+\d documentdb_data.documents_9201
+                 Table "documentdb_data.documents_9201"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699')) INVALID
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '9201'::bigint)
+
+\d documentdb_data.documents_9201_920002
+              Table "documentdb_data.documents_9201_920002"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920002" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202_920002" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699')) INVALID
+Check constraints:
+    "shard_key_value_check_920002" CHECK (shard_key_value = '9201'::bigint)
+
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('collmod', '{ "listIndexes": "coll_mod_test_hidden" }');
+                                                                                                                      bson_dollar_unwind                                                                                                                       
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "hidden" : true } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+-- the index is not used for queries
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                    QUERY PLAN                                    
+---------------------------------------------------------------------
+ Index Scan using _id_ on documents_9201_920002 collection
+   Index Cond: (shard_key_value = '9201'::bigint)
+   Filter: (document @= '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                   document                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "$numberInt" : "1" } }
+(1 row)
+
+-- cannot hide the primary key index (since it's unique)
+SELECT documentdb_api.coll_mod('collmod', 'coll_mod_test_hidden', '{ "collMod": "coll_mod_test_hidden", "index": { "name": "_id_", "hidden": true } }');
+ERROR:  cannot modify hidden field of the _id_ index
+-- now inserts done while the index is hidden do get factored into the final results.
+SELECT documentdb_api.insert_one('collmod','coll_mod_test_hidden', '{"_id":"101", "a": 101 }'::documentdb_core.bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 101 } }');
+                     document                      
+---------------------------------------------------------------------
+ { "_id" : "101", "a" : { "$numberInt" : "101" } }
+(1 row)
+
+-- unhide the index
+SELECT documentdb_api.coll_mod('collmod', 'coll_mod_test_hidden', '{ "collMod": "coll_mod_test_hidden", "index": { "name": "my_idx_1", "hidden": false } }');
+                                   coll_mod                                   
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "hidden_old" : true, "hidden_new" : false }
+(1 row)
+
+-- print the status: index is no longer invalid
+\d documentdb_data.documents_9201
+                 Table "documentdb_data.documents_9201"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '9201'::bigint)
+
+\d documentdb_data.documents_9201_920002
+              Table "documentdb_data.documents_9201_920002"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920002" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9202_920002" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check_920002" CHECK (shard_key_value = '9201'::bigint)
+
+-- hidden is no longer in the options
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('collmod', '{ "listIndexes": "coll_mod_test_hidden" }');
+                                                                                                              bson_dollar_unwind                                                                                                              
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "my_idx_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+-- can use the index again
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                      QUERY PLAN                                      
+---------------------------------------------------------------------
+ Index Scan using my_idx_1 on documents_9201_920002 collection
+   Index Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(2 rows)
+
+-- the row shows up from the index 
+SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 101 } }');
+                     document                      
+---------------------------------------------------------------------
+ { "_id" : "101", "a" : { "$numberInt" : "101" } }
+(1 row)
+
+-- shard the collection.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "collmod.coll_mod_test_hidden", "key": { "_id": "hashed" }, "numInitialChunks": 3 }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+set citus.explain_all_tasks to on;
+BEGIN;
+set local enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 3
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920004 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920005 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920006 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(15 rows)
+
+ROLLBACK;
+-- now hide the index again (with debug logs)
+set client_min_messages to debug1;
+SET citus.multi_shard_modify_mode TO 'sequential';
+SELECT documentdb_api.coll_mod('collmod', 'coll_mod_test_hidden', '{ "collMod": "coll_mod_test_hidden", "index": { "name": "my_idx_1", "hidden": true } }');
+DEBUG:  executing "SELECT index_id, index_spec, index_is_valid FROM documentdb_api_catalog.collection_indexes WHERE collection_id = $2 AND (index_spec).index_name = $1;" via SPI
+DEBUG:  executing "WITH r1 AS (SELECT MIN($1 || '_' || sh.shardid) AS shardName FROM pg_dist_shard sh JOIN pg_dist_placement pl  on pl.shardid = sh.shardid WHERE logicalrelid = $1::regclass GROUP by groupid)  SELECT ARRAY_AGG(r1.shardName) FROM r1" via SPI
+DEBUG:  Executing command_node_worker on table documentdb_data.documents_9201_920004
+DEBUG:  executing "SELECT array_agg(shardid) FROM pg_dist_shard WHERE logicalrelid = $1" via SPI
+DEBUG:  executing "UPDATE pg_catalog.pg_index SET indisvalid = $1 WHERE indexrelid = $2 RETURNING indexrelid" via SPI
+DEBUG:  executing "UPDATE pg_catalog.pg_index SET indisvalid = $1 WHERE indexrelid = $2 RETURNING indexrelid" via SPI
+DEBUG:  executing "UPDATE pg_catalog.pg_index SET indisvalid = $1 WHERE indexrelid = $2 RETURNING indexrelid" via SPI
+DEBUG:  executing "UPDATE pg_catalog.pg_index SET indisvalid = $1 WHERE indexrelid = $2 RETURNING indexrelid" via SPI
+DEBUG:  Skipping command_node_worker on table documentdb_data.documents_9201_920005 since not in chosen shards
+DEBUG:  Skipping command_node_worker on table documentdb_data.documents_9201_920006 since not in chosen shards
+DEBUG:  executing "SELECT citus_is_coordinator()" via SPI
+DEBUG:  executing "select COUNT(1) from citus_shards cs join pg_dist_node pd on cs.nodename = pd.nodename and cs.nodeport = pd.nodeport where cs.table_name = $1::regclass and pd.groupid = 0" via SPI
+DEBUG:  executing "UPDATE documentdb_api_catalog.collection_indexes SET index_spec = $1 WHERE index_id = $2;" via SPI
+                                   coll_mod                                   
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "hidden_old" : false, "hidden_new" : true }
+(1 row)
+
+reset client_min_messages;
+reset citus.multi_shard_modify_mode;
+\d documentdb_data.documents_9201
+                 Table "documentdb_data.documents_9201"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699')) INVALID
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+\d documentdb_data.documents_9201_920003
+\d documentdb_data.documents_9201_920004
+              Table "documentdb_data.documents_9201_920004"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920004" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203_920004" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204_920004" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699')) INVALID
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+\d documentdb_data.documents_9201_920005
+              Table "documentdb_data.documents_9201_920005"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920005" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203_920005" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204_920005" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699')) INVALID
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('collmod', '{ "listIndexes": "coll_mod_test_hidden" }');
+                                                                                                                      bson_dollar_unwind                                                                                                                       
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "hidden" : true } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+BEGIN;
+set local enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 3
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9201_920004 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9201_920005 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9201_920006 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(15 rows)
+
+ROLLBACK;
+-- unhide the index again
+SELECT documentdb_api.coll_mod('collmod', 'coll_mod_test_hidden', '{ "collMod": "coll_mod_test_hidden", "index": { "name": "my_idx_1", "hidden": false } }');
+                                   coll_mod                                   
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "hidden_old" : true, "hidden_new" : false }
+(1 row)
+
+\d documentdb_data.documents_9201
+                 Table "documentdb_data.documents_9201"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+\d documentdb_data.documents_9201_920003
+\d documentdb_data.documents_9201_920004
+              Table "documentdb_data.documents_9201_920004"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920004" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203_920004" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204_920004" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+\d documentdb_data.documents_9201_920005
+              Table "documentdb_data.documents_9201_920005"
+     Column      |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
+Indexes:
+    "collection_pk_9201_920005" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_9203_920005" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_9204_920005" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "_id" : "hashed" }'::documentdb_core.bson, 9201::bigint, document))
+
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('collmod', '{ "listIndexes": "coll_mod_test_hidden" }');
+                                                                                                              bson_dollar_unwind                                                                                                              
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "collmod.coll_mod_test_hidden", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "my_idx_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+BEGIN;
+set local enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('collmod', '{ "find": "coll_mod_test_hidden", "filter": { "a": 1 } }');
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 3
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920004 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920005 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using my_idx_1 on documents_9201_920006 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(15 rows)
+
+ROLLBACK;

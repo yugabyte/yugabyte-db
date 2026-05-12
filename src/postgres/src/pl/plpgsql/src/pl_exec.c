@@ -2033,16 +2033,7 @@ exec_stmts(PLpgSQL_execstate *estate, List *stmts)
 
 		/* YB: Check if flush is required before executing statement. */
 		if (YbIsFlushRequiredForPlStmt(stmt->cmd_type))
-		{
-			YbcFlushDebugContext yb_debug_context = {
-				.reason = YB_UNBATCHABLE_PL_STMT,
-				.oidarg = estate->func->fn_oid,
-				.strarg1 = plpgsql_stmt_typename(stmt),
-				.strarg2 = estate->func->fn_signature,
-			};
-
-			YBFlushBufferedOperations(&yb_debug_context);
-		}
+			YBFlushBufferedOperations(YBCMakeFlushDebugContextUnbatchablePlStmt(plpgsql_stmt_typename(stmt), estate->func->fn_signature));
 
 		estate->err_stmt = stmt;
 
@@ -4317,16 +4308,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 
 	Assert(stmt->yb_flush_before_stmt_set);
 	if (stmt->yb_flush_before_stmt)
-	{
-		YbcFlushDebugContext yb_debug_context = {
-			.reason = YB_UNBATCHABLE_SQL_STMT_IN_PL_FUNCTION,
-			.oidarg = estate->func->fn_oid,
-			.strarg1 = GetCommandTagName(yb_flush_before_command_tag),
-			.strarg2 = estate->func->fn_signature,
-		};
-
-		YBFlushBufferedOperations(&yb_debug_context);
-	}
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(GetCommandTagName(yb_flush_before_command_tag), estate->func->fn_signature));
 
 	/*
 	 * Set up ParamListInfo to pass to executor

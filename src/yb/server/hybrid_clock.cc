@@ -34,6 +34,8 @@
 
 #include <algorithm>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/walltime.h"
@@ -45,6 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/subprocess.h"
 
 DEFINE_UNKNOWN_bool(use_hybrid_clock, true,
             "Whether HybridClock should be used as the default clock"
@@ -113,6 +116,21 @@ PhysicalClockPtr GetClock(const std::string& options) {
   return it->second(arg);
 }
 
+void TryRunClockboundStatus() {
+  if (FLAGS_time_source != "clockbound") {
+    LOG(INFO) << "Time source is not 'clockbound' (current value: "
+                          << FLAGS_time_source << "), skipping clockbound status check";
+    return;
+  }
+
+  LOG(INFO) << "$ systemctl status clockbound --no-pager";
+  std::vector<std::string> argv = { "systemctl", "status", "clockbound", "--no-pager" };
+  Status s = Subprocess::Call(argv, true);
+  if (!s.ok()) {
+    LOG(WARNING) << s.ToString();
+  }
+}
+
 } // namespace
 
 void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
@@ -154,6 +172,9 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
 
   auto now = clock_->Now();
   if (PREDICT_FALSE(!now.ok())) {
+    TryRunChronycTracking();
+    TryRunChronycSourceInfo();
+    TryRunClockboundStatus();
     LOG(FATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
         "Status: $0", now.status().ToString());
   }
@@ -177,7 +198,8 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
             delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&
           clock_skew_control_enabled.load(std::memory_order_acquire)) {
         TryRunChronycTracking();
-        TryRunChronycSourcestats();
+        TryRunChronycSourceInfo();
+        TryRunClockboundStatus();
         LOG(FATAL) << "Too big clock skew is detected: " << delta << ", while max allowed is: "
                    << max_allowed << "; clock_skew_force_crash_bound_usec="
                    << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);

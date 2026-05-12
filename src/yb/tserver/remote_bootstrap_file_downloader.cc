@@ -28,6 +28,7 @@
 
 #include "yb/tserver/remote_bootstrap.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/crc.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -186,32 +187,47 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
 
   bool done = false;
   while (!done) {
-    controller.Reset();
-    req.set_session_id(session_id_);
-    req.mutable_data_id()->CopyFrom(data_id);
-    req.set_offset(offset);
-    if (rate_limiter->active()) {
-      auto max_size = rate_limiter->GetMaxSizeForNextTransmission();
-      if (max_size > std::numeric_limits<decltype(max_length)>::max()) {
-        max_size = std::numeric_limits<decltype(max_length)>::max();
-      }
-      max_length = std::min(max_length, decltype(max_length)(max_size));
-    }
-    req.set_max_length(max_length);
-
     FetchDataResponsePB resp;
-    Status status;
-    {
-      SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
-      status = rate_limiter->SendOrReceiveData(
-            [this, &req, &resp, &controller, skip_compression]() {
-        SCOPED_WAIT_STATUS(RemoteBootstrap_FetchData);
-        if (skip_compression && fetch_data_uncompressed_) {
-          return (*fetch_data_uncompressed_)(req, &resp, &controller);
-        }
-        return fetch_data_(req, &resp, &controller);
-      }, [&resp]() { return resp.ByteSize(); });
-    }
+    auto deadline = CoarseMonoClock::Now() + session_idle_timeout_;
+    auto status = RetryFunc(
+        deadline, "FetchData", Format("FetchData timedout after deadline: $0", deadline),
+        [&](CoarseTimePoint, bool *retry) -> Status {
+          resp.Clear();
+          controller.Reset();
+          req.set_session_id(session_id_);
+          req.mutable_data_id()->CopyFrom(data_id);
+          req.set_offset(offset);
+          if (rate_limiter->active()) {
+            auto max_size = rate_limiter->GetMaxSizeForNextTransmission();
+            max_length = std::min(max_length, decltype(max_length)(max_size));
+          }
+          req.set_max_length(max_length);
+          Status status;
+          {
+            SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
+            status = rate_limiter->SendOrReceiveData(
+                  [this, &req, &resp, &controller, skip_compression]() {
+              SCOPED_WAIT_STATUS(RemoteBootstrap_FetchData);
+              if (skip_compression && fetch_data_uncompressed_) {
+                return (*fetch_data_uncompressed_)(req, &resp, &controller);
+              }
+              return fetch_data_(req, &resp, &controller);
+            }, [&resp]() { return resp.ByteSize(); });
+          }
+          if (!status.ok()) {
+            status = UnwindRemoteError(status, controller);
+            // When fetching WAL segments, we keep try to fetch segments in ascending order of
+            // sequence numbers until the server responds with a NOT_FOUND (i.e the last active
+            // segment was already sent). Hence retry all other errors.
+            if (!status.IsNotFound()) {
+              LOG_AND_RETURN(
+                  INFO,
+                  status.CloneAndPrepend("Unable to fetch data from remote, will retry"));
+            }
+          }
+          *retry = false;
+          return status;
+        });
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
     const auto chunk_size = resp.chunk().data().size();
     DCHECK_LE(chunk_size, max_length);

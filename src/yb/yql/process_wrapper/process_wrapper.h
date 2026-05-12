@@ -18,6 +18,8 @@
 
 namespace yb {
 
+class Cgroup;
+
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).
 // It is used to invoke a child process once and is not thread-safe.
@@ -33,10 +35,13 @@ class ProcessWrapper {
   virtual Status Start() = 0;
   void Kill();
   void Kill(int signal);
+  virtual void Shutdown();
 
   // Waits for the running process to complete. Returns the exit code or an error.
   // Non-zero exit codes are considered non-error cases for the purpose of this function.
   Result<int> Wait();
+
+  std::optional<int64_t> ProcessId();
 
  protected:
   static Status CheckExecutableValid(const std::string& executable_path);
@@ -83,10 +88,18 @@ class ProcessSupervisor {
   Status Restart();
   Status Pause();
 
+  std::optional<int64_t> ProcessId() EXCLUDES(mtx_);
+
+#ifdef __linux__
+  // Assign a cgroup for the supervised process. After each (re)start, the child
+  // process PID is moved into this cgroup.
+  void SetCgroup(Cgroup* cgroup) { cgroup_ = cgroup; }
+#endif
+
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;
   std::mutex mtx_;
-  std::shared_ptr<ProcessWrapper> process_wrapper_ = nullptr;
+  std::shared_ptr<ProcessWrapper> process_wrapper_ GUARDED_BY(mtx_) = nullptr;
   virtual void PrepareForStop() {}
   virtual Status PrepareForStart() { return Status::OK(); }
   virtual std::string GetProcessName() = 0;
@@ -102,12 +115,16 @@ class ProcessSupervisor {
   Status StartProcessUnlocked() REQUIRES(mtx_);
   Status InitializeProcessWrapperUnlocked() REQUIRES(mtx_);
 
-  Status KillAndChangeState(YbSubProcessState new_state) EXCLUDES(mtx_);
+  Status StopProcessAndChangeState(YbSubProcessState new_state) EXCLUDES(mtx_);
 
   // Current state of the process.
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
 
   scoped_refptr<Thread> supervisor_thread_;
+
+#ifdef __linux__
+  Cgroup* cgroup_ = nullptr;
+#endif
 
   CountDownLatch thread_finished_latch_{1};
   std::condition_variable cond_;

@@ -3,6 +3,8 @@ title: Benchmark YugabyteDB
 headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
 description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
+aliases:
+  - /stable/benchmark/performance/
 type: indexpage
 ---
 
@@ -42,24 +44,24 @@ To test performance using sysbench, see [Sysbench](sysbench-ysql/).
     title="Key-value workload"
     body="Test performance with key-value workloads."
     href="key-value-workload-ycql/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-gauge-high">}}
 
   {{<index/item
     title="Large datasets"
     body="Test performance with large datasets."
     href="large-datasets-ycql/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-gauge-high">}}
 
   {{<index/item
     title="Scalability"
     body="Test throughput scalability."
     href="scalability/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-gauge-high">}}
 
   {{<index/item
     title="Resilience"
     body="Test resilience under failure conditions created by the Jepsen test suite."
     href="resilience/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-gauge-high">}}
 
 {{</index/block>}}

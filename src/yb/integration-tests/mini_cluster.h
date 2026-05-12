@@ -57,6 +57,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -109,9 +110,6 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
-
-  // Whether to wait for the cluster to accept pg connections in the Start and Restart methods.
-  bool wait_for_pg = true;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -240,6 +238,10 @@ class MiniCluster : public MiniClusterBase {
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
 
+  Result<size_t> GetTabletLeaderIndex(const TabletId& tablet_id);
+
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const TabletId& tablet_id);
+
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
     return yb_controller_servers_;
@@ -283,6 +285,11 @@ class MiniCluster : public MiniClusterBase {
   template <typename T>
   T GetMasterProxy() {
     return T(proxy_cache_.get(), mini_master()->bound_rpc_addr());
+  }
+
+  template <typename T>
+  T GetTServerProxy(size_t i) {
+    return T(&proxy_cache(), HostPort(mini_tablet_server(i)->bound_rpc_addr()));
   }
 
   std::string GetClusterId() { return options_.cluster_id; }
@@ -397,6 +404,10 @@ Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
 
+Result<std::string> DumpTableLeadersDocDB(MiniCluster* cluster, const std::string& table_name);
+Result<std::vector<std::string>> DumpTableLeadersDocDBToVector(
+    MiniCluster* cluster, const std::string& table_name);
+
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
 
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
@@ -429,6 +440,10 @@ Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
+Status WaitForLeaderOfSingleTablet(
+    MiniCluster* cluster, const TabletId& leader, MonoDelta duration,
+    const std::string& description);
+
 Status WaitForTableLeaders(
     MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
     RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
@@ -442,6 +457,10 @@ Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down, MonoDelta timeout = 10s);
+
+Status TransferLeadership(
+    MiniCluster* cluster, const TabletId& tablet_id, const TabletServerId& new_leader_uuid,
+    MonoDelta timeout = 10s);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
@@ -472,8 +491,6 @@ Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name)
 Status WaitForInitDb(MiniCluster* cluster);
 
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
-
-tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
 void ShutdownAllTServers(MiniCluster* cluster);
 Status StartAllTServers(MiniCluster* cluster);
@@ -537,6 +554,23 @@ void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::k
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster);
+
+Status WaitForTabletHidden(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
+
+// Helper to check if a row exists in a tablet using tserver proxy directly
+// This allows reading from a specific tablet peer (which may not be the leader)
+// Assumes the table is a PGSQL table
+Result<bool> RowExistsInTablet(MiniCluster* cluster,
+                               client::YBClient* client,
+                               const TableId& table_id,
+                               const TabletId& tablet_id,
+                               int32_t key,
+                               size_t tserver_idx,
+                               const MonoDelta& timeout = 30s);
 
 }  // namespace yb

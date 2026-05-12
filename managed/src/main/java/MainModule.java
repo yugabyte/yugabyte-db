@@ -18,12 +18,14 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.GcpCapacityReservationGC;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
 import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -81,10 +83,13 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
+import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
@@ -94,7 +99,6 @@ import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
-import com.yugabyte.yw.controllers.handlers.OperatorResourceMigrateHandler;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.HealthCheck;
@@ -103,7 +107,7 @@ import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
-import io.prometheus.client.CollectorRegistry;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyStore;
@@ -223,7 +227,7 @@ public class MainModule extends AbstractModule {
     bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
-    CollectorRegistry.defaultRegistry.clear();
+    PrometheusRegistry.defaultRegistry.clear();
     try {
       DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
     } catch (Exception domainValidatorException) {
@@ -261,10 +265,12 @@ public class MainModule extends AbstractModule {
     bind(PitrConfigPoller.class).asEagerSingleton();
     bind(AutoMasterFailover.class).asEagerSingleton();
     bind(BackupGarbageCollector.class).asEagerSingleton();
+    bind(GcpCapacityReservationGC.class).asEagerSingleton();
     bind(SupportBundleCleanup.class).asEagerSingleton();
     bind(EncryptionAtRestManager.class).asEagerSingleton();
     bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
     bind(SetUniverseKey.class).asEagerSingleton();
+    bind(RedactSecretsFromAudit.class).asEagerSingleton();
     bind(RefreshKmsService.class).asEagerSingleton();
     bind(CustomerTaskManager.class).asEagerSingleton();
     bind(YamlWrapper.class).asEagerSingleton();
@@ -303,7 +309,9 @@ public class MainModule extends AbstractModule {
     bind(ReleasesUtils.class).asEagerSingleton();
     bind(ReleaseContainerFactory.class).asEagerSingleton();
     bind(SoftwareUpgradeHelper.class).asEagerSingleton();
-    bind(OperatorResourceMigrateHandler.class).asEagerSingleton();
+    bind(KubernetesClientFactory.class).asEagerSingleton();
+    bind(UniverseImporter.class).asEagerSingleton();
+    bind(OperatorResourceRestorer.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();

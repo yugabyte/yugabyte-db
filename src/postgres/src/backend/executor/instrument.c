@@ -174,34 +174,28 @@ InstrAggYbPgRpcStats(YbPgRpcStats *dst, YbPgRpcStats *add)
 }
 
 static void
-YbInstrAggRpcMetrics(YbcPgExecStorageMetrics **dst, YbcPgExecStorageMetrics *add)
+YbInstrAggRpcMetrics(YbcPgExecStorageMetrics *dst, YbcPgExecStorageMetrics *add)
 {
-	if (!add)
-		return;
-
 	/* Aggregate metrics */
 	if (add->version == 0)
 		return;
 
-	if (*dst == NULL)
-		*dst = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
+	dst->version += add->version;
 
 	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; i++)
-		(*dst)->gauges[i] += add->gauges[i];
+		dst->gauges[i] += add->gauges[i];
 
 	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; i++)
-		(*dst)->counters[i] += add->counters[i];
+		dst->counters[i] += add->counters[i];
 
 	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; i++)
 	{
 		YbcPgExecEventMetric *add_event = &add->events[i];
-		YbcPgExecEventMetric *dst_event = &(*dst)->events[i];
+		YbcPgExecEventMetric *dst_event = &dst->events[i];
 
 		dst_event->sum += add_event->sum;
 		dst_event->count += add_event->count;
 	}
-
-	(*dst)->version += add->version;
 }
 
 /* aggregate instrumentation information */
@@ -244,8 +238,8 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 	dst->yb_instr.catalog_writes += add->yb_instr.catalog_writes;
 
 	/* Aggregate metrics */
-	YbInstrAggRpcMetrics(&dst->yb_instr.read_metrics, add->yb_instr.read_metrics);
-	YbInstrAggRpcMetrics(&dst->yb_instr.write_metrics, add->yb_instr.write_metrics);
+	YbInstrAggRpcMetrics(&dst->yb_instr.read_metrics, &add->yb_instr.read_metrics);
+	YbInstrAggRpcMetrics(&dst->yb_instr.write_metrics, &add->yb_instr.write_metrics);
 
 	dst->yb_instr.rows_removed_by_recheck += add->yb_instr.rows_removed_by_recheck;
 }

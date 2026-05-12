@@ -535,16 +535,17 @@ ORDER BY t3.v3 DESC;
    Sort Key: t3.v3 DESC
    ->  YB Batched Nested Loop Left Join
          Join Filter: (t1.v3 = t2.v3)
-         ->  Hash Join
-               Hash Cond: (t3.v1 = t1.v1)
+         ->  Merge Join
+               Merge Cond: (t3.v1 = t1.v1)
                ->  Index Scan using t3_v1_v2_idx on t3
                      Index Cond: (v2 = ANY ('{3,4,5}'::integer[]))
-               ->  Hash
+               ->  Sort
+                     Sort Key: t1.v1
                      ->  Index Scan using t1_pkey on t1
                            Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
          ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-(13 rows)
+(14 rows)
 
 SELECT *
 FROM t1

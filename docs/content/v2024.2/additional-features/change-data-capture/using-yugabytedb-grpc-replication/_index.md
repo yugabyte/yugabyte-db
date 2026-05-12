@@ -4,8 +4,9 @@ headerTitle: CDC using gRPC replication protocol
 linkTitle: gRPC protocol
 description: CDC using YugabyteDB gRPC replication protocol.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
+cascade:
+  tags:
+    feature: early-access
 menu:
   v2024.2:
     identifier: explore-change-data-capture-grpc-replication
@@ -29,7 +30,7 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 
 Get started with Yugabyte gRPC replication.
 
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/develop/tutorials/cdc-tutorials/).
+For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/develop/tutorials/cdc-tutorials/).
 
 {{<lead link="./cdc-get-started/">}}
 [Get started](./cdc-get-started) using the connector.
@@ -65,7 +66,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 In addition, CDC support for the following features will be added in upcoming releases:
 
 * Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
-* Support for transaction savepoints is tracked in issue {{<issue 10936>}}.
+* Transaction savepoints are supported starting from v2024.2.8.0. Issue {{<issue 10936>}}.
 * Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 * Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.
 
@@ -73,7 +74,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 * [CDC architecture](../../../architecture/docdb-replication/change-data-capture/)
 * [Examples of CDC usage and patterns](https://github.com/yugabyte/cdc-examples/tree/main) {{<icon/github>}}
-* [Tutorials to deploy in different Kafka environments](/preview/develop/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
+* [Tutorials to deploy in different Kafka environments](/stable/develop/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
 * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/) {{<icon/blog>}}
 * [Unlock Azure Storage Options With YugabyteDB CDC](https://www.yugabyte.com/blog/unlocking-azure-storage-options-with-yugabytedb-cdc/) {{<icon/blog>}}
 * [Change Data Capture From YugabyteDB to Elasticsearch](https://www.yugabyte.com/blog/change-data-capture-cdc-yugabytedb-elasticsearch/) {{<icon/blog>}}

@@ -53,13 +53,11 @@ class PgStatActivityTest : public LibPqTestBase {
   int GetNumTabletServers() const override { return 1; }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
     // DDLInsideDMLTransaction will be stuck if table locks are enabled.
     // Also, enabling table locks causes more backends to be tracked in
     // AllBackendsTransaction test than just the queries launched by the test.
     // So disable table locks for these tests.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
@@ -69,9 +67,9 @@ class PgStatActivityTest : public LibPqTestBase {
   }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
-    auto opt_txn_id =
-        VERIFY_RESULT(conn->FetchRow<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
-    return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
+    auto [pid, txn] = VERIFY_RESULT((conn->FetchRow<int32_t, std::optional<Uuid>>(
+        "SELECT pg_backend_pid(), yb_get_current_transaction()")));
+    return TxnInfo{pid, txn.value_or(Uuid::Nil())};
   }
 
   static Result<Uuid> GetTransactionId(PGConn* conn) {

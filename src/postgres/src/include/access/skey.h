@@ -189,7 +189,13 @@ typedef ScanKeyData *ScanKey;
 #define SK_SEARCHNULL		0x0040	/* scankey represents "col IS NULL" */
 #define SK_SEARCHNOTNULL	0x0080	/* scankey represents "col IS NOT NULL" */
 #define SK_ORDER_BY			0x0100	/* scankey is for ORDER BY op */
-#define YB_SK_IS_HASHED		0x0200	/* scankey represents yb hash code */
+#define YB_SK_SEARCHHASHCODE	0x0200	/* scankey represents search on the
+										 * DocDB hash code column (aka
+										 * yb_hash_code pushdown: LHS is
+										 * yb_hash_code(<hash_columns>),
+										 * referring to the hidden hash code
+										 * DocDB column, not interpreted as an
+										 * expression) */
 #define YB_SK_SEARCHARRAY_RETAIN_NULLS	0x0400	/* retain NULLs in
 												 * ScalarArrayOpExpr (see
 												 * above) */

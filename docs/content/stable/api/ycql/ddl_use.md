@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1290
+aliases:
+  - /stable/api/cassandra/ddl_use
+  - /stable/api/ycql/ddl_use
 type: docs
 ---
 

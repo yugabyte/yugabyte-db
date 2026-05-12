@@ -52,6 +52,7 @@ public enum PlatformMetrics {
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_YB_CONTROLLER_DOWN("YB-Controller process down nodes count", Unit.COUNT),
+  HEALTH_CHECK_PROCESS_LIMITS_ERROR("Process limits error nodes count", Unit.COUNT),
 
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
@@ -119,9 +120,18 @@ public enum PlatformMetrics {
       "More recent OS version is recommended for this universe", Unit.STATUS, false),
   UNIVERSE_RELEASE_FILES_STATUS(
       "Local filepath for universe DB version is missing", Unit.STATUS, false),
+  UNIVERSE_NODE_CONNECTIVITY_STATUS(
+      "TServer connectivity check status for a node (1 = reachable, 0 = unreachable)", Unit.STATUS),
+  UNIVERSE_CONNECTIVITY_METRIC_PROCESSOR_STATUS(
+      "Connectivity metric processor status", Unit.STATUS),
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
-  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS);
+  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS),
+  CAPACITY_RESERVATION_ENABLED_STATUS("Capacity reservation status", Unit.STATUS),
+  PA_COLLECTOR_EXPECTED_UP(
+      "PA collector expected to be running (1 if at least one universe is registered)",
+      Unit.STATUS),
+  PA_EMBEDDED_COLLECTOR_INIT_STATUS("Embedded PA collector initialization status", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

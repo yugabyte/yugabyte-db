@@ -1,0 +1,3795 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+--
+-- AGTYPE data type regression tests
+--
+--
+-- Load extension and set path
+--
+LOAD 'age';
+SET extra_float_digits = 0;
+SET search_path TO ag_catalog;
+--
+-- Create a table using the AGTYPE type
+--
+CREATE TABLE agtype_table (type text, agtype agtype);
+--
+-- Insert values to exercise agtype_in/agtype_out
+--
+INSERT INTO agtype_table VALUES ('bool', 'true');
+INSERT INTO agtype_table VALUES ('bool', 'false');
+INSERT INTO agtype_table VALUES ('null', 'null');
+INSERT INTO agtype_table VALUES ('string', '""');
+INSERT INTO agtype_table VALUES ('string', '"This is a string"');
+INSERT INTO agtype_table VALUES ('integer', '0');
+INSERT INTO agtype_table VALUES ('integer', '9223372036854775807');
+INSERT INTO agtype_table VALUES ('integer', '-9223372036854775808');
+INSERT INTO agtype_table VALUES ('float', '0.0');
+INSERT INTO agtype_table VALUES ('float', '1.0');
+INSERT INTO agtype_table VALUES ('float', '-1.0');
+INSERT INTO agtype_table VALUES ('float', '100000000.000001');
+INSERT INTO agtype_table VALUES ('float', '-100000000.000001');
+INSERT INTO agtype_table VALUES ('float', '0.00000000000000012345');
+INSERT INTO agtype_table VALUES ('float', '-0.00000000000000012345');
+INSERT INTO agtype_table VALUES ('numeric', '100000000000.0000000000001::numeric');
+INSERT INTO agtype_table VALUES ('numeric', '-100000000000.0000000000001::numeric');
+INSERT INTO agtype_table VALUES ('integer array',
+	'[-9223372036854775808, -1, 0, 1, 9223372036854775807]');
+INSERT INTO agtype_table VALUES('float array',
+	'[-0.00000000000000012345, -100000000.000001, -1.0, 0.0, 1.0, 100000000.000001, 0.00000000000000012345]');
+INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1, 1.0, {"bool":true}, -1::numeric, [1,3,5]]');
+INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"string", "integer":1, "float":1.2, "arrayi":[-1,0,1], "arrayf":[-1.0, 0.0, 1.0], "object":{"bool":true, "null":null, "string":"string", "int":1, "float":8.0}}');
+INSERT INTO agtype_table VALUES ('numeric array',
+        '[-5::numeric, -1::numeric, 0::numeric, 1::numeric, 9223372036854775807::numeric]');
+--
+-- Special float values: NaN, +/- Infinity
+--
+INSERT INTO agtype_table VALUES ('float  nan', 'nan');
+INSERT INTO agtype_table VALUES ('float  Infinity', 'Infinity');
+INSERT INTO agtype_table VALUES ('float -Infinity', '-Infinity');
+INSERT INTO agtype_table VALUES ('float  inf', 'inf');
+INSERT INTO agtype_table VALUES ('float -inf', '-inf');
+SELECT * FROM agtype_table;
+      type       |                                                                                                       agtype                                                                                                       
+-----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ bool            | true
+ bool            | false
+ null            | null
+ string          | ""
+ string          | "This is a string"
+ integer         | 0
+ integer         | 9223372036854775807
+ integer         | -9223372036854775808
+ float           | 0.0
+ float           | 1.0
+ float           | -1.0
+ float           | 100000000.000001
+ float           | -100000000.000001
+ float           | 1.2345e-16
+ float           | -1.2345e-16
+ numeric         | 100000000000.0000000000001::numeric
+ numeric         | -100000000000.0000000000001::numeric
+ integer array   | [-9223372036854775808, -1, 0, 1, 9223372036854775807]
+ float array     | [-1.2345e-16, -100000000.000001, -1.0, 0.0, 1.0, 100000000.000001, 1.2345e-16]
+ mixed array     | [true, false, null, "string", 1, 1.0, {"bool": true}, -1::numeric, [1, 3, 5]]
+ object          | {"bool": true, "null": null, "float": 1.2, "arrayf": [-1.0, 0.0, 1.0], "arrayi": [-1, 0, 1], "object": {"int": 1, "bool": true, "null": null, "float": 8.0, "string": "string"}, "string": "string", "integer": 1}
+ numeric array   | [-5::numeric, -1::numeric, 0::numeric, 1::numeric, 9223372036854775807::numeric]
+ float  nan      | NaN
+ float  Infinity | Infinity
+ float -Infinity | -Infinity
+ float  inf      | Infinity
+ float -inf      | -Infinity
+(27 rows)
+
+--
+-- These should fail
+--
+INSERT INTO agtype_table VALUES ('bad integer', '9223372036854775808');
+ERROR:  value "9223372036854775808" is out of range for type bigint
+LINE 1: INSERT INTO agtype_table VALUES ('bad integer', '92233720368...
+                                                        ^
+INSERT INTO agtype_table VALUES ('bad integer', '-9223372036854775809');
+ERROR:  value "-9223372036854775809" is out of range for type bigint
+LINE 1: INSERT INTO agtype_table VALUES ('bad integer', '-9223372036...
+                                                        ^
+INSERT INTO agtype_table VALUES ('bad float', '-NaN');
+ERROR:  invalid input syntax for type agtype
+LINE 1: INSERT INTO agtype_table VALUES ('bad float', '-NaN');
+                                                      ^
+DETAIL:  Token "-NaN" is invalid.
+CONTEXT:  agtype data, line 1: -NaN
+INSERT INTO agtype_table VALUES ('bad float', 'Infi');
+ERROR:  invalid input syntax for type agtype
+LINE 1: INSERT INTO agtype_table VALUES ('bad float', 'Infi');
+                                                      ^
+DETAIL:  Expected agtype value, but found "Infi".
+CONTEXT:  agtype data, line 1: Infi
+INSERT INTO agtype_table VALUES ('bad float', '-Infi');
+ERROR:  invalid input syntax for type agtype
+LINE 1: INSERT INTO agtype_table VALUES ('bad float', '-Infi');
+                                                      ^
+DETAIL:  Token "-Infi" is invalid.
+CONTEXT:  agtype data, line 1: -Infi
+--
+-- Test agtype mathematical operator functions
+-- +, -, unary -, *, /, %, and ^
+--
+SELECT agtype_add('1', '-1');
+ agtype_add 
+------------
+ 0
+(1 row)
+
+SELECT agtype_add('1', '-1.0');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_add('1.0', '-1');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_add('1.0', '-1.0');
+ agtype_add 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_add('1', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_add('1.0', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_add('1::numeric', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_sub('-1', '-1');
+ agtype_sub 
+------------
+ 0
+(1 row)
+
+SELECT agtype_sub('-1', '-1.0');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('-1.0', '-1');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('-1.0', '-1.0');
+ agtype_sub 
+------------
+ 0.0
+(1 row)
+
+SELECT agtype_sub('1', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_sub('1.0', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_sub('1::numeric', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_sub('[1, 2, 3]', '1');
+ agtype_sub 
+------------
+ [1, 3]
+(1 row)
+
+SELECT agtype_sub('{"a": 1, "b": 2, "c": 3}', '"a"');
+    agtype_sub    
+------------------
+ {"b": 2, "c": 3}
+(1 row)
+
+SELECT agtype_neg('-1');
+ agtype_neg 
+------------
+ 1
+(1 row)
+
+SELECT agtype_neg('-1.0');
+ agtype_neg 
+------------
+ 1.0
+(1 row)
+
+SELECT agtype_neg('0');
+ agtype_neg 
+------------
+ 0
+(1 row)
+
+SELECT agtype_neg('0.0');
+ agtype_neg 
+------------
+ -0.0
+(1 row)
+
+SELECT agtype_neg('0::numeric');
+ agtype_neg 
+------------
+ 0::numeric
+(1 row)
+
+SELECT agtype_neg('-1::numeric');
+ agtype_neg 
+------------
+ 1::numeric
+(1 row)
+
+SELECT agtype_neg('1::numeric');
+ agtype_neg  
+-------------
+ -1::numeric
+(1 row)
+
+SELECT agtype_mul('-2', '3');
+ agtype_mul 
+------------
+ -6
+(1 row)
+
+SELECT agtype_mul('2', '-3.0');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_mul('-2.0', '3');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_mul('2.0', '-3.0');
+ agtype_mul 
+------------
+ -6.0
+(1 row)
+
+SELECT agtype_mul('-2', '3::numeric');
+ agtype_mul  
+-------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_mul('2.0', '-3::numeric');
+ agtype_mul  
+-------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_mul('-2.0::numeric', '3::numeric');
+  agtype_mul   
+---------------
+ -6.0::numeric
+(1 row)
+
+SELECT agtype_div('-4', '3');
+ agtype_div 
+------------
+ -1
+(1 row)
+
+SELECT agtype_div('4', '-3.0');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_div('-4.0', '3');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_div('4.0', '-3.0');
+    agtype_div     
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_div('4', '-3.0::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_div('-4.0', '3::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_div('4.0::numeric', '-3::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_mod('-11', '3');
+ agtype_mod 
+------------
+ -2
+(1 row)
+
+SELECT agtype_mod('11', '-3.0');
+ agtype_mod 
+------------
+ 2.0
+(1 row)
+
+SELECT agtype_mod('-11.0', '3');
+ agtype_mod 
+------------
+ -2.0
+(1 row)
+
+SELECT agtype_mod('11.0', '-3.0');
+ agtype_mod 
+------------
+ 2.0
+(1 row)
+
+SELECT agtype_mod('11', '-3.0::numeric');
+  agtype_mod  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_mod('-11.0', '3::numeric');
+ agtype_mod  
+-------------
+ -2::numeric
+(1 row)
+
+SELECT agtype_mod('11.0::numeric', '-3::numeric');
+  agtype_mod  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_pow('-2', '3');
+ agtype_pow 
+------------
+ -8.0
+(1 row)
+
+SELECT agtype_pow('2', '-1.0');
+ agtype_pow 
+------------
+ 0.5
+(1 row)
+
+SELECT agtype_pow('2.0', '3');
+ agtype_pow 
+------------
+ 8.0
+(1 row)
+
+SELECT agtype_pow('2.0', '-1.0');
+ agtype_pow 
+------------
+ 0.5
+(1 row)
+
+SELECT agtype_pow('2::numeric', '3');
+         agtype_pow          
+-----------------------------
+ 8.0000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2::numeric', '-1.0');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('-2', '3::numeric');
+          agtype_pow          
+------------------------------
+ -8.0000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2.0', '-1.0::numeric');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
+--
+-- Test overloaded agtype any mathematical operator functions
+-- +, -, *, /, and %
+--
+SELECT agtype_any_add('1', -1);
+ agtype_any_add 
+----------------
+ 0
+(1 row)
+
+SELECT agtype_any_add('1.0', -1);
+ agtype_any_add 
+----------------
+ 0.0
+(1 row)
+
+SELECT agtype_any_add('1::numeric', 1);
+ agtype_any_add 
+----------------
+ 2::numeric
+(1 row)
+
+SELECT agtype_any_add('1.0::numeric', 1);
+ agtype_any_add 
+----------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_any_sub('1', -1);
+ agtype_any_sub 
+----------------
+ 2
+(1 row)
+
+SELECT agtype_any_sub('1.0', -1);
+ agtype_any_sub 
+----------------
+ 2.0
+(1 row)
+
+SELECT agtype_any_sub('1::numeric', 1);
+ agtype_any_sub 
+----------------
+ 0::numeric
+(1 row)
+
+SELECT agtype_any_sub('1.0::numeric', 1);
+ agtype_any_sub 
+----------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_any_mul('-2', 3);
+ agtype_any_mul 
+----------------
+ -6
+(1 row)
+
+SELECT agtype_any_mul('2.0', -3);
+ agtype_any_mul 
+----------------
+ -6.0
+(1 row)
+
+SELECT agtype_any_mul('-2::numeric', 3);
+ agtype_any_mul 
+----------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_any_mul('-2.0::numeric', 3);
+ agtype_any_mul 
+----------------
+ -6.0::numeric
+(1 row)
+
+SELECT agtype_any_div('-4', 3);
+ agtype_any_div 
+----------------
+ -1
+(1 row)
+
+SELECT agtype_any_div('4.0', -3);
+  agtype_any_div   
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_any_div('-4::numeric', 3);
+        agtype_any_div        
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_any_div('-4.0::numeric', 3);
+        agtype_any_div        
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_any_mod('-11', 3);
+ agtype_any_mod 
+----------------
+ -2
+(1 row)
+
+SELECT agtype_any_mod('11.0', -3);
+ agtype_any_mod 
+----------------
+ 2.0
+(1 row)
+
+SELECT agtype_any_mod('-11::numeric', 3);
+ agtype_any_mod 
+----------------
+ -2::numeric
+(1 row)
+
+SELECT agtype_any_mod('-11.0::numeric', 3);
+ agtype_any_mod 
+----------------
+ -2.0::numeric
+(1 row)
+
+--
+-- Should fail with divide by zero
+--
+SELECT agtype_div('1', '0');
+ERROR:  division by zero
+SELECT agtype_div('1', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_any_div('1', 0);
+ERROR:  division by zero
+SELECT agtype_any_div('1.0', 0);
+ERROR:  division by zero
+SELECT agtype_any_div('-1::numeric', 0);
+ERROR:  division by zero
+SELECT agtype_any_div('-1.0::numeric', 0);
+ERROR:  division by zero
+--
+-- Should get Infinity
+--
+SELECT agtype_pow('0', '-1');
+ agtype_pow 
+------------
+ Infinity
+(1 row)
+
+SELECT agtype_pow('-0.0', '-1');
+ agtype_pow 
+------------
+ -Infinity
+(1 row)
+
+--
+-- Should get - ERROR:  zero raised to a negative power is undefined
+--
+SELECT agtype_pow('0', '-1::numeric');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0', '-1::numeric');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
+--
+-- Test operators +, -, unary -, *, /, %, and ^
+--
+SELECT '3.14'::agtype + '3.14'::agtype;
+ ?column? 
+----------
+ 6.28
+(1 row)
+
+SELECT '3.14'::agtype - '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT -'3.14'::agtype;
+ ?column? 
+----------
+ -3.14
+(1 row)
+
+SELECT '3.14'::agtype * '3.14'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
+SELECT '3.14'::agtype / '3.14'::agtype;
+ ?column? 
+----------
+ 1.0
+(1 row)
+
+SELECT '3.14'::agtype % '3.14'::agtype;
+ ?column? 
+----------
+ 0.0
+(1 row)
+
+SELECT '3.14'::agtype ^ '2'::agtype;
+ ?column? 
+----------
+ 9.8596
+(1 row)
+
+SELECT '3'::agtype + '3'::agtype;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT '3'::agtype + '3.14'::agtype;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT '3'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT '3.14'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.28::numeric
+(1 row)
+
+SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.28::numeric
+(1 row)
+
+--
+-- Test operator - for extended functionality
+--
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '"a"';
+     ?column?     
+------------------
+ {"b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":null , "b":2, "c":3}'::agtype - '"a"';
+     ?column?     
+------------------
+ {"b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '"b"';
+     ?column?     
+------------------
+ {"a": 1, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '"c"';
+     ?column?     
+------------------
+ {"a": 1, "b": 2}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '"d"';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '""';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '"1"';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3, "1": 4}'::agtype - '"1"';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - age_tostring('a');
+     ?column?     
+------------------
+ {"b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - age_tostring(1);
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3, "1": 4}'::agtype - age_tostring(1);
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{}'::agtype - '"a"';
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - 3;
+    ?column?     
+-----------------
+ ["a", "b", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - 2;
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - 1;
+  ?column?  
+------------
+ ["a", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - 0;
+  ?column?  
+------------
+ ["b", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - -1;
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - -2;
+  ?column?  
+------------
+ ["a", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - -3;
+  ?column?  
+------------
+ ["b", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - -4;
+    ?column?     
+-----------------
+ ["a", "b", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '2';
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - -(true::int);
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT '[]'::agtype - 1;
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["b"]'::agtype;
+     ?column?     
+------------------
+ {"a": 1, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["c","b"]'::agtype;
+ ?column? 
+----------
+ {"a": 1}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '[]'::agtype;
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[]';
+    ?column?     
+-----------------
+ ["a", "b", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1]';
+  ?column?  
+------------
+ ["a", "c"]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[9]';
+      ?column?      
+--------------------
+ [1, 2, 3, 4, 5, 6]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, -1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, -1, 3, 4]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, -1, 3, 4, 0]';
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1, 1, 3, 4, 1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1, 1, 3, 4, 0]';
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, 1]';
+  ?column?  
+------------
+ ["a", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, 1, 1]';
+  ?column?  
+------------
+ ["a", "c"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, 1, -1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[1, 1, -1, -1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-2, -4, -5, -1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[0, 4, 3, 2]';
+ ?column? 
+----------
+ [2, 6]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[0, 4, 3, 2, -1]';
+ ?column? 
+----------
+ [2]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[3, 3, 4, 4, 6, 8, 9]';
+   ?column?   
+--------------
+ [1, 2, 3, 6]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[8, 9, -7, -6]';
+    ?column?     
+-----------------
+ [2, 3, 4, 5, 6]
+(1 row)
+
+-- multiple sub operations
+SELECT '{"a":1 , "b":2, "c":3, "1": 4}'::agtype - age_tostring(1) - age_tostring(1);
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3, "1": 4}'::agtype - age_tostring(1) - age_tostring('a');
+     ?column?     
+------------------
+ {"b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3, "1": 4}'::agtype - age_tostring(1) - age_tostring('a') - age_tostring('e') - age_tostring('c');
+ ?column? 
+----------
+ {"b": 2}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["c","b"]' - '["a"]';
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["c","b"]' - '["e"]' - '["a"]';
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["c","b"]' - '[]';
+ ?column? 
+----------
+ {"a": 1}
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1]' - '[-1]';
+ ?column? 
+----------
+ ["a"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1]' - '[-2]' - '[-2]';
+ ?column? 
+----------
+ ["b"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1]' - '[]' - '[-2]';
+ ?column? 
+----------
+ ["b"]
+(1 row)
+
+SELECT '["a","b","c"]'::agtype - '[-1]' - '[4]' - '[-2]';
+ ?column? 
+----------
+ ["b"]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[8, 9, -7, -6]' - '1';
+   ?column?   
+--------------
+ [2, 4, 5, 6]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[8, 9, -7, -6]' - '[1, 0]';
+ ?column?  
+-----------
+ [4, 5, 6]
+(1 row)
+
+SELECT '[1, 2, 3, 4, 5, 6]'::agtype - '[8, 9, -7, -6]' - 3 - '[]';
+   ?column?   
+--------------
+ [2, 3, 4, 6]
+(1 row)
+
+-- errors out
+SELECT '["a","b","c"]'::agtype - '["1"]';
+ERROR:  expected agtype integer, not agtype string
+SELECT '["a","b","c"]'::agtype - '[null]';
+ERROR:  expected agtype integer, not agtype NULL
+SELECT '["a","b","c"]'::agtype - '"1"';
+ERROR:  expected agtype integer, not agtype string
+SELECT '["a","b","c"]'::agtype - 'null';
+ERROR:  expected agtype integer, not agtype NULL
+SELECT '["a","b","c"]'::agtype - '[-1]' - '["-2"]' - '[-2]';
+ERROR:  expected agtype integer, not agtype string
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '[1]';
+ERROR:  expected agtype string, not agtype integer
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '[null]';
+ERROR:  expected agtype string, not agtype NULL
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '1';
+ERROR:  expected agtype string, not agtype integer
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - 'null';
+ERROR:  expected agtype string, not agtype NULL
+SELECT '{"a":1 , "b":2, "c":3}'::agtype - '["c","b"]' - '[1]' - '["a"]';
+ERROR:  expected agtype string, not agtype integer
+SELECT 'null'::agtype - '1';
+ERROR:  Invalid input parameter types for agtype_sub
+SELECT 'null'::agtype - '[1]';
+ERROR:  must be object or array, not a scalar value
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype - '"a"';
+ERROR:  Invalid input parameter types for agtype_sub
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype - '["a"]';
+ERROR:  must be object or array, not a scalar value
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype - '[1]';
+ERROR:  must be object or array, not a scalar value
+SELECT '{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge'::agtype - '{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge'::agtype;
+ERROR:  Invalid input parameter types for agtype_sub
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype - '[]';
+ERROR:  must be object or array, not a scalar value
+--
+-- Test operator + for extended functionality
+--
+SELECT '[1, 2, 3]'::agtype + '[4, 5]'::agtype;
+    ?column?     
+-----------------
+ [1, 2, 3, 4, 5]
+(1 row)
+
+SELECT '[1, 2, true, "string", 1.4::numeric]'::agtype + '[4.5, -5::numeric, {"a": true}]'::agtype;
+                              ?column?                               
+---------------------------------------------------------------------
+ [1, 2, true, "string", 1.4::numeric, 4.5, -5::numeric, {"a": true}]
+(1 row)
+
+SELECT '[{"a":1 , "b":2, "c":3}]'::agtype + '[]';
+          ?column?          
+----------------------------
+ [{"a": 1, "b": 2, "c": 3}]
+(1 row)
+
+SELECT '[{"a":1 , "b":2, "c":3}]'::agtype + '[{"d": 4}]';
+               ?column?               
+--------------------------------------
+ [{"a": 1, "b": 2, "c": 3}, {"d": 4}]
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '["b", 2, {"d": 4}]'::agtype;
+                   ?column?                   
+----------------------------------------------
+ [{"a": 1, "b": 2, "c": 3}, "b", 2, {"d": 4}]
+(1 row)
+
+SELECT '["b", 2, {"d": 4}]'::agtype + '{"a":1 , "b":2, "c":3}'::agtype;
+                   ?column?                   
+----------------------------------------------
+ ["b", 2, {"d": 4}, {"a": 1, "b": 2, "c": 3}]
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype + '[1]';
+                                                                                             ?column?                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex, 1]
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex'::agtype + '[1, "e", true]';
+                                                         ?column?                                                         
+--------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex, 1, "e", true]
+(1 row)
+
+SELECT '[]'::agtype + '{}';
+ ?column? 
+----------
+ [{}]
+(1 row)
+
+SELECT '[]'::agtype + '{"a": 1}';
+  ?column?  
+------------
+ [{"a": 1}]
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '{"b": 2}';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '{"": 2}';
+            ?column?             
+---------------------------------
+ {"": 2, "a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '{"a":1 , "b":2, "c":3}';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '{}';
+         ?column?         
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+SELECT '{}'::agtype + '{}';
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '1'::agtype + '[{"a":1 , "b":2, "c":3}]'::agtype;
+           ?column?            
+-------------------------------
+ [1, {"a": 1, "b": 2, "c": 3}]
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex'::agtype + '{"d": 4}';
+                                                       ?column?                                                       
+----------------------------------------------------------------------------------------------------------------------
+ [{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex, {"d": 4}]
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex'::agtype + '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex'::agtype;
+                                                                                                       ?column?                                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex, {"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex]
+(1 row)
+
+SELECT '[{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path'::agtype + ' [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path'::agtype;
+                                                                                                                                                                                                                                                                                                   ?column?                                                                                                                                                                                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [[{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path, [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path]
+(1 row)
+
+SELECT '[{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path'::agtype + '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype;
+                                                                                                                                                                                                                                               ?column?                                                                                                                                                                                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [[{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path, {"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex]
+(1 row)
+
+SELECT '{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge'::agtype + '{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge'::agtype;
+                                                                                                                                ?column?                                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge, {"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge]
+(1 row)
+
+SELECT '{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge'::agtype + '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex'::agtype;
+                                                                                                                   ?column?                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1688849860263951, "label": "e_var", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 0}}::edge, {"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888}}::vertex]
+(1 row)
+
+-- errors out
+SELECT '1'::agtype + '{"a":1 , "b":2, "c":3}'::agtype;
+ERROR:  invalid left operand for agtype concatenation
+SELECT '{"a":1 , "b":2, "c":3}'::agtype + '"string"';
+ERROR:  invalid right operand for agtype concatenation
+--
+-- Test overloaded agytype any operators +, -, *, /, %
+--
+SELECT '3'::agtype + 3;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT '3.14'::agtype + 3;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype + 3;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT 3 + '3'::agtype;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT 3 + '3.14'::agtype;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT 3 + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT '3'::agtype - 3;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT '3.14'::agtype - 3;
+ ?column? 
+----------
+ 0.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype - 3;
+   ?column?    
+---------------
+ 0.14::numeric
+(1 row)
+
+SELECT 3 - '3'::agtype;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 3 - '3.14'::agtype;
+ ?column? 
+----------
+ -0.14
+(1 row)
+
+SELECT 3 - '3.14::numeric'::agtype;
+    ?column?    
+----------------
+ -0.14::numeric
+(1 row)
+
+SELECT '3'::agtype * 3;
+ ?column? 
+----------
+ 9
+(1 row)
+
+SELECT '3.14'::agtype * 3;
+ ?column? 
+----------
+ 9.42
+(1 row)
+
+SELECT '3.14::numeric'::agtype * 3;
+   ?column?    
+---------------
+ 9.42::numeric
+(1 row)
+
+SELECT 3 * '3'::agtype;
+ ?column? 
+----------
+ 9
+(1 row)
+
+SELECT 3 * '3.14'::agtype;
+ ?column? 
+----------
+ 9.42
+(1 row)
+
+SELECT 3 * '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 9.42::numeric
+(1 row)
+
+SELECT '3'::agtype / 3;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '3.14'::agtype / 3;
+     ?column?     
+------------------
+ 1.04666666666667
+(1 row)
+
+SELECT '3.14::numeric'::agtype / 3;
+            ?column?             
+---------------------------------
+ 1.04666666666666666667::numeric
+(1 row)
+
+SELECT 3 / '3'::agtype;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT 3 / '3.14'::agtype;
+     ?column?      
+-------------------
+ 0.955414012738854
+(1 row)
+
+SELECT 3 / '3.14::numeric'::agtype;
+            ?column?             
+---------------------------------
+ 0.95541401273885350318::numeric
+(1 row)
+
+SELECT '3'::agtype % 3;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT '3.14'::agtype % 3;
+ ?column? 
+----------
+ 0.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype % 3;
+   ?column?    
+---------------
+ 0.14::numeric
+(1 row)
+
+SELECT 3 % '3'::agtype;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 3 % '3.14'::agtype;
+ ?column? 
+----------
+ 3.0
+(1 row)
+
+SELECT 3 % '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 3.00::numeric
+(1 row)
+
+--
+-- Test overloaded agytype any functions and operators for NULL input
+-- +, -, *, /, %, =, <>, <, >, <=, >=
+-- These should all return null
+SELECT agtype_any_add('null'::agtype, 1);
+ agtype_any_add 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_sub('null'::agtype, 1);
+ agtype_any_sub 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mul('null'::agtype, 1);
+ agtype_any_mul 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_div('null'::agtype, 1);
+ agtype_any_div 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mod('null'::agtype, 1);
+ agtype_any_mod 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_add(null, '1'::agtype);
+ agtype_any_add 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_sub(null, '1'::agtype);
+ agtype_any_sub 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mul(null, '1'::agtype);
+ agtype_any_mul 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_div(null, '1'::agtype);
+ agtype_any_div 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mod(null, '1'::agtype);
+ agtype_any_mod 
+----------------
+ 
+(1 row)
+
+SELECT 1 + 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 - 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 * 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 / 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 % 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype + null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype - null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype * null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype / null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype % null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 = 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 <> 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 < 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 > 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 <= 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 >= 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype = null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype <> null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype < null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype > null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype <= null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '1'::agtype >= null;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT agtype_any_eq('null'::agtype, 1);
+ agtype_any_eq 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ne('null'::agtype, 1);
+ agtype_any_ne 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_lt('null'::agtype, 1);
+ agtype_any_lt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_gt('null'::agtype, 1);
+ agtype_any_gt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_le('null'::agtype, 1);
+ agtype_any_le 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ge('null'::agtype, 1);
+ agtype_any_ge 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_eq(null, '1'::agtype);
+ agtype_any_eq 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ne(null, '1'::agtype);
+ agtype_any_ne 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_lt(null, '1'::agtype);
+ agtype_any_lt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_gt(null, '1'::agtype);
+ agtype_any_gt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_le(null, '1'::agtype);
+ agtype_any_le 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ge(null, '1'::agtype);
+ agtype_any_ge 
+---------------
+ 
+(1 row)
+
+--
+-- Test orderability of comparison operators =, <>, <, >, <=, >=
+-- These should all return true
+-- Integer
+SELECT agtype_in('1') = agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('2');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('-2');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('2');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > agtype_in('-2');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= agtype_in('2');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= agtype_in('-2');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Float
+SELECT agtype_in('1.01') = agtype_in('1.01');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.011');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < agtype_in('1.011');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= agtype_in('1.011');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < agtype_in('Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > agtype_in('-Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- NaN, under ordering, is considered to be the biggest numeric value
+-- greater than positive infinity. So, greater than any other number.
+SELECT agtype_in('1.01') < agtype_in('NaN');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > agtype_in('Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > agtype_in('-Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') = agtype_in('NaN');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Float
+SELECT agtype_in('1') = agtype_in('1.0');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('0.999999');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > agtype_in('0.999999');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= agtype_in('1.001');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= agtype_in('0.999999');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > agtype_in('-Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('NaN');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Integer
+SELECT agtype_in('1.0') = agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') <> agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') <> agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') > agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') < agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = agtype_in('1::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = agtype_in('1.01::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Strings
+SELECT agtype_in('"a"') = agtype_in('"a"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <> agtype_in('"b"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') < agtype_in('"aa"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') > agtype_in('"aa"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <= agtype_in('"aa"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') >= agtype_in('"aa"');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Lists
+SELECT agtype_in('[0, 1, null, 2]') = agtype_in('[0, 1, null, 2]');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null, 2]') <> agtype_in('[2, null, 1, 0]');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null]') < agtype_in('[0, 1, null, 2]');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, 1, null, 2]') > agtype_in('[0, 1, null, 2]');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Objects (Maps)
+SELECT agtype_in('{"bool":true, "null": null}') = agtype_in('{"null":null, "bool":true}');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true}') < agtype_in('{"bool":true, "null": null}');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Comparisons between types
+-- Path < Edge < Vertex < Object < List < String < Boolean < Integer = Float = Numeric < Null
+SELECT agtype_in('1') < agtype_in('null');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') < agtype_in('null');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('Infinity') < agtype_in('null');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < agtype_in('1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < agtype_in('NaN');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < agtype_in('Infinity');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"string"') < agtype_in('true');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1,3,5,7,9,11]') < agtype_in('"string"');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('[1,3,5,7,9,11]');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"id":0, "label": "v", "properties":{"i":0}}::vertex') < agtype_in('{"bool":true, "i":0}');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"id":2, "start_id":0, "end_id":1, "label": "e", "properties":{"i":0}}::edge') < agtype_in('{"id":0, "label": "v", "properties":{"i":0}}::vertex');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[{"id": 0, "label": "v", "properties": {"i": 0}}::vertex, {"id": 2, "start_id": 0, "end_id": 1, "label": "e", "properties": {"i": 0}}::edge, {"id": 1, "label": "v", "properties": {"i": 0}}::vertex]::path') < agtype_in('{"id":2, "start_id":0, "end_id":1, "label": "e", "properties":{"i":0}}::edge');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1::numeric') < agtype_in('null');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < agtype_in('1::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Testing orderability between types
+SELECT * FROM create_graph('orderability_graph');
+NOTICE:  graph "orderability_graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('orderability_graph', $$ CREATE (:vertex {prop: null}), (:vertex {prop: 1}), (:vertex {prop: 1.01}),(:vertex {prop: true}), (:vertex {prop:"string"}),(:vertex {prop:"string_2"}), (:vertex {prop:[1, 2, 3]}), (:vertex {prop:[1, 2, 3, 4, 5]}), (:vertex {prop:{bool:true, i:0}}), (:vertex {prop:{bool:true, i:null}}), (:vertex {prop: {id:0, label: "v", properties:{i:0}}::vertex}),  (:vertex {prop: {id: 2, start_id: 0, end_id: 1, label: "e", properties: {i: 0}}::edge}), (:vertex {prop: [{id: 0, label: "v", properties: {i: 0}}::vertex, {id: 2, start_id: 0, end_id: 1, label: "e", properties: {i: 0}}::edge, {id: 1, label: "v", properties: {i: 0}}::vertex]::path}) $$)  AS (x agtype);
+ x 
+---
+(0 rows)
+
+SELECT * FROM cypher('orderability_graph', $$ MATCH (n) RETURN n ORDER BY n.prop $$) AS (sorted agtype);
+                                                                                                                                         sorted                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131981, "label": "vertex", "properties": {"prop": [{"id": 0, "label": "v", "properties": {"i": 0}}::vertex, {"id": 2, "label": "e", "end_id": 1, "start_id": 0, "properties": {"i": 0}}::edge, {"id": 1, "label": "v", "properties": {"i": 0}}::vertex]::path}}::vertex
+ {"id": 844424930131980, "label": "vertex", "properties": {"prop": {"id": 2, "label": "e", "end_id": 1, "start_id": 0, "properties": {"i": 0}}::edge}}::vertex
+ {"id": 844424930131979, "label": "vertex", "properties": {"prop": {"id": 0, "label": "v", "properties": {"i": 0}}::vertex}}::vertex
+ {"id": 844424930131978, "label": "vertex", "properties": {"prop": {"bool": true}}}::vertex
+ {"id": 844424930131977, "label": "vertex", "properties": {"prop": {"i": 0, "bool": true}}}::vertex
+ {"id": 844424930131975, "label": "vertex", "properties": {"prop": [1, 2, 3]}}::vertex
+ {"id": 844424930131976, "label": "vertex", "properties": {"prop": [1, 2, 3, 4, 5]}}::vertex
+ {"id": 844424930131973, "label": "vertex", "properties": {"prop": "string"}}::vertex
+ {"id": 844424930131974, "label": "vertex", "properties": {"prop": "string_2"}}::vertex
+ {"id": 844424930131972, "label": "vertex", "properties": {"prop": true}}::vertex
+ {"id": 844424930131970, "label": "vertex", "properties": {"prop": 1}}::vertex
+ {"id": 844424930131971, "label": "vertex", "properties": {"prop": 1.01}}::vertex
+ {"id": 844424930131969, "label": "vertex", "properties": {}}::vertex
+(13 rows)
+
+SELECT * FROM cypher('orderability_graph', $$ MATCH (n) RETURN n ORDER BY n.prop DESC $$) AS (sorted agtype);
+                                                                                                                                         sorted                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "vertex", "properties": {"prop": 1.01}}::vertex
+ {"id": 844424930131970, "label": "vertex", "properties": {"prop": 1}}::vertex
+ {"id": 844424930131972, "label": "vertex", "properties": {"prop": true}}::vertex
+ {"id": 844424930131974, "label": "vertex", "properties": {"prop": "string_2"}}::vertex
+ {"id": 844424930131973, "label": "vertex", "properties": {"prop": "string"}}::vertex
+ {"id": 844424930131976, "label": "vertex", "properties": {"prop": [1, 2, 3, 4, 5]}}::vertex
+ {"id": 844424930131975, "label": "vertex", "properties": {"prop": [1, 2, 3]}}::vertex
+ {"id": 844424930131977, "label": "vertex", "properties": {"prop": {"i": 0, "bool": true}}}::vertex
+ {"id": 844424930131978, "label": "vertex", "properties": {"prop": {"bool": true}}}::vertex
+ {"id": 844424930131979, "label": "vertex", "properties": {"prop": {"id": 0, "label": "v", "properties": {"i": 0}}::vertex}}::vertex
+ {"id": 844424930131980, "label": "vertex", "properties": {"prop": {"id": 2, "label": "e", "end_id": 1, "start_id": 0, "properties": {"i": 0}}::edge}}::vertex
+ {"id": 844424930131981, "label": "vertex", "properties": {"prop": [{"id": 0, "label": "v", "properties": {"i": 0}}::vertex, {"id": 2, "label": "e", "end_id": 1, "start_id": 0, "properties": {"i": 0}}::edge, {"id": 1, "label": "v", "properties": {"i": 0}}::vertex]::path}}::vertex
+(13 rows)
+
+SELECT * FROM drop_graph('orderability_graph', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table orderability_graph._ag_label_vertex
+drop cascades to table orderability_graph._ag_label_edge
+drop cascades to table orderability_graph.vertex
+NOTICE:  graph "orderability_graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- Test overloaded agytype any comparison operators =, <>, <, >, <=, >=,
+--
+-- Integer
+SELECT agtype_in('1') = 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Float
+SELECT agtype_in('1.01') = 1.01;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- NaN, under ordering, is considered to be the biggest numeric value
+-- greater than positive infinity. So, greater than any other number.
+SELECT agtype_in('1.01') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') = 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Float
+SELECT agtype_in('1') = 1.0;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Integer
+SELECT agtype_in('1.0') = 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') <> 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') <> 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') > 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') < 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = 1::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = 1.01::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Strings
+SELECT agtype_in('"a"') = '"a"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <> '"b"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') < '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') > '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <= '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') >= '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Lists
+SELECT agtype_in('[0, 1, null, 2]') = '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null, 2]') <> '[2, null, 1, 0]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null]') < '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, 1, null, 2]') > '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Objects (Maps)
+SELECT agtype_in('{"bool":true, "null": null}') = '{"null":null, "bool":true}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true}') < '{"bool":true, "null": null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Comparisons between types
+-- Object < List < String < Boolean < Integer = Float = Numeric < Null
+SELECT agtype_in('1') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('Infinity') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < '1';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"string"') < 'true';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1,3,5,7,9,11]') < '"string"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < '[1,3,5,7,9,11]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, "string"]') < '[1, 1]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < '{"bool":true, "integer":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1::numeric') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < '1::numeric';
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- Test agtype to boolean cast
+--
+SELECT agtype_to_bool(agtype_in('true'));
+ agtype_to_bool 
+----------------
+ t
+(1 row)
+
+SELECT agtype_to_bool(agtype_in('false'));
+ agtype_to_bool 
+----------------
+ f
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_bool(agtype_in('1'));
+ERROR:  cannot cast agtype integer to type boolean
+SELECT agtype_to_bool(agtype_in('null'));
+ERROR:  cannot cast agtype null to type boolean
+SELECT agtype_to_bool(agtype_in('1.0'));
+ERROR:  cannot cast agtype float to type boolean
+SELECT agtype_to_bool(agtype_in('"string"'));
+ERROR:  cannot cast agtype string to type boolean
+SELECT agtype_to_bool(agtype_in('[1,2,3]'));
+ERROR:  cannot cast agtype array to type boolean
+SELECT agtype_to_bool(agtype_in('{"bool":true}'));
+ERROR:  cannot cast agtype object to type boolean
+--
+-- Test boolean to agtype cast
+--
+SELECT bool_to_agtype(true);
+ bool_to_agtype 
+----------------
+ true
+(1 row)
+
+SELECT bool_to_agtype(false);
+ bool_to_agtype 
+----------------
+ false
+(1 row)
+
+SELECT bool_to_agtype(null);
+ bool_to_agtype 
+----------------
+ 
+(1 row)
+
+SELECT bool_to_agtype(true) = bool_to_agtype(true);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT bool_to_agtype(true) <> bool_to_agtype(false);
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- Test boolean to pg_bigint cast
+--
+SELECT agtype_to_int8(agtype_in('true'));
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(agtype_in('false'));
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+-- should return SQL NULL
+SELECT agtype_to_int8(agtype_in('null'));
+ agtype_to_int8 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int8(NULL);
+ agtype_to_int8 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int8(1);
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(3.14);
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8(3.14::numeric);
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8('3');
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8(true);
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(false);
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int8('3.14');
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8('true');
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8('false');
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+-- should fail
+SELECT agtype_to_int8('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int8('NaN');
+ERROR:  bigint out of range
+SELECT agtype_to_int8('Inf');
+ERROR:  bigint out of range
+SELECT agtype_to_int8(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int8(NaN);
+                              ^
+SELECT agtype_to_int8(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int8(Inf);
+                              ^
+SELECT agtype_to_int8('{"name":"John"}');
+ERROR:  invalid agtype string to int8 type: 17
+SELECT agtype_to_int8('[1,2,3]');
+ERROR:  invalid agtype string to int8 type: 16
+--
+-- Test boolean to integer cast
+--
+SELECT agtype_to_int4(agtype_in('true'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('false'));
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+--
+-- Test agtype to integer4 cast
+--
+SELECT agtype_to_int4(agtype_in('1'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('1.45'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('1.444::numeric'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_int4(agtype_in('"string"'));
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "string".
+CONTEXT:  agtype data, line 1: string
+SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
+ERROR:  cannot cast agtype array to type int
+SELECT agtype_to_int4(agtype_in('{"int":1}'));
+ERROR:  cannot cast agtype object to type int
+-- should return SQL NULL
+SELECT agtype_to_int4(agtype_in('null'));
+ agtype_to_int4 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int4(NULL);
+ agtype_to_int4 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int4(1);
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(3.14);
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4(3.14::numeric);
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4('3');
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4(true);
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(false);
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int4('3.14');
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4('true');
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4('false');
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+-- should error
+SELECT agtype_to_int4('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int4('NaN');
+ERROR:  integer out of range
+SELECT agtype_to_int4('Inf');
+ERROR:  integer out of range
+SELECT agtype_to_int4(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int4(NaN);
+                              ^
+SELECT agtype_to_int4(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int4(Inf);
+                              ^
+SELECT agtype_to_int4('{"name":"John"}');
+ERROR:  invalid agtype string to int4 type: 17
+SELECT agtype_to_int4('[1,2,3]');
+ERROR:  invalid agtype string to int4 type: 16
+--
+-- Test boolean to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('true'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('false'));
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+--
+-- Test agtype to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('1'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('1.45'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('1.444::numeric'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_int2(agtype_in('"string"'));
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "string".
+CONTEXT:  agtype data, line 1: string
+SELECT agtype_to_int2(agtype_in('[1, 2, 3]'));
+ERROR:  cannot cast agtype array to type int
+SELECT agtype_to_int2(agtype_in('{"int":1}'));
+ERROR:  cannot cast agtype object to type int
+-- should return SQL NULL
+SELECT agtype_to_int2(agtype_in('null'));
+ agtype_to_int2 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int2(NULL);
+ agtype_to_int2 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int2(1);
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(3.14);
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2(3.14::numeric);
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2('3');
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2(true);
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(false);
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int2('3.14');
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2('true');
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2('false');
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+-- should error
+SELECT agtype_to_int2('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int2('NaN');
+ERROR:  smallint out of range
+SELECT agtype_to_int2('Inf');
+ERROR:  smallint out of range
+SELECT agtype_to_int2(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int2(NaN);
+                              ^
+SELECT agtype_to_int2(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int2(Inf);
+                              ^
+SELECT agtype_to_int2('{"name":"John"}');
+ERROR:  invalid agtype string to int2 type: 17
+SELECT agtype_to_int2('[1,2,3]');
+ERROR:  invalid agtype string to int2 type: 16
+--
+-- Test agtype to int[]
+--
+SELECT agtype_to_int4_array(agtype_in('[1,2,3]'));
+ agtype_to_int4_array 
+----------------------
+ {1,2,3}
+(1 row)
+
+SELECT agtype_to_int4_array(agtype_in('[1.6,2.3,3.66]'));
+ agtype_to_int4_array 
+----------------------
+ {2,2,4}
+(1 row)
+
+SELECT agtype_to_int4_array(agtype_in('["6","7",3.66]'));
+ agtype_to_int4_array 
+----------------------
+ {6,7,4}
+(1 row)
+
+-- should error
+SELECT agtype_to_int4_array(bool('true'));
+ERROR:  argument must resolve to agtype
+SELECT agtype_to_int4_array((1,2,3,4,5));
+ERROR:  argument must resolve to agtype
+-- should return SQL NULL
+SELECT agtype_to_int4_array(NULL);
+ agtype_to_int4_array 
+----------------------
+ 
+(1 row)
+
+--
+-- Map Literal
+--
+--Invalid Map Key (should fail)
+SELECT agtype_build_map('[0]'::agtype, null);
+ERROR:  agtype_build_map_as_agtype_value only supports scalar arguments
+--
+-- Test agtype object/array access operators object.property, object["property"], and array[element]
+-- Note: At this point, object.property and object["property"] are equivalent.
+--
+SELECT agtype_access_operator('{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}','"array"','2', '"float"');
+ agtype_access_operator 
+------------------------
+ 3.14
+(1 row)
+
+-- empty map access
+SELECT agtype_access_operator('{}', '"array"');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- empty array access
+SELECT agtype_access_operator('[]', '0');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- out of bounds array access
+SELECT agtype_access_operator('[0, 1]', '2');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+SELECT agtype_access_operator('[0, 1]', '-3');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- array AGTV_NULL element
+SELECT agtype_access_operator('[1, 3, 5, 7]', 'null');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- map AGTV_NULL key
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'null');
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+-- invalid map key types
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'true');
+ERROR:  AGTV_BOOL is not a valid key type
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
+ERROR:  AGTV_INTEGER is not a valid key type
+SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
+ERROR:  AGTV_FLOAT is not a valid key type
+-- Test duplicate keys and null value
+-- expected: only the latest key, among duplicates, will be kept; and null will be removed
+SELECT * FROM create_graph('agtype_null_duplicate_test');
+NOTICE:  graph "agtype_null_duplicate_test" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL, b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+                                               a                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"b": "bb", "c": "cc", "d": "dd"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+                                                    a                                                     
+----------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"a": "aa", "b": "bb", "c": "cc", "d": "dd"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:NULL , d:NULL }) RETURN a $$) AS (a agtype);
+                                    a                                    
+-------------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"a": "aa"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:'xx', d:NULL }) RETURN a $$) AS (a agtype);
+                                         a                                          
+------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"a": "aa", "b": "xx"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL }) RETURN a $$) AS (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM drop_graph('agtype_null_duplicate_test', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table agtype_null_duplicate_test._ag_label_vertex
+drop cascades to table agtype_null_duplicate_test._ag_label_edge
+NOTICE:  graph "agtype_null_duplicate_test" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- Vertex
+--
+--Basic Vertex Creation
+SELECT _agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map());
+                    _agtype_build_vertex                    
+------------------------------------------------------------
+ {"id": 1, "label": "label_name", "properties": {}}::vertex
+(1 row)
+
+SELECT _agtype_build_vertex('1'::graphid, $$label$$, agtype_build_map('id', 2));
+                     _agtype_build_vertex                     
+--------------------------------------------------------------
+ {"id": 1, "label": "label", "properties": {"id": 2}}::vertex
+(1 row)
+
+--Null properties
+SELECT _agtype_build_vertex('1'::graphid, $$label_name$$, NULL);
+                    _agtype_build_vertex                    
+------------------------------------------------------------
+ {"id": 1, "label": "label_name", "properties": {}}::vertex
+(1 row)
+
+--Test access operator
+SELECT agtype_access_operator(_agtype_build_vertex('1'::graphid, $$label$$,
+                              agtype_build_map('id', 2)), '"id"');
+ agtype_access_operator 
+------------------------
+ 2
+(1 row)
+
+SELECT _agtype_build_vertex('1'::graphid, $$label$$, agtype_build_list());
+ERROR:  _agtype_build_vertex() properties argument must be an object
+--Vertex in a map
+SELECT agtype_build_map(
+	'vertex',
+	_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()));
+                            agtype_build_map                            
+------------------------------------------------------------------------
+ {"vertex": {"id": 1, "label": "label_name", "properties": {}}::vertex}
+(1 row)
+
+SELECT agtype_access_operator(
+        agtype_build_map(
+            'vertex', _agtype_build_vertex('1'::graphid, $$label_name$$,
+                                           agtype_build_map('key', 'value')),
+            'other_vertex', _agtype_build_vertex('1'::graphid, $$label_name$$,
+                                           agtype_build_map('key', 'other_value'))),
+        '"vertex"');
+                          agtype_access_operator                          
+--------------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "properties": {"key": "value"}}::vertex
+(1 row)
+
+--Vertex in a list
+SELECT agtype_build_list(
+	_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()));
+                                                    agtype_build_list                                                     
+--------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1, "label": "label_name", "properties": {}}::vertex, {"id": 2, "label": "label_name", "properties": {}}::vertex]
+(1 row)
+
+SELECT agtype_access_operator(
+	agtype_build_list(
+		_agtype_build_vertex('1'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 3)),
+		_agtype_build_vertex('2'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 4))), '0');
+                      agtype_access_operator                       
+-------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "properties": {"id": 3}}::vertex
+(1 row)
+
+--
+-- Edge
+--
+--Basic Edge Creation
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, agtype_build_map());
+                                  _agtype_build_edge                                  
+--------------------------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {}}::edge
+(1 row)
+
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2));
+                                   _agtype_build_edge                                   
+----------------------------------------------------------------------------------------
+ {"id": 1, "label": "label", "end_id": 3, "start_id": 2, "properties": {"id": 2}}::edge
+(1 row)
+
+--Null properties
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, NULL);
+                                  _agtype_build_edge                                  
+--------------------------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {}}::edge
+(1 row)
+
+--Test access operator
+SELECT agtype_access_operator(_agtype_build_edge('1'::graphid, '2'::graphid,
+			      '3'::graphid, $$label$$, agtype_build_map('id', 2)),'"id"');
+ agtype_access_operator 
+------------------------
+ 2
+(1 row)
+
+--Edge in a map
+SELECT agtype_build_map(
+	'edge',
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			   $$label_name$$, agtype_build_map()));
+                                        agtype_build_map                                        
+------------------------------------------------------------------------------------------------
+ {"edge": {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {}}::edge}
+(1 row)
+
+SELECT agtype_access_operator(
+        agtype_build_map(
+            'edge', _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+				       $$label_name$$, agtype_build_map('key', 'value')),
+            'other_edge', _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+					     $$label_name$$, agtype_build_map('key', 'other_value'))),
+        '"edge"');
+                                       agtype_access_operator                                       
+----------------------------------------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {"key": "value"}}::edge
+(1 row)
+
+--Edge in a list
+SELECT agtype_build_list(
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			   $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid,
+			   $$label_name$$, agtype_build_map()));
+                                                                              agtype_build_list                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {}}::edge, {"id": 2, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {}}::edge]
+(1 row)
+
+SELECT agtype_access_operator(
+	agtype_build_list(
+		_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 3)),
+		_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 4))), '0');
+                                   agtype_access_operator                                    
+---------------------------------------------------------------------------------------------
+ {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {"id": 3}}::edge
+(1 row)
+
+-- Path
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_vertex('3'::graphid, $$label_name$$, agtype_build_map())
+);
+                                                                                                   _agtype_build_path                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 2, "label": "label_name", "properties": {}}::vertex, {"id": 1, "label": "label", "end_id": 3, "start_id": 2, "properties": {"id": 2}}::edge, {"id": 3, "label": "label_name", "properties": {}}::vertex]::path
+(1 row)
+
+--All these paths should produce Errors
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+ERROR:  a path is of the form: [vertex, (edge, vertex)*i] where i >= 0
+SELECT _agtype_build_path(
+       _agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+       _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+                         $$label$$, agtype_build_map('id', 2)),
+       _agtype_build_vertex('3'::graphid, $$label_name$$, agtype_build_map()),
+       _agtype_build_edge('1'::graphid, '4'::graphid, '5'::graphid,
+                         $$label$$, agtype_build_map('id', 2))
+);
+ERROR:  a path is of the form: [vertex, (edge, vertex)*i] where i >= 0
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	NULL
+);
+ERROR:  argument 3 must not be null
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	1
+);
+ERROR:  argument 3 must be an agtype
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+ERROR:  paths consist of alternating vertices and edges
+HINT:  argument 3 must be an vertex
+--
+-- id, startid, endid
+--
+SELECT age_id(_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()));
+ age_id 
+--------
+ 1
+(1 row)
+
+SELECT age_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, agtype_build_map('id', 2)));
+ age_id 
+--------
+ 1
+(1 row)
+
+SELECT age_start_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, agtype_build_map('id', 2)));
+ age_start_id 
+--------------
+ 2
+(1 row)
+
+SELECT age_end_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, agtype_build_map('id', 2)));
+ age_end_id 
+------------
+ 3
+(1 row)
+
+SELECT age_id(_agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_vertex('3'::graphid, $$label$$, agtype_build_map('id', 2))
+));
+ERROR:  id() argument must be a vertex, an edge or null
+SELECT age_id(agtype_in('1'));
+ERROR:  id() argument must be a vertex, an edge or null
+SELECT age_id(NULL);
+ age_id 
+--------
+ 
+(1 row)
+
+SELECT age_start_id(NULL);
+ age_start_id 
+--------------
+ 
+(1 row)
+
+SELECT age_end_id(NULL);
+ age_end_id 
+------------
+ 
+(1 row)
+
+SELECT age_id(agtype_in('null'));
+ age_id 
+--------
+ 
+(1 row)
+
+SELECT age_start_id(agtype_in('null'));
+ age_start_id 
+--------------
+ 
+(1 row)
+
+SELECT age_end_id(agtype_in('null'));
+ age_end_id 
+------------
+ 
+(1 row)
+
+--
+-- Test STARTS WITH, ENDS WITH, and CONTAINS
+--
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+ agtype_string_match_starts_with 
+---------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+ agtype_string_match_ends_with 
+-------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijk"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"wxyz"');
+ agtype_string_match_contains 
+------------------------------
+ true
+(1 row)
+
+-- should all fail
+SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"bcde"');
+ agtype_string_match_starts_with 
+---------------------------------
+ false
+(1 row)
+
+SELECT agtype_string_match_ends_with('"abcdefghijklmnopqrstuvwxyz"', '"vwxy"');
+ agtype_string_match_ends_with 
+-------------------------------
+ false
+(1 row)
+
+SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijl"');
+ agtype_string_match_contains 
+------------------------------
+ false
+(1 row)
+
+--Agtype BTree Comparison Function
+SELECT agtype_btree_cmp('1'::agtype, '1'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, '1.0'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, '"1"'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp('"string"'::agtype, '"string"'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('"string"'::agtype, '"string "'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(NULL, NULL);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(NULL, '1'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, NULL);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(agtype_in('null'), NULL);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'1'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":200}}'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":200}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype,
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{"prop1": 1}}::edge'::agtype,
+	'{"id":2, "start_id":4, "end_id": 5, "label":"elabel", "properties":{"prop2": 2}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{"prop1": 1}}::edge'::agtype,
+	'{"id":8, "start_id":4, "end_id": 5, "label":"elabel", "properties":{"prop2": 2}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype,
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype,
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":4, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+--Int2 to Agtype in agtype_volatile_wrapper
+SELECT ag_catalog.agtype_volatile_wrapper(1::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ 1
+(1 row)
+
+SELECT ag_catalog.agtype_volatile_wrapper(32767::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ 32767
+(1 row)
+
+SELECT ag_catalog.agtype_volatile_wrapper(-32767::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ -32767
+(1 row)
+
+-- These should fail
+SELECT ag_catalog.agtype_volatile_wrapper(32768::int2);
+ERROR:  smallint out of range
+SELECT ag_catalog.agtype_volatile_wrapper(-32768::int2);
+ERROR:  smallint out of range
+--
+-- test that age_tostring can handle an UNKNOWNOID type
+--
+SELECT age_tostring('a');
+ age_tostring 
+--------------
+ "a"
+(1 row)
+
+--
+-- test agtype_build_map_as_agtype_value via agtype_build_map
+--
+SELECT * FROM create_graph('agtype_build_map');
+NOTICE:  graph "agtype_build_map" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agtype_build_map', $$ RETURN ag_catalog.agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71)
+                                         $$) AS (results agtype);
+                   results                   
+---------------------------------------------
+ {"1": "1", "2": 2, "e": 2.71, "3.14": 3.14}
+(1 row)
+
+SELECT agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71);
+                       agtype_build_map                        
+---------------------------------------------------------------
+ {"1": "1", "2": 2, "e": 2.71::numeric, "3.14": 3.14::numeric}
+(1 row)
+
+--
+-- Cleanup
+--
+SELECT drop_graph('agtype_build_map', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table agtype_build_map._ag_label_vertex
+drop cascades to table agtype_build_map._ag_label_edge
+NOTICE:  graph "agtype_build_map" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+DROP TABLE agtype_table;
+--
+-- End of AGTYPE data type regression tests
+--

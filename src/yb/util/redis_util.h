@@ -17,7 +17,6 @@
 
 namespace yb {
 
-bool RedisPatternMatch(
-    const std::string_view& pattern, const std::string_view& string, bool ignore_case);
+bool RedisPatternMatch(std::string_view pattern, std::string_view string, bool ignore_case);
 
 } // namespace yb

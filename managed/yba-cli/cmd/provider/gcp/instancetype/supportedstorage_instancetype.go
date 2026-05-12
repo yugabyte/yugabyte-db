@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 // SupportedStorageInstanceTypeCmd represents the supported-storage command
@@ -24,13 +23,7 @@ var SupportedStorageInstanceTypeCmd = &cobra.Command{
 
 		types, response, err := authAPI.GetGCPTypes().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Instance Type",
-				"List - Get GCP Types",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Instance Type", "List - Get GCP Types")
 		}
 
 		typesString := util.GetPrintableList(types)

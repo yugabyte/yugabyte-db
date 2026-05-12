@@ -1478,8 +1478,8 @@ void CDCSDKTabletSplitTest::TestTabletSplitOnAddedTableForCDCWithMasterRestart(
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnapshot)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -2207,7 +2207,7 @@ CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(
 
 TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDuringConsistentSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
   // Table having key:value_1 column
@@ -2265,7 +2265,7 @@ TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDuringConsistentSnapshot) {
 
 TEST_F(CDCSDKTabletSplitTest, TestTabletSplitAfterConsistentSnapshotStreamCreation) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
   // Table having key:value_1 column
@@ -2294,6 +2294,223 @@ TEST_F(CDCSDKTabletSplitTest, TestTabletSplitAfterConsistentSnapshotStreamCreati
   auto tablet_id = get_tablets_resp.tablet_checkpoint_pairs()[0].tablet_locations().tablet_id();
   // tablet_id received in getTabletListToPoll should be parent's tablet_id.
   ASSERT_EQ(tablet_id, tablets[0].tablet_id());
+}
+
+
+TEST_F(CDCSDKTabletSplitTest, TestProgressivePollingAcrossThreeLevels) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      /* replication_factor */ 3, /* num_masters */ 1, /* colocated */ false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto parent_id = tablets[0].tablet_id();
+
+  // Poll Gen 0 parent and advance the explicit checkpoint to establish a valid checkpoint
+  // for polling children after the split.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(),
+      &change_resp.cdc_sdk_checkpoint()));
+
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  WaitUntilSplitIsSuccesful(parent_id, table);
+
+  PollUntilTabletSplit(stream_id, tablets, &change_resp);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> gen1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &gen1_tablets, nullptr));
+  ASSERT_EQ(gen1_tablets.size(), 2);
+  auto child_b_id = gen1_tablets[0].tablet_id();
+  auto child_c_id = gen1_tablets[1].tablet_id();
+
+  // Wait for Gen 1 children entries to appear in cdc_state.
+  CheckTabletsInCDCStateTable({parent_id, child_b_id, child_c_id}, test_client(), stream_id);
+
+  // Poll only B (not C). Verify that GetTabletListToPollForCDC returns {parent}
+  // since child_C is not polled (the ancestor Gen 0 is still active).
+  auto resp_b = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, gen1_tablets, &change_resp.cdc_sdk_checkpoint(),
+      &change_resp.cdc_sdk_checkpoint(), "", 0));
+  resp_b = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, gen1_tablets, &resp_b.cdc_sdk_checkpoint(),
+      &resp_b.cdc_sdk_checkpoint(), "", 0));
+
+  VerifyTabletList(stream_id, table_id, {parent_id},
+      "Gen 0 polled, in Gen 1 only B polled (C not polled): should return {parent}");
+
+  // Split B into Gen 2 while C is still unpolled. This creates a 3-level hierarchy where
+  // B is a dual-role tablet (child of A, parent of D/E). Verifies that the ancestor walk
+  // correctly blocks B and its Gen 2 children, returning only the active ancestor A.
+  ASSERT_OK(WriteRowsHelper(200, 400, &test_cluster_, true));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  WaitUntilSplitIsSuccesful(child_b_id, table, 3);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> gen2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &gen2_tablets, nullptr));
+  ASSERT_EQ(gen2_tablets.size(), 3);
+
+  // Assert that all tablets from all generations are present in cdc_state.
+  std::unordered_set<TabletId> all_tablet_ids = {parent_id, child_b_id, child_c_id};
+  for (const auto& t : gen2_tablets) {
+    all_tablet_ids.insert(t.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(all_tablet_ids, test_client(), stream_id);
+
+  // 3-level split with C still unpolled: A is polled, not both children polled (C unpolled),
+  // so A is still the active ancestor blocking B (dual-role) and all Gen 2 descendants.
+  VerifyTabletList(stream_id, table_id, {parent_id},
+      "3-level split, C still unpolled: should still return {parent}");
+
+  // Now poll C as well to retire Gen 0.
+  auto resp_c = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, gen1_tablets, &change_resp.cdc_sdk_checkpoint(),
+      &change_resp.cdc_sdk_checkpoint(), "", 1));
+  resp_c = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, gen1_tablets, &resp_c.cdc_sdk_checkpoint(),
+      &resp_c.cdc_sdk_checkpoint(), "", 1));
+
+  // Gen 0 retired (both B,C polled). B is polled + split but Gen 2 not yet polled -> {B, C}.
+  VerifyTabletList(stream_id, table_id, {child_b_id, child_c_id},
+      "Gen 0 retired, B polled + split, Gen 2 not polled -> {B, C}");
+
+  PollUntilTabletSplit(stream_id, gen1_tablets, &resp_b, 0);
+
+  TabletId child_d_id, child_e_id;
+  int gen2_idx = 0;
+  for (const auto& t : gen2_tablets) {
+    if (t.tablet_id() != child_c_id) {
+      if (gen2_idx == 0) {
+        child_d_id = t.tablet_id();
+        gen2_idx++;
+      } else {
+        child_e_id = t.tablet_id();
+      }
+    }
+  }
+
+  // Poll both Gen 2 children to retire B.
+  // Two calls per child to advance the explicit checkpoint and persist last_replication_time.
+  for (int i = 0; i < static_cast<int>(gen2_tablets.size()); i++) {
+    if (gen2_tablets[i].tablet_id() == child_c_id) continue;
+    auto resp_gen2 = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, gen2_tablets, &resp_b.cdc_sdk_checkpoint(),
+        &resp_b.cdc_sdk_checkpoint(), "", i));
+    ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, gen2_tablets, &resp_gen2.cdc_sdk_checkpoint(),
+        &resp_gen2.cdc_sdk_checkpoint(), "", i));
+  }
+
+  // B retired (both D,E polled), C still active -> {C, D, E}.
+  VerifyTabletList(stream_id, table_id, {child_c_id, child_d_id, child_e_id},
+      "B retired, C active -> {C, D, E}");
+}
+
+TEST_F(CDCSDKTabletSplitTest, TestNoEmptyBeginCommitAfterTabletSplit) {
+  // After a tablet split, a child whose key range excludes the multi-shard txn's intents
+  // should NOT emit empty BEGIN + COMMIT with no DMLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      /* replication_factor */ 3, /* num_masters */ 1, /* colocated */ false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (key INT, value_1 INT, PRIMARY KEY (key ASC)) "
+      "SPLIT AT VALUES ((500))"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  // Multi-shard txn: key=300 lands in T1, key=600 in T2.
+  auto txn_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(txn_conn.Execute("BEGIN"));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO test_table VALUES (300, 301)"));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO test_table VALUES (600, 601)"));
+
+  // Find T1 (lower range) and split it while txn is open.
+  int t1_idx = tablets[0].partition().partition_key_start().empty() ? 0 : 1;
+  int t2_idx = 1 - t1_idx;
+  WaitUntilSplitIsSuccesful(tablets[t1_idx].tablet_id(), table, 3);
+
+  ASSERT_OK(txn_conn.Execute("COMMIT"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> post_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &post_split, nullptr));
+  ASSERT_EQ(post_split.size(), 3);
+
+  GetChangesResponsePB split_resp;
+  PollUntilTabletSplit(stream_id, tablets, &split_resp, t1_idx);
+
+  std::unordered_set<TabletId> expected_tablets;
+  expected_tablets.insert(tablets[t1_idx].tablet_id());
+  for (const auto& t : post_split) {
+    expected_tablets.insert(t.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Poll each child of T1 and verify no empty BEGIN+COMMIT is emitted.
+  auto t2_id = tablets[t2_idx].tablet_id();
+  bool found_empty_txn = false;
+
+  for (int i = 0; i < post_split.size(); i++) {
+    if (post_split[i].tablet_id() == t2_id) {
+      continue;
+    }
+
+    auto child_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, post_split, &split_resp.cdc_sdk_checkpoint(),
+        &split_resp.cdc_sdk_checkpoint(), "", i));
+
+    bool in_begin = false;
+    bool has_dml = false;
+    while (child_resp.cdc_sdk_proto_records_size() > 0) {
+      for (const auto& rec : child_resp.cdc_sdk_proto_records()) {
+        auto op = rec.row_message().op();
+        if (op == RowMessage::BEGIN) {
+          in_begin = true;
+          has_dml = false;
+        } else if (op == RowMessage::COMMIT) {
+          if (in_begin && !has_dml) {
+            found_empty_txn = true;
+            break;
+          }
+          in_begin = false;
+        } else if (
+            op == RowMessage::INSERT || op == RowMessage::UPDATE || op == RowMessage::DELETE) {
+          has_dml = true;
+        }
+      }
+      child_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+          stream_id, post_split, &child_resp.cdc_sdk_checkpoint(),
+          &child_resp.cdc_sdk_checkpoint(), "", i));
+    }
+  }
+
+  ASSERT_FALSE(found_empty_txn)
+      << "Empty BEGIN+COMMIT should not be emitted for transactions with no intents in key range";
 }
 
 }  // namespace cdc

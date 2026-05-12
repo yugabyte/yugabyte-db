@@ -1,0 +1,13 @@
+[Unit]
+Description=YugabyteDB cgroups v1 CPU cgroup (recreate after reboot)
+DefaultDependencies=no
+After=local-fs.target sysinit.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c 'set -e; for base in /sys/fs/cgroup/cpu "/sys/fs/cgroup/cpu,cpuacct"; do [ -d "$base" ] || continue; p="$base/yugabyte-db"; mkdir -p "$p"; chmod -R a+rw "$p"; done; exit 0'
+
+[Install]
+WantedBy=multi-user.target

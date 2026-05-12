@@ -1,0 +1,504 @@
+SET search_path TO documentdb_api,documentdb_core;
+SET documentdb.next_collection_id TO 101400;
+SET documentdb.next_collection_index_id TO 101400;
+SET search_path TO documentdb_api,documentdb_core;
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 1, "a": { "b": 1 } }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 2, "a": { "b": null } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 3, "a": { "b": "string value" } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 4, "a": { "b": true } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 5, "a": { "b": false } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 6, "a": { "b": [] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 7, "a": { "b": [1, 2, 3] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 8, "a": { "b": [1, { "$minKey": 1 }, 3, true] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 9, "a": { "b": [1, { "$maxKey": 1 }, 3, true] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 10, "a": { "b": { "c": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 11, "a": { "b": { "$maxKey": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now some more esoteric values
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 12, "a": null }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 13, "a": [ {} ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 14, "a": [ 1 ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 15, "a": [ 1, { "b": 3 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 16, "a": [ null, { "b": 4 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 17, "a": [ {}, { "b": 3 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 18, "a": [ { "c": 1 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 19, "a": [ { "c": 1 }, { "b": 3 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- baseline 
+select * from documentdb_api.insert_one('sortdb', 'sortcoll', '{ "_id": 20, "a": { "b": 0 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll", "filter": {}, "sort": { "a.b": 1, "_id": 1 } }');
+                                                            document                                                             
+---------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$minKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [  ] } }
+ { "_id" : { "$numberInt" : "12" }, "a" : null }
+ { "_id" : { "$numberInt" : "13" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "14" }, "a" : [ { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "15" }, "a" : [ { "$numberInt" : "1" }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "16" }, "a" : [ null, { "b" : { "$numberInt" : "4" } } ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ {  }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ { "c" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$maxKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "string value" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : false } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : { "$maxKey" : 1 } } }
+(20 rows)
+
+-- test exists
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll", "filter": { "a.b": { "$exists": true } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                            document                                                             
+---------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$minKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [  ] } }
+ { "_id" : { "$numberInt" : "15" }, "a" : [ { "$numberInt" : "1" }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "16" }, "a" : [ null, { "b" : { "$numberInt" : "4" } } ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ {  }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$maxKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "string value" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : false } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : { "$maxKey" : 1 } } }
+(16 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll", "filter": { "a.b": { "$exists": false } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                    document                                     
+---------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "a" : null }
+ { "_id" : { "$numberInt" : "13" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "14" }, "a" : [ { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ { "c" : { "$numberInt" : "1" } } ] }
+(4 rows)
+
+-- test null
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll", "filter": { "a.b": null }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                     document                                                      
+-------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "12" }, "a" : null }
+ { "_id" : { "$numberInt" : "13" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ {  }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ { "c" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+(6 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll", "filter": { "a.b": { "$ne": null } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                            document                                                             
+---------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$minKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [  ] } }
+ { "_id" : { "$numberInt" : "14" }, "a" : [ { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "15" }, "a" : [ { "$numberInt" : "1" }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "16" }, "a" : [ null, { "b" : { "$numberInt" : "4" } } ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$maxKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "string value" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : false } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : { "$maxKey" : 1 } } }
+(14 rows)
+
+-- test with composite index
+set documentdb.enableExtendedExplainPlans to on;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sortdb', '{ "createIndexes": "sortcoll2", "indexes": [ { "key": { "a.b": 1 }, "enableCompositeTerm": true, "name": "a.b_1" }] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('sortdb', 'sortcoll2', document)) FROM (SELECT document FROM documentdb_api.collection('sortdb', 'sortcoll')) coll;
+ count 
+-------
+    20
+(1 row)
+
+-- test exists
+set documentdb.forceDisableSeqScan to on;
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll2", "filter": { "a.b": { "$exists": true } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                            document                                                             
+---------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$minKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [  ] } }
+ { "_id" : { "$numberInt" : "15" }, "a" : [ { "$numberInt" : "1" }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "16" }, "a" : [ null, { "b" : { "$numberInt" : "4" } } ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ {  }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$maxKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "string value" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : false } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : { "$maxKey" : 1 } } }
+(16 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll2", "filter": { "a.b": { "$exists": false } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                    document                                     
+---------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "a" : null }
+ { "_id" : { "$numberInt" : "13" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "14" }, "a" : [ { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ { "c" : { "$numberInt" : "1" } } ] }
+(4 rows)
+
+-- test null
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll2", "filter": { "a.b": null }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                     document                                                      
+-------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "12" }, "a" : null }
+ { "_id" : { "$numberInt" : "13" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ {  }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ { "c" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+(6 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll2", "filter": { "a.b": { "$ne": null } }, "sort": { "a.b": 1, "_id": 1 } }');
+                                                            document                                                             
+---------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$minKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [  ] } }
+ { "_id" : { "$numberInt" : "14" }, "a" : [ { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "15" }, "a" : [ { "$numberInt" : "1" }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "16" }, "a" : [ null, { "b" : { "$numberInt" : "4" } } ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$maxKey" : 1 }, { "$numberInt" : "3" }, true ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "string value" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : false } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : { "$maxKey" : 1 } } }
+(14 rows)
+
+reset documentdb.forceDisableSeqScan;
+-- now repeat with 3 dotted paths
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 1, "a": { "b": { "c": 1 } } }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 2, "a": { "b": [ { "c": 2 } ] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 3, "a": [ { "b": [ { "c": 1 } ] } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- combinations of those paths going missing
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 4, "a": { "b": { "d": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 5, "a": { "b": [ { "c": 2 }, {} ] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 6, "a": { "b": [ { "c": 2 }, 2 ] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 7, "a": { "b": [ 2 ] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 8, "a": { "b": [ {} ] } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 9, "a": [ { "b": { "c": 3 } }, { "b": { "d": 1 } } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 10, "a": [ { "b": { "c": 3 } }, { "b": 2 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 11, "a": [ { "b": { "c": 3 } }, {  } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 12, "a": [ { "b": { "c": 3 } }, 1 ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- baseline
+SELECT * FROM documentdb_api.insert_one('sortdb', 'sortcoll3', '{ "_id": 13, "a": { "b": { "c": 0 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll3", "filter": {}, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, {  } ] } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ {  } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "d" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, {  } ] }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "$numberInt" : "0" } } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "1" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+(13 rows)
+
+-- test exists
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll3", "filter": { "a.b.c": { "$exists": true } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, {  } ] } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "d" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, {  } ] }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "$numberInt" : "0" } } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "1" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+(10 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll3", "filter": { "a.b.c": { "$exists": false } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                       document                                       
+--------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ {  } ] } }
+(3 rows)
+
+-- test null
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll3", "filter": { "a.b.c": null }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, {  } ] } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ {  } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "d" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, {  } ] }
+(6 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll3", "filter": { "a.b.c": { "$ne": null } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                     document                                                      
+-------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "$numberInt" : "0" } } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "1" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+(7 rows)
+
+-- test again with composite index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sortdb', '{ "createIndexes": "sortcoll4", "indexes": [ { "key": { "a.b.c": 1 }, "enableCompositeTerm": true, "name": "a.b.c_1" }] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('sortdb', 'sortcoll4', document)) FROM (SELECT document FROM documentdb_api.collection('sortdb', 'sortcoll3')) coll;
+ count 
+-------
+    13
+(1 row)
+
+set documentdb.forceDisableSeqScan to on;
+-- test exists
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll4", "filter": { "a.b.c": { "$exists": true } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, {  } ] } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "d" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, {  } ] }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "$numberInt" : "0" } } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "1" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+(10 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll4", "filter": { "a.b.c": { "$exists": false } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                       document                                       
+--------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ {  } ] } }
+(3 rows)
+
+-- test null
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll4", "filter": { "a.b.c": null }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, {  } ] } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ {  } ] } }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "d" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, {  } ] }
+(6 rows)
+
+SELECT * FROM documentdb_api_catalog.bson_aggregation_find('sortdb', '{ "find": "sortcoll4", "filter": { "a.b.c": { "$ne": null } }, "sort": { "a.b.c": 1, "_id": 1 } }');
+                                                     document                                                      
+-------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } }, { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberInt" : "2" } ] } }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "b" : { "c" : { "$numberInt" : "3" } } }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "$numberInt" : "0" } } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "1" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+(7 rows)
+

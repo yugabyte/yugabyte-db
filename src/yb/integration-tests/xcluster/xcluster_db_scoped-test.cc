@@ -27,7 +27,10 @@ DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 using namespace std::chrono_literals;
 
@@ -232,18 +235,23 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
+  LOG(INFO) << "Creating a new table on target first should fail";
+
   // Creating a new table on target first should fail.
   ASSERT_NOK_STR_CONTAINS(
       CreateYsqlTable(
           /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_),
       "Table public.test_table_1 not found");
 
+  LOG(INFO) << "Creating a new table on producer";
   auto new_producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
   std::shared_ptr<client::YBTable> new_producer_table;
   ASSERT_OK(producer_client()->OpenTable(new_producer_table_name, &new_producer_table));
 
   ASSERT_OK(InsertRowsInProducer(0, 50, new_producer_table));
+
+  LOG(INFO) << "Creating a new table on consumer";
 
   auto new_consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_));
@@ -256,6 +264,7 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
 
+  LOG(INFO) << "VerifyWrittenRecords";
   ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
 
   // Insert some rows to the initial table.
@@ -503,8 +512,8 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
 
 class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
  public:
-  Status SetUpClusters() {
-    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters());
+  Status SetUpClusters(SetupParams params = {}) {
+    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
 
     RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       RETURN_NOT_OK(CreateDatabase(cluster, namespace_name2_));
@@ -1059,6 +1068,20 @@ TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
   // Disable auto analyze becauses the query plan changes.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ASSERT_OK(SetUpClusters());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NO_FATALS(VerifyRangedPartitionsWithIndex(/*is_colocated=*/false));
+}
+
+TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
+  // Disable auto analyze becauses the query plan changes
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());

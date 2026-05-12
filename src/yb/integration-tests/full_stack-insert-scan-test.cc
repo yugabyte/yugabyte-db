@@ -328,7 +328,7 @@ const std::vector<string>& Int64ColumnNames() {
 // type: (int64_t,  string,     int32_t x4, int64_t x4)
 // The first int32 gets the id and the first int64 gets the thread
 // id. The key is assigned to "key," and the other fields are random.
-void RandomRow(Random* rng, QLWriteRequestPB* req, char* buf, int64_t key, int id,
+void RandomRow(Random* rng, QLWriteRequestMsg* req, char* buf, int64_t key, int id,
                client::TableHandle* table) {
   QLAddInt64HashValue(req, key);
   int len = kRandomStrMinLength + rng->Uniform(kRandomStrMaxLength - kRandomStrMinLength + 1);
@@ -419,7 +419,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
   for (int64_t key = start; key < end; ++key) {
-    auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     RandomRow(&rng, op->mutable_request(), randstr, key, id, table);
     session->Apply(op);
 

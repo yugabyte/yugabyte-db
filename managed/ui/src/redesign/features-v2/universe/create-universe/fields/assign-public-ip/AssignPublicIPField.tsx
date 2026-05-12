@@ -2,11 +2,11 @@ import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
-import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
 import { FieldContainer } from '../../components/DefaultComponents';
+import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
 import { CloudType } from '../../../../../helpers/dtos';
 
-const { Box, Typography, styled } = mui;
+const { Typography, styled } = mui;
 
 interface PublicIPFieldProps {
   disabled: boolean;
@@ -21,7 +21,7 @@ export const StyledSubText = styled(Typography)(({ theme }) => ({
   fontWeight: 400,
   color: ' #4E5F6D',
   lineHeight: '16px',
-  marginLeft: theme.spacing(4)
+  marginLeft: theme.spacing(5.5)
 }));
 
 export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled, providerCode }) => {

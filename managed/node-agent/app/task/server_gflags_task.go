@@ -71,15 +71,21 @@ func (handler *ServerGflagsHandler) postmasterCgroupPath(ctx context.Context) (s
 		return "", err
 	}
 	userID := strconv.Itoa(int(userInfo.UserID))
-	postmasterCgroupPath := "/sys/fs/cgroup/memory/ysql"
 	stdout := strings.TrimSpace(cmdInfo.StdOut.String())
-	if stdout == "cgroup2fs" {
-		postmasterCgroupPath = filepath.Join(
-			fmt.Sprintf("user.slice/user-%s.slice", userID),
-			fmt.Sprintf("user@%s.service", userID),
-			"ysql")
+	return buildPostmasterCgroupPath(stdout, userID), nil
+}
+
+// buildPostmasterCgroupPath returns the postmaster cgroup path for the given cgroup stat output and user ID.
+// cgroupStatOutput is the trimmed output of: stat -fc %T /sys/fs/cgroup/ (e.g. "cgroup2fs" or "tmpfs").
+func buildPostmasterCgroupPath(cgroupStatOutput string, userID string) string {
+	if cgroupStatOutput != "cgroup2fs" {
+		return "/sys/fs/cgroup/memory/ysql"
 	}
-	return postmasterCgroupPath, nil
+	return filepath.Join("/sys/fs/cgroup",
+		"user.slice",
+		fmt.Sprintf("user-%s.slice", userID),
+		fmt.Sprintf("user@%s.service", userID),
+		"ysql")
 }
 
 func (handler *ServerGflagsHandler) Handle(
@@ -97,6 +103,15 @@ func (handler *ServerGflagsHandler) Handle(
 				Infof(ctx, "Master process must be stopped before resetting state")
 			return nil, errors.New("Master process must be stopped before resetting state")
 		}
+		enabled, err := module.IsProcessEnabled(ctx, handler.username, "yb-master", handler.logOut)
+		if err != nil {
+			return nil, err
+		}
+		if enabled {
+			util.FileLogger().
+				Infof(ctx, "Master process must be disabled before resetting state")
+			return nil, errors.New("Master process must be disabled before resetting state")
+		}
 		if fsDataDirsCsv, ok := gflags["fs_data_dirs"]; ok {
 			util.FileLogger().
 				Infof(ctx, "Deleting master state dirs in fs_data_dirs: %s", fsDataDirsCsv)
@@ -112,11 +127,14 @@ func (handler *ServerGflagsHandler) Handle(
 				}
 			}
 			if len(toDeletePaths) > 0 {
+				rmArgs := make([]string, 0, len(toDeletePaths)+1)
+				rmArgs = append(rmArgs, "-rf")
+				rmArgs = append(rmArgs, toDeletePaths...)
 				cmdInfo := &module.CommandInfo{
 					User: handler.username,
 					Desc: "DeleteMasterState",
 					Cmd:  "rm",
-					Args: []string{"-rf", strings.Join(toDeletePaths, " ")},
+					Args: rmArgs,
 				}
 				err := cmdInfo.RunCmd(ctx)
 				if err != nil {
@@ -146,7 +164,7 @@ func (handler *ServerGflagsHandler) Handle(
 		"gflags": processedGflags,
 	}
 	destination := filepath.Join(handler.param.GetServerHome(), ServerConfSubpath)
-	err := module.CopyFile(
+	_, err := module.CopyFile(
 		ctx,
 		gflagsContext,
 		ServerConfTemplateSubpath,

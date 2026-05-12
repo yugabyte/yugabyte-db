@@ -13,7 +13,7 @@ include $(PGXS)
 
 pg_major_version := $(shell $(PG_CONFIG) --version | awk -F' ' '{ print $$2 }' | awk -F'.' '{ print $$1 }')
 
-EXTENSIONLOAD :=  --load-extension=tsm_system_rows --load-extension=pg_cron --load-extension=vector --load-extension=postgis --load-extension citus  --load-extension=documentdb_core --load-extension=rum --load-extension=documentdb --load-extension=documentdb_distributed
+EXTENSIONLOAD :=  --load-extension=tsm_system_rows --load-extension=pg_cron --load-extension=vector --load-extension=postgis --load-extension citus  --load-extension=documentdb_core --load-extension=documentdb --load-extension=documentdb_distributed --load-extension documentdb_extended_rum
 
 MAKEFILE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 export PATH := $(MAKEFILE_DIR)bin:$(PATH)
@@ -45,5 +45,16 @@ generate_version_schedule:
 	@cp basic_schedule_core log/basic_schedule_$(pg_major_version)
 	@./mutate_schedule.sh log/basic_schedule_$(pg_major_version) $(pg_major_version)
 
+INSTALL_PG_PORT ?= 5432
+
+define install_check_common
+	$(top_builddir)/src/test/regress/pg_regress --port $(INSTALL_PG_PORT) --encoding=UTF8 --dlpath=$(BASEPATH) --use-existing --dbname=postgres $(1) $(2) || (cat regression.diffs && false)
+endef
+
+installcheck: generate_version_schedule
+	$(call install_check_common,--schedule=./install_schedule --schedule=./log/basic_schedule_$(pg_major_version))
+
+installcheck-minimal:
+	$(call install_check_common,--schedule=./install_schedule, $(EXTRA_TESTS))
 
 all: check-basic check-test-output

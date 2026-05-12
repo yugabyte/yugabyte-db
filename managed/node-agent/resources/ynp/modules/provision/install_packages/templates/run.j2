@@ -21,6 +21,9 @@ else
         sudo apt-get update
         sudo apt-get install -y "${packages[@]}"
         ;;
+      zypper)
+        sudo zypper install -y "${packages[@]}"
+        ;;
       *)
         echo "Unsupported package manager: $pkg_mgr"
         exit 1
@@ -41,6 +44,8 @@ else
       echo "yum"
     elif command -v apt-get >/dev/null 2>&1; then
       echo "apt"
+    elif command -v zypper >/dev/null 2>&1; then
+      echo "zypper"
     else
       echo "unknown"
     fi

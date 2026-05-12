@@ -7,7 +7,6 @@ package auth
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -65,14 +64,14 @@ var LoginCmd = &cobra.Command{
 			}
 		}
 
-		if strings.TrimSpace(email) == "" {
+		if util.IsEmptyString(email) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Email cannot be empty.\n",
 					formatter.RedColor))
 		}
 
-		if strings.TrimSpace(password) == "" {
+		if util.IsEmptyString(password) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Password cannot be empty.\n",
@@ -96,9 +95,7 @@ var LoginCmd = &cobra.Command{
 
 		r, response, err := authAPI.ApiLogin().CustomerLoginFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Login", "Authentication")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Login", "Authentication")
 		}
 		logrus.Debugf("API Login response without errors\n")
 

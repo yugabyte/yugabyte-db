@@ -1,13 +1,16 @@
 package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
@@ -16,15 +19,18 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Backup;
+import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Slf4j
@@ -38,6 +44,16 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
   private final String namespace;
   private final SharedIndexInformer<StorageConfig> scInformer;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public BackupReconciler(
       SharedIndexInformer<Backup> backupInformer,
@@ -79,6 +95,10 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
   public void onAdd(Backup backup) {
     BackupStatus status = backup.getStatus();
     if (status != null) {
+      if (status.getResourceUUID() != null && !status.getResourceUUID().isEmpty()) {
+        UUID backupUUID = UUID.fromString(status.getResourceUUID());
+        OperatorUtils.maybeAddYbaResourceId(backup, backupUUID, resourceClient);
+      }
       // We don't need to do a retry because the backup state machine will take care of it.
       // Even in the case of failure, we expect customer to create a new backup CR.
       log.info("Early return because we already started this backup once");
@@ -91,6 +111,17 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       log.debug("Backup belongs to a backup schedule, ignoring");
       return;
     }
+    if (backupMeta.getAnnotations() != null
+        && backupMeta.getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      log.debug("backup is already controlled by the operator, ignoring");
+      return;
+    }
+
+    // Track the resource only after confirming it should actually be processed.
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(backup, localUuid);
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     log.info("Creating backup {} ", backup);
     BackupRequestParams backupRequestParams = null;
@@ -98,6 +129,27 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       backupRequestParams = operatorUtils.getBackupRequestFromCr(backup, scInformer);
     } catch (Exception e) {
       log.error("Got Exception in converting to backup params", e);
+      return;
+    }
+
+    // Validate the backup request has at least one table to backup
+    Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
+    TableType tableType = null;
+    if (backup.getSpec().getBackupType() == BackupSpec.BackupType.PGSQL_TABLE_TYPE) {
+      tableType = TableType.PGSQL_TABLE_TYPE;
+    } else if (backup.getSpec().getBackupType() == BackupSpec.BackupType.YQL_TABLE_TYPE) {
+      tableType = TableType.YQL_TABLE_TYPE;
+    } else {
+      log.error("Invalid backup type: {}", backup.getSpec().getBackupType());
+      updateStatus(backup, "", "", "Invalid backup type: " + backup.getSpec().getBackupType());
+      return;
+    }
+    try {
+      backupHelper.validateTables(
+          new ArrayList<>(), universe, backup.getSpec().getKeyspace(), tableType);
+    } catch (PlatformServiceException e) {
+      log.error("Got Exception in validating tables", e);
+      updateStatus(backup, "", "", "Failed in validating tables " + e.getMessage());
       return;
     }
 
@@ -161,6 +213,9 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       handleDelete(newBackup);
       return;
     }
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    resourceTracker.trackResource(
+        newBackup, operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
     log.info(
         "Got backup update {} {}, ignoring as backup does not support update.",
         oldBackup,
@@ -174,6 +229,12 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
   private void handleDelete(Backup backup) {
     log.info("Got backup delete {}", backup);
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
+    log.info("Untracked backup {} and orphaned dependencies: {}", resourceDetails, orphaned);
+
     BackupStatus status = backup.getStatus();
 
     // Remove finalizer if no status
@@ -219,7 +280,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     // Cancel backup if running
     try {
       boolean taskstatus = backupHelper.abortBackupTask(taskUUID);
-      if (taskstatus == true) {
+      if (taskstatus) {
         log.info("cancelled ongoing task");
         BackupHelper.waitForTask(taskUUID);
       }

@@ -19,13 +19,13 @@ function ValidateNoCitusReferences()
     local _dir_to_check=$1
 
     # TODO: Clean these up
-    validationExceptions="documentdb--0.24-0.sql create_index_background--0.23-0.sql create_index_background--latest.sql drop_indexes.c create_indexes_background.c"
-    validationExceptions="$validationExceptions current_op.c index.c ttl_support_functions--0.24-0.sql"
+    validationExceptions="documentdb--0.24-0.sql create_index_background--0.23-0.sql"
+    validationExceptions="$validationExceptions current_op.c ttl_support_functions--0.24-0.sql"
     validationExceptions="$validationExceptions diagnostic_commands_common.c"
 
     foundInvalid="";
     for queryStr in "citus_" "pg_dist" "run_command_on_all_nodes" "run_command_on_coordinator"; do
-        for f in `grep -r -l -i -E $queryStr --include "*.h" --include "*.c" --include "*.sql" $_dir_to_check`; do
+        for f in `grep -r -l -i -E $queryStr --include "*.h" --include "*.c" --include "*.sql" --include "*.rs" $_dir_to_check`; do
             fileName=$(basename $f)
             if [[ $validationExceptions =~ $fileName ]]; then
                 echo "Allowing $f as an exception for $queryStr"
@@ -75,11 +75,13 @@ function CheckSqlLatestVersionMatchesLatestFile()
 # Ensure that citus references are done via hooks and not in the SQL/C files
 ValidateNoCitusReferences $repoScriptDir/../pg_documentdb_core
 ValidateNoCitusReferences $repoScriptDir/../pg_documentdb
+ValidateNoCitusReferences $repoScriptDir/../pg_documentdb_gw
 
 # Validate sql files for the purposes of review and sanity.
 CheckSqlLatestVersionMatchesLatestFile pg_documentdb_core
 CheckSqlLatestVersionMatchesLatestFile pg_documentdb
 CheckSqlLatestVersionMatchesLatestFile internal/pg_documentdb_distributed
+CheckSqlLatestVersionMatchesLatestFile pg_documentdb_gw
 
 # Ensure no header collisions
 $repoScriptDir/validate_headers.sh

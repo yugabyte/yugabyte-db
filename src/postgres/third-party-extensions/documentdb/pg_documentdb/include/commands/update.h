@@ -33,28 +33,31 @@ typedef enum
 typedef struct
 {
 	/* update only documents matching this query */
-	pgbson *query;
+	const bson_value_t *query;
 
 	/* apply this update */
-	pgbson *update;
+	const bson_value_t *update;
 
 	/* whether to use upsert if no documents match */
 	int isUpsert;
 
 	/* sort order to use when selecting 1 row */
-	pgbson *sort;
+	const bson_value_t *sort;
 
 	/* whether to return a document */
 	UpdateReturnValue returnDocument;
 
 	/* fields to return if returning a document */
-	pgbson *returnFields;
+	const bson_value_t *returnFields;
 
 	/* array filters specified in the update */
-	pgbson *arrayFilters;
+	const bson_value_t *arrayFilters;
 
 	/* whether to bypass document validation */
 	bool bypassDocumentValidation;
+
+	/* parsed variable spec */
+	const bson_value_t *variableSpec;
 } UpdateOneParams;
 
 

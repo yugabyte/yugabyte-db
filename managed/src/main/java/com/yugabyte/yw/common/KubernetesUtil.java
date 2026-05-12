@@ -12,11 +12,15 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -24,6 +28,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -40,8 +45,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -49,6 +56,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -73,6 +82,10 @@ public class KubernetesUtil {
   public static String MIN_VERSION_OTEL_SUPPORT_PREVIEW = "2.25.1.0-b133";
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW = "2.27.0.0-b999";
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
+  public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW = "2.29.0.0-b386";
+  public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW = "2.29.0.0-b603";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -115,6 +128,24 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE,
             MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isCertManagerCertRotateSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE,
+            MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isFullMoveSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_FULL_MOVE_SUPPORT_STABLE,
+            MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW,
             true)
         >= 0;
   }
@@ -546,10 +577,16 @@ public class KubernetesUtil {
           getHelmFullNameWithSuffix(
               isMultiAZ, nodePrefix, universeName, az.getCode(), newNamingStyle, false);
       for (int idx = 0; idx < entry.getValue(); idx++) {
+        PlacementAZ placementAZ =
+            pi.azStream().filter(aZone -> aZone.uuid.equals(az.getUuid())).findFirst().get();
+        String podName =
+            placementAZ.masterStsIndex > 0
+                ? String.format("%syb-master-%d-%d", helmFullName, placementAZ.masterStsIndex, idx)
+                : String.format("%syb-master-%d", helmFullName, idx);
         String masterIP =
             formatPodAddress(
                 azConfig.getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE),
-                String.format("%syb-master-%d", helmFullName, idx),
+                podName,
                 helmFullName + "yb-masters",
                 namespace,
                 domain);
@@ -693,7 +730,7 @@ public class KubernetesUtil {
   }
 
   private static boolean isMCSEnabled(UniverseDefinitionTaskParams universeDetails) {
-    UUID providerUUID = UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider);
+    UUID providerUUID = Util.getSingleProviderUUID(universeDetails.getPrimaryCluster());
     Provider provider = Provider.getOrBadRequest(providerUUID);
     if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
       List<Region> regions = Region.getByProvider(provider.getUuid());
@@ -803,12 +840,14 @@ public class KubernetesUtil {
       boolean isMultiAz,
       boolean newNamingStyle,
       String universeName,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      int stsIndex) {
     String sType = serverType == UniverseTaskBase.ServerType.MASTER ? "yb-master" : "yb-tserver";
+    String sTypeWithStsIndex = stsIndex > 0 ? String.format("%s-%d", sType, stsIndex) : sType;
     String helmFullName =
         getHelmFullNameWithSuffix(
             isMultiAz, nodePrefix, universeName, azCode, newNamingStyle, isReadOnlyCluster);
-    return String.format("%s%s-%d", helmFullName, sType, partition);
+    return String.format("%s%s-%d", helmFullName, sTypeWithStsIndex, partition);
   }
 
   // TODO(bhavin192): should we just override the getNodeName from
@@ -821,12 +860,14 @@ public class KubernetesUtil {
       String azCode,
       UniverseTaskBase.ServerType serverType,
       boolean isMultiAz,
-      boolean isReadCluster) {
+      boolean isReadCluster,
+      int stsIndex) {
     String sType = serverType == UniverseTaskBase.ServerType.MASTER ? "yb-master" : "yb-tserver";
+    String sTypeWithStsIndex = stsIndex > 0 ? String.format("%s-%d", sType, stsIndex) : sType;
     String nodeName =
         isMultiAz
-            ? String.format("%s-%d_%s", sType, partition, azCode)
-            : String.format("%s-%d", sType, partition);
+            ? String.format("%s-%d_%s", sTypeWithStsIndex, partition, azCode)
+            : String.format("%s-%d", sTypeWithStsIndex, partition);
     nodeName = isReadCluster ? String.format("%s%s", nodeName, Universe.READONLY) : nodeName;
     NodeDetails node = new NodeDetails();
     node.nodeName = nodeName;
@@ -860,8 +901,9 @@ public class KubernetesUtil {
       throws IOException {
 
     Map<UUID, Map<String, Object>> result = new HashMap<>();
-    PlacementInfo placementInfo = cluster.placementInfo;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
+
+    Provider provider = Util.getSingleProvider(cluster);
 
     ObjectMapper mapper = new ObjectMapper();
     Yaml yaml = new Yaml();
@@ -927,7 +969,7 @@ public class KubernetesUtil {
       PlacementInfo pi = cluster.placementInfo;
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
         AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
@@ -975,10 +1017,10 @@ public class KubernetesUtil {
           getFinalOverrides(cluster, universeOverridesStr, azsOverridesStr);
       // Safe to add all to map directly since read only clusters don't have independent overrides
       azUUIDFinalOverrides.putAll(finalOverrides);
-      PlacementInfo pi = cluster.placementInfo;
+      PlacementInfo pi = cluster.getOverallPlacement();
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
         AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
@@ -1489,5 +1531,274 @@ public class KubernetesUtil {
           e);
       return UserIntentcpuCoreCount;
     }
+  }
+
+  /*--- Volume related helpers ---*/
+
+  /**
+   * This overrides the base userIntent deviceInfo with K8s unvierse overrides
+   *
+   * @param userIntent
+   * @param placementInfo
+   * @param universeOverridesStr
+   * @param azOverrides
+   */
+  public static void applyVolumeChanges(
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      String universeOverridesStr,
+      Map<String, String> azOverrides) {
+    applyUniverseOverridesToBaseDeviceInfo(userIntent, universeOverridesStr);
+    userIntent.setUserIntentOverrides(
+        generateVolumeOverridesForUserIntent(
+            userIntent.getUserIntentOverrides(),
+            placementInfo.getAllAZUUIDs(),
+            universeOverridesStr,
+            azOverrides,
+            null /* skipAZs */));
+    if (userIntent.getUserIntentOverrides() != null) {
+      userIntent.getUserIntentOverrides().removeNonRequiredAZs(placementInfo.getAllAZUUIDs());
+    }
+  }
+
+  /**
+   * Merges universe-level kubernetes overrides (helm-style) into the base TSERVER and MASTER
+   * deviceInfo on the userIntent. This is the universe-overrides-into-base-deviceInfo half of
+   * {@link #applyVolumeChanges}, exposed independently so callers can mix it with custom AZ-level
+   * override resolution (e.g. the operator).
+   */
+  public static void applyUniverseOverridesToBaseDeviceInfo(
+      UserIntent userIntent, String universeOverridesStr) {
+    if (StringUtils.isBlank(universeOverridesStr)) {
+      return;
+    }
+    Consumer<ServerType> overridesApplier =
+        (serverType) -> {
+          DeviceInfo deviceInfo =
+              serverType == ServerType.TSERVER
+                  ? userIntent.deviceInfo
+                  : userIntent.masterDeviceInfo;
+          if (deviceInfo == null) {
+            return;
+          }
+          DeviceInfo universeDeviceInfo = fetchDeviceInfo(universeOverridesStr, serverType);
+          if (universeDeviceInfo != null) {
+            deviceInfo.mergeDeviceInfo(universeDeviceInfo);
+          }
+        };
+    overridesApplier.accept(ServerType.TSERVER);
+    overridesApplier.accept(ServerType.MASTER);
+  }
+
+  /**
+   * This overrides the userIntent AZ overrides with (1) provider AZ storage class, (2) provider
+   * overrides, (3) K8s AZ overrides in order 1 < 2 < 3
+   *
+   * @param userIntent
+   * @param placementInfo
+   * @param universeOverridesStr
+   * @param azOverrides
+   * @param skipAZs
+   * @return
+   */
+  public static UserIntentOverrides generateVolumeOverridesForUserIntent(
+      UserIntentOverrides userIntentOverrides,
+      Set<UUID> azUUIDs,
+      @Nullable String universeOverridesStr,
+      @Nullable Map<String, String> azOverrides,
+      @Nullable Set<UUID> skipAZs) {
+    return generateVolumeOverridesForUserIntent(
+        userIntentOverrides,
+        azUUIDs,
+        universeOverridesStr,
+        azOverrides,
+        skipAZs,
+        EnumSet.of(ServerType.MASTER, ServerType.TSERVER));
+  }
+
+  /**
+   * Same as the 5-arg overload, but only computes overrides for the given {@code serverTypes}.
+   * Useful when the caller wants to keep overrides for some server types untouched (e.g. the
+   * operator path where one server type's overrides come from spec.perAZ and the other should fall
+   * back to provider/universe level overrides).
+   */
+  public static UserIntentOverrides generateVolumeOverridesForUserIntent(
+      UserIntentOverrides userIntentOverrides,
+      Set<UUID> azUUIDs,
+      @Nullable String universeOverridesStr,
+      @Nullable Map<String, String> azOverrides,
+      @Nullable Set<UUID> skipAZs,
+      Set<ServerType> serverTypes) {
+    UserIntentOverrides userIntentOverridesClone =
+        userIntentOverrides == null ? new UserIntentOverrides() : userIntentOverrides.clone();
+
+    BiConsumer<UUID, ServerType> overridesApplier =
+        (azUUID, serverType) -> {
+          if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+            return;
+          }
+          // return for case when server-type per-process deviceInfo override is already set
+          if (userIntentOverridesClone.getAzOverrides() != null
+              && userIntentOverridesClone.getAzOverrides().get(azUUID) != null
+              && userIntentOverridesClone.getAzOverrides().get(azUUID).getPerProcess() != null
+              && userIntentOverridesClone
+                  .getAzOverrides()
+                  .get(azUUID)
+                  .getPerProcess()
+                  .containsKey(serverType)
+              && userIntentOverridesClone
+                      .getAzOverrides()
+                      .get(azUUID)
+                      .getPerProcess()
+                      .get(serverType)
+                      .getDeviceInfo()
+                  != null) {
+            return;
+          }
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
+          DeviceInfo deviceInfo = new DeviceInfo();
+          // Populate from Provider SC
+          Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(zone);
+          if (StringUtils.isNotBlank(azConfig.get("STORAGE_CLASS"))) {
+            deviceInfo.storageClass = azConfig.get("STORAGE_CLASS");
+          }
+          // Populate from Provider overrides
+          if (StringUtils.isNotBlank(azConfig.get("OVERRIDES"))) {
+            DeviceInfo providerAZDeviceInfo =
+                fetchDeviceInfo(azConfig.get("OVERRIDES"), serverType);
+            if (providerAZDeviceInfo != null) {
+              deviceInfo.mergeDeviceInfo(providerAZDeviceInfo);
+            }
+          }
+          // Universe overrides
+          DeviceInfo universeDeviceInfo = fetchDeviceInfo(universeOverridesStr, serverType);
+          // Unset fields present in universe overrides as they take precedence and will be
+          // populated in default userIntent.
+          if (universeDeviceInfo != null) {
+            deviceInfo.unsetFields(universeDeviceInfo);
+          }
+          // Populate from K8s AZOverrides
+          String azOverride =
+              azOverrides == null ? null : azOverrides.getOrDefault(zone.getCode(), "");
+          DeviceInfo azDeviceInfo = fetchDeviceInfo(azOverride, serverType);
+          if (azDeviceInfo != null) {
+            deviceInfo.mergeDeviceInfo(azDeviceInfo);
+          }
+          if (!deviceInfo.allNull()) {
+            Map<UUID, AZOverrides> userIntentAZOverridesMap =
+                userIntentOverridesClone.getAzOverrides();
+            if (userIntentAZOverridesMap == null) {
+              userIntentAZOverridesMap = new HashMap<>();
+            }
+            AZOverrides userIntentAZOverrides =
+                userIntentAZOverridesMap.getOrDefault(zone.getUuid(), new AZOverrides());
+            Map<ServerType, PerProcessDetails> perProcessMap =
+                userIntentAZOverrides.getPerProcess();
+            if (perProcessMap == null) {
+              perProcessMap = new HashMap<>();
+              userIntentAZOverrides.setPerProcess(perProcessMap);
+            }
+            PerProcessDetails perProcess =
+                perProcessMap.getOrDefault(serverType, new PerProcessDetails());
+            perProcess.setDeviceInfo(deviceInfo);
+            perProcessMap.put(serverType, perProcess);
+            userIntentAZOverridesMap.put(zone.getUuid(), userIntentAZOverrides);
+            userIntentOverridesClone.setAzOverrides(userIntentAZOverridesMap);
+          }
+        };
+    if (serverTypes.contains(ServerType.MASTER)) {
+      azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.MASTER));
+    }
+    if (serverTypes.contains(ServerType.TSERVER)) {
+      azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.TSERVER));
+    }
+    return userIntentOverridesClone.allNull() ? null : userIntentOverridesClone;
+  }
+
+  private static DeviceInfo fetchDeviceInfo(String overrides, ServerType serverType) {
+    if (StringUtils.isBlank(overrides)) {
+      return null;
+    }
+    Map<String, Object> overridesMap = HelmUtils.convertYamlToMap(overrides);
+    return extractStorageProperty(
+        overridesMap, serverType == ServerType.TSERVER ? "tserver" : "master");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static DeviceInfo extractStorageProperty(
+      Map<String, Object> overridesMap, String serverType) {
+    if (overridesMap == null || overridesMap.isEmpty()) {
+      return null;
+    }
+
+    Object storageObj = overridesMap.get("storage");
+    if (storageObj == null || !(storageObj instanceof Map)) {
+      return null;
+    }
+
+    Map<String, Object> storageMap = (Map<String, Object>) storageObj;
+    Object componentObj = storageMap.get(serverType);
+    if (componentObj == null || !(componentObj instanceof Map)) {
+      return null;
+    }
+    DeviceInfo deviceInfo = new DeviceInfo();
+
+    Map<String, Object> componentMap = (Map<String, Object>) componentObj;
+    // storageClass
+    Object storageClassObj = componentMap.get("storageClass");
+    if (storageClassObj != null) {
+      deviceInfo.storageClass = storageClassObj.toString();
+    }
+    // count
+    Object countObj = componentMap.get("count");
+    if (countObj != null) {
+      deviceInfo.numVolumes = Integer.parseInt(countObj.toString());
+    }
+    // size
+    Object sizeObj = componentMap.get("size");
+    if (sizeObj != null) {
+      String sizeStr = sizeObj.toString();
+      // Remove "Gi" suffix if present
+      if (sizeStr.endsWith("Gi")) {
+        sizeStr = sizeStr.substring(0, sizeStr.length() - 2);
+      }
+      try {
+        deviceInfo.volumeSize = Integer.parseInt(sizeStr.trim());
+      } catch (NumberFormatException e) {
+        log.warn("Could not parse volume size: {}", sizeStr);
+      }
+    }
+    return deviceInfo;
+  }
+
+  public static boolean needsFullMove(Cluster currCluster, Cluster newCluster) {
+    Set<UUID> curClusterAZUUIDs = currCluster.placementInfo.getAllAZUUIDs();
+    Iterator<PlacementAZ> azIter = newCluster.placementInfo.azStream().iterator();
+    while (azIter.hasNext()) {
+      PlacementAZ az = azIter.next();
+      if (!curClusterAZUUIDs.contains(az.uuid)) {
+        continue;
+      }
+      DeviceInfo oldDeviceInfo, newDeviceInfo;
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

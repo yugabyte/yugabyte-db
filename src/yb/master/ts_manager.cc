@@ -90,13 +90,13 @@ bool HasSameHostPort(
 // Returns a function to determine whether a registered ts matches the host port of the registering
 // ts.
 std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
-    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info);
+    const TSRegistrationPB& registration, const CloudInfoPB& local_master_cloud_info);
 
 class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
  public:
   explicit TSDescriptorLoader(
-      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache) noexcept
-      : local_cloud_info_(local_cloud_info),
+      const CloudInfoPB& local_master_cloud_info, rpc::ProxyCache* proxy_cache) noexcept
+      : local_master_cloud_info_(local_master_cloud_info),
         proxy_cache_(proxy_cache),
         load_time_(MonoTime::Now()) {}
 
@@ -107,7 +107,7 @@ class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
 
  private:
   TSDescriptorMap map_;
-  const CloudInfoPB& local_cloud_info_;
+  const CloudInfoPB& local_master_cloud_info_;
   rpc::ProxyCache* proxy_cache_;
   MonoTime load_time_;
 };
@@ -168,11 +168,11 @@ std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
 
 Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutationData(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache,
+    CloudInfoPB&& local_master_cloud_info, rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   TSManager::RegistrationMutationData reg_data;
   {
-    auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
+    auto hostport_checker = GetHostPortCheckerFunction(registration, local_master_cloud_info);
     SharedLock<decltype(map_lock_)> map_l(map_lock_);
     const std::string& uuid = instance.permanent_uuid();
 
@@ -190,7 +190,7 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
           // to the registry.
           std::tie(reg_data.desc, reg_data.registered_desc_lock) =
               VERIFY_RESULT(TSDescriptor::CreateNew(
-                  instance, registration, std::move(local_cloud_info), proxy_cache,
+                  instance, registration, std::move(local_master_cloud_info), proxy_cache,
                   registered_through_heartbeat));
           reg_data.insert_into_map = true;
         }
@@ -222,11 +222,12 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
 
 Status TSManager::RegisterFromRaftConfig(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_master_cloud_info, const LeaderEpoch& epoch,
+    rpc::ProxyCache* proxy_cache) {
   // todo(zdrudi): what happens if the registration through raft config is blocked because of a host
   // port collision? add a test.
   VERIFY_RESULT(RegisterInternal(
-      instance, registration, {}, std::move(local_cloud_info), epoch, proxy_cache));
+      instance, registration, {}, std::move(local_master_cloud_info), epoch, proxy_cache));
   return Status::OK();
 }
 
@@ -242,22 +243,23 @@ Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
 
 Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
-    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_master_cloud_info, rpc::ProxyCache* proxy_cache) {
   return RegisterInternal(
       heartbeat_request.common().ts_instance(), heartbeat_request.registration(),
-      std::cref(heartbeat_request), std::move(local_cloud_info), epoch, proxy_cache);
+      std::cref(heartbeat_request), std::move(local_master_cloud_info), epoch, proxy_cache);
 }
 
 Result<TSDescriptorPtr> TSManager::RegisterInternal(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
-    CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_master_cloud_info, const LeaderEpoch& epoch,
+    rpc::ProxyCache* proxy_cache) {
   TSCountCallback callback;
   TSDescriptorPtr ts_desc = nullptr;
   {
     MutexLock l(registration_lock_);
     auto reg_data = VERIFY_RESULT(ComputeRegistrationMutationData(
-        instance, registration, std::move(local_cloud_info), proxy_cache,
+        instance, registration, std::move(local_master_cloud_info), proxy_cache,
         RegisteredThroughHeartbeat(request.has_value())));
     if (request.has_value()) {
       RETURN_NOT_OK(reg_data.desc->UpdateFromHeartbeat(*request, reg_data.registered_desc_lock));
@@ -430,7 +432,7 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
 
 Status TSManager::RunLoader(
     const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
-  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
   }
   auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache);
@@ -491,7 +493,7 @@ Status TSManager::RemoveTabletServer(
   // Update the TS to REMOVED to signal to code that still has a copy of the shared pointer that
   // this TS has been removed from the universe.
   write_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::REMOVED);
-  if (GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (FLAGS_persist_tserver_registry) {
     auto status = sys_catalog_.Delete(epoch, desc);
     WARN_NOT_OK(status, Format("Failed to remove tablet server $0 from sys catalog", desc->id()));
     RETURN_NOT_OK(status);
@@ -574,17 +576,18 @@ bool HasSameHostPort(
 }
 
 std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
-    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info) {
+    const TSRegistrationPB& registration, const CloudInfoPB& local_master_cloud_info) {
   // This pivots on a runtime flag so we cannot return a static function.
-  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))) {
+  if (PREDICT_TRUE(FLAGS_master_register_ts_check_desired_host_port)) {
     // When desired host-port check is enabled, we do the following checks:
     // 1. For master, the host-port for existing and registering tservers are different.
     // 2. The existing and registering tservers have distinct host-port from each others
     // perspective.
     return
-        [&registration, &local_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
+        [&registration,
+         &local_master_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
           auto cloud_info_perspectives = {
-              local_cloud_info,                       // master's perspective
+              local_master_cloud_info,                // master's perspective
               existing_ts_registration.cloud_info(),  // existing ts' perspective
               registration.common().cloud_info()};    // registering ts' perspective
           return HasSameHostPort(
@@ -611,7 +614,7 @@ Status TSDescriptorLoader::Visit(const std::string& id, const SysTabletServerEnt
   DCHECK(metadata.persisted())
       << "All TS descriptors written to the sys catalog should have their persisted bit set.";
   auto desc = TSDescriptor::LoadFromEntry(
-      id, metadata, CloudInfoPB(local_cloud_info_), proxy_cache_, load_time_);
+      id, metadata, CloudInfoPB(local_master_cloud_info_), proxy_cache_, load_time_);
   auto [it, inserted] = map_.insert({id, std::move(desc)});
   if (!inserted) {
     return STATUS(
@@ -658,7 +661,7 @@ void SetPersisted(const Item& item, Items&&... items) {
 
 template <typename... Items>
 Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, Items&&... items) {
-  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
   }
   SetPersisted(items...);

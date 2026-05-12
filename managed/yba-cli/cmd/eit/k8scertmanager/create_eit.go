@@ -5,8 +5,6 @@
 package k8scertmanager
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -40,7 +38,7 @@ var createK8sCertManagerEITCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(rootCertFilePath)) == 0 {
+		if util.IsEmptyString(rootCertFilePath) {
 			logrus.Fatalf(
 				formatter.Colorize("Missing root certificate file path\n", formatter.RedColor),
 			)

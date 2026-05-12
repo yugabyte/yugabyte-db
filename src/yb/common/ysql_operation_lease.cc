@@ -25,8 +25,8 @@ DEFINE_RUNTIME_bool(enable_ysql_operation_lease, true, "Enables the ysql client 
 namespace yb {
 
 bool IsYsqlLeaseEnabled() {
-  return GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks) ||
-         GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
+  return FLAGS_enable_object_locking_for_table_locks ||
+         FLAGS_enable_ysql_operation_lease;
 }
 
 }  // namespace yb

@@ -138,7 +138,7 @@ public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
   static final String BOOT_SCRIPT_COMPLETE =
-      "\nsync\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
+      "\nsync\necho -n " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -156,24 +156,13 @@ public class NodeManager extends DevopsBase {
 
   public static final String YUGABYTE_USER = "yugabyte";
 
-  static final String ANSIBLE_STRATEGY = "yb.ansible.strategy";
-  static final String ANSIBLE_TIMEOUT = "yb.ansible.conn_timeout_secs";
-  static final String ANSIBLE_VERBOSITY = "yb.ansible.verbosity";
-  static final String ANSIBLE_DEBUG = "yb.ansible.debug";
-  static final String ANSIBLE_DIFF_ALWAYS = "yb.ansible.diff_always";
-  static final String ANSIBLE_LOCAL_TEMP = "yb.ansible.local_temp";
-
   @Inject Config appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject RuntimeConfGetter confGetter;
-
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
-
-  @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
 
@@ -244,6 +233,20 @@ public class NodeManager extends DevopsBase {
   public UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
+      // Use the placementUuid from the task params if available to find the correct cluster.
+      // This is important for nodes not yet in the universe (e.g. ToBeAdded read replica nodes),
+      // where falling back to an arbitrary node could resolve to the wrong cluster's userIntent.
+      if (nodeTaskParam.placementUuid != null) {
+        Cluster cluster =
+            universe.getUniverseDetails().getClusterByUuid(nodeTaskParam.placementUuid);
+        if (cluster != null) {
+          log.info(
+              "Node {} not found, using placementUuid {} to resolve cluster.",
+              nodeTaskParam.nodeName,
+              nodeTaskParam.placementUuid);
+          return cluster.userIntent;
+        }
+      }
       Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
       if (!nodeIter.hasNext()) {
         throw new RuntimeException("No node is found in universe " + universe.getName());
@@ -290,13 +293,6 @@ public class NodeManager extends DevopsBase {
       }
       command.add("--node_metadata");
       command.add(detailsJson.toString());
-    }
-    // Add systemd debugging for any systemctl service management commands.
-    if (confGetter.getGlobalConf(GlobalConfKeys.enableSystemdDebugLogging)) {
-      command.add("--systemd_debug");
-    }
-    if (confGetter.getGlobalConf(GlobalConfKeys.ansibleKeepRemoteFiles)) {
-      command.add("--ansible_keep_remote_files");
     }
     return command;
   }
@@ -399,13 +395,6 @@ public class NodeManager extends DevopsBase {
       String sshUserOverride,
       Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
-
-    if (keyInfo != null && keyInfo.vaultFile != null) {
-      subCommand.add("--vars_file");
-      subCommand.add(keyInfo.vaultFile);
-      subCommand.add("--vault_password_file");
-      subCommand.add(keyInfo.vaultPasswordFile);
-    }
     if (keyInfo != null && keyInfo.privateKey != null) {
       subCommand.add("--private_key_file");
       subCommand.add(keyInfo.privateKey);
@@ -481,10 +470,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add(effectiveSshUser);
     } else if (type == NodeCommandType.Manage_Otel_Collector) {
       boolean useSudo =
-          (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).installOtelCollector)
-              || (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).useSudo);
+          params instanceof ManageOtelCollector.Params
+              && ((ManageOtelCollector.Params) params).useSudo
+              && !provider.isManualOnprem();
       // Override the effective user for the non-sudo special case.
       String computedUser =
           type == NodeCommandType.Manage_Otel_Collector && !useSudo
@@ -1511,33 +1499,6 @@ public class NodeManager extends DevopsBase {
     return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
   }
 
-  private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
-    Map<String, String> envVars = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-
-    envVars.put(
-        "ANSIBLE_STRATEGY", confGetter.getConfForScope(universe, UniverseConfKeys.ansibleStrategy));
-    envVars.put(
-        "ANSIBLE_TIMEOUT",
-        Integer.toString(
-            confGetter.getConfForScope(universe, UniverseConfKeys.ansibleConnectionTimeoutSecs)));
-    envVars.put(
-        "ANSIBLE_VERBOSITY",
-        Integer.toString(confGetter.getConfForScope(universe, UniverseConfKeys.ansibleVerbosity)));
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDebug)) {
-      envVars.put("ANSIBLE_DEBUG", "True");
-    }
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDiffAlways)) {
-      envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
-    }
-    envVars.put(
-        "ANSIBLE_LOCAL_TEMP",
-        confGetter.getConfForScope(universe, UniverseConfKeys.ansibleLocalTemp));
-
-    log.trace("ansible env vars {}", envVars);
-    return envVars;
-  }
-
   private Map<String, String> getFaultInjectionEnvVars(Provider provider) {
     Map<String, String> envVars = new HashMap<>();
     String faultInjectedPaths =
@@ -1603,7 +1564,6 @@ public class NodeManager extends DevopsBase {
           // Assume node is using systemd if universe metadata does not exist.
           commandArgs.add("--systemd_services");
         }
-        addDefaultAnsibleEnvVars(ansibleEnvVars);
         customTimeout =
             confGetter.getGlobalConf(GlobalConfKeys.destroyServerCommandTimeout).getSeconds();
         break;
@@ -1619,17 +1579,13 @@ public class NodeManager extends DevopsBase {
 
     NodeInstanceData instanceData = nodeInstance.getDetails();
     if (StringUtils.isNotBlank(instanceData.ip)) {
-      getNodeAgentClient()
-          .maybeGetNodeAgent(instanceData.ip, provider, null /* universe */)
-          .ifPresent(
-              nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
-                commandArgs.add("--connection_type");
-                commandArgs.add("node_agent_rpc");
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-              });
+      if (provider.isManualOnprem()) {
+        commandArgs.add("--connection_type");
+        commandArgs.add("node_agent_rpc");
+        // Node agent must already be present and running for onprem manual (non-sudo).
+        NodeAgent nodeAgent = getNodeAgentClient().getAndUpgradeOrThrow(instanceData.ip);
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+      }
     }
     commandArgs.add(nodeTaskParam.getNodeName());
 
@@ -1650,23 +1606,6 @@ public class NodeManager extends DevopsBase {
             .redactedVals(redactedVals)
             .timeoutSecs(customTimeout)
             .build());
-  }
-
-  private void addDefaultAnsibleEnvVars(Map<String, String> ansibleEnvVars) {
-    ansibleEnvVars.put("ANSIBLE_STRATEGY", confGetter.getStaticConf().getString(ANSIBLE_STRATEGY));
-    ansibleEnvVars.put(
-        "ANSIBLE_TIMEOUT", Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_TIMEOUT)));
-    ansibleEnvVars.put(
-        "ANSIBLE_VERBOSITY",
-        Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_VERBOSITY)));
-    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DEBUG)) {
-      ansibleEnvVars.put("ANSIBLE_DEBUG", "True");
-    }
-    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DIFF_ALWAYS)) {
-      ansibleEnvVars.put("ANSIBLE_DIFF_ALWAYS", "True");
-    }
-    ansibleEnvVars.put(
-        "ANSIBLE_LOCAL_TEMP", confGetter.getStaticConf().getString(ANSIBLE_LOCAL_TEMP));
   }
 
   private Path addBootscript(
@@ -1745,6 +1684,10 @@ public class NodeManager extends DevopsBase {
       Map<String, String> redactedVals) {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+    if (!NodeAgentClient.isCloudTypeSupported(userIntent.providerType)) {
+      log.debug("Skipping node agent command args for {} provider", userIntent.providerType);
+      return;
+    }
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
@@ -1759,22 +1702,16 @@ public class NodeManager extends DevopsBase {
         nodeIp = nodeDetails.cloudInfo.private_ip;
       }
     }
-    if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isNotBlank(nodeIp)) {
+      // Calls hitting here may or may not have node agent. Java client calls already validate the
+      // presence of node agents.
       getNodeAgentClient()
-          .maybeGetNodeAgent(nodeIp, provider, universe)
+          .maybeGetAndUpgrade(nodeIp)
           .ifPresent(
               nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                if (getNodeAgentClient()
-                    .isAnsibleOffloadingEnabled(nodeAgent, provider, universe)) {
-                  commandArgs.add("--offload_ansible");
-                }
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
@@ -1867,7 +1804,6 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
-
         if (Common.CloudType.aws.equals(userIntent.providerType)) {
           commandArgs.add("--snapshot_creation_delay");
           commandArgs.add(
@@ -1905,10 +1841,10 @@ public class NodeManager extends DevopsBase {
             if (config.getBoolean("yb.cloud.enabled")) {
               // If low mem instance, configure small boot disk size.
               if (isLowMemInstanceType(taskParam.instanceType)) {
-                String lowMemBootDiskSizeGB = "8";
+                String lowMemBootDiskSizeGB = "12";
                 log.info(
-                    "Detected low memory instance type. "
-                        + "Setting up nodes using low boot disk size.");
+                    "Detected low memory instance type. Setting boot disk size to {}GB",
+                    lowMemBootDiskSizeGB);
                 commandArgs.add("--boot_disk_size_gb");
                 commandArgs.add(lowMemBootDiskSizeGB);
               }
@@ -2104,7 +2040,7 @@ public class NodeManager extends DevopsBase {
           }
 
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (!taskParam.remotePackagePath.isEmpty()) {
+            if (!StringUtils.isEmpty(taskParam.remotePackagePath)) {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
@@ -2135,7 +2071,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
 
@@ -2187,9 +2124,6 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
-          if (taskParam.skipDownloadSoftware) {
-            commandArgs.add("--skip_ansible_configure_playbook");
-          }
           UniverseDefinitionTaskParams.Cluster cluster =
               universe.getCluster(nodeTaskParam.placementUuid);
           Map<String, String> gflags =
@@ -2206,7 +2140,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
@@ -2630,7 +2565,8 @@ public class NodeManager extends DevopsBase {
               params.auditLogConfig,
               params.queryLogConfig,
               params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           if (params.useSudo) {
@@ -2688,10 +2624,7 @@ public class NodeManager extends DevopsBase {
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       Map<String, String> envVars =
-          ImmutableMap.<String, String>builder()
-              .putAll(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
-              .putAll(getFaultInjectionEnvVars(provider))
-              .build();
+          ImmutableMap.<String, String>builder().putAll(getFaultInjectionEnvVars(provider)).build();
       return execCommand(
           DevopsCommand.builder()
               .regionUUID(nodeTaskParam.getRegion().getUuid())
@@ -2949,17 +2882,11 @@ public class NodeManager extends DevopsBase {
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
     Integer sshPort = provider.getDetails().sshPort;
     String sshUser = params.sshUser;
-    String vaultPasswordFile = keyInfo.vaultPasswordFile;
-    String vaultFile = keyInfo.vaultFile;
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--ssh_user");
     commandArgs.add(sshUser);
     commandArgs.add("--custom_ssh_port");
     commandArgs.add(sshPort.toString());
-    commandArgs.add("--vault_password_file");
-    commandArgs.add(vaultPasswordFile);
-    commandArgs.add("--vars_file");
-    commandArgs.add(vaultFile);
     String privateKeyFilePath = keyInfo.privateKey;
     if (privateKeyFilePath != null) {
       commandArgs.add("--private_key_file");
@@ -2999,9 +2926,14 @@ public class NodeManager extends DevopsBase {
     if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
       return;
     }
-    if ((auditLogConfig != null && !OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-        && (queryLogConfig != null
-            && !OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))) {
+    // Check if any config exists and is enabled. If none are enabled, return early.
+    boolean anyConfigEnabled =
+        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
+            || (queryLogConfig != null
+                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
+            || (metricsExportConfig != null
+                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
+    if (!anyConfigEnabled) {
       return;
     }
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
@@ -3018,11 +2950,6 @@ public class NodeManager extends DevopsBase {
       // Get the node agent for the node if its present.
       Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
       NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
-      NodeAgent nodeAgent =
-          getNodeAgentClient()
-              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
-              .orElse(null);
-
       int otelColMaxMemory =
           confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
       if (otelColMaxMemory > 0) {
@@ -3041,7 +2968,7 @@ public class NodeManager extends DevopsBase {
                   metricsExportConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams),
-                  nodeAgent)
+                  NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
 
@@ -3102,12 +3029,12 @@ public class NodeManager extends DevopsBase {
       case GCP_CLOUD_MONITORING -> {
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
           Path path =
               fileHelperService.createTempFile(
                   "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
           String filePath = path.toAbsolutePath().toString();
-          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getGcmCredentials());
           commandArgs.add("--otel_col_gcp_creds_file");
           commandArgs.add(filePath);
         }

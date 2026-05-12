@@ -26,7 +26,7 @@ func CreateEARValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -38,15 +38,17 @@ func CreateEARValidation(cmd *cobra.Command) {
 // WaitForCreateEARTask is a util task for create ear
 func WaitForCreateEARTask(
 	authAPI *ybaAuthClient.AuthAPIClient,
-	earName string, rTask ybaclient.YBPTask, earCode string) {
+	earName string, rTask *ybaclient.YBPTask, earCode string) {
 
 	var err error
+
+	util.CheckTaskAfterCreation(rTask)
 
 	taskUUID := rTask.GetTaskUUID()
 	earUUID := rTask.GetResourceUUID()
 
 	earNameMessage := formatter.Colorize(earName, formatter.GreenColor)
-	if len(strings.TrimSpace(earUUID)) != 0 {
+	if !util.IsEmptyString(earUUID) {
 		earNameMessage = fmt.Sprintf("%s (%s)", earNameMessage, earUUID)
 	}
 
@@ -89,7 +91,7 @@ func WaitForCreateEARTask(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }
 

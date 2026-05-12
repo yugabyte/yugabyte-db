@@ -38,7 +38,8 @@ static Datum BsonUnwindArray(PG_FUNCTION_ARGS, Tuplestorestate *tupleState,
 							 char *path, char *indexFieldName, bool
 							 preserveNullAndEmpty);
 static bool DistinctContinueProcessIntermediateArray(void *state, const
-													 bson_value_t *value);
+													 bson_value_t *value, bool
+													 isArrayIndexSearch);
 static void DistinctSetTraverseResult(void *state, TraverseBsonResult result);
 static bool DistinctVisitArrayField(pgbsonelement *element, const
 									StringView *traversePath, int
@@ -112,7 +113,7 @@ bson_dollar_unwind_with_options(PG_FUNCTION_ARGS)
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg(
-								"unrecognized option to unwind stage")));
+								"option not recognized during unwind stage")));
 		}
 	}
 
@@ -176,6 +177,8 @@ bson_distinct_unwind(PG_FUNCTION_ARGS)
 		.VisitArrayField = DistinctVisitArrayField,
 		.VisitTopLevelField = DistinctVisitTopLevelField,
 		.SetIntermediateArrayIndex = NULL,
+		.HandleIntermediateArrayPathNotFound = NULL,
+		.SetIntermediateArrayStartEnd = NULL,
 	};
 
 	DistinctTraverseState traverseState =
@@ -274,7 +277,7 @@ BsonUnwindArray(PG_FUNCTION_ARGS, Tuplestorestate *tupleStore, TupleDesc *tupleD
 	bson_iter_t documentIterator;
 	if (!PgbsonInitIteratorAtPath(document, path, &documentIterator))
 	{
-		/* No field was found, mongo returns no results on this document */
+		/* No field was found, return no results on this document */
 		if (preserveNullAndEmpty)
 		{
 			/* undefined elements are preserved */
@@ -512,9 +515,11 @@ BsonUnwindEmptyArray(pgbson *document, char *path, char *indexFieldName)
 	bool forceProjectId = true;
 	bool allowInclusionExclusion = true;
 
+	pgbson *variableSpec = NULL;
 	const BsonProjectionQueryState *projectionState =
 		GetProjectionStateForBsonProject(&projectSpec,
-										 forceProjectId, allowInclusionExclusion);
+										 forceProjectId, allowInclusionExclusion,
+										 variableSpec);
 	return ProjectDocumentWithState(document, projectionState);
 }
 
@@ -524,7 +529,8 @@ BsonUnwindEmptyArray(pgbson *document, char *path, char *indexFieldName)
  * Always true for distinct.
  */
 static bool
-DistinctContinueProcessIntermediateArray(void *state, const bson_value_t *value)
+DistinctContinueProcessIntermediateArray(void *state, const bson_value_t *value,
+										 bool isArrayIndexSearch)
 {
 	return true;
 }

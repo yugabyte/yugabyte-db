@@ -76,18 +76,17 @@ struct MutableTabletOptions {
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kBackground)(kBackfill)(kInsert));
-YB_DEFINE_ENUM(VectorIndexPriorityThreadPoolType, (kCompaction));
 
 using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
-using VectorIndexPriorityThreadPoolProvider =
-    std::function<PriorityThreadPool*(VectorIndexPriorityThreadPoolType)>;
+using VectorIndexCompactionTokenProvider = std::function<PriorityThreadPoolTokenPtr()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> parent_mem_tracker;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_builder_mem_tracker;
   std::shared_ptr<MemTracker> read_wal_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;
@@ -114,7 +113,7 @@ struct TabletInitData {
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
-  VectorIndexPriorityThreadPoolProvider vector_index_priority_thread_pool_provider = {};
+  VectorIndexCompactionTokenProvider vector_index_compaction_token_provider = {};
   hnsw::BlockCachePtr vector_index_block_cache = {};
 };
 

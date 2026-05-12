@@ -771,6 +771,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	int			numIndices;
 	RelationPtr relationDescs;
 	IndexInfo **indexInfoArray;
+	MemoryContext oldContext;
 	ExprContext *econtext;
 	TupleTableSlot *deleteSlot;
 	List	   *insertIndexes = NIL;	/* A list of indexes whose tuples need
@@ -811,6 +812,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
 		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
+		bool		hasExpressionOrPredicateIndex = false;
 
 		/*
 		 * For an update command check if we need to skip index.
@@ -834,19 +836,6 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		indexInfo = indexInfoArray[i];
 
 		/*
-		 * If the index is not yet ready for insert we shouldn't attempt to
-		 * add new entries, but should delete the old entry from a live index,
-		 * because newer transaction may have seen it ready, and inserted the
-		 * record into the index.
-		 */
-		if (!indexInfo->ii_ReadyForInserts)
-		{
-			if (indexRelation->rd_index->indislive)
-				deleteIndexes = lappend_int(deleteIndexes, i);
-			continue;
-		}
-
-		/*
 		 * Check for partial index -
 		 * There are four different update scenarios for an index with a predicate:
 		 * 1. Both the old and new tuples satisfy the predicate - In this case, the index tuple
@@ -868,12 +857,14 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			/*
 			 * If predicate state not set up yet, create it (in the estate's
 			 * per-query context)
+			 * If the partial index is being built or backfilled, validate that it is at the stage
+			 * where it accepts deletes and inserts.
 			 */
 			econtext->ecxt_scantuple = deleteSlot;
-			deleteApplicable = ExecQual(predicate, econtext);
+			deleteApplicable = ExecQual(predicate, econtext) && indexRelation->rd_index->indislive;
 
 			econtext->ecxt_scantuple = slot;
-			insertApplicable = ExecQual(predicate, econtext);
+			insertApplicable = ExecQual(predicate, econtext) && indexRelation->rd_index->indisready;
 
 			if (deleteApplicable != insertApplicable)
 			{
@@ -899,12 +890,33 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 				continue;
 			}
 
+			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indpred, offset))
 			{
 				deleteIndexes = lappend_int(deleteIndexes, i);
 				insertIndexes = lappend_int(insertIndexes, i);
-				continue;
+				hasExpressionOrPredicateIndex = true;
 			}
+
+			MemoryContextSwitchTo(oldContext);
+			if (hasExpressionOrPredicateIndex)
+				continue;
+		}
+
+		/*
+		 * YB: Disable in-place updates for invalid indexes. Fallback to using
+		 * DELETE + (re-)INSERT of the index row.
+		 */
+		if (!indexRelation->rd_index->indisvalid)
+		{
+			if (indexRelation->rd_index->indislive) /* YB */
+				deleteIndexes = lappend_int(deleteIndexes, i);
+			if (indexRelation->rd_index->indisready)
+			{
+				Assert(indexInfo->ii_ReadyForInserts);
+				insertIndexes = lappend_int(insertIndexes, i);
+			}
+			continue;
 		}
 
 		/*
@@ -920,12 +932,16 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		 */
 		if (indexInfo->ii_Expressions != NIL)
 		{
+			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indexprs, offset))
 			{
 				deleteIndexes = lappend_int(deleteIndexes, i);
 				insertIndexes = lappend_int(insertIndexes, i);
-				continue;
+				hasExpressionOrPredicateIndex = true;
 			}
+			MemoryContextSwitchTo(oldContext);
+			if (hasExpressionOrPredicateIndex)
+				continue;
 		}
 
 		if (!(is_inplace_update_enabled &&
@@ -1041,6 +1057,10 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 
 	/* Drop the temporary slots */
 	ExecDropSingleTupleTableSlot(deleteSlot);
+
+	/* Drop the indexes marked for deletion and insertion */
+	list_free(deleteIndexes);
+	list_free(insertIndexes);
 
 	return result;
 }
@@ -2022,12 +2042,21 @@ yb_fetch_conflicting_index_rowids(Relation heap,
 								  EState *estate,
 								  YbInsertOnConflictBatchState *yb_ioc_state)
 {
-	IndexScanDesc index_only_scan = index_beginscan(heap, index, estate->es_snapshot, 1, 0);
+	/*
+	 * The number of scan keys depends on which mode this function is invoked in.
+	 *  - For batched INSERT ... ON CONFLICT, we will always have exactly one scan key.
+	 *    Indexes with one key column use SAOP, while indexes with multiple key columns
+	 *    use row array comparison. See note in yb_batch_fetch_conflicting_rows.
+	 *  - For non-batched INSERT ... ON CONFLICT, the number of scan keys will always
+	 *    be equal to the number of key columns in the index.
+	 */
+	int nkeys = yb_ioc_state ? 1 : IndexRelationGetNumberOfKeyAttributes(index);
+	IndexScanDesc index_only_scan = index_beginscan(heap, index, estate->es_snapshot, nkeys, 0);
 	ItemPointer tid;
 	bool row_found = false;
 
 	index_only_scan->xs_want_itup = true;
-	index_rescan(index_only_scan, scan_key, 1, NULL, 0);
+	index_rescan(index_only_scan, scan_key, nkeys, NULL, 0);
 
 	while ((tid = index_getnext_tid(index_only_scan, NoMovementScanDirection)) != NULL)
 	{

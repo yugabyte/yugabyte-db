@@ -5,7 +5,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { CLIENT_TO_NODE_ENCRYPT_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface ClientToNodeTLSFieldProps {
   disabled: boolean;

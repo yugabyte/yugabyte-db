@@ -15,18 +15,35 @@ import (
 	"strings"
 )
 
-const (
-	SystemdUnitPath       = ".config/systemd/user"
-	ServerTemplateSubpath = "server/"
-)
-
-var SystemdUnits = []string{
+// EnabledSystemdUnits lists the systemd units to be enabled by default.
+var EnabledSystemdUnits = []string{
 	"yb-zip_purge_yb_logs.service",
 	"yb-clean_cores.service",
 	"yb-collect_metrics.service",
 	"yb-zip_purge_yb_logs.timer",
 	"yb-clean_cores.timer",
 	"yb-collect_metrics.timer",
+}
+
+// ScriptFilesToCopy lists the files to be copied for server configuration.
+var ScriptFilesToCopy = []struct {
+	Src  string
+	Dest string
+}{
+	{"yb-server-ctl.sh.j2", "bin/yb-server-ctl.sh"},
+	{"clock-sync.sh.j2", "bin/clock-sync.sh"},
+	{"clean_cores.sh.j2", "bin/clean_cores.sh"},
+	{"zip_purge_yb_logs.sh.j2", "bin/zip_purge_yb_logs.sh"},
+	{"collect_metrics_wrapper.sh.j2", "bin/collect_metrics_wrapper.sh"},
+}
+
+// CgroupScriptFilesToCopy lists additional scripts installed only when configure_cgroup is enabled.
+var CgroupScriptFilesToCopy = []struct {
+	Src  string
+	Dest string
+}{
+	{"yb-tserver-cgroup-exec.sh.j2", "bin/yb-tserver-cgroup-exec.sh"},
+	{"check_cpu_cgroup.sh.j2", "bin/check_cpu_cgroup.sh"},
 }
 
 type ConfigureServerHandler struct {
@@ -164,7 +181,7 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 }
 
 func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) error {
-	for _, unit := range SystemdUnits {
+	for _, unit := range EnabledSystemdUnits {
 		err := module.EnableSystemdService(ctx, h.username, unit, h.logOut)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
@@ -179,33 +196,39 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 			}
 		}
 	}
-
-	info, err := helpers.GetOSInfo()
+	enabled, err := module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return err
 	}
-
-	unitDir := "/lib/systemd/system"
-	if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
-		unitDir = "/usr/lib/systemd/system"
+	if enabled {
+		info, err := helpers.GetOSInfo()
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
+			return err
+		}
+		unitDir := "/lib/systemd/system"
+		if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
+			unitDir = "/usr/lib/systemd/system"
+		}
+		// Link network-online.target if required
+		linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
+		h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
+		_, err = module.RunShellCmdWithRetry(
+			ctx,
+			module.SystemdBackOff,
+			h.username,
+			"LinkNetworkOnlineTarget",
+			linkCmd,
+			h.logOut,
+		)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
+			return err
+		}
 	}
 
-	// Link network-online.target if required
-	linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
-	h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
-	_, err = module.RunShellCmdWithRetry(
-		ctx,
-		module.SystemdBackOff,
-		h.username,
-		"LinkNetworkOnlineTarget",
-		linkCmd,
-		h.logOut,
-	)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
-		return err
-	}
 	return nil
 }
 
@@ -221,73 +244,49 @@ func (h *ConfigureServerHandler) setupServerScript(
 		"yb_home_dir":       home,
 		"num_cores_to_keep": h.param.GetNumCoresToKeep(),
 		"yb_metrics_dir":    yb_metrics_dir,
+		"configure_cgroup":  h.param.GetConfigureCgroup(),
 	}
 
-	// Copy yb-server-ctl.sh script.
-	err := module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "yb-server-ctl.sh.j2"),
-		filepath.Join(home, "bin", "yb-server-ctl.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
+	for _, fileInfo := range ScriptFilesToCopy {
+		_, err := module.CopyFile(
+			ctx,
+			serverScriptContext,
+			filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),
+			filepath.Join(home, fileInfo.Dest),
+			fs.FileMode(0755),
+			h.username,
+		)
+		if err != nil {
+			return err
+		}
 	}
-
-	// Copy clock-sync.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "clock-sync.sh.j2"),
-		filepath.Join(home, "bin", "clock-sync.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
+	if h.param.GetConfigureCgroup() {
+		for _, fileInfo := range CgroupScriptFilesToCopy {
+			_, err := module.CopyFile(
+				ctx,
+				serverScriptContext,
+				filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),
+				filepath.Join(home, fileInfo.Dest),
+				fs.FileMode(0755),
+				h.username,
+			)
+			if err != nil {
+				return err
+			}
+		}
 	}
-
-	// Copy clean_cores.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "clean_cores.sh.j2"),
-		filepath.Join(home, "bin", "clean_cores.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
+	for _, process := range h.param.GetProcesses() {
+		err := module.UpdateUserSystemdUnits(
+			ctx,
+			h.username,
+			process,
+			serverScriptContext,
+			h.logOut,
+		)
+		if err != nil {
+			return err
+		}
 	}
-
-	// Copy zip_purge_yb_logs.sh.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "zip_purge_yb_logs.sh.j2"),
-		filepath.Join(home, "bin", "zip_purge_yb_logs.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Copy collect_metrics_wrapper.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "collect_metrics_wrapper.sh.j2"),
-		filepath.Join(home, "bin", "collect_metrics_wrapper.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

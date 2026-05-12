@@ -15,6 +15,8 @@
 
 #include "yb/hnsw/types.h"
 
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/util/env.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/mem_tracker.h"
@@ -24,6 +26,7 @@ namespace yb::hnsw {
 class FileBlockCacheBuilder {
  public:
   void Add(DataBlock&& block) {
+    DCHECK_GT(block.size, 0);
     blocks_.push_back(std::move(block));
   }
 
@@ -37,7 +40,6 @@ class FileBlockCacheBuilder {
   std::vector<DataBlock> blocks_;
 };
 
-class BlockCacheShard;
 struct CachedBlock;
 
 struct BlockCacheMetrics {
@@ -49,6 +51,8 @@ struct BlockCacheMetrics {
   CounterPtr add;
   CounterPtr evict;
   CounterPtr remove;
+  EventStatsPtr read_us;
+  EventStatsPtr take_wait_us;
 };
 
 class FileBlockCache {
@@ -76,14 +80,31 @@ class FileBlockCache {
   size_t size_ = 0;
 };
 
+class BlockCacheHandle {
+ public:
+  BlockCacheHandle() = default;
+
+  bool operator!() const {
+    return handle_ == nullptr;
+  }
+
+  explicit operator bool() const {
+    return handle_ != nullptr;
+  }
+
+ private:
+  explicit BlockCacheHandle(void* handle) : handle_(handle) {}
+
+  friend class BlockCache;
+  void* handle_ = nullptr;
+};
+
 class BlockCache {
  public:
   BlockCache(
       Env& env, const MemTrackerPtr& mem_tracker, const MetricEntityPtr& metric_entity,
-      size_t capacity, size_t num_shard_bits);
+      rocksdb::Cache& block_cache);
   ~BlockCache();
-
-  BlockCacheShard& NextShard();
 
   Env& env() const {
     return env_;
@@ -93,17 +114,25 @@ class BlockCache {
     return mem_tracker_;
   }
 
+  const MemTrackerPtr& metadata_mem_tracker() const {
+    return metadata_mem_tracker_;
+  }
+
   BlockCacheMetrics& metrics() const {
     return *metrics_;
   }
 
+  BlockCacheHandle Insert(CachedBlock& block, bool retain);
+  BlockCacheHandle Lookup(CachedBlock& block);
+  void Erase(CachedBlock& block);
+  void Release(BlockCacheHandle handle);
+
  private:
   Env& env_;
   const MemTrackerPtr mem_tracker_;
+  const MemTrackerPtr metadata_mem_tracker_;
   std::unique_ptr<BlockCacheMetrics> metrics_;
-  const size_t shards_mask_;
-  std::atomic<size_t> next_shard_ = 0;
-  std::unique_ptr<BlockCacheShard[]> shards_;
+  rocksdb::Cache& block_cache_;
 };
 
 Status WriteFooter();

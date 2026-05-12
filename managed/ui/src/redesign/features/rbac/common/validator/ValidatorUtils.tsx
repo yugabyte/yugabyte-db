@@ -10,7 +10,7 @@
 import { Typography } from '@material-ui/core';
 import { ErrorBoundary } from './ErrorBoundary';
 import { CSSProperties } from 'react';
-import { ReactComponent as LockIcon } from '../../../../assets/lock.svg';
+import LockIcon from '../../../../assets/lock.svg';
 import { ButtonDisabledPopover } from './ButtonDisabledPopover';
 
 export const RBAC_ERR_MSG_NO_PERM = (

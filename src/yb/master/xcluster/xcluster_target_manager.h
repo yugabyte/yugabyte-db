@@ -37,6 +37,8 @@ struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
  public:
+  friend class XClusterFailoverTask;
+
   // XCluster Safe Time.
   void CreateXClusterSafeTimeTableAndStartService();
 
@@ -55,6 +57,11 @@ class XClusterTargetManager {
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
       const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const;
+
+  Status XClusterFailover(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const LeaderEpoch& epoch,
+      ThreadPool* background_tasks_thread_pool);
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
@@ -102,6 +109,8 @@ class XClusterTargetManager {
   // our replication group that needs to be lazily cleaned up.
   Status RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch)
       EXCLUDES(table_stream_ids_map_mutex_);
+
+  Status CleanupStaleFailovers(const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
@@ -214,7 +223,12 @@ class XClusterTargetManager {
 
   Status InsertPackedSchemaForXClusterTarget(
       const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-      uint32_t current_schema_version, const LeaderEpoch& epoch);
+      uint32_t current_schema_version, const LeaderEpoch& epoch,
+      bool error_on_incorrect_schema_version = false);
+
+  Status HandleNewSchemaForAutomaticXClusterTarget(
+      const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+      HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, const LeaderEpoch& epoch);
 
   Status InsertHistoricalColocatedSchemaPacking(
       const InsertHistoricalColocatedSchemaPackingRequestPB* req,
@@ -248,6 +262,13 @@ class XClusterTargetManager {
       const std::vector<TableId>& index_table_ids, const TableId& indexed_table,
       const LeaderEpoch& epoch) const;
 
+  // In automatic mode this is used to handle the case when we receive a new schema for a
+  // colocated table that does not exist yet on the target.
+  Status HandleNewTableSchemaForUpcomingColocatedTable(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id, ColocationId colocation_id,
+      uint32_t producer_schema_version, const SchemaPB& schema, const LeaderEpoch& epoch);
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -255,6 +276,10 @@ class XClusterTargetManager {
   std::unique_ptr<XClusterSafeTimeService> safe_time_service_;
 
   bool removed_deleted_tables_from_replication_ = false;
+
+  // Replication groups that had a failover in progress on a previous master leader.
+  // Captured during SysCatalogLoaded and marked as Aborted in RunBgTasks.
+  std::vector<xcluster::ReplicationGroupId> stale_failover_replication_groups_;
 
   // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
   // service out of master at a later time.

@@ -10,10 +10,12 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.times;
@@ -24,9 +26,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.Release;
+import com.yugabyte.yw.models.ReleaseArtifact;
+import com.yugabyte.yw.models.ReleaseLocalFile;
+import com.yugabyte.yw.models.Universe;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -36,6 +43,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -913,5 +921,160 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     List<HashMap> capturedReleases = releaseMap.getAllValues();
     assertReleases(expectedMap, capturedReleases.get(1));
+  }
+
+  @Test
+  public void testGetLocalReleasePathStringForArchitecture() throws IOException {
+    // Remote URL returns empty.
+    Release release1 = Release.create("1.0.0-b1", "LTS");
+    release1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            "https://example.com/pkg.tgz"));
+    ReleaseContainer container1 =
+        new ReleaseContainer(release1, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertTrue(container1.getLocalReleasePathStringForArchitecture(Architecture.aarch64).isEmpty());
+
+    // Local file exists returns path.
+    String localPath =
+        createTempFile(TMP_STORAGE_PATH, "yugabyte-1.0.0-el8-aarch64.tar.gz", "data");
+    Release release2 = Release.create("1.0.0-b2", "LTS");
+    release2.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(localPath).getFileUUID()));
+    ReleaseContainer container2 =
+        new ReleaseContainer(release2, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    Optional<String> path2 =
+        container2.getLocalReleasePathStringForArchitecture(Architecture.aarch64);
+    assertTrue(path2.isPresent());
+    assertEquals(localPath, path2.get());
+
+    // No artifact for arch throws.
+    Release release3 = Release.create("1.0.0-b3", "LTS");
+    release3.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.x86_64,
+            "https://x86.example.com/pkg.tgz"));
+    ReleaseContainer container3 =
+        new ReleaseContainer(release3, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    try {
+      container3.getLocalReleasePathStringForArchitecture(Architecture.aarch64);
+      fail("Expected RuntimeException");
+    } catch (RuntimeException e) {
+      // expected
+    }
+
+    // Local file missing throws.
+    String missingPath = "/nonexistent/yugabyte-1.0.0-el8-aarch64.tar.gz";
+    Release release4 = Release.create("1.0.0-b4", "LTS");
+    release4.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(missingPath).getFileUUID()));
+    ReleaseContainer container4 =
+        new ReleaseContainer(release4, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    try {
+      container4.getLocalReleasePathStringForArchitecture(Architecture.aarch64);
+      fail("Expected RuntimeException");
+    } catch (RuntimeException e) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testValidateLocalFilepath() throws IOException {
+    // Release null returns false.
+    Universe universe = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    universe.getUniverseDetails().arch = Architecture.aarch64;
+    assertFalse(UniverseTaskBase.validateLocalFilepath(universe, null));
+
+    // Arch set, remote artifact returns true.
+    Release release1 = Release.create("1.0.0-b5", "LTS");
+    release1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            "https://example.com/pkg.tgz"));
+    ReleaseContainer container1 =
+        new ReleaseContainer(release1, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertTrue(UniverseTaskBase.validateLocalFilepath(universe, container1));
+
+    // Arch set, local file exists returns true.
+    String localPath =
+        createTempFile(TMP_STORAGE_PATH, "yugabyte-1.0.0-el8-aarch64.tar.gz", "data");
+    Release release2 = Release.create("1.0.0-b6", "LTS");
+    release2.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(localPath).getFileUUID()));
+    ReleaseContainer container2 =
+        new ReleaseContainer(release2, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertTrue(UniverseTaskBase.validateLocalFilepath(universe, container2));
+
+    // Arch set, local file missing returns false.
+    String missingPath = "/nonexistent/yugabyte-1.0.0-el8-aarch64.tar.gz";
+    Release release3 = Release.create("1.0.0-b7", "LTS");
+    release3.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(missingPath).getFileUUID()));
+    ReleaseContainer container3 =
+        new ReleaseContainer(release3, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertFalse(UniverseTaskBase.validateLocalFilepath(universe, container3));
+
+    // Arch null, all local paths exist returns true.
+    Universe universeNullArch = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    universeNullArch.getUniverseDetails().arch = null;
+    String pathX86 = createTempFile(TMP_STORAGE_PATH, "yugabyte-1.0.0-el8-x86_64.tar.gz", "data");
+    String pathArm = createTempFile(TMP_STORAGE_PATH, "yugabyte-1.0.0-el8-aarch64.tar.gz", "data");
+    Release release4 = Release.create("1.0.0-b8", "LTS");
+    release4.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.x86_64,
+            ReleaseLocalFile.create(pathX86).getFileUUID()));
+    release4.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(pathArm).getFileUUID()));
+    ReleaseContainer container4 =
+        new ReleaseContainer(release4, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertTrue(UniverseTaskBase.validateLocalFilepath(universeNullArch, container4));
+
+    // Arch null, one local path missing returns false.
+    String missingPath2 = TMP_STORAGE_PATH + "/missing-aarch64.tar.gz";
+    Release release5 = Release.create("1.0.0-b9", "LTS");
+    release5.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.x86_64,
+            ReleaseLocalFile.create(pathX86).getFileUUID()));
+    release5.addArtifact(
+        ReleaseArtifact.create(
+            "sha256",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            ReleaseLocalFile.create(missingPath2).getFileUUID()));
+    ReleaseContainer container5 =
+        new ReleaseContainer(release5, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    assertFalse(UniverseTaskBase.validateLocalFilepath(universeNullArch, container5));
   }
 }

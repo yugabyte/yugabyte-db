@@ -28,9 +28,11 @@
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 
+class Cgroup;
 class Status;
 class Thread;
 
@@ -60,6 +62,10 @@ class ThreadPoolTask {
     return submit_time_;
   }
 
+  // Per-task cgroup for per-DB cgroup switching in per_db pool mode.
+  void set_cgroup(Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  Cgroup* cgroup() const { return task_cgroup_; }
+
  protected:
   virtual ~ThreadPoolTask() {}
 
@@ -76,6 +82,7 @@ class ThreadPoolTask {
   ThreadPoolTask* next_ = nullptr;
   std::optional<std::weak_ptr<void>> run_token_;
   MonoTime submit_time_;
+  [[maybe_unused]] Cgroup* task_cgroup_ = nullptr;
 };
 
 template <typename T>
@@ -134,6 +141,8 @@ struct ThreadPoolOptions {
   size_t max_workers;
   size_t min_workers = 0;
   MonoDelta idle_timeout = DefaultIdleTimeout();
+
+  Cgroup* cgroup = nullptr;
 
   ThreadPoolMetrics metrics = {};
 
@@ -209,6 +218,13 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
   size_t NumWorkers() const;
   bool Idle() const;
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup);
+#endif
+
+  // Used to disable detailed logging in pggate thread pools.
+  static void DisableDetailedLogging();
+
  private:
   class Impl;
 
@@ -265,6 +281,40 @@ class ThreadSubPool : public ThreadSubPoolBase, public TaskRecipient<ThreadPoolT
   virtual ~ThreadSubPool();
 
   bool Enqueue(ThreadPoolTask* task) override;
+};
+
+using YBThreadPoolPtr = std::shared_ptr<YBThreadPool>;
+// Set of thread pools where each thread pool is associated with a tag (uint64_t). This is useful
+// for managing sets of thread pools where each is associated with a different cgroup.
+// Pools are cleaned up when they have no threads in them and no one else holding references to
+// them, the next time that we need to allocate a new pool.
+class YBTaggedThreadPools {
+ public:
+  using Tag = uint64_t;
+  using OptionsGenerator = std::function<ThreadPoolOptions(Tag)>;
+
+  explicit YBTaggedThreadPools(OptionsGenerator options_generator);
+
+  ~YBTaggedThreadPools();
+
+  void Shutdown() EXCLUDES(mutex_);
+
+  Result<YBThreadPoolPtr> Pool(Tag tag) EXCLUDES(mutex_);
+
+  size_t ActivePools() EXCLUDES(mutex_);
+
+ private:
+  YBThreadPoolPtr LookupPool(Tag tag) REQUIRES_SHARED(mutex_);
+
+  std::vector<YBThreadPoolPtr> CleanupIdlePools() REQUIRES(mutex_);
+
+  using PoolMap = std::unordered_map<uint64_t, YBThreadPoolPtr>;
+
+  const OptionsGenerator options_generator_;
+
+  std::shared_mutex mutex_;
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
+  PoolMap pools_ GUARDED_BY(mutex_);
 };
 
 } // namespace yb

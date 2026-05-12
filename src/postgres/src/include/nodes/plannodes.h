@@ -28,6 +28,31 @@
 #include "nodes/ybbitmatrix.h"
 
 
+/*
+ * YB: info used by YbMergeScanInfo.
+ */
+typedef struct
+{
+	NodeTag		type;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} YbSortInfo;
+
+/*
+ * YB: info used by IndexScan and IndexOnlyScan nodes.
+ *
+ * Holds info used for merge scans.
+ */
+typedef struct
+{
+	NodeTag		type;
+	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
+	YbSortInfo *sort_cols;
+} YbMergeScanInfo;
+
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
@@ -101,6 +126,8 @@ typedef struct PlannedStmt
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
+
+	uint64		ybPlanId;		/* plan id */
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -515,6 +542,9 @@ typedef struct Scan
 {
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
+
+	/* YB */
+	char	   *ybScannedObjectName;
 } Scan;
 
 /* ----------------
@@ -609,6 +639,7 @@ typedef struct IndexScan
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbMergeScanInfo *yb_merge_scan_info;
 	YbLockMechanism yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
@@ -657,6 +688,8 @@ typedef struct IndexOnlyScan
 	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbMergeScanInfo *yb_merge_scan_info;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 } IndexOnlyScan;
 
 /* ----------------
@@ -1306,6 +1339,9 @@ typedef struct Hash
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */
 	/* all other info is in the parent HashJoin node */
 	Cardinality rows_total;		/* estimate total rows if parallel_aware */
+
+	/* YB specific fields */
+	char	   *ybSkewTableName;
 } Hash;
 
 /* ----------------

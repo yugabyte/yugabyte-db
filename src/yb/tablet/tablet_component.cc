@@ -79,6 +79,10 @@ std::mutex& TabletComponent::create_checkpoint_lock() const {
   return tablet_.create_checkpoint_lock_;
 }
 
+Env& TabletComponent::env() const {
+  return tablet_.env();
+}
+
 rocksdb::Env& TabletComponent::rocksdb_env() const {
   return tablet_.rocksdb_env();
 }

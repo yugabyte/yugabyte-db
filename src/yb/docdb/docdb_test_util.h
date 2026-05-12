@@ -46,9 +46,6 @@ extern const TransactionOperationContext kNonTransactionalOperationContext;
 // generator for simplicity, even though it is against Google C++ Style Guide. If we used a pointer,
 // we would have to invoke the RNG as (*rng)().
 
-// Generate a random primitive value.
-ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValuePB* holder);
-
 // Represents a full logical snapshot of a RocksDB instance. An instance of this class will record
 // the state of a RocksDB instance via Capture, which can then be written to a new RocksDB instance
 // via RestoreTo.

@@ -114,8 +114,8 @@ class TransactionRpc : public TransactionRpcBase {
 
   virtual ~TransactionRpc() {}
 
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  TabletServerErrorPtr response_error() const override {
+    return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
   bool RefreshMetaCacheWithResponse() override {

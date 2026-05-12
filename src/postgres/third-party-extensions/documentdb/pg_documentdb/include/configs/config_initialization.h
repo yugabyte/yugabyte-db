@@ -3,7 +3,7 @@
  *
  * include/configs/config_initialization.h
  *
- * Common initialization of Mongo configs.
+ * Common initialization of configs.
  *
  *-------------------------------------------------------------------------
  */
@@ -16,5 +16,5 @@ void InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucP
 void InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPrefix);
 void InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix);
 
-void InitDocumentDBBackgroundWorkerGucs(const char *prefix);
+void InitDocumentDBBackgroundWorkerConfigurations(const char *prefix);
 #endif

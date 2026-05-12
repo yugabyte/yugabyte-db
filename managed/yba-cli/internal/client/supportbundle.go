@@ -6,19 +6,19 @@ package client
 
 import ybaclient "github.com/yugabyte/platform-go-client"
 
-type listSupportBundleRequest = ybaclient.SupportBundleManagementApiApiListSupportBundleComponentsRequest
+type listSupportBundleRequest = ybaclient.SupportBundleManagementAPIListSupportBundleComponentsRequest
 
 // ListSupportBundleComponents fetches list of support bundle components
 func (a *AuthAPIClient) ListSupportBundleComponents() listSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.ListSupportBundleComponents(a.ctx, a.CustomerUUID)
+	return a.APIClient.SupportBundleManagementAPI.ListSupportBundleComponents(a.ctx, a.CustomerUUID)
 }
 
 // DeleteSupportBundle deletes support bundle
 func (a *AuthAPIClient) DeleteSupportBundle(
 	universeUUID string,
 	supportBundleUUID string,
-) ybaclient.SupportBundleManagementApiApiDeleteSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.DeleteSupportBundle(
+) ybaclient.SupportBundleManagementAPIDeleteSupportBundleRequest {
+	return a.APIClient.SupportBundleManagementAPI.DeleteSupportBundle(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,
@@ -29,8 +29,8 @@ func (a *AuthAPIClient) DeleteSupportBundle(
 // CreateSupportBundle creates support bundle
 func (a *AuthAPIClient) CreateSupportBundle(
 	universeUUID string,
-) ybaclient.SupportBundleManagementApiApiCreateSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.CreateSupportBundle(
+) ybaclient.SupportBundleManagementAPICreateSupportBundleRequest {
+	return a.APIClient.SupportBundleManagementAPI.CreateSupportBundle(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,
@@ -41,8 +41,8 @@ func (a *AuthAPIClient) CreateSupportBundle(
 func (a *AuthAPIClient) GetSupportBundle(
 	universeUUID string,
 	supportBundleUUID string,
-) ybaclient.SupportBundleManagementApiApiGetSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.GetSupportBundle(
+) ybaclient.SupportBundleManagementAPIGetSupportBundleRequest {
+	return a.APIClient.SupportBundleManagementAPI.GetSupportBundle(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,
@@ -53,8 +53,8 @@ func (a *AuthAPIClient) GetSupportBundle(
 // ListSupportBundle fetches list of support bundles
 func (a *AuthAPIClient) ListSupportBundle(
 	universeUUID string,
-) ybaclient.SupportBundleManagementApiApiListSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.ListSupportBundle(
+) ybaclient.SupportBundleManagementAPIListSupportBundleRequest {
+	return a.APIClient.SupportBundleManagementAPI.ListSupportBundle(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,
@@ -65,8 +65,8 @@ func (a *AuthAPIClient) ListSupportBundle(
 func (a *AuthAPIClient) DownloadSupportBundle(
 	universeUUID string,
 	supportBundleUUID string,
-) ybaclient.SupportBundleManagementApiApiDownloadSupportBundleRequest {
-	return a.APIClient.SupportBundleManagementApi.DownloadSupportBundle(
+) ybaclient.SupportBundleManagementAPIDownloadSupportBundleRequest {
+	return a.APIClient.SupportBundleManagementAPI.DownloadSupportBundle(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,

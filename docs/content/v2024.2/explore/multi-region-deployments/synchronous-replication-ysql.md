@@ -40,7 +40,7 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
-The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
+The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-universe) any running local universes.
 
 You can also use the described steps for deploying universes in any public cloud, private data center, or in separate virtual machines. The following are the only differences:
 
@@ -73,7 +73,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the universe. However, in a multi-region universe, it is more efficient to target regions closest to your application.
 
-You can configure the smart driver with [topology load balancing](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
+You can configure the smart driver with [topology load balancing](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 

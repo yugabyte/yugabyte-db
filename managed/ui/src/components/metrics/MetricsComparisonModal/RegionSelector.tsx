@@ -2,6 +2,7 @@ import { Fragment, FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { MetricConsts } from '../../metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { Region } from '@app/redesign/helpers/dtos';
 
 interface RegionSelectorProps {
   onRegionChanged: (displayName: string, regionCode?: string | null, clusterUUID?: string) => void;
@@ -50,7 +51,13 @@ export const RegionSelector: FC<RegionSelectorProps> = ({
             // eslint-disable-next-line react/display-name
             (region: any, regionIdx: number) => {
               const key = `${clusterIdx}-region-${regionIdx}`;
-              const matches = region.name.match(/\((.*?)\)/);
+              let regionName = region?.name;
+              if (!regionName) {
+                regionName =
+                  selectedProvider?.regions?.find((r: Region) => r.uuid === region.uuid)?.name ??
+                  region.code;
+              }
+              const matches = regionName?.match(/\((.*?)\)/);
               // Return display name based on region name and code
               const regionDisplayName = matches
                 ? `${matches?.[1]} (${region.code})`

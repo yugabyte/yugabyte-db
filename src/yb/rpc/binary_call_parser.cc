@@ -17,14 +17,13 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
-#include "yb/util/std_util.h"
-#include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_bool(binary_call_parser_reject_on_mem_tracker_hard_limit, true,
     "Whether to reject/ignore calls on hitting mem tracker hard limit.");
@@ -32,8 +31,7 @@ DEFINE_UNKNOWN_bool(binary_call_parser_reject_on_mem_tracker_hard_limit, true,
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 bool ShouldThrottleRpc(
     const MemTrackerPtr& throttle_tracker, ssize_t call_data_size, const char* throttle_message) {
@@ -104,12 +102,13 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         VLOG(4) << "BinaryCallParser::Parse, tracker_for_throttle memory usage: "
                 << (*tracker_for_throttle)->LogUsage("");
         if (ShouldThrottleRpc(*tracker_for_throttle, call_data_size, "Ignoring RPC call: ")) {
+          IncrementCounter(
+              connection->rpc_metrics().inbound_calls_rejected_because_memory_pressure);
           call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
               .consumed = full_input_size,
               .buffer = Slice(),
-              .bytes_to_skip = call_data_size - call_received_size
-          };
+              .bytes_to_skip = call_data_size - call_received_size};
         }
       }
 
@@ -131,11 +130,17 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
         auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
         if (FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit) {
+          IncrementCounter(
+              connection->rpc_metrics().inbound_calls_rejected_because_memory_pressure);
+          bool logged = false;
           YB_LOG_EVERY_N_SECS(WARNING, 3)
               << "Unable to allocate read buffer because of limit, required: " << call_data_size
               << ", blocked by: " << AsString(blocking_mem_tracker)
-              << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
-              << DumpMemoryUsage();
+              << ", consumption: " << consumption << " of " << limit << ". Call will be ignored."
+              << [&logged] { logged = true; return ""; }();
+          if (logged) {
+            DumpMemoryUsage();
+          }
           call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
             .consumed = full_input_size,
@@ -147,8 +152,8 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
           // https://github.com/yugabyte/yugabyte-db/issues/2563.
           LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
                        << call_data_size << ", blocked by: " << AsString(blocking_mem_tracker)
-                       << ", consumption: " << consumption << " of " << limit << "\n"
-                       << DumpMemoryUsage();
+                       << ", consumption: " << consumption << " of " << limit;
+          DumpMemoryUsage();
         }
       }
       break;
@@ -172,5 +177,4 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
   };
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

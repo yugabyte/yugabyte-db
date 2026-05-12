@@ -31,7 +31,7 @@ import { EmptyListPlaceholder } from './EmptyListPlaceholder';
 import { ProviderDashboardView } from './InfraProvider';
 import { RegionsCell } from './RegionsCell';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import ellipsisIcon from '../../common/media/more.svg';
+import EllipsisIcon from '../../common/media/more.svg?img';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
 import { getLinkedUniverses } from './utils';
@@ -186,7 +186,7 @@ export const ProviderList = (props: ProviderListProps) => {
     return (
       <Dropdown id="table-actions-dropdown" pullRight>
         <Dropdown.Toggle noCaret>
-          <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
+          <img src={EllipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
           <RbacValidator
@@ -262,7 +262,9 @@ export const ProviderList = (props: ProviderListProps) => {
             </Typography>
           </span>
           <span>
-            <Typography variant="subtitle1">Create a provider automatically. <u>Learn More</u></Typography>
+            <Typography variant="subtitle1">
+              Create a provider automatically. <u>Learn More</u>
+            </Typography>
           </span>
         </Box>
       </MenuItem>

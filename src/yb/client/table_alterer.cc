@@ -26,8 +26,6 @@
 DEFINE_test_flag(bool, allow_wait_for_alter_table_to_finish, true,
     "When disabled, alter returns without waiting inline and checking the alter status at master.");
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
-
 using std::string;
 
 namespace yb {
@@ -217,7 +215,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   if (txn_) {
     txn_->ToPB(req->mutable_transaction());
     req->set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req->set_sub_transaction_id(sub_txn_id_);
     }
   }

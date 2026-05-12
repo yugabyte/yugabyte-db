@@ -404,7 +404,7 @@ TrackedAllocation::TrackedAllocation()
 }
 
 TrackedAllocation::TrackedAllocation(
-    std::unique_ptr<char[]>&& data, size_t size, yb::MemTrackerPtr mem_tracker)
+    std::unique_ptr<const char[]>&& data, size_t size, yb::MemTrackerPtr mem_tracker)
     : holder_(std::move(data)), size_(size), mem_tracker_(std::move(mem_tracker)) {
   if (holder_ && mem_tracker_) {
     mem_tracker_->Consume(size_);

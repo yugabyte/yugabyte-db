@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_net.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -99,6 +100,8 @@ DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_qos);
+DECLARE_int32(qos_max_db_count);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -184,7 +187,7 @@ TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
 
 class MasterTestSkipUniverseUuidCheck : public MasterTest {
   void SetUp() override {
-    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
     MasterTest::SetUp();
   }
 };
@@ -199,7 +202,7 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
 
   ASSERT_OK(mini_master_->Restart(true));
 
-  FLAGS_master_enable_universe_uuid_heartbeat_check = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = true;
 
   config.Clear();
   ASSERT_OK(WaitFor([this]() {
@@ -222,7 +225,7 @@ TEST_F(MasterTest, TestUniverseUuidDisabled) {
     // Try a heartbeat with an invalid universe_uuid passed into the request. When
     // FLAGS_master_enable_universe_uuid_heartbeat_check is false, the response should still be
     // valid.
-    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
@@ -1089,10 +1092,10 @@ TEST_F(MasterTest, TestTablegroups) {
         }, namespaces);
   }
 
-  SetAtomicFlag(true, &FLAGS_TEST_tablegroup_master_only);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = true;
   // Create tablegroup and ensure it exists in catalog manager maps.
   ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name, "" /* tablespace_id */));
-  SetAtomicFlag(false, &FLAGS_TEST_tablegroup_master_only);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = false;
 
   ListTablegroupsRequestPB req;
   req.set_namespace_id(ns_id);
@@ -1215,8 +1218,8 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
@@ -1259,8 +1262,8 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
@@ -1823,7 +1826,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1861,7 +1864,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   }
 
   // Finish Namespace create.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
   ASSERT_OK(CreateNamespaceWait(nsid, YQLDatabase::YQL_DATABASE_PGSQL));
 
   // Verify that Basic Access to a Namespace is now available.
@@ -1876,7 +1879,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   }
   // 3. Delete the namespace.
   {
-    SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
     DeleteNamespaceRequestPB del_req;
     DeleteNamespaceResponsePB del_resp;
@@ -1891,7 +1894,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     ASSERT_FALSE(FindNamespace(std::make_tuple("new_" + test_name, nsid), namespaces));
 
     // Resume finishing both [1] the delete and [2] the create.
-    SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
     // Verify the old namespace finishes deletion.
     IsDeleteNamespaceDoneRequestPB is_del_req;
@@ -1909,7 +1912,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1959,7 +1962,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }
 
   // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
@@ -1987,7 +1990,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
 TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   NamespaceName test_name = "test_pgsql";
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -2006,7 +2009,7 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   // There should now be two namespaces with the same name in the system, one in the FAILED state
   // and one in the PREPARING state. Allow the async work to run. The first namespace should be
   // cleaned up and the second namespace should be running.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
     mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
@@ -2714,11 +2717,11 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     return Status::OK();
   };
 
-  // Default placement is cloud1, rack1, zone.
+  // Default placement is cloud1, region1, zone.
   // Add tserver in different cloud.
   {
     const auto tserver1_uuid = "uuid-1";
-    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
+    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "region0", "zone", "host1"));
     auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
     ASSERT_FALSE(local_ts);
@@ -2727,7 +2730,7 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   // Add tserver in same cloud, different region.
   {
     const auto tserver2_uuid = "uuid-2";
-    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
+    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "region2", "zone", "host1"));
     auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
     ASSERT_FALSE(local_ts);
@@ -2736,7 +2739,7 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   // Add tserver in same cloud, same region, different zone.
   {
     const auto tserver3_uuid = "uuid-3";
-    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
+    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "region1", "zone2", "host1"));
     auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
   }
@@ -2744,7 +2747,7 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   // Add tserver in same cloud, same region, same zone, different host.
   {
     const auto tserver4_uuid = "uuid-4";
-    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
+    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "region1", "zone", "host1"));
     auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
     ASSERT_FALSE(local_ts);
@@ -2756,7 +2759,7 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     ASSERT_OK(mini_master_->master()->GetMasterRegistration(&master_registration));
     auto master_host = master_registration.private_rpc_addresses().begin()->host();
     const auto tserver5_uuid = "uuid-5";
-    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
+    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "region1", "zone", std::move(master_host)));
     auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
     ASSERT_TRUE(local_ts);
@@ -2798,18 +2801,18 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   info =
       ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
-  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_EQ(info.lease_epoch(), 2);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. We included current lease epoch but it's incorrect.
   info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
-  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_EQ(info.lease_epoch(), 3);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
   // bit.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 1));
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
   ASSERT_FALSE(info.new_lease());
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 }
@@ -2912,6 +2915,55 @@ Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(
     registered_ts_count_++;
   }
   return result;
+}
+
+TEST_F(MasterTest, TestQosMaxDbCount) {
+  // Set a low limit for testing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 3;
+
+  CreateNamespaceResponsePB resp;
+
+  // Template databases should not count toward the limit.
+  ASSERT_OK(CreatePgsqlNamespace(
+      "template0", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 100), &resp));
+  // Also create "template1" -- both should be excluded.
+  ASSERT_OK(CreatePgsqlNamespace(
+      "template1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 101), &resp));
+
+  // Create databases up to the limit (limit = 3, current non-template count = 0).
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 1), &resp));
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db2", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 2), &resp));
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db3", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 3), &resp));
+
+  // The next creation should fail.
+  Status s = CreatePgsqlNamespace(
+      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s;
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Too many databases");
+
+  // Increasing the limit should allow creation again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 4;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp));
+
+  // Disabling QoS should remove the limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = false;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db5", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 5), &resp));
+
+  // Re-enable QoS; setting limit to 0 should also disable the check.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 0;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db6", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 6), &resp));
+
+  // YCQL keyspaces should not be affected by the YSQL limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 1;
+  ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
 } // namespace master

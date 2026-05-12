@@ -205,7 +205,7 @@ Status RetryingRpcTask::Run() {
     return Failed(STATUS_FORMAT(IllegalState, "Task in invalid state $0", state()));
   }
 
-  auto slowdown_flag_val = GetAtomicFlag(&FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
+  auto slowdown_flag_val = FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms;
   if (PREDICT_FALSE(slowdown_flag_val> 0)) {
     VLOG_WITH_PREFIX(1) << "Slowing down by " << slowdown_flag_val << " ms.";
     bool old_thread_restriction = ThreadRestrictions::SetWaitAllowed(true);

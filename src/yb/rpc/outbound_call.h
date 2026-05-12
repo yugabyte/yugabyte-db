@@ -38,11 +38,14 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <vector>
 
 #include <boost/functional/hash.hpp>
+#include "opentelemetry/nostd/shared_ptr.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
@@ -69,6 +72,7 @@
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/dist_trace_fwd.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
@@ -76,14 +80,15 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
+
 namespace google {
 namespace protobuf {
 class Message;
 }  // namespace protobuf
 }  // namespace google
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
@@ -184,6 +189,10 @@ class CallResponse {
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
+  }
+
+  const RefCntBuffer& data_holder() const {
+    return response_data_.holder();
   }
 
  private:
@@ -586,6 +595,10 @@ class OutboundCall : public RpcCall {
 
   std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
+  // OpenTelemetry span for distributed tracing. Created when the call starts if there is an
+  // active trace context, ended when the call completes (success, failure, or timeout).
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.
   friend class InvokeCallbackTask;
@@ -595,14 +608,13 @@ class OutboundCall : public RpcCall {
 
 class RpcErrorTag : public IntegralErrorTag<ErrorStatusPB::RpcErrorCodePB> {
  public:
-  static constexpr uint8_t kCategory = 15;
+  static constexpr CategoryDescriptor kCategory{15, "rpc error"sv};
 
   static std::string ToMessage(Value value) {
     return ErrorStatusPB::RpcErrorCodePB_Name(value);
   }
 };
 
-typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
+using RpcError = StatusErrorCodeImpl<RpcErrorTag>;
 
-}  // namespace rpc
-}  // namespace yb
+}  // namespace yb::rpc

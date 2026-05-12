@@ -198,7 +198,7 @@ Status PlainTableBuilder::Finish() {
   //  4. [metaindex block]
   //  5. [footer]
 
-  MetaIndexBuilder meta_index_builer;
+  MetaIndexBuilder meta_index_builer(/* mem_tracker = */ nullptr);
 
   if (store_index_in_file_ && (properties_.num_entries > 0)) {
     assert(properties_.num_entries <= std::numeric_limits<uint32_t>::max());
@@ -240,7 +240,7 @@ Status PlainTableBuilder::Finish() {
   }
 
   // Calculate bloom block size and index block size
-  PropertyBlockBuilder property_block_builder;
+  PropertyBlockBuilder property_block_builder(/* mem_tracker = */ nullptr);
   // -- Add basic properties
   property_block_builder.AddTableProperty(properties_);
 

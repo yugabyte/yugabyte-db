@@ -1,10 +1,8 @@
 ---
 title: View metadata for YSQL/YCQL/system tablets on a server
-linkTitle: Tablet metadata
+linkTitle: Local tablet metadata
 description: View metadata for YSQL, YCQL, and system tablets on a server.
 headerTitle: View metadata for YSQL/YCQL/system tablets on a server
-tags:
-  feature: tech-preview
 menu:
   stable:
     identifier: yb-local-tablets
@@ -17,7 +15,7 @@ Use YSQL `yb_local_tablets` view to fetch the metadata for [YSQL](../../../api/y
 
 While debugging a system with [Active Session History](../active-session-history/), the `tablet_id` column of this view can be joined with the `wait_event_aux` column of the [yb_active_session_history](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) view. For example, see [Detect a hot shard](../active-session-history/#detect-a-hot-shard).
 
-The columns of the `yb_local_tablets` view are described in the following table.
+The following table describes the columns of the `yb_local_tablets` view.
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 
 #include <rapidjson/document.h>
 
@@ -52,6 +53,17 @@ struct AutoAnalyzeInfo {
 };
 
 using AutoAnalyzeInfoMap = std::unordered_map<TableId, AutoAnalyzeInfo>;
+
+// Per-table overrides from pg_class.reloptions.
+// These take priority over the corresponding global ysql_auto_analyze_* flags.
+struct TableAutoAnalyzeSettings {
+  std::optional<bool> auto_analyze_enabled;
+  std::optional<uint32_t> analyze_threshold;
+  std::optional<double> analyze_scale_factor;
+  std::optional<double> cooldown_scale_factor;
+  std::optional<uint32_t> min_cooldown_ms;
+  std::optional<uint32_t> max_cooldown_ms;
+};
 
 struct DbAutoAnalyzeParams {
   double cooldown_scale_factor;
@@ -93,6 +105,12 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   static Result<std::vector<AutoAnalyzeInfo::AnalyzeEvent>> ParseHistoryFromJsonb(
       const QLValuePB& value);
 
+  // Apply a single reloption (key, value) pair to settings. Conversion errors
+  // are caught and logged so a malformed value cannot crash the auto-analyze
+  // thread.
+  static void ParseReloption(
+      std::string_view key, std::string_view value, TableAutoAnalyzeSettings* settings);
+
  private:
   using NamespaceTablesMap = std::unordered_map<NamespaceId, std::vector<TableId>>;
 
@@ -104,7 +122,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   Status TriggerAnalyze();
   Result<AutoAnalyzeInfoMap> ReadTableMutations();
   Status GetTablePGSchemaAndName(const AutoAnalyzeInfoMap& table_id_to_info_maps);
-  Status FetchUnknownReltuples(
+  Status FetchUnknownReltuplesOrReloptions(
       const AutoAnalyzeInfoMap& table_id_to_info_maps,
       std::unordered_set<NamespaceId>& deleted_databases);
   Result<NamespaceTablesMap> DetermineTablesForAnalyze(
@@ -116,8 +134,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   Status UpdateTableMutationsAfterAnalyze(
       const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps);
   Status FlushAnalyzeHistory(
-      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps,
-      const std::chrono::system_clock::time_point& now);
+      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps);
   Result<AutoAnalyzeInfoMap> UpdateAnalyzeHistory(
       const std::vector<TableId>& analyzed_tables, AutoAnalyzeInfoMap&& table_id_to_info_maps,
       const std::chrono::system_clock::time_point& now, const AutoAnalyzeParams& params);
@@ -127,7 +144,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   Result<pgwrapper::PGConn> EstablishDBConnection(
       const NamespaceId& namespace_id, std::unordered_set<NamespaceId>& deleted_databases,
       bool* is_deleted_or_renamed);
-  Result<bool> DoFetchReltuples(
+  Result<bool> DoFetchReltuplesAndReloptions(
       pgwrapper::PGConn& conn, TableId table_id, PgOid oid, bool use_relfilenode);
   Result<AutoAnalyzeParams> GetAutoAnalyzeParams(
       const AutoAnalyzeInfoMap& table_id_to_info_maps,
@@ -146,6 +163,10 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   // Used to calculate analyze threshold for each table.
   std::unordered_map<TableId, float> table_tuple_count_;
 
+  // Per-table auto analyze settings from pg_class.reloptions.
+  // Refreshed alongside table_tuple_count_ and on name cache rebuilds.
+  std::unordered_map<TableId, TableAutoAnalyzeSettings> table_auto_analyze_settings_;
+
   // In-memory mapping for PG tables' name lookup.
   std::unordered_map<TableId, client::YBTableName> table_id_to_name_;
 
@@ -158,6 +179,11 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
 
   // Each postgres database has its own pg_class table, so we use map instead of single value.
   AutoAnalyzeInfoMap pg_class_id_mutations_;
+
+  // Exponential backoff retry running ANALYZEs on failed tables.
+  // Table id -> (remaining_wait_cycle, total_wait_cycle)
+  std::unordered_map<TableId, std::pair<int, int>> failed_table_id_to_wait_cycle_;
+  const int initial_backoff = 2;
 };
 
 }  // namespace stateful_service

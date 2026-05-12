@@ -61,7 +61,7 @@ ANALYZE;
 set documentdb.enable_force_push_vector_index to on;
 EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1 }  } } ], "cursor": {} }');
 
-SELECT batch_insert_testing_vector_documents_hnsw_planner('agg_vector_hnsw_planner', 1, 100, 10);
+SELECT batch_insert_testing_vector_documents_hnsw_planner('agg_vector_hnsw_planner', 10, 100, 10);
 EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1 }  } } ], "cursor": {} }');
 
 -- create indexes for vector filter
@@ -70,7 +70,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "
 SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "createIndexes": "agg_vector_hnsw_planner", "indexes": [ { "key": { "c": 1 }, "name": "c_1" } ] }', true);
 
 set documentdb.enableVectorPreFilter to on;
-EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
 
 set documentdb.enableVectorPreFilterV2 to on;
 -- This is currently a post-filter and will not use the filter index.

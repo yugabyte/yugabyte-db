@@ -1,7 +1,7 @@
 import { makeStyles } from '@material-ui/core';
 import { ReactNode } from 'react';
 
-import { ReactComponent as ExternalLinkIcon } from '../../assets/external-link.svg';
+import ExternalLinkIcon from '../../assets/external-link.svg';
 
 interface YBExternalLinkProps {
   href: string;

@@ -12,6 +12,9 @@ subsysfilename = objfiles.txt
 
 SUBDIROBJS = $(SUBDIRS:%=%/$(subsysfilename))
 
+# YB: Suppress warnings from the extension itself, since yb builds have stricter warning levels by default.
+CFLAGS += -Wno-tautological-type-limit-compare
+
 # top-level backend directory obviously has its own "all" target
 ifneq ($(subdir), src/backend)
 all: $(subsysfilename)

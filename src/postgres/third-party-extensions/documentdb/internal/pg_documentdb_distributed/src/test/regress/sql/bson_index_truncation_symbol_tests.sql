@@ -85,7 +85,6 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_symbol_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$symbol" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$symbol" : "MTIzNDUxMjM0NQ==" }] } }';
 
 -- insert $symbol BSON data in nested documents/arrays with different leaf types
-SET documentdb.enableIndexTermTruncationOnNestedObjects to ON;
 SET documentdb.indexTermLimitOverride to 100;
 
 /* create index on key 'ikey2' */

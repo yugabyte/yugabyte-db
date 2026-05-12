@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1401
+aliases:
+  - /stable/api/cassandra/type_frozen
+  - /stable/api/ycql/type_frozen
 type: docs
 ---
 

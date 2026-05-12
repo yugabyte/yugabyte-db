@@ -656,7 +656,8 @@ RI_FKey_check(TriggerData *trigdata)
 		{
 			bool found = false;
 
-			HandleYBStatus(YBCForeignKeyReferenceExists(descr, YBCIsRegionLocal(fk_rel), &found));
+			HandleYBStatus(YBCForeignKeyReferenceExists(descr, YbBuildTableLocalityInfo(fk_rel),
+														&found));
 			pfree(descr);
 			if (!found)
 			{
@@ -3408,7 +3409,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 
 		if (!null_found)
 			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
-														   YBCIsRegionLocal(fk_rel),
+														   YbBuildTableLocalityInfo(fk_rel),
 														   is_deferred));
 		pfree(descr);
 	}

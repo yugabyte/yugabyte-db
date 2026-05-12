@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1284
+aliases:
+  - /stable/api/cassandra/ddl_revoke_role
+  - /stable/api/ycql/ddl_revoke_role
 type: docs
 ---
 

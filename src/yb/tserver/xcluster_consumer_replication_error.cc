@@ -35,7 +35,7 @@ void XClusterConsumerReplicationErrorCollector::StoreError(
   if (!error_map_.contains(poller_id)) {
     // This could happen if the poller has just been shutdown,
     YB_LOG_EVERY_N(WARNING, 30) << "xCluster Poller '" << poller_id
-                                << "' reporting error when it is not expected to" << THROTTLE_MSG;
+                                << "' reporting error when it is not expected to";
     return;
   }
   auto& poller_entry = error_map_.at(poller_id);

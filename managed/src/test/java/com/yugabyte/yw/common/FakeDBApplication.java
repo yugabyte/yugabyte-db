@@ -10,6 +10,7 @@ import static play.inject.Bindings.bind;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.TaskQueue;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -58,6 +60,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TelemetryProviderService mockTelemetryProviderService =
       mock(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
+  public RedactSecretsFromAudit mockRedactSecretsFromAudit = mock(RedactSecretsFromAudit.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
   public AccessManager mockAccessManager = mock(AccessManager.class);
@@ -106,6 +109,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AlertService alertService;
   public AlertDefinitionService alertDefinitionService;
   public AlertConfigurationService alertConfigurationService;
+  public SettableRuntimeConfigFactory mutableConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -137,6 +141,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(TelemetryProviderService.class).toInstance(mockTelemetryProviderService))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
+                .overrides(
+                    bind(RedactSecretsFromAudit.class).toInstance(mockRedactSecretsFromAudit))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
@@ -198,6 +204,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
+    mutableConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
   }
 
   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {

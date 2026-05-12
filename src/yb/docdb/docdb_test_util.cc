@@ -86,7 +86,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return STATUS(Expired, "");
   }
 
-  Result<int64_t> RegisterRequest() override {
+  Result<int64_t> RegisterRequest(bool allow_when_closing) override {
     Fail();
     return 0;
   }
@@ -143,8 +143,10 @@ const TransactionOperationContext kNonTransactionalOperationContext = {
     TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
-ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValuePB* holder) {
-  auto custom_value_type = dockv::GenRandomPrimitiveValue(rng, holder);
+ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValueMsg* holder) {
+  QLValuePB pb_value;
+  auto custom_value_type = dockv::GenRandomPrimitiveValue(rng, &pb_value);
+  *holder = pb_value;
   if (custom_value_type != dockv::ValueEntryType::kInvalid) {
     return ValueRef(custom_value_type);
   }
@@ -260,8 +262,9 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   }
 
   const dockv::DocPath doc_path(encoded_doc_key, subkeys);
-  QLValuePB value_holder;
-  const auto value = GenRandomPrimitiveValue(&random_, &value_holder);
+  auto arena = SharedThreadSafeArena();
+  auto value_holder = arena->NewArenaObject<LWQLValuePB>();
+  const auto value = GenRandomPrimitiveValue(&random_, value_holder);
   const HybridTime hybrid_time(current_iteration);
   last_operation_ht_ = hybrid_time;
 
@@ -282,7 +285,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
         value.ToString());
     auto pv = value.custom_value_type() != ValueEntryType::kInvalid
                   ? dockv::PrimitiveValue(value.custom_value_type())
-                  : dockv::PrimitiveValue::FromQLValuePB(value_holder);
+                  : dockv::PrimitiveValue::FromQLValuePB(*value_holder);
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {

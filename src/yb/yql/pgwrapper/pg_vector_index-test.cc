@@ -13,7 +13,11 @@
 
 #include <queue>
 
+#include "yb/client/client_error.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
@@ -21,6 +25,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 
+#include "yb/docdb/docdb_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/qlexpr/index.h"
@@ -38,30 +43,34 @@
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/path_util.h"
 #include "yb/util/test_thread_holder.h"
 
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_usearch_exact);
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
-DECLARE_bool(vector_index_use_hnswlib);
-DECLARE_bool(vector_index_use_yb_hnsw);
+DECLARE_string(vector_index_backend);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
@@ -99,45 +108,56 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
+YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
+YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
+
+////////////////////////////////////////////////////////
+// PgVectorIndexTestBase
+////////////////////////////////////////////////////////
 
 class PgVectorIndexTestBase : public PgMiniTestBase {
  protected:
   virtual bool IsColocated() const = 0;
   virtual VectorIndexEngine Engine() const = 0;
+  virtual PackingMode GetPackingMode() const = 0;
 
   virtual int GetFileNumCompactionTrigger() {
     return 5;
   }
 
   void SetUp() override {
-    FLAGS_TEST_use_custom_varz = true;
-    FLAGS_TEST_usearch_exact = true;
-    FLAGS_vector_index_disable_compactions = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+    auto packing_mode = GetPackingMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:
-        FLAGS_vector_index_use_hnswlib = false;
-        FLAGS_vector_index_use_yb_hnsw = false;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
         break;
-      case VectorIndexEngine::kYbHnsw:
-        FLAGS_vector_index_use_hnswlib = false;
-        FLAGS_vector_index_use_yb_hnsw = true;
+      case VectorIndexEngine::kYbHnswUsearch:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
         break;
       case VectorIndexEngine::kHnswlib:
-        FLAGS_vector_index_use_hnswlib = true;
-        FLAGS_vector_index_use_yb_hnsw = false;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+        break;
+      case VectorIndexEngine::kYbHnswHnswlib:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
         break;
     }
 
     // Make sure compaction has predictable trigger threshold.
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = GetFileNumCompactionTrigger();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+        GetFileNumCompactionTrigger();
 
     // Disable auto analyze in this test suite because auto analyze runs
     // analyze which can violate the check used in this test suite:
     // !TEST_fail_on_seq_scan_with_vector_indexes || pgsql_read_request.has_ybctid_column_value()
-    FLAGS_ysql_enable_auto_analyze = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     // (Auto-Analyze #28666)
-    FLAGS_ysql_enable_auto_analyze_infra = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     itest::SetupQuickSplit(1_KB);
 
     PgMiniTestBase::SetUp();
@@ -169,16 +189,19 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector($0))$1",
         dimensions, create_suffix));
 
+    dimensions_ = dimensions;
     return conn;
   }
 
   Status CreateIndex(
        PGConn& conn, const std::string& index_name = kVectorIndexName,
-       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt,
+       const std::string& column = std::string()) {
     return conn.ExecuteFormat(
-        "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
+        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
+        column.empty() ? "embedding" : column);
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
@@ -187,9 +210,10 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return conn;
   }
 
-  Result<PGConn> MakeIndexAndFill(size_t num_rows, Backfill backfill);
+  Result<PGConn> MakeIndexAndFill(
+      size_t num_rows, Backfill backfill = Backfill::kFalse, bool keep_vectors = false);
   Result<PGConn> MakeIndexAndFillRandom(size_t num_rows);
-  Status InsertRows(PGConn& conn, size_t start_row, size_t end_row);
+  Status InsertRows(PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors = false);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
 
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
@@ -202,6 +226,23 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   [[nodiscard]] bool RowsMatch(
       PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
+
+  // Returns number of vectors actually returned by the search.
+  template <typename IdxExtractor>
+  Result<size_t> FetchAndVerifyOrder(
+      PGConn& conn, const FloatVector& query_vector, size_t limit, IdxExtractor&& extractor);
+
+  Result<size_t> FetchAndVerifyOrder(PGConn& conn, const FloatVector& query_vector, size_t limit) {
+    return FetchAndVerifyOrder(
+        conn, query_vector, limit, [](auto key) -> Result<size_t> { return key; });
+  }
+
+  FloatVector Vector(int64_t id) {
+    CHECK_GT(dimensions_, 0);
+    FloatVector vector(dimensions_);
+    std::ranges::generate(vector, [id, n{1LL}]() mutable { return id * n++; });
+    return vector;
+  }
 
   FloatVector RandomVector() {
     if (real_dimensions_ == 0) {
@@ -221,6 +262,22 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       result[j] = real_vector[shuffle_vector_[j]];
     }
     return result;
+  }
+
+  std::string BuildRow(int64_t id, const std::string& value) {
+    return Format("$0, $1", id, value);
+  }
+
+  std::string ExpectedRow(int64_t id) {
+    return BuildRow(id, AsString(Vector(id)));
+  }
+
+  std::vector<std::string> ExpectedRows(size_t limit) {
+    std::vector<std::string> expected;
+    for (size_t i = 1; i <= limit; ++i) {
+      expected.push_back(ExpectedRow(i));
+    }
+    return expected;
   }
 
   const char* VectorOpsName() const {
@@ -303,8 +360,8 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   std::uniform_real_distribution<> distribution_;
   std::mt19937_64 rng_{42};
   vector_index::DistanceKind distance_kind_ = vector_index::DistanceKind::kL2Squared;
-  size_t dimensions_;
-  size_t real_dimensions_;
+  size_t dimensions_ = 0;
+  size_t real_dimensions_ = 0;
   std::vector<size_t> shuffle_vector_;
   size_t num_pre_split_tablets_ = 0;
 };
@@ -329,31 +386,23 @@ Status PgVectorIndexTestBase::WaitNoBackgroundInserts() {
   return WaitFor(cond, 30s * kTimeMultiplier, "Wait no background inserts");
 }
 
-std::string VectorAsString(int64_t id) {
-  return Format("[$0, $1, $2]", id, id * 2, id * 3);
-}
+Status PgVectorIndexTestBase::InsertRows(
+    PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors) {
+  SCHECK_GE(end_row, start_row, InvalidArgument, "");
 
-std::string BuildRow(int64_t id, const std::string& value) {
-  return Format("$0, $1", id, value);
-}
-
-std::string ExpectedRow(int64_t id) {
-  return BuildRow(id, VectorAsString(id));
-}
-
-std::vector<std::string> ExpectedRows(size_t limit) {
-  std::vector<std::string> expected;
-  for (size_t i = 1; i <= limit; ++i) {
-    expected.push_back(ExpectedRow(i));
+  if (keep_vectors) {
+    vectors_.reserve(vectors_.capacity() + end_row - start_row + 1);
   }
-  return expected;
-}
 
-Status PgVectorIndexTestBase::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
   RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   for (auto i = start_row; i <= end_row; ++i) {
+    auto vector = Vector(i);
     RETURN_NOT_OK(conn.ExecuteFormat(
-       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
+        "INSERT INTO test VALUES ($0, '$1')", i, AsString(vector)));
+    VLOG_WITH_FUNC(2) << "Inserted: " << AsString(vector);
+    if (keep_vectors) {
+      vectors_.push_back(std::move(vector));
+    }
   }
   return conn.CommitTransaction();
 }
@@ -370,11 +419,11 @@ Status PgVectorIndexTestBase::InsertRandomRows(PGConn& conn, size_t num_rows) {
 }
 
 Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
-    size_t num_rows, Backfill backfill = Backfill::kFalse) {
+    size_t num_rows, Backfill backfill, bool keep_vectors) {
   auto conn = VERIFY_RESULT(MakeTable());
   if (backfill) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows, keep_vectors));
     std::future<void> future;
     if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
       future = std::async([this] {
@@ -391,7 +440,7 @@ Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
     }
   } else {
     RETURN_NOT_OK(CreateIndex(conn));
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows, keep_vectors));
   }
   return conn;
 }
@@ -448,43 +497,132 @@ void PgVectorIndexTestBase::VerifyRead(PGConn& conn, size_t limit, AddFilter add
   VerifyRows(conn, add_filter, ExpectedRows(limit));
 }
 
-using PgVectorIndexTestParams = std::tuple<bool, VectorIndexEngine>;
+template <typename IdxExtractor>
+Result<size_t> PgVectorIndexTestBase::FetchAndVerifyOrder(
+    PGConn& conn, const FloatVector& query_vector, size_t limit, IdxExtractor&& extractor) {
+  SCHECK_GT(vectors_.size(), 0, IllegalState, "Vectors must be filled");
 
-bool IsColocated(const PgVectorIndexTestParams& params) {
-  return std::get<0>(params);
+  auto query = "SELECT id FROM test" + IndexQuerySuffix(query_vector, limit);
+  auto result = VERIFY_RESULT(conn.FetchRows<int64_t>(query));
+
+  unum::usearch::metric_punned_t metric(
+      dimensions_, UsearchMetricKind(), unum::usearch::scalar_kind_t::f32_k);
+
+  std::vector<typename unum::usearch::metric_punned_t::result_t> distances;
+  distances.reserve(result.size());
+  const auto* query_byte_vector = VectorToBytePtr(query_vector);
+  for (auto key : result) {
+    size_t idx = VERIFY_RESULT(extractor(key));
+    const auto* byte_vector = VectorToBytePtr(vectors_[idx]);
+    distances.push_back(metric(query_byte_vector, byte_vector));
+  }
+
+  LOG_WITH_FUNC(INFO) << "Requested: " << limit << ", found: " << result.size();
+  VLOG_WITH_FUNC(2) << "   Result: " << AsString(result);
+  VLOG_WITH_FUNC(2) << "Distances: " << AsString(distances);
+
+  bool is_ordered = std::ranges::is_sorted(distances);
+  SCHECK(is_ordered, InternalError, "Order does not match");
+
+  return result.size();
 }
 
-VectorIndexEngine Engine(const PgVectorIndexTestParams& params) {
-  return std::get<1>(params);
-}
+////////////////////////////////////////////////////////
+// PgVectorIndexTestParamsDecorator
+////////////////////////////////////////////////////////
 
-std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
-  auto engine = Engine(param_info.param);
-  return Format(
-      "$0$1",
-      IsColocated(param_info.param) ? "Colocated" : "Distributed",
-      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1));
-}
+template <typename TestParam>
+struct TestParamTraits {
+  // Expected interface of specializations:
+  using ParamType = TestParam;
+  static bool IsColocated(const ParamType& param);
+  static VectorIndexEngine Engine(const ParamType& param);
+  static PackingMode GetPackingMode(const ParamType& param);
+  static auto TestParamGenerator();
+  static auto TestParamNameGenerator();
 
-template <typename TestClass> requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
-class PgVectorIndexTestParamsDecorator
+  // To prevent accidental creation.
+  TestParamTraits() = delete;
+};
+
+template <typename TestClass, typename TestParam>
+requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
+class PgVectorIndexTestParamsDecoratorBase
     : public TestClass,
-      public testing::WithParamInterface<PgVectorIndexTestParams> {
+      public testing::WithParamInterface<TestParam> {
+ public:
+  using ParamTraits = TestParamTraits<TestParam>;
+
  protected:
   bool IsColocated() const override {
-    return pgwrapper::IsColocated(GetParam());
+    return ParamTraits::IsColocated(this->GetParam());
   }
 
   VectorIndexEngine Engine() const override {
-    return pgwrapper::Engine(GetParam());
+    return ParamTraits::Engine(this->GetParam());
+  }
+
+  PackingMode GetPackingMode() const override {
+    return ParamTraits::GetPackingMode(this->GetParam());
   }
 };
 
 #define MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(test_suite_name) \
         INSTANTIATE_TEST_SUITE_P(, \
             test_suite_name, \
-            testing::Combine(testing::Bool(), testing::ValuesIn(kVectorIndexEngineArray)), \
-            TestParamToString)
+            test_suite_name::ParamTraits::TestParamGenerator(), \
+            test_suite_name::ParamTraits::TestParamNameGenerator())
+
+std::string ParamsToString(
+    std::optional<bool> is_colocated, VectorIndexEngine engine, PackingMode packing_mode) {
+  return Format(
+      "$0$1$2",
+      !is_colocated.has_value() ? "" : *is_colocated ? "Colocated" : "Distributed",
+      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
+      packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexTest
+////////////////////////////////////////////////////////
+
+using PgVectorIndexTestParam = std::tuple<bool, VectorIndexEngine, PackingMode>;
+
+template <>
+struct TestParamTraits<PgVectorIndexTestParam> {
+  using ParamType = PgVectorIndexTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<2>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(
+        testing::Bool(),
+        testing::ValuesIn(kVectorIndexEngineArray),
+        testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      auto engine = Engine(param_info.param);
+      auto packing_mode = GetPackingMode(param_info.param);
+      return ParamsToString(IsColocated(param_info.param), engine, packing_mode);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexTestParam>;
 
 class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
  protected:
@@ -561,7 +699,7 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
       "SELECT * FROM test" + IndexQuerySuffix("[1.0, 0.4, 0.3]", 5)));
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 
-  LOG(INFO) << "Memory usage:\n" << DumpMemoryUsage();
+  DumpMemoryUsage();
 }
 
 TEST_P(PgVectorIndexTest, Simple) {
@@ -669,7 +807,7 @@ TEST_P(PgVectorIndexTest, ManyReads) {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load()) {
         auto id = RandomUniformInt<size_t>(1, kNumRows);
-        auto vector = VectorAsString(id);
+        auto vector = Vector(id);
         auto rows = ASSERT_RESULT(conn.FetchAllAsString(
             "SELECT * FROM test" + IndexQuerySuffix(vector, 1)));
         ASSERT_EQ(rows, ExpectedRow(id));
@@ -954,14 +1092,14 @@ TEST_P(PgVectorIndexTest, Cosine) {
 }
 
 TEST_P(PgVectorIndexTest, EfSearch) {
-  FLAGS_vector_index_no_deletions_skip_filter_check = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
 
   constexpr size_t kNumRows = 1000;
   constexpr int kIterations = 10;
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  FLAGS_TEST_usearch_exact = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
@@ -992,7 +1130,7 @@ TEST_P(PgVectorIndexTest, Paging) {
     std::ranges::sort(available_keys);
     std::vector<std::string> expected;
     for (auto k : available_keys) {
-      expected.push_back(Format("$0, $1, $0", k, VectorAsString(k)));
+      expected.push_back(Format("$0, $1, $0", k, AsString(Vector(k))));
     }
     for (int limit = 1; limit <= kNumRows; limit *= 2) {
       SCOPED_TRACE(Format("limit: $0", limit));
@@ -1075,11 +1213,14 @@ TEST_P(PgVectorIndexTest, Options) {
       switch (Engine()) {
         case VectorIndexEngine::kUsearch:
           break;
-        case VectorIndexEngine::kYbHnsw:
-          expected_options += " backend: YB_HNSW";
+        case VectorIndexEngine::kYbHnswUsearch:
+          expected_options += " backend: YB_HNSW_USEARCH";
           break;
         case VectorIndexEngine::kHnswlib:
           expected_options += " backend: HNSWLIB";
+          break;
+        case VectorIndexEngine::kYbHnswHnswlib:
+          expected_options += " backend: YB_HNSW_HNSWLIB";
           break;
       }
       if (!options.empty()) {
@@ -1089,13 +1230,18 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    std::unordered_map<TabletId, size_t> checked_tablets;
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet_maybe_null();
       auto vector_indexes = tablet->vector_indexes().List();
       if (!vector_indexes) {
         continue;
       }
+      if (checked_tablets[peer->tablet_id()] != 0) {
+        continue;
+      }
+      LOG(INFO) << "Vector indexes: " << AsString(vector_indexes);
       auto& tablet_indexes = checked_indexes[peer->tablet_id()];
       size_t num_new_indexes = 0;
       for (const auto& vector_index : *vector_indexes) {
@@ -1111,7 +1257,10 @@ TEST_P(PgVectorIndexTest, Options) {
             << AsString(hnsw_options);
         ASSERT_EQ(AsString(hnsw_options), expected_options);
       }
-      ASSERT_EQ(num_new_indexes, 1);
+      checked_tablets[peer->tablet_id()] = num_new_indexes;
+    }
+    for (const auto& [tablet_id, num_new_indexes] : checked_tablets) {
+      ASSERT_EQ(num_new_indexes, 1) << "Wrong number of new indexes for: " << tablet_id;
     }
   }
 }
@@ -1139,6 +1288,335 @@ TEST_P(PgVectorIndexTest, Backup) {
   VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
+TEST_P(PgVectorIndexTest, ReverseColumnOrder) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 vector(1)"));
+  ASSERT_OK(CreateIndex(conn, "vi_2", std::nullopt, "v2"));
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(CreateIndex(conn, "vi_3", std::nullopt, "v2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1, 2, 3]', '[4]')"));
+}
+
+////////////////////////////////////////////////////////
+// PgDistributedVectorIndexTest
+////////////////////////////////////////////////////////
+
+using PgDistributedVectorIndexTestParam = std::tuple<VectorIndexEngine, PackingMode>;
+
+template <>
+struct TestParamTraits<PgDistributedVectorIndexTestParam> {
+  using ParamType = PgDistributedVectorIndexTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(
+        testing::ValuesIn(kVectorIndexEngineArray),
+        testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      auto engine = Engine(param_info.param);
+      auto packing_mode = GetPackingMode(param_info.param);
+      if (engine == VectorIndexEngine::kUsearch && packing_mode == PackingMode::kNone) {
+        return "None";
+      }
+      return ParamsToString(std::nullopt, engine, packing_mode);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgDistributedVectorIndexTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgDistributedVectorIndexTestParam>;
+
+class PgDistributedVectorIndexTest
+    : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+  using Base = PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase>;
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) =
+        GetCleanupSplitTabletsIntervalSec();
+    Base::SetUp();
+  }
+
+  virtual int GetCleanupSplitTabletsIntervalSec() const {
+    return 1;
+  }
+
+  // May return stale partitioning if the table was cached before the split.
+  Result<std::vector<client::internal::RemoteTabletPtr>> LookupAllTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    LOG(INFO) << "Lookup tablets for table: " << table->ToString();
+    const auto deadline = CoarseMonoClock::Now() + 30s * kTimeMultiplier;
+    auto result = client_->LookupAllTabletsFuture(table, deadline).get();
+    for (size_t retry = 0; retry < num_retries && !result.ok(); ++retry) {
+      if (client::ClientError(result.status()) !=
+          client::ClientErrorCode::kTablePartitionListIsStale) {
+        break;
+      }
+      LOG(INFO) << "Lookup retry #" << retry << " status: " << result.status();
+      // It is required mark the table partitions as stale, so the next lookup will refresh the
+      // partition list from the master.
+      table->MarkPartitionsAsStale();
+      result = client_->LookupAllTabletsFuture(table, deadline).get();
+    }
+    return result;
+  }
+
+  Result<size_t> LookupNumTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    auto result = LookupAllTabletsWithRetry(table, num_retries);
+    RETURN_NOT_OK(result);
+    return result->size();
+  }
+
+  Result<size_t> LookupNumTablets(const client::YBTablePtr& table) {
+    return LookupNumTabletsWithRetry(table, /* num_retries = */ 0);
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
+
+// Use `BaseTable` test name prefix to identify the tests where indexable table split happens
+// before the vector index creation.
+TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
+  constexpr size_t kNumRows = 20;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Trigger tablet split.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  // Create vector index.
+  ASSERT_OK(CreateIndex(conn));
+
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
+  // Make sure drop table works fine.
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
+  constexpr size_t kNumRows = 80;
+  num_pre_split_tablets_ = 2;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Trigger tablet split for the second tablet.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 2);
+  std::ranges::sort(peers, [](const auto& peer1, const auto& peer2) {
+    const auto& part1 = peer1->tablet_metadata()->partition()->partition_key_start();
+    const auto& part2 = peer2->tablet_metadata()->partition()->partition_key_start();
+    return part1 < part2;
+  });
+
+  LOG(INFO) << "Splitting tablet " << peers.back()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+     cluster_.get(), peers.back()->tablet_id()));
+
+  // Make sure parent tablet got cleaned up.
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  const auto unsplit_tablet = peers.front()->tablet_id();
+  peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 3);
+
+  // Verify tablet dirs exist.
+  auto* env = Env::Default();
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    DCHECK_ONLY_NOTNULL(tablet.get());
+    const auto* meta = tablet->metadata();
+    ASSERT_TRUE(env->DirExists(meta->rocksdb_dir()));
+    ASSERT_TRUE(env->DirExists(meta->intents_rocksdb_dir()));
+    ASSERT_TRUE(env->DirExists(meta->snapshots_dir()));
+    auto indexes = tablet->vector_indexes().List();
+    ASSERT_ONLY_NOTNULL(indexes.get());
+    ASSERT_FALSE(indexes->empty());
+    for (const auto& vi : *indexes) {
+      const auto vi_dir = meta->vector_index_dir(vi->options());
+      ASSERT_TRUE(env->DirExists(vi_dir));
+      const auto files = AsString(ASSERT_RESULT(path_utils::GetVectorIndexFiles(*env, vi_dir)));
+      if (unsplit_tablet == tablet->tablet_id()) {
+        const auto expected_files = Format(
+            "[0.meta, vectorindex_1$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      } else {
+        // Wait for compaction is done.
+        ASSERT_OK(
+            LoggedWaitFor([vi]() -> Result<bool> {
+              return vi->TEST_NextManifestFileNo() > 1;
+            }, MonoDelta::FromSeconds(10),
+            Format("Vector index compaction,tablet $0", tablet->tablet_id()))
+        );
+        const auto expected_files = Format(
+            "[0.meta, 1.meta, vectorindex_2$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      }
+    }
+  }
+
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
+  // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
+}
+
+TEST_P(PgDistributedVectorIndexTest, AnotherVectorIndexCreationAfterManualSplit) {
+  constexpr size_t kNumRows = 80;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm meta cache with pre-split layout.
+  auto count = ASSERT_RESULT(conn.FetchAllAsString("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(kNumRows, std::stoi(count));
+
+  // Keep a stale base-table schema snapshot (without vector indexes) so that
+  // RefreshTablePartitions(base) does not erase vector-index entries from MetaCache.
+  ASSERT_TRUE(main_table->index_map().empty());
+
+  ASSERT_OK(CreateIndex(conn));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  LOG(INFO) << "Creating another index";
+  ASSERT_OK(CreateIndex(conn, "another"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheBaseTableStaleLookupAfterSplit) {
+  constexpr size_t kNumRows = 40;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm up cache with pre-split tablet layout.
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  ASSERT_OK(CreateIndex(conn));
+
+  const auto vector_table_id = ASSERT_RESULT(GetTableIDFromTableName(kVectorIndexName));
+  auto vector_table = ASSERT_RESULT(client_->OpenTable(vector_table_id));
+
+  // Vector index lookup should observe post-split partitions.
+  ASSERT_GE(ASSERT_RESULT(LookupNumTabletsWithRetry(vector_table)), 2);
+
+  // The expectation here is to have main table still see stale partition list, because
+  // nothing was triggered for the main table since the split.
+  ASSERT_EQ(1, ASSERT_RESULT(LookupNumTablets(main_table)));
+
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
+  constexpr size_t kNumRows = 20;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Warm up main table cache before split.
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  // Create vector index after the base table split and then drop the table
+  // without running any vector query. The main table may still have stale
+  // partition information in cache at this point.
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexSingleServerTestBase
+////////////////////////////////////////////////////////
+
 class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
  public:
   PgVectorIndexSingleServerTestBase() {
@@ -1150,6 +1628,10 @@ class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
     return 1;
   }
 };
+
+////////////////////////////////////////////////////////
+// PgVectorIndexSingleServerTest
+////////////////////////////////////////////////////////
 
 class PgVectorIndexSingleServerTest
     : public PgVectorIndexTestParamsDecorator<PgVectorIndexSingleServerTestBase> {
@@ -1166,8 +1648,9 @@ class TestKVFormatter : public tablet::KVFormatter {
 
  public:
   std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
-    auto result = tablet::KVFormatter::Format(key, value, type);
+      Slice key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
+      docdb::AllowEmptyValue allow_empty_value) const override {
+    auto result = tablet::KVFormatter::Format(key, value, type, key_suffix, allow_empty_value);
     if (!key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
       return result;
     }
@@ -1332,7 +1815,9 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   auto* db_impl = down_cast<rocksdb::DBImpl*>(db);
 
   // Setup helpers.
-  auto flush_tablet_and_wait = [&tablet, db_impl](const std::string& description) -> Status {
+  auto flush_tablet_and_wait = [&tablet, db_impl, cluster = cluster_.get()](
+      const std::string& description) -> Status {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster, 10s));
     RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
 
     // Wait for the files are really being flushed.
@@ -1542,6 +2027,10 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   size_t NumTabletServers() override {
     return 1;
   }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV1;
+  }
 };
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
@@ -1582,6 +2071,47 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
           ybctid_4_vector_2 -> ybctid_4
       )#",
       output);
+}
+
+TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
+  constexpr size_t kNumRows = 10;
+  num_pre_split_tablets_ = 2; // To have test both types of delete_state.
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows, AddFilter::kFalse));
+
+  auto tablet_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablet_peers.size(), 2);
+
+  for (auto delete_state : { tablet::TABLET_DATA_DELETED, tablet::TABLET_DATA_TOMBSTONED }) {
+    ASSERT_FALSE(tablet_peers.empty());
+    auto tablet = ASSERT_RESULT(tablet_peers.back()->shared_tablet());
+    auto vector_indexes = tablet->vector_indexes().List();
+    ASSERT_EQ(vector_indexes->size(), 1);
+
+    const auto vector_index_dir = vector_indexes->front()->path();
+    const auto table_dir = DirName(vector_index_dir);
+    const auto tablet_id = tablet->tablet_id();
+
+    // Sanity check to make sure table dir contains vector index.
+    ASSERT_TRUE(vector_index_dir.starts_with(table_dir));
+
+    auto content = ASSERT_RESULT(Env::Default()->GetChildren(table_dir, ExcludeDots::kTrue));
+    LOG(INFO) << Format("Table dirs before tablet $0 deletion: $1", tablet_id, AsString(content));
+
+    ASSERT_OK(cluster_->mini_tablet_server(0)->DeleteTablet(tablet_id, delete_state));
+
+    // Make sure all tablet directories have been deleted (including vector index dir).
+    content = ASSERT_RESULT(Env::Default()->GetChildren(table_dir, ExcludeDots::kTrue));
+    LOG(INFO) << Format("Table dirs after tablet $0 deletion: $1", tablet_id, AsString(content));
+    const auto num_tablet_dirs = std::ranges::count_if(
+          content, [&tablet_id](const std::string& subdir) { return subdir.contains(tablet_id); });
+    ASSERT_EQ(num_tablet_dirs, 0);
+
+    tablet_peers.pop_back();
+  }
 }
 
 }  // namespace yb::pgwrapper

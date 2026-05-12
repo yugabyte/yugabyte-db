@@ -35,7 +35,8 @@ import org.slf4j.LoggerFactory;
 public class PgOutputMessageDecoder {
   private static final Logger LOG = LoggerFactory.getLogger(PgOutputMessageDecoder.class);
 
-  public enum PgOutputMessageType { RELATION, TYPE, BEGIN, COMMIT, INSERT, UPDATE, DELETE };
+  public enum PgOutputMessageType { RELATION, TYPE, BEGIN, COMMIT, INSERT, UPDATE, DELETE, ORIGIN }
+  ;
 
   public interface PgOutputMessage {
     PgOutputMessageType messageType();
@@ -66,6 +67,12 @@ public class PgOutputMessageDecoder {
     public static PgOutputRelationMessage CreateForComparison(String namespace, String name,
         char replicaIdentity, List<PgOutputRelationMessageColumn> columns) {
       return new PgOutputRelationMessage(0, namespace, name, replicaIdentity, columns);
+    }
+
+    public static PgOutputRelationMessage Create(String namespace, String name,
+        char replicaIdentity, PgOutputRelationMessageColumn... columns) {
+      return new PgOutputRelationMessage(
+          0, namespace, name, replicaIdentity, Arrays.asList(columns));
     }
 
     @Override
@@ -134,6 +141,11 @@ public class PgOutputMessageDecoder {
     }
 
     public static PgOutputRelationMessageColumn CreateForComparison(String name, int dataType) {
+      return new PgOutputRelationMessageColumn(
+          (byte) 0, name, dataType, 0, /* compareDataType */ true);
+    }
+
+    public static PgOutputRelationMessageColumn Create(String name, int dataType) {
       return new PgOutputRelationMessageColumn(
           (byte) 0, name, dataType, 0, /* compareDataType */ true);
     }
@@ -243,6 +255,10 @@ public class PgOutputMessageDecoder {
       return new PgOutputBeginMessage(finalLSN, 0L, transactionId);
     }
 
+    public static PgOutputBeginMessage Create(String finalLSN, int transactionId) {
+      return new PgOutputBeginMessage(LogSequenceNumber.valueOf(finalLSN), 0L, transactionId);
+    }
+
     @Override
     public PgOutputMessageType messageType() {
       return PgOutputMessageType.BEGIN;
@@ -273,6 +289,46 @@ public class PgOutputMessageDecoder {
     }
   }
 
+  protected final static class PgOutputOriginMessage implements PgOutputMessage {
+    final String origin;
+
+    public PgOutputOriginMessage(String origin) {
+      this.origin = origin;
+    }
+
+    public static PgOutputOriginMessage Create(String origin) {
+      return new PgOutputOriginMessage(origin);
+    }
+
+    @Override
+    public PgOutputMessageType messageType() {
+      return PgOutputMessageType.ORIGIN;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+
+      if (!(other instanceof PgOutputOriginMessage)) {
+        return false;
+      }
+
+      PgOutputOriginMessage otherMessage = (PgOutputOriginMessage) other;
+      return this.origin.equals(otherMessage.origin);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hashCode(origin);
+    }
+
+    @Override
+    public String toString() {
+      return String.format("ORIGIN: %s", origin);
+    }
+  }
+
   /*
    * COMMIT message
    *
@@ -296,6 +352,11 @@ public class PgOutputMessageDecoder {
     public static PgOutputCommitMessage CreateForComparison(
         LogSequenceNumber commitLSN, LogSequenceNumber endLSN) {
       return new PgOutputCommitMessage((byte)0, 0L, commitLSN, endLSN);
+    }
+
+    public static PgOutputCommitMessage Create(String commitLSN, String endLSN) {
+      return new PgOutputCommitMessage(
+          (byte) 0, 0L, LogSequenceNumber.valueOf(commitLSN), LogSequenceNumber.valueOf(endLSN));
     }
 
     @Override
@@ -347,6 +408,9 @@ public class PgOutputMessageDecoder {
     public static PgOutputInsertMessage CreateForComparison(PgOutputMessageTuple tuple) {
       return new PgOutputInsertMessage(0, tuple);
     }
+    public static PgOutputInsertMessage Create(String... columns) {
+      return new PgOutputInsertMessage(0, new PgOutputMessageTuple(columns));
+    }
 
     @Override
     public PgOutputMessageType messageType() {
@@ -387,6 +451,23 @@ public class PgOutputMessageDecoder {
     public PgOutputMessageTuple(short numColumns, List<PgOutputMessageTupleColumn> columns) {
       this.numColumns = numColumns;
       this.columns = columns;
+    }
+
+    public PgOutputMessageTuple(List<PgOutputMessageTupleColumn> columns) {
+      this.numColumns = (short) columns.size();
+      this.columns = columns;
+    }
+
+    public PgOutputMessageTuple(String... columns) {
+      this.numColumns = (short) columns.length;
+      this.columns = new ArrayList<>();
+      for (String column : columns) {
+        if (column == null) {
+          this.columns.add(new PgOutputMessageTupleColumnNull());
+        } else {
+          this.columns.add(new PgOutputMessageTupleColumnValue(column));
+        }
+      }
     }
 
     @Override
@@ -508,6 +589,10 @@ public class PgOutputMessageDecoder {
       return new PgOutputUpdateMessage(0, old_tuple, new_tuple);
     }
 
+    public static PgOutputUpdateMessage Create(boolean hasKey, String... columns) {
+      return new PgOutputUpdateMessage(0, null, new PgOutputMessageTuple(columns));
+    }
+
     @Override
     public PgOutputMessageType messageType() {
       return PgOutputMessageType.UPDATE;
@@ -553,6 +638,10 @@ public class PgOutputMessageDecoder {
     public static PgOutputDeleteMessage CreateForComparison(
         boolean hasKey, PgOutputMessageTuple oldTuple) {
       return new PgOutputDeleteMessage(0, hasKey, oldTuple);
+    }
+
+    public static PgOutputDeleteMessage Create(boolean hasKey, String... columns) {
+      return new PgOutputDeleteMessage(0, hasKey, new PgOutputMessageTuple(columns));
     }
 
     @Override
@@ -663,6 +752,11 @@ public class PgOutputMessageDecoder {
         namespace = decodeString(buffer);
         name = decodeString(buffer);
         return new PgOutputTypeMessage(oid, namespace, name);
+
+      case 'O': // ORIGIN
+        buffer.getLong(); // String length
+        String origin = decodeString(buffer);
+        return new PgOutputOriginMessage(origin);
     }
 
     LOG.info(String.format("Received unknown response %c, returning null", cmd));

@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
@@ -12,22 +14,86 @@ import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceOptions;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class TableSpaceUtil {
 
+  public static final String DB = "postgres";
+
   public static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
+
+  public static final String FETCH_TABLESPACES_QUERY =
+      wrapInJson("select spcname, spcoptions from pg_catalog.pg_tablespace");
+
+  public static final String FETCH_TABLES_WITH_TABLESPACES_QUERY =
+      wrapInJson(
+          "SELECT c.relfilenode, t.spcname, c.relname FROM pg_tablespace t JOIN pg_class c ON t.oid"
+              + " = c.reltablespace");
+
+  private static final Pattern VALID_POSTGRES_IDENTIFIER =
+      Pattern.compile("^[a-z_][a-z0-9_]*$", Pattern.CASE_INSENSITIVE);
+
+  private static final int MAX_IDENTIFIER_LENGTH = 63;
+
+  private static String wrapInJson(String query) {
+    return "select jsonb_agg(t) from (" + query + ") as t";
+  }
+
+  public static boolean isValidTablespaceName(String name) {
+    if (name != null) {
+      name = name.trim();
+    }
+    if (StringUtils.isEmpty(name)) {
+      return false;
+    }
+    if (name.length() > MAX_IDENTIFIER_LENGTH) {
+      return false;
+    }
+    if (!VALID_POSTGRES_IDENTIFIER.matcher(name).matches()) {
+      return false;
+    }
+    return true;
+  }
+
+  public static Optional<PlacementBlock> findPlacementBlockByNode(
+      TableSpaceInfo tableSpaceInfo, NodeDetails node) {
+    if (tableSpaceInfo == null || tableSpaceInfo.placementBlocks == null) {
+      return Optional.empty();
+    }
+    return tableSpaceInfo.placementBlocks.stream()
+        .filter(pb -> pb.cloud.equals(node.cloudInfo.cloud))
+        .filter(pb -> pb.region.equals(node.cloudInfo.region))
+        .filter(pb -> pb.zone.equals(node.cloudInfo.az))
+        .findFirst();
+  }
+
+  public static boolean isSameAz(PlacementBlock pb, AvailabilityZone az) {
+    return pb.zone.equals(az.getCode())
+        && pb.region.equals(az.getRegion().getCode())
+        && pb.cloud.equals(az.getRegion().getProvider().getCode());
+  }
 
   public static TableSpaceInfo parseToTableSpaceInfo(TableSpaceQueryResponse tablespace) {
     TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
@@ -72,10 +138,13 @@ public class TableSpaceUtil {
     }
   }
 
-  private static void validateTablespace(TableSpaceInfo tsInfo, Universe universe) {
+  public static void validateTablespace(TableSpaceInfo tsInfo, Universe universe) {
     PlacementInfo primaryClusterPlacement =
-        universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+        universe.getUniverseDetails().getPrimaryCluster().getOverallPlacement();
+    validateTablespace(tsInfo, primaryClusterPlacement);
+  }
 
+  public static void validateTablespace(TableSpaceInfo tsInfo, PlacementInfo placementInfo) {
     Set<Pair<String, Pair<String, String>>> crzs = new HashSet<>();
     List<Integer> leaderPreferences = new ArrayList<>();
     int numReplicas = 0;
@@ -91,7 +160,7 @@ public class TableSpaceUtil {
         throw new PlatformServiceException(BAD_REQUEST, msg);
       }
       crzs.add(crz);
-      validatePlacement(primaryClusterPlacement, pb);
+      validatePlacement(placementInfo, pb);
 
       if (pb.leaderPreference != null) {
         leaderPreferences.add(pb.leaderPreference);
@@ -137,6 +206,59 @@ public class TableSpaceUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Invalid number of replicas in tablespace " + tsInfo.name);
     }
+  }
+
+  public static Map<String, TableSpaceInfo> getCurrentTablespaces(
+      NodeDetails nodeToQuery, Universe universe, NodeUniverseManager nodeUniverseManager) {
+    ShellResponse shellResponse =
+        nodeUniverseManager
+            .runYsqlCommand(nodeToQuery, universe, DB, FETCH_TABLESPACES_QUERY)
+            .processErrors();
+
+    Map<String, TableSpaceInfo> existingTablespaces = new HashMap<>();
+    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
+    if (jsonData != null && !jsonData.isEmpty()) {
+      ObjectMapper objectMapper = new ObjectMapper();
+      try {
+        List<TableSpaceQueryResponse> tablespaceList =
+            objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
+        existingTablespaces =
+            tablespaceList.stream()
+                .map(TableSpaceUtil::parseToTableSpaceInfo)
+                .collect(Collectors.toMap(tsi -> tsi.name, Function.identity()));
+      } catch (JsonProcessingException e) {
+        String error = "Unable to parse fetchTablespaceQuery response " + jsonData;
+        log.error(error, e);
+        throw new RuntimeException(error, e);
+      }
+    }
+    return existingTablespaces;
+  }
+
+  public static TableSpaceInfo partitionToTablespace(
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo) {
+    TableSpaceStructures.TableSpaceInfo tableSpaceInfo = new TableSpaceStructures.TableSpaceInfo();
+    tableSpaceInfo.name = partitionInfo.getTablespaceName();
+    tableSpaceInfo.numReplicas = partitionInfo.getReplicationFactor();
+    List<TableSpaceStructures.PlacementBlock> blocks = new ArrayList<>();
+    for (PlacementInfo.PlacementCloud placementCloud : partitionInfo.getPlacement().cloudList) {
+      for (PlacementInfo.PlacementRegion placementRegion : placementCloud.regionList) {
+        for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          TableSpaceStructures.PlacementBlock block = new TableSpaceStructures.PlacementBlock();
+          block.minNumReplicas = placementAZ.replicationFactor;
+          block.zone = zone.getCode();
+          block.region = placementRegion.code;
+          block.cloud = placementCloud.code;
+          if (placementAZ.leaderPreference > 0) {
+            block.leaderPreference = placementAZ.leaderPreference;
+          }
+          blocks.add(block);
+        }
+      }
+    }
+    tableSpaceInfo.placementBlocks = blocks;
+    return tableSpaceInfo;
   }
 
   private static void validatePlacement(PlacementInfo clusterPlacement, PlacementBlock pb) {

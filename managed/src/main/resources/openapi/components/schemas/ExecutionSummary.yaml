@@ -1,0 +1,31 @@
+title: ExecutionSummary
+description: Summary of script execution across all targeted nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  total_nodes:
+    description: Total number of nodes targeted for script execution
+    type: integer
+    example: 3
+  successful_nodes:
+    description: Number of nodes where the script executed successfully (exit_code == 0)
+    type: integer
+    example: 3
+  failed_nodes:
+    description: Number of nodes where the script execution failed
+    type: integer
+    example: 0
+  total_execution_time_ms:
+    description: Total time taken for the entire operation in milliseconds
+    type: integer
+    format: int64
+    example: 4521
+  all_succeeded:
+    description: Whether the script executed successfully on all targeted nodes
+    type: boolean
+    example: true
+required:
+  - total_nodes
+  - successful_nodes
+  - failed_nodes
+  - all_succeeded

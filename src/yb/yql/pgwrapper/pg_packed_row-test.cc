@@ -15,14 +15,17 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include "yb/consensus/log.h"
+
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_debug.h"
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
 #include "yb/tablet/kv_formatter.h"
@@ -45,6 +48,8 @@ using namespace std::literals;
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
@@ -55,8 +60,9 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 DECLARE_uint64(ysql_packed_row_size_limit);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
+
+YB_DEFINE_ENUM(DumpMode, (kDir)(kSegmentNoMeta)(kSegmentWithMeta));
 
 class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
                         public testing::WithParamInterface<dockv::PackedRowVersion> {
@@ -75,6 +81,10 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
+  void TestSimple();
+  Status ExecuteLogDump(
+      const tablet::TabletPeer& peer, DumpMode mode,
+      std::vector<std::pair<std::string, std::string>>& kv_pairs);
 
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
@@ -91,7 +101,7 @@ class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
       int64_t expected_aggregate_result);
 };
 
-TEST_P(PgPackedRowTest, Simple) {
+void PgPackedRowTest::TestSimple() {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
@@ -113,6 +123,122 @@ TEST_P(PgPackedRowTest, Simple) {
   row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
       "SELECT v1, v2 FROM t WHERE key = 1")));
   ASSERT_EQ(row, (decltype(row){"four", "five"}));
+}
+
+TEST_P(PgPackedRowTest, Simple) {
+  TestSimple();
+}
+
+YB_DEFINE_ENUM(ParserState, (kIdle)(kKey)(kValue));
+
+Status ProcessLogDump(
+    const std::vector<std::string>& args,
+    std::vector<std::pair<std::string, std::string>>& kv_pairs) {
+  static const std::string kKeyPrefix = "Key: ";
+  static const std::string kValuePrefix = "Value: ";
+
+  LOG(INFO) << "Running " << AsString(args);
+  std::string output, error;
+  auto status = Subprocess::Call(args, &output, &error);
+  LOG_IF(INFO, !error.empty()) << "Error:\n" << error;
+  RETURN_NOT_OK(status);
+  auto state = ParserState::kIdle;
+  std::string key;
+  for (auto part : output | std::views::split('\n')) {
+    std::string line(part.begin(), part.end());
+    line = util::TrimStr(line);
+    switch (state) {
+      case ParserState::kIdle:
+        if (line == "write_pairs {") {
+          state = ParserState::kKey;
+        }
+        break;
+      case ParserState::kKey:
+        SCHECK(std::string_view(line).starts_with(kKeyPrefix), InvalidArgument, "Wrong key prefix");
+        key = line.substr(kKeyPrefix.length());
+        state = ParserState::kValue;
+        break;
+      case ParserState::kValue:
+        SCHECK(
+            std::string_view(line).starts_with(kValuePrefix), InvalidArgument,
+            "Wrong value prefix");
+        kv_pairs.emplace_back(std::move(key), line.substr(kValuePrefix.length()));
+        state = ParserState::kIdle;
+        break;
+    }
+  }
+  return Status::OK();
+}
+
+Status PgPackedRowTest::ExecuteLogDump(
+    const tablet::TabletPeer& peer, DumpMode mode,
+    std::vector<std::pair<std::string, std::string>>& kv_pairs) {
+  auto data_dir = DirName(DirName(DirName(
+      peer.tablet_metadata()->fs_manager()->GetDataRootDirs().front())));
+  auto command = ToStringVector(GetToolPath("log-dump"), "--fs_data_dirs", data_dir);
+  auto wal_dir = peer.log()->wal_dir();
+  if (mode != DumpMode::kDir) {
+    if (mode == DumpMode::kSegmentWithMeta) {
+      command.push_back("--tablet_metadata_path");
+      command.push_back(VERIFY_RESULT(
+          peer.tablet_metadata()->fs_manager()->GetRaftGroupMetadataPath(peer.tablet_id())));
+    }
+    auto segments = VERIFY_RESULT(Env::Default()->GetChildren(wal_dir, ExcludeDots::kTrue));
+    for (const auto& segment : segments) {
+      if (!std::string_view(segment).starts_with("wal-")) {
+        continue;
+      }
+      command.push_back(JoinPathSegments(wal_dir, segment));
+      RETURN_NOT_OK(ProcessLogDump(command, kv_pairs));
+      command.pop_back();
+    }
+    return Status::OK();
+  } else {
+    command.push_back(peer.tablet_id());
+    command.push_back(wal_dir);
+    return ProcessLogDump(command, kv_pairs);
+  }
+}
+
+TEST_P(PgPackedRowTest, LogDump) {
+  TestSimple();
+  const auto kColumn1 = kFirstColumnIdRep + 1;
+  const auto kColumn2 = kFirstColumnIdRep + 2;
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (auto mode : kDumpModeArray) {
+    LOG(INFO) << "Check mode: " << mode;
+    bool has_metadata = mode != DumpMode::kSegmentNoMeta;
+    std::vector<std::pair<std::string, std::string>> kv_pairs;
+    for (const auto& peer : peers) {
+      ASSERT_OK(ExecuteLogDump(*peer, mode, kv_pairs));
+    }
+    LOG(INFO) << "Pairs: " << AsString(kv_pairs);
+    ASSERT_EQ(kv_pairs.size(), 4);
+    ASSERT_EQ(kv_pairs[0].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    if (has_metadata) {
+      ASSERT_EQ(kv_pairs[0].second,
+                Format("{ $0: \"one\" $1: \"two\" }", kColumn1, kColumn2));
+    } else if (GetParam() == dockv::PackedRowVersion::kV2) {
+      ASSERT_EQ(kv_pairs[0].second, "PACKED_ROW_V2[0](00066F6E650674776F)");
+    } else {
+      ASSERT_EQ(kv_pairs[0].second, "PACKED_ROW_V1[0](0400000008000000536F6E655374776F)");
+    }
+    ASSERT_EQ(kv_pairs[1].first,
+              Format("SubDocKey(DocKey(0x1210, [1], []), [ColumnId($0)])", kColumn2));
+    ASSERT_EQ(kv_pairs[1].second, "\"three\"");
+    ASSERT_EQ(kv_pairs[2].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    ASSERT_EQ(kv_pairs[2].second, "DEL");
+    ASSERT_EQ(kv_pairs[3].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    if (has_metadata) {
+      ASSERT_EQ(kv_pairs[3].second,
+                Format("{ $0: \"four\" $1: \"five\" }", kColumn1, kColumn2));
+    } else if (GetParam() == dockv::PackedRowVersion::kV2) {
+      ASSERT_EQ(kv_pairs[3].second, "PACKED_ROW_V2[0](0008666F75720866697665)");
+    } else {
+      ASSERT_EQ(kv_pairs[3].second, "PACKED_ROW_V1[0](050000000A00000053666F75725366697665)");
+    }
+  }
 }
 
 TEST_P(PgPackedRowTest, Update) {
@@ -181,8 +307,21 @@ TEST_P(PgPackedRowTest, AlterTable) {
           SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       std::vector<int> columns;
       int column_idx = 0;
-      ASSERT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name));
+      while (true) {
+        auto status = conn.ExecuteFormat(
+            "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name);
+        if (status.ok()) {
+          break;
+        }
+        auto msg = status.ToString();
+        // Concurrent CREATE TABLE can fail with serialization error
+        static const auto kCreateTableErrors = {
+            "pgsql error 40001"sv,
+            SerializeAccessErrorMessageSubstring(),
+            "Restart read required"sv,
+        };
+        ASSERT_TRUE(HasSubstring(msg, kCreateTableErrors)) << msg;
+      }
       while (!stop.load()) {
         if (columns.empty() || RandomUniformBool()) {
           auto status = conn.ExecuteFormat(
@@ -328,7 +467,7 @@ TEST_P(PgPackedRowTest, Random) {
       continue;
     }
     std::unordered_set<std::string> values;
-    tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
+    tablet->TEST_DocDBDumpToContainer(values, docdb::IncludeIntents::kTrue);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {
@@ -925,8 +1064,9 @@ TEST_P(PgPackedRowTest, UpdateToNullWithPK) {
 class TestKVFormatter : public tablet::KVFormatter {
  public:
   std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
-    auto result = tablet::KVFormatter::Format(key, value, type);
+      Slice key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
+      docdb::AllowEmptyValue allow_empty_value) const override {
+    auto result = tablet::KVFormatter::Format(key, value, type, key_suffix, allow_empty_value);
     auto b = result.find("HT{");
     auto e = result.find("}", b);
     entries_ += result.substr(0, b + 3);
@@ -946,14 +1086,18 @@ class TestKVFormatter : public tablet::KVFormatter {
 void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT PRIMARY KEY, v2 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 'two')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v3 TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 TEXT"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (3, 'three', 'tri')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v1"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (4, 'chetyre')"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test VALUES (5, 'transactional'); COMMIT"));
+
+  // Wait for background APPLY to move data from IntentsDB to RegularDB.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -1005,6 +1149,7 @@ TEST_P(PgPackedRowTest, SstDump) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       Format(R"#(
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> { $1: "transactional" }
           SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> { $0: "one" }
           SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> { $1: "chetyre" }
           SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> { $0: "two" }
@@ -1022,11 +1167,13 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       R"#(
-          SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW[0](04000000536F6E65)
-          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW[3](080000005363686574797265)
-          SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW[0](040000005374776F)
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> \
+              PACKED_ROW_V1[3](0E000000537472616E73616374696F6E616C)
+          SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW_V1[0](04000000536F6E65)
+          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW_V1[3](080000005363686574797265)
+          SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW_V1[0](040000005374776F)
           SubDocKey(DocKey(0xfca0, [3], []), [HT{}]) -> \
-              PACKED_ROW[1](060000000A00000053746872656553747269)
+              PACKED_ROW_V1[1](060000000A00000053746872656553747269)
       )#"),
       output);
 }
@@ -1118,7 +1265,7 @@ void PgPackedRowTest::TestDropColocatedTable(bool use_transaction) {
   }
   ASSERT_OK(conn.Execute("DROP TABLE test"));
 
-  DisableFlushOnShutdown(*cluster_, true);
+  DisableFlushOnShutdown(*cluster_, /*disable=*/true);
   ASSERT_OK(cluster_->RestartSync());
 
   conn = ASSERT_RESULT(ConnectToDB("test"));
@@ -1196,6 +1343,295 @@ TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
       42);
 }
 
+namespace {
+
+std::optional<SchemaVersion> GetMinPrimarySchemaVersion(rocksdb::DB* db) {
+  std::unordered_map<Uuid, SchemaVersion> versions;
+  {
+    auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&versions);
+    }
+  }
+  for (const auto& file : db->GetLiveFilesMetaData()) {
+    auto smallest = file.smallest.user_frontier;
+    if (!smallest) {
+      continue;
+    }
+    down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&versions);
+  }
+  auto it = versions.find(Uuid::Nil());
+  if (it == versions.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+} // namespace
+
+TEST_F_EX(PgPackedRowTest, SchemaPinnedByCompactionGc, PgMiniTestBase) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // Requires packing to be off in order to reproduce.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  constexpr auto kNumInitialRows = 1000;
+  constexpr auto kNumRowsInTxn = 100;
+  constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Table created";
+
+  const auto tablets =
+      ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto& tablet = *tablets[0].get();
+
+  struct TestScope {
+    rocksdb::CompactionContextFactoryDelayer compaction_delayer;
+    TestThreadHolder thread_holder;
+
+    ~TestScope() {
+      // Clear delays first so the slow compaction thread can finish before thread_holder joins
+      // threads.
+      compaction_delayer.SetDelayForAllCompactions(0ms);
+    }
+  } test_scope;
+
+  auto& regular_db_options = pointer_cast<rocksdb::DBImpl*>(tablet.regular_db())->TEST_db_options();
+  regular_db_options.compaction_context_factory =
+      test_scope.compaction_delayer.WrapFactory(regular_db_options.compaction_context_factory);
+  auto regular_db_listener = std::make_shared<rocksdb::TestCompactionListener>();
+  regular_db_options.listeners.push_back(regular_db_listener);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, 1 FROM generate_series(1, $0) AS i",
+      kNumInitialRows));
+  int64_t next_row = kNumInitialRows + 1;
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(LoggedWaitFor(
+      [&tablet]() -> Result<bool> { return VERIFY_RESULT(tablet.CountIntents()) == 0; },
+      kWaitTimeout, "Waiting for intents to be cleaned"));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_EQ(GetMinPrimarySchemaVersion(tablet.regular_db()), std::nullopt);
+
+  // Long-running compaction pins schema version 0 in SchemaPackingRegistry.
+  ASSERT_EQ(regular_db_listener->GetNumCompactionsStarted(), 0);
+  test_scope.compaction_delayer.SetDelayForNextCompactions(100ms);
+  test_scope.thread_holder.AddThreadFunctor([&] {
+    CHECK_OK(cluster_->CompactTablets());
+  });
+  ASSERT_OK(
+      LoggedWaitFor(
+          [regular_db_listener] { return regular_db_listener->GetNumCompactionsStarted() > 0; },
+          kWaitTimeout, Format("Waiting for the 1st compaction to start")));
+
+  // ALTER TABLE -> schema version 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN c1 INT"));
+  LOG(INFO) << "ALTER TABLE done";
+
+  bool txn_is_open = false;
+  auto rows_flusher = [&]() -> Status {
+    if (txn_is_open) {
+      RETURN_NOT_OK(conn.CommitTransaction());
+      txn_is_open = false;
+    }
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&tablet]() -> Result<bool> {
+          const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+          LOG(INFO) << "Intents count: " << num_intents;
+          return num_intents == 0;
+        },
+        kWaitTimeout, "Waiting for intents cleanup"));
+
+    // We want IntentsDB to be not empty, so it contains primary_schema_version = 1 which will be
+    // taken into account by OldSchemaGC triggered after compaction.
+    // Otherwise, FillMinXClusterSchemaVersion (as of 2026-04-13) will set min version to 0
+    // (safe, but incorrect and prevent bug from being reproducible).
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i, $0 FROM generate_series($0, $1) AS i", next_row,
+        next_row + kNumRowsInTxn - 1));
+    txn_is_open = true;
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+          LOG(INFO) << "Intents count: " << num_intents;
+          return num_intents >= kNumRowsInTxn;
+        },
+        kWaitTimeout, "Waiting for intents"));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+    const auto min_primary_version = GetMinPrimarySchemaVersion(tablet.intents_db());
+    {
+      const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+      LOG(INFO) << "Intents count: " << num_intents;
+    }
+    SCHECK_EQ(min_primary_version, 1, InternalError, "");
+    next_row += kNumRowsInTxn;
+    return Status::OK();
+  };
+
+  auto auto_compaction_trigger = [&](const std::string& label) -> Status {
+    const auto num_compactions_started = regular_db_listener->GetNumCompactionsStarted();
+    const auto num_compactions_completed = regular_db_listener->GetNumCompactionsCompleted();
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(rows_flusher());
+          return regular_db_listener->GetNumCompactionsStarted() > num_compactions_started;
+        },
+        kWaitTimeout, Format("Waiting for $0 to start", label), 100ms, 1));
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&] {
+          return regular_db_listener->GetNumCompactionsCompleted() > num_compactions_completed;
+        },
+        kWaitTimeout, Format("Waiting for $0 to complete", label)));
+    if (txn_is_open) {
+      RETURN_NOT_OK(conn.CommitTransaction());
+      txn_is_open = false;
+    }
+    return Status::OK();
+  };
+
+  // Write more SST files to trigger smaller compaction so OldSchemaGC will be run after it.
+  // Regular DB has primary_schema_version = nullopt, intents DB has v1, so without the fix
+  // OldSchemaGC determines min version = 1 and GCs v0 from storage.
+  // With the fix: OldSchemaGC respects MinActiveVersion() and won't GC below v0 (pinned by 1st
+  // compaction).
+  test_scope.compaction_delayer.SetDelayForNextCompactions(0ms);
+  ASSERT_OK(auto_compaction_trigger("2nd compaction"));
+
+  // Write more SST files to trigger smaller compaction after OldSchemaGC.
+  // Before GHI #31138 fix: MinActiveVersion() returns 0 (held by 1st compaction), but only version
+  // 1 exists in the current packing storage -> "Cannot find packing with version 0".
+  ASSERT_OK(auto_compaction_trigger("3rd compaction"));
+
+  // Check: 1st compaction should still be running and  pin schema version 0 in
+  // SchemaPackingRegistry.
+  {
+    auto current_table_info = tablet.metadata()->primary_table_info();
+    ASSERT_EQ(current_table_info->schema_version, 1);
+    auto min_active =
+        current_table_info->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
+    LOG(INFO) << "MinActiveVersion: " << AsString(min_active)
+              << ", current schema version: " << current_table_info->schema_version
+              << ", schema count: "
+              <<   current_table_info->doc_read_context->schema_packing_storage.SchemaCount();
+    ASSERT_EQ(min_active, 0);
+    ASSERT_GE(
+        regular_db_listener->GetNumCompactionsCompleted(),
+        regular_db_listener->GetNumCompactionsStarted() - 1);
+  }
+
+  test_scope.compaction_delayer.SetDelayForAllCompactions(0ms);
+  test_scope.thread_holder.JoinAll();
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(row_count, next_row - 1);
+}
+
+// Bug scenario similar to SchemaPinnedByCompactionGc, but the stale SchemaPackingRegistry entry is
+// pinned by a long-running read (which holds a TableInfoPtr on the stack) instead of a long-running
+// compaction.
+TEST_P(PgPackedRowTestDisableTableLocks, SchemaPinnedByReadGc) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  constexpr auto kNumRows = 10;
+  constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Table created";
+
+  const auto tablets =
+      ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto& tablet = *tablets[0].get();
+
+  struct TestScope {
+    TestThreadHolder thread_holder;
+    SyncPoint& sync_point = *SyncPoint::GetInstance();
+
+    CountDownLatch release_read{1};
+
+    ~TestScope() {
+      release_read.CountDown();
+      sync_point.DisableProcessing();
+      sync_point.ClearAllCallBacks();
+      sync_point.ClearTrace();
+    }
+  } test_scope;
+
+  // Start a long-running aggregate read that pins schema version 0 via TableInfoPtr held on the
+  // stack in DoHandlePgsqlReadRequest.
+  CountDownLatch read_paused(1);
+  test_scope.sync_point.SetCallBack(
+      "Tablet::DoHandlePgsqlReadRequest::Aggregate", [&](void*) {
+        LOG(INFO) << "Read reached sync point, pausing";
+        read_paused.CountDown();
+        test_scope.release_read.Wait();
+        LOG(INFO) << "Read released from sync point";
+      });
+  test_scope.sync_point.EnableProcessing();
+
+  auto read_conn = ASSERT_RESULT(Connect());
+  test_scope.thread_holder.AddThreadFunctor([&read_conn, &test_scope] {
+    auto result = read_conn.FetchRow<int64_t>("SELECT count(*) FROM test");
+    if (!test_scope.thread_holder.stop_flag().load()) {
+      CHECK_OK(result);
+    }
+  });
+
+  ASSERT_TRUE(read_paused.WaitFor(kWaitTimeout));
+  LOG(INFO) << "Background read is paused at sync point (schema version 0 pinned)";
+
+  // ALTER TABLE -> schema version 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN c1 INT"));
+  LOG(INFO) << "ALTER TABLE done";
+
+  // Insert some data at schema version 1, flush.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, 1 FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(LoggedWaitFor(
+    [&tablet]() -> Result<bool> { return GetMinPrimarySchemaVersion(tablet.regular_db()) == 1; },
+    kWaitTimeout, "Waiting for regular DB primary schema version to become 1."));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_EQ(GetMinPrimarySchemaVersion(tablet.regular_db()), 1);
+
+  // Compact to trigger OldSchemaGC. Regular DB has primary_schema_version = 1, so without
+  // the fix OldSchemaGC determines min version = 1 and GCs v0 from storage.
+  // With the fix: OldSchemaGC respects MinActiveVersion() and won't GC below v0 (pinned by read).
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Another compaction. Without the fix, this crashes with
+  // "Cannot find packing with version 0" because MinActiveVersion() returns 0 (pinned by read)
+  // but version 0 was GC'd from storage.
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Verify: read should still pin schema version 0 in the registry.
+  {
+    auto current_table_info = tablet.metadata()->primary_table_info();
+    ASSERT_EQ(current_table_info->schema_version, 1);
+    auto min_active =
+        current_table_info->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
+    LOG(INFO) << "MinActiveVersion: " << AsString(min_active)
+              << ", current schema version: " << current_table_info->schema_version
+              << ", schema count: "
+              << current_table_info->doc_read_context->schema_packing_storage.SchemaCount();
+    ASSERT_EQ(min_active, 0);
+  }
+
+  // Release the read.
+  test_scope.release_read.CountDown();
+  test_scope.thread_holder.JoinAll();
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(row_count, kNumRows);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     , PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
@@ -1204,5 +1640,4 @@ INSTANTIATE_TEST_SUITE_P(
     , PgPackedRowTestDisableTableLocks, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

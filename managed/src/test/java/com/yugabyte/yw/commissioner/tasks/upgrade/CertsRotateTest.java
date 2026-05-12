@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -20,9 +21,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -32,7 +35,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -114,7 +116,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private TaskInfo submitTask(CertsRotateParams requestParams) {
@@ -300,7 +302,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               universe.setUniverseDetails(universeDetails);
             },
             false);
@@ -449,6 +451,27 @@ public class CertsRotateTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testCertsRotateNonRestartUpgradeRejectedForC2nOnlyWithDbBelow2025_2_1()
+      throws IOException, NoSuchAlgorithmException {
+    UUID rootCA = UUID.randomUUID();
+    UUID clientRootCA = rootCA;
+    prepareUniverse(false, true, true, rootCA, clientRootCA);
+    TestHelper.updateUniverseVersion(defaultUniverse, "2025.2.0.0-b1");
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.KEY_CERT_HOT_RELOADABLE, "true"));
+    defaultUniverse.save();
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableCertReload.getKey(), "true");
+    CertsRotateParams taskParams =
+        getTaskParams(true, false, true, UpgradeOption.NON_RESTART_UPGRADE);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertTrue(
+        "Exception message should mention client-to-node-only and minimum version",
+        e.getMessage().contains("client-to-node-only")
+            && e.getMessage().contains(CertsRotateParams.HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION));
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+  }
+
+  @Test
   @Parameters(method = "getTestParameters")
   public void testCertsRotateNonRollingUpgrade(
       boolean currentNodeToNode,
@@ -540,7 +563,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     position = assertCommonTasks(subTasksByPosition, position, false, true);
 
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,
@@ -623,14 +646,14 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 81;
-    int expectedNumberOfInvocations = 21;
+    int expectedPosition = 83;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (rotateRootCA) {
       expectedPosition += 150;
-      expectedNumberOfInvocations += 30;
       // RootCA update task
       position = assertCommonTasks(subTasksByPosition, position, true, false);
       // Cert update tasks
@@ -663,7 +686,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseConfig);
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(expectedNumberOfInvocations)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,
@@ -737,12 +759,14 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     int position = 0;
     if (isRolling) {
+      assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+      assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
       assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     }
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // RootCA update task
-    int expectedPosition = isRolling ? 81 : 17;
+    int expectedPosition = isRolling ? 83 : 17;
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
     // gflags update tasks
@@ -755,7 +779,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseConfig);
 
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,

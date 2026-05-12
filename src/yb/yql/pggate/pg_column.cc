@@ -81,15 +81,15 @@ PgColumn::PgColumn(std::reference_wrapper<const Schema> schema, size_t index)
 
 //--------------------------------------------------------------------------------------------------
 
-LWPgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req) {
-  return DoAllocPrimaryBindPB(write_req);
+LWPgsqlExpressionPB *PgColumn::AllocKeyBindPB(LWPgsqlWriteRequestPB *write_req) {
+  return DoAllocKeyBindPB(write_req);
 }
 
 template <class Req>
-LWPgsqlExpressionPB *PgColumn::DoAllocPrimaryBindPB(Req *req) {
+LWPgsqlExpressionPB *PgColumn::DoAllocKeyBindPB(Req *req) {
   if (is_partition()) {
     bind_pb_ = req->add_partition_column_values();
-  } else if (is_primary()) {
+  } else if (is_key()) {
     bind_pb_ = req->add_range_column_values();
   }
   return bind_pb_;
@@ -110,8 +110,8 @@ Result<LWPgsqlExpressionPB*> PgColumn::DoAllocBindPB(Req* req, PgExpr* expr) {
     return bind_pb_;
   }
 
-  DCHECK(!is_partition() && !is_primary())
-    << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
+  DCHECK(!is_partition() && !is_key())
+    << "Binds for key columns should have already been allocated by AllocKeyBindPB()";
 
   bind_pb_ = is_virtual_column() ? req->mutable_ybctid_column_value()
                                  : AllocNonVirtualBindPB(*this, req);
@@ -154,7 +154,7 @@ bool PgColumn::is_partition() const {
   return index_ < schema_.num_hash_key_columns();
 }
 
-bool PgColumn::is_primary() const {
+bool PgColumn::is_key() const {
   return index_ < schema_.num_key_columns();
 }
 
@@ -168,8 +168,8 @@ const ColumnSchema& PgColumn::desc() const {
 
 //--------------------------------------------------------------------------------------------------
 
-LWPgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(LWPgsqlReadRequestPB *read_req) {
-  return DoAllocPrimaryBindPB(read_req);
+LWPgsqlExpressionPB *PgColumn::AllocKeyBindPB(LWPgsqlReadRequestPB *read_req) {
+  return DoAllocKeyBindPB(read_req);
 }
 
 Result<LWPgsqlExpressionPB*> PgColumn::AllocBindPB(LWPgsqlReadRequestPB* read_req, PgExpr* expr) {

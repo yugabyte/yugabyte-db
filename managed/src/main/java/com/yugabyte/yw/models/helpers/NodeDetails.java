@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -135,7 +136,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY, REPROVISION),
+    Stopped(START, REMOVE, QUERY, REPROVISION, DECOMMISSION, REPLACE),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),
@@ -565,5 +566,26 @@ public class NodeDetails {
       return cloudInfo.instance_type;
     }
     throw new IllegalStateException("Cloud info or instance type is not set");
+  }
+
+  @JsonIgnore
+  public boolean isServerType(ServerType serverType) {
+    switch (serverType) {
+      case TSERVER:
+      case CONTROLLER:
+        return isTserver;
+      case EITHER:
+        return isTserver || isMaster;
+      case MASTER:
+        return isMaster;
+      case REDISSERVER:
+        return isRedisServer;
+      case YQLSERVER:
+        return isYqlServer;
+      case YSQLSERVER:
+        return isYsqlServer;
+      default:
+        return false;
+    }
   }
 }

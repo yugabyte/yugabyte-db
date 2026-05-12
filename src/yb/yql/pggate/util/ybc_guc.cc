@@ -37,10 +37,6 @@ bool yb_ignore_pg_class_oids = true;
 
 bool yb_ignore_relfilenode_ids = true;
 
-bool yb_pushdown_strict_inequality = true;
-
-bool yb_pushdown_is_not_null = true;
-
 bool yb_enable_pg_locks = true;
 
 bool yb_pg_locks_integrate_advisory_locks = true;
@@ -50,6 +46,8 @@ bool yb_run_with_explain_analyze = false;
 bool yb_enable_add_column_missing_default = true;
 
 bool yb_enable_replication_commands = true;
+
+bool yb_enable_pg_export_snapshot = true;
 
 bool yb_enable_replication_slot_consumption = true;
 
@@ -62,6 +60,10 @@ bool yb_enable_alter_table_rewrite = true;
 bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
+
+bool yb_cdcsdk_stream_tables_without_primary_key = false;
+
+bool yb_cdcsdk_allow_dml_without_pk = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -129,12 +131,14 @@ bool yb_debug_log_catcache_events = false;
 
 bool yb_debug_log_snapshot_mgmt = false;
 
+bool yb_debug_log_snapshot_mgmt_stack_trace = false;
+
 bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
 bool yb_use_internal_auto_analyze_service_conn = false;
 
-bool yb_ddl_transaction_block_enabled = false;
+bool yb_ddl_transaction_block_enabled = kEnableDdlTransactionBlocks;
 
 bool yb_disable_ddl_transaction_block_for_read_committed = false;
 
@@ -146,4 +150,12 @@ bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
 
+bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
+
 bool enable_object_locking_infra = true;
+
+bool yb_enable_ddl_savepoint_infra = true;
+
+bool yb_use_cluster_config_for_geolocation_costing = false;
+
+bool yb_skip_ensure_read_time_in_parallel_execution = false;

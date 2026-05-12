@@ -159,7 +159,7 @@ Due to architectural differences, YugabyteDB does _not_ support most of the Apac
 `default_time_to_live` is one of the supported properties and the `transactions` property is added by YugabyteDB. For more details, see [table properties](../../../api/ycql/ddl_create_table/#table-properties-1).
 {{< /note >}}
 `default_time_to_live` is one of the supported properties. YugabyteDB adds the
-`transactions` property. See [table properties](/preview/api/ycql/ddl_create_table/#table-properties-1) for more details.
+`transactions` property. See [table properties](../../../api/ycql/ddl_create_table/#table-properties-1) for more details.
 
 ## Quit ycqlsh
 
@@ -171,11 +171,14 @@ ycqlsh> quit;
 
 ## Unsupported cqlsh commands
 
-|   Command         |                      Alternative                          |
-| :---------------- | :-------------------------------------------------------- |
-| LIST ROLES        | select * from system_auth.roles                           |
-| SHOW SESSION      | Tracing from ycqlsh is not supported.                   |
-| TRACING           | Tracing from ycqlsh is not supported.                   |
+Some Apache Cassandra cqlsh commands differ or are not applicable on YugabyteDB. This includes the following:
+
+| Command | Alternative / notes |
+| :------ | :------------------- |
+| LIST ROLES | Query roles with `SELECT * FROM system_auth.roles;` |
+| SHOW SESSION | Not supported. |
+
+Shell features such as [`TRACING`](../../../api/ycqlsh/#tracing) and [`SERIAL CONSISTENCY`](../../../api/ycqlsh/#serial-consistency) are documented on the [ycqlsh](../../../api/ycqlsh/) page.
 
 ## Learn more
 

@@ -130,10 +130,21 @@ Status RpcServer::RegisterService(size_t queue_limit,
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
 
-  rpc::ThreadPool& thread_pool = messenger_->ThreadPool(priority);
-
   scoped_refptr<rpc::ServicePool> service_pool(new rpc::ServicePool(
-      queue_limit, &thread_pool, &messenger_->scheduler(), std::move(service), metric_entity));
+      queue_limit,
+      [this, priority](rpc::ThreadPoolTag tag) {
+        if (priority == rpc::ServicePriority::kNormal) {
+          auto result = messenger_->TaggedThreadPool(tag);
+          if (result.ok()) {
+            return *result;
+          } else {
+            // Could be shutting down.
+            LOG(WARNING) << "Failed to get thread pool with tag " << tag << ": " << result.status();
+          }
+        }
+        return messenger_->ThreadPoolPtr(priority);
+      },
+      &messenger_->scheduler(), std::move(service), metric_entity));
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }

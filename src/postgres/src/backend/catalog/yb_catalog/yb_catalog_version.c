@@ -26,6 +26,7 @@
 #include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/schemapg.h"
 #include "catalog/yb_catalog_version.h"
+#include "common/pg_yb_common.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
@@ -33,8 +34,10 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -48,14 +51,14 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
-											   bool acquire_lock);
+											   bool acquire_row_lock);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 													   Oid db_oid);
 
 /* Retrieve Catalog Version */
 
 static uint64_t
-YbGetMasterCatalogVersionImpl(bool acquire_lock)
+YbGetMasterCatalogVersionImpl(bool acquire_row_lock)
 {
 	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -63,7 +66,7 @@ YbGetMasterCatalogVersionImpl(bool acquire_lock)
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
 			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(), &version,
-												   acquire_lock))
+												   acquire_row_lock))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -89,7 +92,15 @@ YbGetMasterCatalogVersionImpl(bool acquire_lock)
 uint64_t
 YbGetMasterCatalogVersion()
 {
-	return YbGetMasterCatalogVersionImpl(false /* acquire_lock */ );
+	/*
+	 * Fetch the latest catalog invalidation messages to see catalog version increments
+	 * from recently committed DDLs. This avoids reading a stale catalog version.
+	 * XXX: AcceptInvalidationMessages() must not call YbGetMasterCatalogVersion() to avoid recursion.
+	 */
+	if (!YBCIsLegacyModeForCatalogOps())
+		AcceptInvalidationMessages();
+
+	return YbGetMasterCatalogVersionImpl(false /* acquire_row_lock */ );
 }
 
 void
@@ -114,14 +125,13 @@ YbMaybeLockMasterCatalogVersion()
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
 	 *
-	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-	/* !*YBCGetGFlags()->enable_object_locking_for_table_locks && */
+		YBCIsLegacyModeForCatalogOps() &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
-		YbGetMasterCatalogVersionImpl(true /* acquire_lock */ );
+		YbGetMasterCatalogVersionImpl(true /* acquire_row_lock */ );
 	}
 }
 
@@ -212,6 +222,18 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
+/*
+ * When transactional DDL is enabled, multiple DDLs could contribute to the
+ * catalog version increment. Hence, we need to be more explicit that we
+ * are only logging the last catalog version incrementing DDL and there may
+ * be more such DDLs that are not logged.
+ */
+static bool
+LastDdlInTransactionBlock()
+{
+	return YBIsDdlTransactionBlockEnabled() && IsTransactionBlock();
+}
+
 static void
 MaybeLogNewSQLIncrementCatalogVersion(bool success,
 									  Oid db_oid,
@@ -243,8 +265,10 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 						"(%sbreaking) with inval messages%s%s",
 						__func__, action, is_breaking_change ? "" : "non",
 						tmpbuf1, tmpbuf2),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -431,6 +455,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	if (YbIsInvalidationMessageEnabled())
 	{
 		Oid			func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
@@ -440,7 +467,27 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		{
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
-			int			expiration_secs = yb_invalidation_message_expiration_secs;
+
+			/*
+			 * The effective expiration must give every TServer a fair chance
+			 * to receive the new invalidation message via heartbeats before
+			 * the master purges it. With the default heartbeat interval
+			 * (1 second) the user-visible value of
+			 * yb_invalidation_message_expiration_secs (default 10 seconds)
+			 * is comfortably larger than the heartbeat interval. However,
+			 * deployments that increase --heartbeat_interval_ms (for example
+			 * for multi-region clusters) can easily push the heartbeat
+			 * interval close to or beyond the configured expiration, which
+			 * causes messages to be purged before some TServers ever
+			 * heartbeat. To avoid that, floor the expiration at
+			 * kHeartbeatMultiplier heartbeats so the effective retention
+			 * always scales with the heartbeat interval.
+			 */
+			const int	kHeartbeatMultiplier = 10;
+			int			heartbeat_min_secs =
+				(kHeartbeatMultiplier * YBGetHeartbeatIntervalMs() + 999) / 1000;
+			int			expiration_secs =
+				Max(yb_invalidation_message_expiration_secs, heartbeat_min_secs);
 
 			if (is_global_ddl)
 			{
@@ -492,60 +539,12 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		return;
 	}
 
-	/*
-	 * There are two more scenarios we also call the function
-	 * yb_increment_all_db_catalog_versions(is_breaking_change), both
-	 * are related to cluster upgrade to a new release that has the
-	 * per-database catalog version mode on by default:
-	 * (1) during the tryout phase (the phase where the upgrade can be
-	 * rolled back)
-	 * (2) during the finalization phase (the phase where the upgrade can
-	 * not be rolled back)
-	 * In both cases, the gflag --ysql_enable_db_catalog_version_mode is
-	 * true but YBIsDBCatalogVersionMode() is false. PG does not
-	 * distinguish them. In (1), the table pg_yb_catalog_version has only
-	 * one row. In (2), it is possible that pg_yb_catalog_version has
-	 * already been updated to have multiple rows, but this PG backend
-	 * hasn't seen multple rows yet and still operates in global catalog
-	 * version mode. Calling yb_increment_all_db_catalog_versions ensures
-	 * that this PG's version bump has an effect to all the PG backends
-	 * including those already upgraded and are operating in per-database
-	 * catalog version mode.
-	 */
-	if (*YBCGetGFlags()->ysql_enable_db_catalog_version_mode &&
-		!YBIsDBCatalogVersionMode())
-	{
-		Oid			func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();
-
-		if (OidIsValid(func_oid))
-		{
-			/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
-			YbCallSQLIncrementCatalogVersions(func_oid, is_breaking_change,
-											  command_tag);
-			return;
-		}
-		/*
-		 * If the function yb_increment_all_db_catalog_versions does not exist
-		 * yet, there cannot be any PG backend in the cluster running in
-		 * per-database catalog version mode. This is because the function
-		 * is introduced before the table pg_yb_catalog_version is upgraded
-		 * to have one row per database. In this case we continue to increment
-		 * catalog version in the old way below.
-		 */
-	}
-
-	YbcPgStatement update_stmt = NULL;
 	YbcPgTypeAttrs type_attrs = {0};
-	YbcPgExpr	yb_expr;
-
-	/* The table pg_yb_catalog_version is in template1. */
-	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &update_stmt,
-								  YB_TRANSACTIONAL));
 
 	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
@@ -585,8 +584,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
-							  &type_attrs);
+	YbcPgExpr	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/*
@@ -604,34 +603,21 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions = *YBCGetGFlags()->log_ysql_catalog_versions;
-		char		tmpbuf[30] = "";
 
-		if (YBIsDBCatalogVersionMode())
-			snprintf(tmpbuf, sizeof(tmpbuf), " for database %u", db_oid);
 		ereport(LOG,
-				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
-						__func__, is_breaking_change ? "" : "non", tmpbuf),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				(errmsg("%s: incrementing master catalog version (%sbreaking) "
+						"for database %u",
+						__func__, is_breaking_change ? "" : "non", db_oid),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
 
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	/*
-	 * Under normal situation rows_affected_count should be exactly 1. However
-	 * when a connection is established in per-database catalog version mode,
-	 * if the table pg_yb_catalog_version is updated to only have one row
-	 * for database template1 which is part of the process of converting to
-	 * global catalog version mode, this connection remains in per-database
-	 * catalog version mode. In this case rows_affected_count will be 0 unless
-	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
-	 * MyDatabaseId no longer exists.
-	 */
-	if (rows_affected_count == 0)
-		Assert(YBIsDBCatalogVersionMode());
-	else
-		Assert(rows_affected_count == 1);
+	Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;
@@ -645,6 +631,7 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  const SharedInvalidationMessage *invalMessages,
 										  int nmsgs)
 {
+	elog(DEBUG2, "YbIncrementMasterCatalogVersionTableEntry");
 	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -715,21 +702,19 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
 	 * db_oid is the primary key. There is no separate docdb index table for
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	YbcPgStatement insert_stmt = NULL;
-
-	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &insert_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
-
 	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
@@ -737,6 +722,8 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
+
+
 
 	AttrNumber	attnum = Anum_pg_yb_catalog_version_current_version;
 	Datum		initial_version = 1;
@@ -821,21 +808,20 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
 	 * db_oid is the primary key. There is no separate docdb index table for
 	 * primary key and therefore only one delete statement is needed to delete
 	 * the row for db_oid.
 	 */
-	YbcPgStatement delete_stmt = NULL;
-
-	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &delete_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
@@ -902,7 +888,7 @@ YbIsSystemCatalogChange(Relation rel)
 
 bool
 YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
-								   bool acquire_lock)
+								   bool acquire_row_lock)
 {
 	*version = 0;				/* unset; */
 
@@ -921,10 +907,10 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  NULL /* prepare_params */ ,
-								  false /* is_region_local */ ,
+								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
 								  &ybc_stmt));
 
-	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))
+	if (!(acquire_row_lock && yb_use_internal_auto_analyze_service_conn))
 	{
 		Datum		oid_datum = Int32GetDatum(db_oid);
 		YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
@@ -939,7 +925,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 
 	YbcPgExecParameters exec_params = {0};
 
-	if (acquire_lock)
+	if (acquire_row_lock)
 	{
 		/*
 		 * We want to stick to Fail-on-Conflict concurrency control to ensure that higher priority
@@ -954,7 +940,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 			ROW_MARK_KEYSHARE;
 	}
 
-	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_lock ? &exec_params : NULL));
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_row_lock ? &exec_params : NULL));
 
 	bool		has_data = false;
 
@@ -963,7 +949,13 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 	YbcPgSysColumns syscols;
 	bool		result = false;
 
-	if (!YBIsDBCatalogVersionMode())
+	/*
+	 * When prefetching is enabled we always load all the rows even though
+	 * we bind to the row matching given db_oid. This is a work around to
+	 * pick the row that matches db_oid. This work around should be removed
+	 * when prefetching is enhanced to support filtering.
+	 */
+	while (true)
 	{
 		/* Fetch one row. */
 		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
@@ -973,44 +965,21 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 									 &syscols,
 									 &has_data));
 
-		if (has_data)
+		if (!has_data)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATABASE_DROPPED),
+					 errmsg("catalog version for database %u was not found.", db_oid),
+					 errhint("Database may have been dropped and recreated. "
+							 "Ensure your client connection pool or metadata cache "
+							 "is refreshed to pick up the new database OID.")));
+
+		uint32_t	oid = DatumGetUInt32(values[oid_attnum - 1]);
+
+		if (oid == db_oid)
 		{
 			*version = DatumGetUInt64(values[current_version_attnum - 1]);
 			result = true;
-		}
-	}
-	else
-	{
-		/*
-		 * When prefetching is enabled we always load all the rows even though
-		 * we bind to the row matching given db_oid. This is a work around to
-		 * pick the row that matches db_oid. This work around should be removed
-		 * when prefetching is enhanced to support filtering.
-		 */
-		while (true)
-		{
-			/* Fetch one row. */
-			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-										 natts,
-										 (uint64_t *) values,
-										 nulls,
-										 &syscols,
-										 &has_data));
-
-			if (!has_data)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATABASE_DROPPED),
-						 errmsg("catalog version for database %u was not found.", db_oid),
-						 errhint("Database might have been dropped by another user")));
-
-			uint32_t	oid = DatumGetUInt32(values[oid_attnum - 1]);
-
-			if (oid == db_oid)
-			{
-				*version = DatumGetUInt64(values[current_version_attnum - 1]);
-				result = true;
-				break;
-			}
+			break;
 		}
 	}
 

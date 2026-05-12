@@ -12,11 +12,15 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/tserver/xcluster_async_executor.h"
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/opid_util.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tserver/tserver.fwd.h"
+#include "yb/tserver/xcluster_async_executor.h"
 #include "yb/tserver/xcluster_write_interface.h"
 
 #pragma once
@@ -105,10 +109,10 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   Status SendUserTableWrites();
 
-  void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
+  void SendNextCDCWriteToTablet(const std::shared_ptr<WriteRequestMsg>& request);
   void UpdateSchemaVersionMapping(tserver::GetCompatibleSchemaVersionRequestPB* req);
 
-  void DoWriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
+  void DoWriteCDCRecordDone(const Status& status, std::shared_ptr<WriteResponseMsg> resp);
 
   void DoSchemaVersionCheckDone(
       const Status& status, const GetCompatibleSchemaVersionRequestPB& req,
@@ -125,6 +129,12 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   void HandleNewSchemaPacking(
       const GetCompatibleSchemaVersionRequestPB& req,
       const GetCompatibleSchemaVersionResponsePB& resp, ColocationId colocation_id);
+
+  Result<SchemaVersion> GetCompatibleSchemaVersionForProducerSchemaVersion(
+      SchemaVersion producer_schema_version);
+
+  Status HandleNewSchemaForAutomaticMode(
+      const SchemaPB& schema, SchemaVersion producer_schema_version);
 
   // Increment processed record count.
   // Returns true if all records are processed, false if there are still some pending records.

@@ -3,7 +3,7 @@ import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 interface ModalProps {
   onCancel: () => void;

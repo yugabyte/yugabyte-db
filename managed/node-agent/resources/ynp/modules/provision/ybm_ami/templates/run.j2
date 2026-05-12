@@ -3,19 +3,26 @@ yb_cores_dir="{{ yb_home_dir }}/cores"
 yb_software_dir="{{ yb_home_dir }}/yb-software"
 yb_releases_dir="{{ yb_home_dir }}/releases"
 
+# Helper: chown only when running as root
+chown_if_root() {
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        chown -R {{ yb_user }}:{{ yb_user }} "$@"
+    fi
+}
+
 # Create the bin directory inside the YB HOME directory.
 mkdir -p "$yb_bin_dir"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir"
+chown_if_root "$yb_bin_dir"
 chmod 0755 "$yb_bin_dir"
 
 # Create the software directory inside the YB HOME directory.
 mkdir -p "$yb_software_dir"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_software_dir"
+chown_if_root "$yb_software_dir"
 chmod 0755 "$yb_software_dir"
 
 # Create the releases directory inside the YB HOME directory.
 mkdir -p "$yb_releases_dir"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_releases_dir"
+chown_if_root "$yb_releases_dir"
 chmod 0755 "$yb_releases_dir"
 
 # Retrieve the mount_paths.
@@ -25,14 +32,14 @@ IFS=',' read -ra mount_paths <<< "$mount_points"
 # Create Mount Core directory
 mount_cores_dir="${mount_paths[0]}/cores"
 mkdir -p "$mount_cores_dir"
-chown -R {{ yb_user }}:{{ yb_user }} "$mount_cores_dir"
+chown_if_root "$mount_cores_dir"
 chmod 0755 "$mount_cores_dir"
 
 # Only create symlink if not already pointing to the mount path
 if [ ! -L "$yb_cores_dir" ] || [ "$(readlink -f "$yb_cores_dir")" != "$mount_cores_dir" ]; then
   echo "Updating symlink: $yb_cores_dir -> $mount_cores_dir"
   ln -sf "$mount_cores_dir" "$yb_cores_dir"
-  chown -R {{ yb_user }}:{{ yb_user }} "$yb_cores_dir"
+  chown_if_root "$yb_cores_dir"
   chmod 0755 "$yb_cores_dir"
 fi
 
@@ -41,21 +48,21 @@ cat > "$yb_bin_dir/clean_cores.sh" << 'EOF'
 {% include 'clean_cores.sh.j2' %}
 EOF
 chmod 755 "$yb_bin_dir/clean_cores.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/clean_cores.sh"
+chown_if_root "$yb_bin_dir/clean_cores.sh"
 
 # Add purge logs script
 cat > "$yb_bin_dir/zip_purge_yb_logs.sh" << 'EOF'
 {% include 'zip_purge_yb_logs.sh.j2' %}
 EOF
 chmod 755 "$yb_bin_dir/zip_purge_yb_logs.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/zip_purge_yb_logs.sh"
+chown_if_root "$yb_bin_dir/zip_purge_yb_logs.sh"
 
 # Add collect metrics wrapper script
 cat > "$yb_bin_dir/collect_metrics_wrapper.sh" << 'EOF'
 {% include 'collect_metrics_wrapper.sh.j2' %}
 EOF
 chmod 755 "$yb_bin_dir/collect_metrics_wrapper.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/collect_metrics_wrapper.sh"
+chown_if_root "$yb_bin_dir/collect_metrics_wrapper.sh"
 
 # Create Master/Tserver conf directory
 {% for yb_process_type in ['master', 'tserver'] %}
@@ -65,25 +72,25 @@ yb_logs_dir="$yb_process_dir/logs"
 
 if [ ! -d "$yb_process_dir" ]; then
   mkdir -p "$yb_process_dir"
-  chown -R {{ yb_user }}:{{ yb_user }} "$yb_process_dir"
+  chown_if_root "$yb_process_dir"
   chmod 0755 "$yb_process_dir"
 fi
 
 if [ ! -d "$yb_conf_dir" ]; then
   mkdir -p "$yb_conf_dir"
-  chown -R {{ yb_user }}:{{ yb_user }} "$yb_conf_dir"
+  chown_if_root "$yb_conf_dir"
   chmod 0755 "$yb_conf_dir"
 fi
 
 mount_logs_dir="${mount_paths[0]}/yb-data/{{ yb_process_type }}/logs"
 mkdir -p "$mount_logs_dir"
-chown -R {{ yb_user }}:{{ yb_user }} "$mount_logs_dir"
+chown_if_root "$mount_logs_dir"
 chmod 0755 "$mount_logs_dir"
 
 if [ ! -L "$yb_logs_dir" ] || [ "$(readlink -f "$yb_logs_dir")" != "$mount_logs_dir" ]; then
   rm -rf "$yb_logs_dir"
   ln -s "$mount_logs_dir" "$yb_logs_dir"
-  chown -R {{ yb_user }}:{{ yb_user }} "$yb_logs_dir"
+  chown_if_root "$yb_logs_dir"
   chmod 0755 "$yb_logs_dir"
 fi
 {% endfor %}
@@ -103,17 +110,17 @@ if [ -d "$yb_package_folder" ]; then
   rm -rf "$yb_package_folder"
 fi
 mkdir -p $yb_package_folder
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
+chown_if_root "$yb_package_folder"
 chmod 0755 "$yb_package_folder"
 
 dest_path="$yb_software_dir/$version-b$build_number"
 mkdir -p $dest_path
-chown -R {{ yb_user }}:{{ yb_user }} "$dest_path"
+chown_if_root "$dest_path"
 chmod 0755 "$dest_path"
 
 temp_binary_path="$yb_software_dir/TEMPORARY"
 mkdir -p $temp_binary_path
-chown -R {{ yb_user }}:{{ yb_user }} "$temp_binary_path"
+chown_if_root "$temp_binary_path"
 chmod 0755 "$temp_binary_path"
 
 s3_package_path={{ s3_package_path }}
@@ -153,7 +160,7 @@ rm -rf {{ yb_home_dir }}/$release_folder
 mkdir -p {{ yb_home_dir }}/$release_folder
 chmod 0755 {{ yb_home_dir }}/$release_folder
 cp "$temp_binary_path/$package_name" {{ yb_home_dir }}/$release_folder
-chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
+chown_if_root {{ yb_home_dir }}/$release_folder
 
 # Extract yugabyte binary to {{ yb_home_dir }}/yb-software/
 tar --strip-components=1 -xzf "$temp_binary_path/$package_name" -C "$yb_package_folder"
@@ -168,7 +175,7 @@ rm -rf "$yb_software_dir/$release_name"
 chmod +x "$yb_package_folder/bin/post_install.sh"
 # Run the post install script.
 bash "$yb_package_folder/bin/post_install.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
+chown_if_root "$yb_package_folder"
 
 symlink_items=$(ls "$yb_package_folder" || true)
 symlink_folders=(master tserver)
@@ -184,7 +191,7 @@ for folder in "${symlink_folders[@]}"; do
     # Create symlink if not exists or incorrect
     if [ ! -L "$dest" ] || [ "$(readlink -f "$dest")" != "$(readlink -f "$src")" ]; then
       ln -sf "$src" "$dest"
-      chown -R "{{ yb_user }}":"{{ yb_user }}" "$dest"
+      chown_if_root "$dest"
       chmod 0755 "$dest"
     fi
   done

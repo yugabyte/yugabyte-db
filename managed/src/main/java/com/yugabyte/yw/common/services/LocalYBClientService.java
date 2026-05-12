@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common.services;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
@@ -22,6 +24,7 @@ public class LocalYBClientService implements YBClientService {
   public static final Logger LOG = LoggerFactory.getLogger(LocalYBClientService.class);
 
   @Inject private YbClientConfigFactory ybClientConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   @Override
   public synchronized YBClient getClient(String masterHostPorts) {
@@ -55,6 +58,9 @@ public class LocalYBClientService implements YBClientService {
         .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
         .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
         .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
+        .dnsDebugThresholdNs(confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
+        .dnsWarningThresholdNs(
+            confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs))
         .build();
   }
 

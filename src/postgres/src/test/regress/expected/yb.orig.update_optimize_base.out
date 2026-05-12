@@ -1906,7 +1906,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}
  Storage Flush Requests: 1
 (13 rows)
 
-SELECT * FROM json_table WHERE k IN (1, 2);
+SELECT * FROM json_table WHERE k IN (1, 2) ORDER BY k;
  k |                   v1                   |                   v2                   | v3 
 ---+----------------------------------------+----------------------------------------+----
  1 | {"a": 1, "b": 111, "c": 201, "d": 301} | {"a": 1, "b": 111, "c": 201, "d": 301} |  1
@@ -1953,11 +1953,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}
  Storage Flush Requests: 1
 (13 rows)
 
-SELECT * FROM json_table WHERE k IN (3, 4);
+SELECT * FROM json_table WHERE k IN (3, 4) ORDER BY k;
  k |                   v1                   |                   v2                   | v3 
 ---+----------------------------------------+----------------------------------------+----
- 4 | {"a": 4, "b": 104, "c": 204, "d": 304} | {"a": 4, "b": 104, "c": 204, "d": 304} |  4
  3 | {"a": 3, "b": 103, "c": 213, "d": 313} | {"a": 3, "b": 103, "c": 203, "d": 303} |  3
+ 4 | {"a": 4, "b": 104, "c": 204, "d": 304} | {"a": 4, "b": 104, "c": 204, "d": 304} |  4
 (2 rows)
 
 -- Multi-row updates.
@@ -1997,14 +1997,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{c}
  Storage Flush Requests: 1
 (13 rows)
 
-SELECT * FROM json_table;
+SELECT * FROM json_table ORDER BY k;
  k |                    v1                    |                   v2                   | v3 
 ---+------------------------------------------+----------------------------------------+----
- 5 | {"a": 5, "b": 105, "c": "205", "d": 305} | {"a": 5, "b": 105, "c": 206, "d": 305} |  5
  1 | {"a": 1, "b": 111, "c": "201", "d": 301} | {"a": 1, "b": 111, "c": 202, "d": 301} |  1
- 4 | {"a": 4, "b": 104, "c": "204", "d": 304} | {"a": 4, "b": 104, "c": 205, "d": 304} |  4
  2 | {"a": 2, "b": 122, "c": "202", "d": 302} | {"a": 2, "b": 122, "c": 203, "d": 302} |  2
  3 | {"a": 3, "b": 103, "c": "213", "d": 313} | {"a": 3, "b": 103, "c": 204, "d": 303} |  3
+ 4 | {"a": 4, "b": 104, "c": "204", "d": 304} | {"a": 4, "b": 104, "c": 205, "d": 304} |  4
+ 5 | {"a": 5, "b": 105, "c": "205", "d": 305} | {"a": 5, "b": 105, "c": 206, "d": 305} |  5
 (5 rows)
 
 CREATE TABLE staircase (k INT, PRIMARY KEY (k ASC));

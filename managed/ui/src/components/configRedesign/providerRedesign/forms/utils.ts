@@ -210,7 +210,7 @@ export const handleFormSubmitServerError = (
       });
     } else {
       const keyArr = key?.split('[');
-      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1]).split(']')[0]}]`;
+      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1] ?? '').split(']')[0]}]`;
       const prevError = get(formMethods.formState.errors, topLevelKey);
 
       formMethods.setError(topLevelKey, {
@@ -223,22 +223,28 @@ export const handleFormSubmitServerError = (
 };
 
 const ProviderValidationRuntimeConfigKeys = {
+  [CloudType.aws]: 'yb.provider.aws_provider_validation',
   [CloudType.gcp]: 'yb.provider.gcp_provider_validation',
   [CloudType.azu]: 'yb.provider.azure_provider_validation',
-  [CloudType.kubernetes]: 'yb.provider.kubernetes_provider_validation'
+  [CloudType.kubernetes]: 'yb.provider.kubernetes_provider_validation',
+  [CloudType.onprem]: 'yb.provider.onprem_provider_validation'
 };
 
-export function UseProviderValidationEnabled(
+export function useIsProviderValidationEnabled(
   provider: CloudType
 ): {
-  isLoading: boolean;
+  isRuntimeConfigLoading: boolean;
   isValidationEnabled: boolean;
 } {
-  const isProviderSupported = [CloudType.azu, CloudType.gcp, CloudType.kubernetes].includes(
-    provider
-  );
+  const isProviderSupported = [
+    CloudType.aws,
+    CloudType.azu,
+    CloudType.gcp,
+    CloudType.kubernetes,
+    CloudType.onprem
+  ].includes(provider);
 
-  const { data: globalRuntimeConfigs, isLoading } = useQuery(
+  const { data: globalRuntimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
     runtimeConfigQueryKey.globalScope(),
     () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data),
     {
@@ -246,12 +252,12 @@ export function UseProviderValidationEnabled(
     }
   );
 
-  if (!isProviderSupported) return { isLoading: false, isValidationEnabled: false };
+  if (!isProviderSupported) return { isRuntimeConfigLoading: false, isValidationEnabled: false };
 
   const isValidationEnabled =
     globalRuntimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === ProviderValidationRuntimeConfigKeys[provider]
     )?.value === 'true';
 
-  return { isLoading, isValidationEnabled };
+  return { isRuntimeConfigLoading, isValidationEnabled };
 }

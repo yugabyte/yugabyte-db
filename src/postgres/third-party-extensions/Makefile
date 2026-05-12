@@ -1,4 +1,5 @@
 DIRS = \
+	mage \
 	documentdb \
 	hypopg \
 	orafce \

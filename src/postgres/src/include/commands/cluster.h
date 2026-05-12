@@ -48,6 +48,8 @@ extern void finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 							 TransactionId frozenXid,
 							 MultiXactId minMulti,
 							 char newrelpersistence,
-							 bool yb_copy_split_options);
+							 bool yb_copy_split_options,
+							 List *changedIndexNames,
+							 List *changedIndexSplitOpts);
 
 #endif							/* CLUSTER_H */

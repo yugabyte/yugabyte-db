@@ -75,7 +75,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required only if YBA needs SSH access to the nodes to provision them (for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). This SSH user cannot be named yugabyte.
 
 {{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the [node agent](/preview/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
+After you have provisioned and added the instances to the provider (including installing the [node agent](/stable/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
 {{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.

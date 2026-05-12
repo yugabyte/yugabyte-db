@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -57,9 +56,11 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -184,7 +185,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
-  private final ReleaseManager releaseManager;
   private final FileHelperService fileHelperService;
   private final YbcManager ybcManager;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
@@ -193,13 +193,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager,
       FileHelperService fileHelperService,
       YbcManager ybcManager,
       OtelCollectorConfigGenerator otelCollectorConfigGenerator) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
-    this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
     this.ybcManager = ybcManager;
     this.otelCollectorConfigGenerator = otelCollectorConfigGenerator;
@@ -231,9 +229,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String podName;
     public String serviceName;
     public String newDiskSize;
-    public boolean useNewTserverDiskSize;
-    public boolean useNewMasterDiskSize;
     public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
+    // If true, we'll use the existing server cert instead of a new one. Used for cert-manager cert
+    // rotate task.
+    public boolean useExistingServerCert = false;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -263,8 +262,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Set<String> deleteServiceNames;
     // Opentelemetry collector related params
     public AuditLogConfig auditLogConfig = null;
+    public QueryLogConfig queryLogConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
+
+    // For full move case
+    public boolean useNewMasterDeviceInfo = false;
+    public boolean useNewTserverDeviceInfo = false;
+    public FullMoveParams fullMoveParams = null;
+    // Use if populated
+    public Integer oldTsDiskSize, oldMasterDiskSize;
 
     public String getTaskDetails() {
       String details = String.format("Command: %s", commandType);
@@ -290,6 +297,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       return details;
     }
+  }
+
+  public static class FullMoveParams {
+    public int tsReplicas = 0;
+    public int masterReplicas = 0;
+    public int tsPartition = 0;
+    public int masterPartition = 0;
+    public int tsStsStartIndex = 0, tsStsEndIndex = 0;
+    public int masterStsStartIndex = 0, masterStsEndIndex = 0;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -801,21 +817,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? taskUniverseDetails.getReadOnlyClusters().get(0)
             : taskUniverseDetails.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+
     // TODO Support overriden instance types
-    InstanceType instanceType =
-        InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}",
-          userIntent.providerType,
-          userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
       throw new RuntimeException(
-          "Unable to fetch InstanceType "
-              + userIntent.providerType
-              + ": "
-              + userIntent.instanceType);
+          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;
@@ -908,58 +919,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? universeFromDBParams.getReadOnlyClusters().get(0).userIntent
             : universeFromDBParams.getPrimaryCluster().userIntent;
 
-    Map<String, Object> storageOverrides =
-        (HashMap) overrides.getOrDefault("storage", new HashMap<>());
+    PlacementInfo savedPi =
+        taskParams().isReadOnlyCluster
+            ? universeFromDBParams.getReadOnlyClusters().get(0).getOverallPlacement()
+            : universeFromDBParams.getPrimaryCluster().getOverallPlacement();
 
-    Map<String, Object> tserverDiskSpecs =
-        (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
-    Map<String, Object> masterDiskSpecs =
-        (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
-
-    // Override disk count and size for the tserver/master pods according to user intent.
-    DeviceInfo tserverDeviceInfo =
-        taskParams().useNewTserverDiskSize ? userIntent.deviceInfo : userIntentFromDB.deviceInfo;
-    DeviceInfo masterDeviceInfo =
-        taskParams().useNewMasterDiskSize
-            ? userIntent.masterDeviceInfo
-            : userIntentFromDB.masterDeviceInfo;
-
-    if (tserverDeviceInfo != null) {
-      if (tserverDeviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", tserverDeviceInfo.numVolumes);
-      }
-      if (tserverDeviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put("size", String.format("%dGi", tserverDeviceInfo.volumeSize));
-      }
-      // Storage class override applies to both tserver and master.
-      if (tserverDeviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", tserverDeviceInfo.storageClass);
-      }
-    }
-    // Override disk count and size for master pods
-    if (masterDeviceInfo != null) {
-      if (masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", masterDeviceInfo.numVolumes);
-      }
-      if (masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put("size", String.format("%dGi", masterDeviceInfo.volumeSize));
-      }
-      if (masterDeviceInfo.storageClass != null) {
-        masterDiskSpecs.put("storageClass", masterDeviceInfo.storageClass);
-      }
-    }
-
-    // Storage class needs to be updated if it is overriden in the zone config.
-    String storageClass =
-        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-            config, regionConfig, azConfig, "STORAGE_CLASS", null);
-    if (StringUtils.isNoneEmpty(storageClass)) {
-      tserverDiskSpecs.put("storageClass", storageClass);
-      masterDiskSpecs.put("storageClass", storageClass);
-    }
-
-    if (isMultiAz) {
+    if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
+    }
+    if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
         overrides.put("AZ", placementZone);
@@ -987,10 +955,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
-    if (!tserverDiskSpecs.isEmpty()) {
-      storageOverrides.put("tserver", tserverDiskSpecs);
-    }
-
     // Override resource request and limit.
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
@@ -1000,12 +964,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       // InstanceType should be defined here in this case.
       String instanceTypeCode = instanceType.getInstanceTypeCode();
-      if (instanceTypeCode.equals("cloud")) {
-        masterDiskSpecs.put("size", String.format("%dGi", 3));
-      }
-      if (!masterDiskSpecs.isEmpty()) {
-        storageOverrides.put("master", masterDiskSpecs);
-      }
 
       tserverResource.put("cpu", instanceType.getNumCores());
       tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
@@ -1247,6 +1205,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (universeFromDBParams.fipsEnabled) {
+      masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1309,7 +1270,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
     }
-
+    if (universeFromDBParams.fipsEnabled) {
+      tserverGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       // For now, set a default value for the ysql server rpc port.
       // TO DO:
@@ -1413,19 +1376,35 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Add overrides for OpenTelemetry
-    if (primaryClusterIntent.auditLogConfig != null) {
+    if (primaryClusterIntent.auditLogConfig != null
+        || primaryClusterIntent.queryLogConfig != null) {
       AuditLogConfig auditLogConfig = primaryClusterIntent.auditLogConfig;
-      tserverGFlags.put(
-          GFlagsUtil.YSQL_PG_CONF_CSV,
+      QueryLogConfig queryLogConfig = primaryClusterIntent.queryLogConfig;
+      String combinedPGConfCSV =
           GFlagsUtil.mergeCSVs(
               tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
               GFlagsUtil.getYsqlPgConfCsv(auditLogConfig),
-              true));
+              true);
+      combinedPGConfCSV =
+          GFlagsUtil.mergeCSVs(
+              combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
+      tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+      // removing query log export for 2026.1.0
+      // overrides.put(
+      //     "otelCollector",
+      //     otelCollectorConfigGenerator.getOtelHelmValues(
+      //         auditLogConfig,
+      //         GFlagsUtil.getLogLinePrefix(
+      //             primaryClusterIntent.queryLogConfig,
+      //             tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+      //         primaryClusterIntent.ybSoftwareVersion));
       overrides.put(
           "otelCollector",
           otelCollectorConfigGenerator.getOtelHelmValues(
               auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+              GFlagsUtil.getLogLinePrefix(
+                  primaryClusterIntent.queryLogConfig,
+                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
     }
 
     if (!tserverGFlags.isEmpty()) {
@@ -1586,6 +1565,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // TODO gflags which have precedence over helm overrides should be merged here.
 
+    // For single AZ azUUID may be null, use non-null values
+    UUID azUuid =
+        azUUID != null ? azUUID : AvailabilityZone.getByCode(provider, placementZone).getUuid();
+    // Handle STS index overrides
+    handleStsIndexOverrides(overrides, pi, savedPi, azUuid);
+    // Handle volume overrides
+    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, pi, savedPi, azUuid);
+    // Handle full move overrides
+    handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
+
     validateOverrides(overrides);
 
     boolean helmLegacy =
@@ -1642,6 +1631,218 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     } catch (IOException e) {
       log.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private void handleStsIndexOverrides(
+      Map<String, Object> overrides, PlacementInfo newPi, PlacementInfo savedPi, UUID azUUID) {
+    Map<String, Object> stsIndexOverrides =
+        (HashMap) overrides.getOrDefault("stsIndex", new HashMap<>());
+    Map<String, Object> tsStsIndexOverrides =
+        (HashMap) stsIndexOverrides.getOrDefault("tserver", new HashMap<>());
+    Map<String, Object> masterStsIndexOverrides =
+        (HashMap) stsIndexOverrides.getOrDefault("master", new HashMap<>());
+
+    // Populate saved stsIndex
+    if (savedPi != null) {
+      PlacementAZ savedPlacementAZ = savedPi.findByAZUUID(azUUID);
+      if (savedPlacementAZ != null) {
+        tsStsIndexOverrides.put("start", savedPlacementAZ.tsStsIndex);
+        tsStsIndexOverrides.put("end", savedPlacementAZ.tsStsIndex);
+        masterStsIndexOverrides.put("start", savedPlacementAZ.masterStsIndex);
+        masterStsIndexOverrides.put("end", savedPlacementAZ.masterStsIndex);
+      }
+    }
+    if (newPi != null) {
+      PlacementAZ newPlacementAZ = newPi.findByAZUUID(azUUID);
+      if (newPlacementAZ != null) {
+        tsStsIndexOverrides.put("start", newPlacementAZ.tsStsIndex);
+        tsStsIndexOverrides.put("end", newPlacementAZ.tsStsIndex);
+        masterStsIndexOverrides.put("start", newPlacementAZ.masterStsIndex);
+        masterStsIndexOverrides.put("end", newPlacementAZ.masterStsIndex);
+      }
+    }
+    FullMoveParams params = taskParams().fullMoveParams;
+    if (params != null) {
+      tsStsIndexOverrides.put("start", params.tsStsStartIndex);
+      tsStsIndexOverrides.put("end", params.tsStsEndIndex);
+      masterStsIndexOverrides.put("start", params.masterStsStartIndex);
+      masterStsIndexOverrides.put("end", params.masterStsEndIndex);
+    }
+
+    // Add back to overrides
+    if (MapUtils.isNotEmpty(tsStsIndexOverrides)) {
+      stsIndexOverrides.put("tserver", tsStsIndexOverrides);
+    }
+    if (MapUtils.isNotEmpty(masterStsIndexOverrides)) {
+      stsIndexOverrides.put("master", masterStsIndexOverrides);
+    }
+    if (MapUtils.isNotEmpty(stsIndexOverrides)) {
+      overrides.put("stsIndex", stsIndexOverrides);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private void handleVolumeOverrides(
+      Map<String, Object> overrides,
+      UserIntent taskUserIntent,
+      UserIntent savedUserIntent,
+      PlacementInfo newPi,
+      PlacementInfo savedPi,
+      UUID azUUID) {
+    // Override disk count and size for the tserver/master pods according to user intent.
+    Map<String, Object> storageOverrides =
+        (HashMap) overrides.getOrDefault("storage", new HashMap<>());
+    Map<String, Object> tserverDiskSpecs =
+        (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
+    Map<String, Object> masterDiskSpecs =
+        (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
+
+    boolean newlyAddedAZ = savedPi.findByAZUUID(azUUID) == null;
+
+    // Add old deviceInfo/masterDeviceInfo spec if existing AZ
+    if (!newlyAddedAZ) {
+      DeviceInfo savedTsDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo savedMasterDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+
+      if (savedTsDeviceInfo != null) {
+        if (savedTsDeviceInfo.numVolumes != null) {
+          tserverDiskSpecs.put("count", savedTsDeviceInfo.numVolumes);
+        }
+        if (savedTsDeviceInfo.volumeSize != null) {
+          tserverDiskSpecs.put("size", String.format("%dGi", savedTsDeviceInfo.volumeSize));
+        }
+        // Storage class override applies to both tserver and master.
+        if (savedTsDeviceInfo.storageClass != null) {
+          tserverDiskSpecs.put("storageClass", savedTsDeviceInfo.storageClass);
+        }
+      }
+      // Override disk count and size for master pods
+      if (savedMasterDeviceInfo != null) {
+        if (savedMasterDeviceInfo.numVolumes != null) {
+          masterDiskSpecs.put("count", savedMasterDeviceInfo.numVolumes);
+        }
+        if (savedMasterDeviceInfo.volumeSize != null) {
+          masterDiskSpecs.put("size", String.format("%dGi", savedMasterDeviceInfo.volumeSize));
+        }
+        if (savedMasterDeviceInfo.storageClass != null) {
+          masterDiskSpecs.put("storageClass", savedMasterDeviceInfo.storageClass);
+        }
+      }
+    }
+
+    DeviceInfo taskTsDeviceInfo =
+        taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+    DeviceInfo taskMasterDeviceInfo =
+        taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+    // For cases when resize is combined with full move and new size was persisted in userIntent
+    // We need to pass the old size explicitly until all full move AZ nodes are moved.
+    if (taskParams().oldMasterDiskSize != null) {
+      masterDiskSpecs.put("size", String.format("%dGi", taskParams().oldMasterDiskSize));
+    }
+    // Use new masterDeviceInfo for newly added AZs or full move
+    if (taskParams().useNewMasterDeviceInfo || newlyAddedAZ) {
+      if (taskMasterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", taskMasterDeviceInfo.numVolumes);
+      }
+      if (taskMasterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put("size", String.format("%dGi", taskMasterDeviceInfo.volumeSize));
+      }
+      if (taskMasterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", taskMasterDeviceInfo.storageClass);
+      }
+    }
+
+    if (taskParams().oldTsDiskSize != null) {
+      tserverDiskSpecs.put("size", String.format("%dGi", taskParams().oldTsDiskSize));
+    }
+    // Use new deviceInfo for newly added AZs or full move
+    if (taskParams().useNewTserverDeviceInfo || newlyAddedAZ) {
+      if (taskTsDeviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", taskTsDeviceInfo.numVolumes);
+      }
+      if (taskTsDeviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put("size", String.format("%dGi", taskTsDeviceInfo.volumeSize));
+      }
+      if (taskTsDeviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", taskTsDeviceInfo.storageClass);
+      }
+    }
+
+    // Add back to overrides
+    storageOverrides.put("tserver", tserverDiskSpecs);
+    storageOverrides.put("master", masterDiskSpecs);
+    overrides.put("storage", storageOverrides);
+  }
+
+  @SuppressWarnings("unchecked")
+  private void handleFullMoveOverrides(
+      Map<String, Object> overrides, UserIntent taskUserIntent, PlacementInfo newPi, UUID azUUID) {
+
+    // Full move case
+    FullMoveParams params = taskParams().fullMoveParams;
+    if (params != null) {
+      Map<String, Object> moveOpOverrides =
+          (HashMap) overrides.getOrDefault("moveOp", new HashMap<>());
+      Map<String, Object> moveOpStorageOverrides =
+          (HashMap) moveOpOverrides.getOrDefault("storage", new HashMap<>());
+
+      Map<String, Object> moveOpTserverDiskSpecs =
+          (HashMap) moveOpStorageOverrides.getOrDefault("tserver", new HashMap<>());
+      Map<String, Object> moveOpMasterDiskSpecs =
+          (HashMap) moveOpStorageOverrides.getOrDefault("master", new HashMap<>());
+
+      DeviceInfo taskTsDeviceInfo =
+          taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo taskMasterDeviceInfo =
+          taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+
+      // moveOp storage attributes should use new volume attributes
+      if (taskMasterDeviceInfo.numVolumes != null) {
+        moveOpMasterDiskSpecs.put("count", taskMasterDeviceInfo.numVolumes);
+      }
+      if (taskMasterDeviceInfo.volumeSize != null) {
+        moveOpMasterDiskSpecs.put("size", String.format("%dGi", taskMasterDeviceInfo.volumeSize));
+      }
+      if (taskMasterDeviceInfo.storageClass != null) {
+        moveOpMasterDiskSpecs.put("storageClass", taskMasterDeviceInfo.storageClass);
+      }
+      moveOpStorageOverrides.put("master", moveOpMasterDiskSpecs);
+
+      // tserver
+      if (taskTsDeviceInfo.numVolumes != null) {
+        moveOpTserverDiskSpecs.put("count", taskTsDeviceInfo.numVolumes);
+      }
+      if (taskTsDeviceInfo.volumeSize != null) {
+        moveOpTserverDiskSpecs.put("size", String.format("%dGi", taskTsDeviceInfo.volumeSize));
+      }
+      if (taskTsDeviceInfo.storageClass != null) {
+        moveOpTserverDiskSpecs.put("storageClass", taskTsDeviceInfo.storageClass);
+      }
+      moveOpStorageOverrides.put("tserver", moveOpTserverDiskSpecs);
+
+      // partition
+      Map<String, Object> moveOpPartition =
+          (HashMap) moveOpOverrides.getOrDefault("partition", new HashMap<>());
+      moveOpPartition.put("tserver", params.tsPartition);
+      moveOpPartition.put("master", params.masterPartition);
+      moveOpOverrides.put("partition", moveOpPartition);
+
+      // replicas
+      Map<String, Object> moveOpReplicas =
+          (HashMap) moveOpOverrides.getOrDefault("replicas", new HashMap<>());
+      moveOpReplicas.put("tserver", params.tsReplicas);
+      moveOpReplicas.put("master", params.masterReplicas);
+      moveOpOverrides.put("replicas", moveOpReplicas);
+
+      // Replicas for old STS will be handled by replicas override separately
+
+      // Add back to overrides
+      moveOpOverrides.put("storage", moveOpStorageOverrides);
+      overrides.put("moveOp", moveOpOverrides);
     }
   }
 
@@ -1844,6 +2045,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     certManager.put("enabled", true);
     certManager.put("bootstrapSelfsigned", false);
+    if (taskParams().useExistingServerCert) {
+      certManager.put("useExistingServerCertificate", true);
+    }
 
     if (!StringUtils.isEmpty(certManagerIssuerKind)
         && !StringUtils.isEmpty(certManagerIssuerName)) {

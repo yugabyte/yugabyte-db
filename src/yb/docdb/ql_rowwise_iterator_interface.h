@@ -90,10 +90,6 @@ class YQLRowwiseIteratorIf {
 
   virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 
-  // Directly fetch entry from underlying iterator for specified key. Returns empty slice when entry
-  // not found.
-  virtual Result<Slice> FetchDirect(Slice key);
-
  protected:
   virtual Result<bool> DoFetchNext(
       qlexpr::QLTableRow* table_row,

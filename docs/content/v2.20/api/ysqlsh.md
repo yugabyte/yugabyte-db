@@ -83,7 +83,7 @@ ysqlsh returns the following to the shell on exit:
 
 {{< note title="YugabyteDB Aeon" >}}
 
-For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
@@ -107,7 +107,15 @@ You can't just connect to any database under any user name. Your database admini
 
 {{< /note >}}
 
-When the defaults aren't quite right, you can save yourself some typing by setting the [environment variables](#environment-variables) `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values. It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords.
+When the defaults aren't quite right, you can save yourself some typing by setting the [environment variables](#environment-variables) `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values.
+
+It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords. This file should contain lines of the following format:
+
+```conf
+hostname:port:database:username:password
+```
+
+For more details, refer to [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) in the PostgreSQL documentation.
 
 An alternative way to specify connection parameters is in a *conninfo* string or a URI, which is used instead of a database name. This mechanism gives you wide control over the connection. For example:
 

@@ -43,7 +43,8 @@ import {
   getDeletedZones,
   getInUseAzs,
   getLatestAccessKey,
-  getNtpSetupType
+  getNtpSetupType,
+  getYBAHost
 } from '../../utils';
 import { RegionOperation } from '../configureRegion/constants';
 import {
@@ -56,7 +57,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  UseProviderValidationEnabled
+  useIsProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -64,10 +65,9 @@ import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { ACCEPTABLE_CHARS, RG_REGEX, UUID_REGEX } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
-import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
-import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
-import { YBAHost } from '../../../../../redesign/helpers/constants';
+import { api, hostInfoQueryKey, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import {
   AZUAvailabilityZone,
   AZUAvailabilityZoneMutation,
@@ -89,8 +89,6 @@ import {
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
-import { getYBAHost } from '../../utils';
-import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { AZURE_FORM_MAPPERS } from './constants';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
@@ -256,10 +254,9 @@ export const AZUProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
-  const {
-    isLoading: isProviderValidationLoading,
-    isValidationEnabled
-  } = UseProviderValidationEnabled(CloudType.azu);
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.azu
+  );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
@@ -282,7 +279,7 @@ export const AZUProviderEditForm = ({
   if (
     hostInfoQuery.isLoading ||
     customerRuntimeConfigQuery.isLoading ||
-    isProviderValidationLoading
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }

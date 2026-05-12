@@ -27,13 +27,21 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
+    cloud_only_modules = ['Preprovision', 'MountEphemeralDrive', 'InstallPackages']
     onprem_only_modules = ['RebootNode']
+    required_os_packages = {
+        OSFamily.REDHAT.value: ['openssl', 'policycoreutils'],
+        OSFamily.DEBIAN.value: ['openssl', 'policycoreutils'],
+        OSFamily.SUSE.value: ['openssl'],
+        OSFamily.ARCH.value: ['openssl', 'policycoreutils'],
+    }
 
     def __init__(self, config):
         super().__init__(config)
         self.base_package = "modules"
         self._module_registry = mbm.BaseYnpModule.registry
+        self._discover_os_info()
+        self._discover_package_manager()
         self._load_modules()
         logger.info(self._module_registry)
         logger.info("initialized")
@@ -55,7 +63,7 @@ class ProvisionCommand(Command):
                 full_module_name = f"{module_base}.{module_name}"
                 importlib.import_module(full_module_name)
 
-    def _build_script(self, all_templates, phase):
+    def _build_script(self, all_templates, phase, create_subshell=False):
         key = next(iter(self.config), None)
         context = self.config[key]
         with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'),
@@ -64,13 +72,38 @@ class ProvisionCommand(Command):
             loglevel = context.get('loglevel')
             if loglevel == "DEBUG":
                 temp_file.write("set -x\n")
-            self.add_results_helper(temp_file)
+            # Add /usr/sbin to PATH for cases where warning is issued when sudo is not used and
+            # sbin is not in PATH.
+            temp_file.write("export PATH=\"$PATH:/usr/sbin\"\n")
+            if create_subshell:
+                # Initialize parent exit code and errors array.
+                temp_file.write("parent_exit_code=0\n")
+                temp_file.write("errors=()\n")
+                # Add fatal error helpers for run phase (modules may call add_fatal_result)
+                self.add_fatal_helpers_for_run(temp_file)
+            else:
+                # add_result_helper works only in the same shell.
+                self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
                 temp_file.write(f"\n######## BEGIN {key} #########\n")
-                temp_file.write(all_templates[key][phase])
+                template = all_templates[key][phase]
+                if template is not None and template.strip():
+                    if create_subshell:
+                        temp_file.write("(\n")
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
+                        temp_file.write(template)
+                        temp_file.write("\n)\n")
+                        self.add_exit_code_check(temp_file, key)
+                    else:
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
+                        temp_file.write(template)
                 temp_file.write(f"\n######## END {key} #########\n")
-            self.print_results_helper(temp_file)
+            if create_subshell:
+                temp_file.write("\n######## Summary #########\n")
+                self.print_exit_errors(temp_file)
+            else:
+                self.print_results_helper(temp_file)
 
         os.chmod(temp_file.name, 0o755)
         logger.info("Temp file for " + phase + " is: " + temp_file.name)
@@ -83,6 +116,48 @@ class ProvisionCommand(Command):
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
         return result
+
+    def add_fatal_helpers_for_run(self, file):
+        """Add add_fatal_result for run phase (no JSON)."""
+        file.write(
+            """
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                exit 2
+            }
+            """
+        )
+
+    def add_exit_code_check(self, file, key):
+        file.write(
+            f"""
+            exit_code=$?
+            if [ $exit_code -ne 0 ]; then
+                parent_exit_code=$exit_code
+                err="Module {key} failed with code $exit_code"
+                errors+=("$err")
+                echo "$err"
+                if [ $exit_code -eq 2 ]; then
+                    echo "FATAL error in module {key}. Aborting immediately."
+                    exit 2
+                fi
+            fi
+            """
+        )
+
+    def print_exit_errors(self, file):
+        file.write(
+            """
+            if [ ${#errors[@]} -ne 0 ]; then
+                for err in "${errors[@]}"; do
+                    echo "$err"
+                done
+            fi
+            exit $parent_exit_code
+            """
+        )
 
     def add_results_helper(self, file):
         file.write(
@@ -103,6 +178,16 @@ class ProvisionCommand(Command):
                 json_results+='      "message": "'$message'"\n'
                 json_results+='    }'
             }
+
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                add_result "$check" "FATAL" "$message"
+                json_results+='\n]}'
+                echo "$json_results"
+                exit 2
+            }
             """
         )
 
@@ -118,13 +203,11 @@ class ProvisionCommand(Command):
                 # Output the JSON
                 echo "$json_results"
 
-                # Exit with status code 1 if any check has failed
                 if [ $any_fail -eq 1 ]; then
                     echo "Pre-flight checks failed, Please fix them before continuing."
                     exit 1
-                else
-                    echo "Pre-flight checks successful"
                 fi
+                echo "Pre-flight checks successful"
             }
 
             print_results
@@ -135,12 +218,9 @@ class ProvisionCommand(Command):
         file.write("SUDO_ACCESS=\"false\"\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
-        file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
-        file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
 
     def _generate_template(self, specific_module=None):
-        os_distribution, os_family, os_version = self._get_os_info()
         all_templates = {}
 
         for key in self.config:
@@ -152,6 +232,10 @@ class ProvisionCommand(Command):
                 continue
             if key in self.cloud_only_modules and \
                     self.config[key].get('is_cloud', 'False') == 'False':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
+                continue
+            if key in self.onprem_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'True':
                 print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
             if key == 'InstallNodeAgent' and \
@@ -171,20 +255,20 @@ class ProvisionCommand(Command):
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
-            context["os_family"] = os_family
-            context["os_version"] = os_version
-            context["os_distribution"] = os_distribution
+            context["os_family"] = self.os_family
+            context["os_version"] = self.os_version
+            context["os_distribution"] = self.os_distribution
             module_instance = module[0]()
             rendered_template = module_instance.render_templates(context)
             if rendered_template is not None:
                 all_templates[key] = rendered_template
 
         precheck_combined_script = self._build_script(all_templates, "precheck")
-        run_combined_script = self._build_script(all_templates, "run")
+        run_combined_script = self._build_script(all_templates, "run", create_subshell=True)
 
         return run_combined_script, precheck_combined_script
 
-    def _get_os_info(self):
+    def _discover_os_info(self):
         os_release_file = '/etc/os-release'
 
         # Check if the os-release file exists
@@ -201,73 +285,70 @@ class ProvisionCommand(Command):
                     os_release_info[key] = value.strip('"')
 
         # Extract distribution and version
-        distribution = os_release_info.get("ID", "").lower()
+        self.os_distribution = os_release_info.get("ID", "").lower()
         version = os_release_info.get("VERSION_ID", "")
-        major_version = version.split('.')[0] if version else ""
-
+        self.os_version = version.split('.')[0] if version else ""
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
-            os_family = OSFamily.REDHAT.value
-        elif distribution in {"ubuntu", "debian"}:
-            os_family = OSFamily.DEBIAN.value
-        elif distribution in {"suse", "opensuse", "sles"}:
-            os_family = OSFamily.SUSE.value
-        elif distribution == "arch":
-            os_family = OSFamily.ARCH.value
-        else:
-            os_family = OSFamily.UNKNOWN.value
+        self.os_family = OSFamily.UNKNOWN.value
+        if self.os_distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
+            self.os_family = OSFamily.REDHAT.value
+        elif self.os_distribution in {"ubuntu", "debian"}:
+            self.os_family = OSFamily.DEBIAN.value
+        elif self.os_distribution in {"suse", "opensuse", "sles"}:
+            self.os_family = OSFamily.SUSE.value
+        elif self.os_distribution == "arch":
+            self.os_family = OSFamily.ARCH.value
+        logger.info(f"Detected OS Distribution: {self.os_distribution}, "
+                    f"Version: {self.os_version}, Family: {self.os_family}")
 
-        return distribution, os_family, major_version
-
-    def _check_package(self, package_manager, package_name):
+    def _check_package(self, package_name):
         """Check if a package is installed."""
         try:
-            if package_manager == 'rpm':
+            if self.package_manager == 'rpm':
                 subprocess.run(['rpm', '-q', package_name], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            elif package_manager == 'deb':
+            elif self.package_manager == 'deb':
                 subprocess.run(['dpkg', '-s', package_name], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
-            sys.exit()
+            sys.exit(1)
 
-    def _get_package_manager(self):
+    def _discover_package_manager(self):
         package_manager = None
         try:
             subprocess.run(['rpm', '--version'], check=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            package_manager = 'rpm'
+            self.package_manager = 'rpm'
         except FileNotFoundError:
             try:
                 subprocess.run(['dpkg', '--version'], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                package_manager = 'deb'
+                self.package_manager = 'deb'
             except FileNotFoundError:
                 logger.info(
                     "Unsupported package manager. Cannot determine package installation status.")
                 sys.exit(1)
 
-        if package_manager is None:
+        if self.package_manager is None:
             logger.info(
                 "Unsupported package manager. Cannot determine package installation status.")
             sys.exit(1)
 
-        return package_manager
+        logger.info(f"Detected package manager: {self.package_manager}")
 
     def _validate_required_packages(self):
-        package_manager = self._get_package_manager()
-        packages = ['openssl', 'policycoreutils']
-        cloud_only_packages = ['gzip']
+        packages = self.required_os_packages.get(self.os_family, [])
         for package in packages:
-            self._check_package(package_manager, package)
+            self._check_package(package)
         key = next(iter(self.config), None)
         context = self.config[key]
-        is_cloud = context.get('is_cloud')
-        if is_cloud:
+        is_cloud = context.get('is_cloud', 'False')
+        if is_cloud == 'True':
+            cloud_only_packages = ['gzip']
             for package in cloud_only_packages:
-                self._check_package(package_manager, package)
+                self._check_package(package)
 
     def _copy_templates_files_for_ybm(self, context):
         ynp_dir = context.get('ynp_dir')
@@ -291,7 +372,10 @@ class ProvisionCommand(Command):
         precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
         if precheck_result.returncode != 0 or provision_result.returncode != 0:
-            sys.exit(1)
+            exit_code = (provision_result.returncode
+                         if provision_result.returncode != 0
+                         else precheck_result.returncode)
+            sys.exit(exit_code)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
@@ -305,12 +389,19 @@ class ProvisionCommand(Command):
                 os.makedirs(yb_home_dir, exist_ok=True)
 
                 # Define the full path to the ynp_version file
-                ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+                yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+                os.makedirs(yugabyte_dir, exist_ok=True)
+                ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
+                current_user_id = os.getuid()
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
-                os.chown(ynp_version_file, uid, gid)
+                if current_user_id == 0 and current_user_id != uid:
+                    # Change ownership only if running as root and yb_user is different
+                    # from current user.
+                    os.chown(yugabyte_dir, uid, gid)
+                    os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")
 
@@ -322,7 +413,8 @@ class ProvisionCommand(Command):
             current_ynp_version = self._parse_version(context.get('version'))
 
             # Define the full path to the ynp_version file
-            ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+            yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+            ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
             try:
                 # Read the ynp_version from the file
                 with open(ynp_version_file, 'r') as file:
@@ -341,6 +433,27 @@ class ProvisionCommand(Command):
                     "Please run reprovision again on the node"
                 )
                 sys.exit(1)
+
+            expected_version_str = context.get('expected_ynp_version')
+            if expected_version_str:
+                try:
+                    expected_version = self._parse_version(expected_version_str)
+                except ValueError as e:
+                    logger.error(f"Error parsing expected_ynp_version: {e}")
+                    sys.exit(1)
+                if expected_version[0] != stored_ynp_version[0]:
+                    logger.error(
+                        f"YNP version mismatch. Expected major version: "
+                        f"{expected_version[0]} (from {expected_version_str}), "
+                        f"found: {stored_ynp_version[0]} (from {ynp_version_file}). "
+                        f"Please re-provision the node with the current YNP version."
+                    )
+                    sys.exit(1)
+                logger.info(
+                    f"YNP expected version check passed. "
+                    f"Expected: {expected_version_str}, "
+                    f"Stored: {'.'.join(str(p) for p in stored_ynp_version)}"
+                )
 
     def _parse_version(self, version):
         """

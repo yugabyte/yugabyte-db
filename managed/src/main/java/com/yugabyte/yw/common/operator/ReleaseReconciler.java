@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseArtifact.Platform;
@@ -22,11 +23,14 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseStatus;
+import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.gcs.CredentialsJsonSecret;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.SecretAccessKeySecret;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -40,6 +44,20 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final String namespace;
   private final RuntimeConfGetter confGetter;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The current release resource being reconciled, used for associating secret dependencies.
+  private KubernetesResourceDetails currentReconcileResource;
+  private UUID currentLocalInstanceUuid;
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
     return OperatorUtils.crToReleaseMetadata(release);
@@ -65,16 +83,31 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onAdd(Release release) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(release, currentLocalInstanceUuid);
+    currentReconcileResource = resourceDetails;
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     ObjectMeta releaseMetadata = release.getMetadata();
     log.info("Adding release {} ", releaseMetadata.getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (releaseMetadata.getAnnotations() != null
+          && releaseMetadata.getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    releaseMetadata.getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease != null) {
-        log.error("release version already exists, cannot create: " + version);
+        OperatorUtils.maybeAddYbaResourceId(release, ybRelease.getReleaseUUID(), resourceClient);
+        log.info("release version already exists, cannot create: " + version);
         // If it already exists, we should just use it.
-        updateStatus(release, "Release version " + version + "already exists", true);
+        updateStatus(release, "Available", true);
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
@@ -87,6 +120,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         }
         releaseManager.downloadYbHelmChart(version, ybRelease);
         transaction.commit();
+        OperatorUtils.maybeAddYbaResourceId(release, ybRelease.getReleaseUUID(), resourceClient);
         // We downloaded it, so we should update the current releases and mark them available.
         updateStatus(release, "Available", true);
       } catch (Exception e) {
@@ -118,14 +152,47 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       onDelete(newRelease, true);
       return;
     }
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newRelease, currentLocalInstanceUuid);
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (newRelease.getMetadata().getAnnotations() != null
+          && newRelease
+              .getMetadata()
+              .getAnnotations()
+              .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    newRelease
+                        .getMetadata()
+                        .getAnnotations()
+                        .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease == null) {
         log.warn("no release found for version " + version + ". creating it");
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
       }
+      boolean changes = false;
+      for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          log.debug("skip reconcile for local file release artifact {}", artifact);
+          continue;
+        }
+        if (artifactHasChanges(artifact, newRelease)) {
+          changes = true;
+          break;
+        }
+      }
+      if (!changes) {
+        log.info("no changes found for release {}", version);
+        return;
+      }
+
       try (Transaction transaction = DB.beginTransaction()) {
         // Delete existing artifacts
         for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
@@ -178,6 +245,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
+    log.info("Untracked release {} and orphaned dependencies: {}", resourceDetails, orphaned);
     operatorUtils.deleteReleaseCr(release);
   }
 
@@ -217,7 +289,12 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
             release.getSpec().getConfig().getDownloadConfig().getS3().getSecretAccessKeySecret();
         String secret =
             operatorUtils.getAndParseSecretForKey(
-                awsSecret.getName(), awsSecret.getNamespace(), "AWS_SECRET_ACCESS_KEY");
+                awsSecret.getName(),
+                awsSecret.getNamespace(),
+                "AWS_SECRET_ACCESS_KEY",
+                resourceTracker,
+                currentReconcileResource,
+                currentLocalInstanceUuid);
         if (secret != null) {
           s3File.secretAccessKey = secret;
         } else {
@@ -262,7 +339,12 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
             release.getSpec().getConfig().getDownloadConfig().getGcs().getCredentialsJsonSecret();
         String secret =
             operatorUtils.getAndParseSecretForKey(
-                gcsSecret.getName(), gcsSecret.getNamespace(), "CREDENTIALS_JSON");
+                gcsSecret.getName(),
+                gcsSecret.getNamespace(),
+                "CREDENTIALS_JSON",
+                resourceTracker,
+                currentReconcileResource,
+                currentLocalInstanceUuid);
         if (secret != null) {
           gcsFile.credentialsJson = secret;
         } else {
@@ -330,5 +412,69 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       throw new Exception("Error in adding release, no remote found");
     }
     return Arrays.asList(dbArtifact, helmArtifact);
+  }
+
+  // Validate if the artifact remotes have changed.
+  private boolean artifactHasChanges(ReleaseArtifact artifact, Release release) {
+    if (release.getSpec() == null
+        || release.getSpec().getConfig() == null
+        || release.getSpec().getConfig().getDownloadConfig() == null) {
+      return false;
+    }
+    DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
+    if (artifact.getPlatform() == Platform.LINUX) {
+      if (artifact.getPackageURL() != null) {
+        if (downloadConfig.getHttp() != null
+            && !artifact.getPackageURL().equals(downloadConfig.getHttp().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getHttp() == null) return true;
+      }
+      if (artifact.getS3File() != null) {
+        if (downloadConfig.getS3() != null
+            && !artifact.getS3File().path.equals(downloadConfig.getS3().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getS3() == null) return true;
+      }
+      if (artifact.getGcsFile() != null) {
+        if (downloadConfig.getGcs() != null
+            && !artifact.getGcsFile().path.equals(downloadConfig.getGcs().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getGcs() == null) return true;
+      }
+    } else {
+      if (artifact.getPackageURL() != null) {
+        if (downloadConfig.getHttp() != null
+            && !artifact
+                .getPackageURL()
+                .equals(downloadConfig.getHttp().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getHttp() == null) return true;
+      }
+      if (artifact.getS3File() != null) {
+        if (downloadConfig.getS3() != null
+            && !artifact
+                .getS3File()
+                .path
+                .equals(downloadConfig.getS3().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getS3() == null) return true;
+      }
+      if (artifact.getGcsFile() != null) {
+        if (downloadConfig.getGcs() != null
+            && !artifact
+                .getGcsFile()
+                .path
+                .equals(downloadConfig.getGcs().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getGcs() == null) return true;
+      }
+    }
+    return false;
   }
 }

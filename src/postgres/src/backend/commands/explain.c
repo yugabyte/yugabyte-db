@@ -131,8 +131,8 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									YbPlanInfo *yb_plan_info,
 									bool yb_is_agg_pushdown,
+									Scan *ybScan, /* YB */
 									ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
@@ -178,12 +178,14 @@ static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
 												 const YbInstrumentation *instr);
+static void YbExplainMergeScan(PlanState *planstate, List *indextlist,
+							   YbMergeScanInfo *merge_scan_info,
+							   ExplainState *es, List *ancestors);
 static void YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 									   int yb_distinct_prefixlen,
 									   ExplainState *es, List *ancestors);
 static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
 								  ExplainState *es);
-static Node *yb_fix_indexpr_mutator(Node *node, int *newvarno);
 
 typedef enum YbStatLabel
 {
@@ -674,6 +676,12 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_REGULARDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_REGULARDB_BLOOM_FILTER_TIME_NANOS] =
+	BUILD_METRIC_LABEL("rocksdb_bloom_filter_time_nanos"),
+	[YB_STORAGE_EVENT_REGULARDB_GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS] =
+	BUILD_METRIC_LABEL("rocksdb_get_fixed_size_filter_block_handle_nanos"),
+	[YB_STORAGE_EVENT_REGULARDB_GET_FILTER_BLOCK_FROM_CACHE_NANOS] =
+	BUILD_METRIC_LABEL("rocksdb_get_filter_block_from_cache_nanos"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_GET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_get_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_WRITE] =
@@ -702,6 +710,12 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_INTENTSDB_BLOOM_FILTER_TIME_NANOS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_time_nanos"),
+	[YB_STORAGE_EVENT_INTENTSDB_GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_fixed_size_filter_block_handle_nanos"),
+	[YB_STORAGE_EVENT_INTENTSDB_GET_FILTER_BLOCK_FROM_CACHE_NANOS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_filter_block_from_cache_nanos"),
 	[YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_thread_join_group_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS] =
@@ -852,7 +866,7 @@ static void
 YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 {
 	ListCell   *l;
-	const char *lock_mode;
+	const char *lock_mode = NULL;
 
 	if (!es->pstmt->rowMarks)
 		return;
@@ -872,10 +886,15 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 		}
 	}
 
-	if (es->format == EXPLAIN_FORMAT_TEXT)
-		appendStringInfo(es->str, " (Locked %s)", lock_mode);
-	else
-		ExplainPropertyText("Lock Type", lock_mode, es);
+	if (lock_mode != NULL)
+	{
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+			appendStringInfo(es->str, " (Locked %s)", lock_mode);
+		else
+		{
+			ExplainPropertyText("Lock Type", lock_mode, es);
+		}
+	}
 }
 
 /* Explains a LockRows node */
@@ -916,11 +935,39 @@ YbIsTimingNeeded(ExplainState *es, bool timing_set)
 	return es->analyze;
 }
 
+bool
+YbIsDebugMetricsCollectionNeeded(bool log_debug, bool log_dist)
+{
+	if (!log_debug)
+		return false;
+
+	/* YB: DIST is required for DEBUG option to be enabled. */
+	if (!log_dist)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option DEBUG requires DIST")));
+		return false;
+	}
+
+	/* YB: DEBUG option is disabled if non-deterministic fields are hidden. */
+	if (yb_explain_hide_non_deterministic_fields)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+						"disables EXPLAIN option DEBUG")));
+		return false;
+	}
+
+	return true;
+}
+
 static void
 YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metrics,
 						   double nloops, bool is_mean, const char *labelname)
 {
-	if (!metrics)
+	if (!metrics || metrics->version == 0)
 		return;
 
 	ExplainOpenGroup(labelname, labelname, true, yb_es->es);
@@ -1023,6 +1070,12 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		/* YB */
 		else if (strcmp(opt->defname, "uids") == 0)
 			es->ybShowUniqueIds = defGetBoolean(opt);
+		/* YB */
+		else if (strcmp(opt->defname, "planid") == 0)
+			es->ybShowPlanId = defGetBoolean(opt);
+		/* YB */
+		else if (strcmp(opt->defname, "queryid") == 0)
+			es->ybShowQueryId = defGetBoolean(opt);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1039,14 +1092,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	if (yb_explain_hide_non_deterministic_fields && es->yb_debug)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-						"disables EXPLAIN option DEBUG")));
-		es->yb_debug = false;
-	}
+	es->yb_debug = YbIsDebugMetricsCollectionNeeded(es->yb_debug, es->rpc);
 
 	/* YB: check if timing is required */
 	es->timing = YbIsTimingNeeded(es, timing_set);
@@ -1259,7 +1305,7 @@ YbExplainCommitStats(DestReceiver *dest)
 	 * YB: Turn off timing RPC requests and metrics capture so that future
 	 * queries are not timed and metrics are not sent by default
 	 */
-	YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
+	YbToggleSessionStatsTimer(false);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 	pfree(es->str->data);
 }
@@ -1597,7 +1643,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	 * the queryid in any of the EXPLAIN plans to keep stable the results
 	 * generated by regression test suites.
 	 */
-	if (es->verbose && plannedstmt->queryId != UINT64CONST(0) &&
+	if ((es->verbose || es->ybShowQueryId) && plannedstmt->queryId != UINT64CONST(0) &&
 		compute_query_id != COMPUTE_QUERY_ID_REGRESS)
 	{
 		/*
@@ -1614,6 +1660,13 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		ExplainOpenGroup("Planning", "Planning", true, es);
 		show_buffer_usage(es, bufusage, true);
 		ExplainCloseGroup("Planning", "Planning", true, es);
+	}
+
+	if (es->ybShowPlanId)
+	{
+		uint64 ybPlanId = ybGetPlanId(queryDesc->plannedstmt);
+
+		ExplainPropertyInteger("Plan Identifier", NULL, (int64) ybPlanId, es);
 	}
 
 	if (es->ybShowHints)
@@ -2593,8 +2646,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										&indexscan->yb_plan_info,
 										yb_is_agg_pushdown,
+										(Scan *) indexscan, /* YB */
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2605,8 +2658,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										&indexonlyscan->yb_plan_info,
 										yb_is_agg_pushdown,
+										(Scan *) indexonlyscan, /* YB */
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2914,6 +2967,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexScan *) plan)->indexqualorig)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
+			YbExplainMergeScan(planstate,
+							   ((IndexScan *) plan)->indextlist,
+							   ((IndexScan *) plan)->yb_merge_scan_info,
+							   es, ancestors);
 			/*
 			 * YB note: Quals are shown in the order they are applied: index
 			 * pushdown, relation pushdown, local clauses.
@@ -2948,6 +3005,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexOnlyScan *) plan)->recheckqual)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
+			YbExplainMergeScan(planstate,
+							   ((IndexOnlyScan *) plan)->indextlist,
+							   ((IndexOnlyScan *) plan)->yb_merge_scan_info,
+							   es, ancestors);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
 						   "Order By", planstate, ancestors, es);
 			/*
@@ -4180,7 +4241,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 				appendStringInfoString(es->str, ", ");
 		}
 
-		if (groupInfo->maxMemorySpaceUsed > 0)
+		if (groupInfo->maxMemorySpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalMemorySpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4191,7 +4253,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 							 spaceTypeName, groupInfo->maxMemorySpaceUsed);
 		}
 
-		if (groupInfo->maxDiskSpaceUsed > 0)
+		if (groupInfo->maxDiskSpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalDiskSpaceUsed / groupInfo->groupCount;
 
@@ -4214,7 +4277,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 
 		ExplainPropertyList("Sort Methods Used", methodNames, es);
 
-		if (groupInfo->maxMemorySpaceUsed > 0)
+		if (groupInfo->maxMemorySpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalMemorySpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4231,7 +4295,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 
 			ExplainCloseGroup("Sort Space", memoryName.data, true, es);
 		}
-		if (groupInfo->maxDiskSpaceUsed > 0)
+		if (groupInfo->maxDiskSpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalDiskSpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4507,7 +4572,7 @@ show_memoize_info(MemoizeState *mstate, List *ancestors, ExplainState *es)
 
 	pfree(keystr.data);
 
-	if (!es->analyze)
+	if (!es->analyze || yb_explain_hide_non_deterministic_fields)
 		return;
 
 	if (mstate->stats.cache_misses > 0)
@@ -4623,7 +4688,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 		 * detect this by checking how much memory it used.  If we find it
 		 * didn't do any work then we don't show its properties.
 		 */
-		if (es->analyze && aggstate->hash_mem_peak > 0)
+		if (es->analyze && aggstate->hash_mem_peak > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			ExplainPropertyInteger("HashAgg Batches", NULL,
 								   aggstate->hash_batches_used, es);
@@ -4649,7 +4715,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 		 * detect this by checking how much memory it used.  If we find it
 		 * didn't do any work then we don't show its properties.
 		 */
-		if (es->analyze && aggstate->hash_mem_peak > 0)
+		if (es->analyze && aggstate->hash_mem_peak > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			if (!gotone)
 				ExplainIndentText(es);
@@ -4673,7 +4740,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 	}
 
 	/* Display stats for each parallel worker */
-	if (es->analyze && aggstate->shared_info != NULL)
+	if (es->analyze && aggstate->shared_info != NULL &&
+		!yb_explain_hide_non_deterministic_fields)
 	{
 		for (int n = 0; n < aggstate->shared_info->num_workers; n++)
 		{
@@ -5163,7 +5231,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 							   index_rows_scanned);
 
 	if (es->yb_debug)
-		YbExplainRpcRequestMetrics(&yb_es, yb_instr->read_metrics, nloops, true /* is_mean */ ,
+		YbExplainRpcRequestMetrics(&yb_es, &yb_instr->read_metrics, nloops, true /* is_mean */ ,
 								   "Read Metrics" /* labelname */ );
 
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
@@ -5174,7 +5242,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 							flushes_wait);
 
 	if (es->yb_debug)
-		YbExplainRpcRequestMetrics(&yb_es, yb_instr->write_metrics, nloops, true /* is_mean */ ,
+		YbExplainRpcRequestMetrics(&yb_es, &yb_instr->write_metrics, nloops, true /* is_mean */ ,
 								   "Write Metrics" /* labelname */ );
 }
 
@@ -5183,10 +5251,14 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						YbPlanInfo *yb_plan_info, bool yb_is_agg_pushdown,
+						bool yb_is_agg_pushdown,
+						Scan *ybScan, /* YB */
 						ExplainState *es)
 {
-	const char *indexname = explain_get_index_name(indexid);
+	const char *indexname = ybScan->ybScannedObjectName; /* YB */
+
+	if (indexname == NULL) /* YB */
+		indexname = explain_get_index_name(indexid);
 
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
@@ -5216,8 +5288,6 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (es->yb_debug && yb_enable_base_scans_cost_model)
-			show_yb_planning_stats(yb_plan_info, es);
 	}
 }
 
@@ -5482,7 +5552,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 		idxNames = lappend(idxNames, indexname);
 	}
 
-	if (node->onConflictAction != ONCONFLICT_NONE)
+	if (YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		ExplainPropertyText("Conflict Resolution",
 							node->onConflictAction == ONCONFLICT_NOTHING ?
@@ -6520,11 +6590,13 @@ static void
 YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
 								 const YbcPgExecStorageMetrics *instr_metrics)
 {
-	if (!instr_metrics)
+	if (instr_metrics->version == 0)
 		return;
 
 	if (*metrics == NULL)
 		*metrics = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
+
+	(*metrics)->version += instr_metrics->version;
 
 	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
 		(*metrics)->gauges[i] += instr_metrics->gauges[i];
@@ -6577,9 +6649,9 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 	if (es->yb_debug)
 	{
 		YbAggregateExplainableRpcMetrics(&es->yb_stats.read_metrics,
-										 yb_instr->read_metrics);
+										 &yb_instr->read_metrics);
 		YbAggregateExplainableRpcMetrics(&es->yb_stats.write_metrics,
-										 yb_instr->write_metrics);
+										 &yb_instr->write_metrics);
 	}
 }
 
@@ -6608,7 +6680,6 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 		bool		useprefix;
 		int			keyno;
 		ListCell   *tlelc;
-		Index		scanrelid;
 
 		initStringInfo(&distinct_prefix_key_buf);
 
@@ -6617,13 +6688,11 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 										   planstate->plan,
 										   ancestors);
 		useprefix = (list_length(es->rtable) > 1 || es->verbose);
-		scanrelid = ((Scan *) planstate->plan)->scanrelid;
 
 		keyno = 0;
 		foreach(tlelc, indextlist)
 		{
 			TargetEntry *indextle;
-			Node	   *indexpr;
 			char	   *exprstr;
 
 			if (keyno >= yb_distinct_prefixlen)
@@ -6631,11 +6700,9 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 
 			indextle = (TargetEntry *) lfirst(tlelc);
 
-			/* Fix the varno of prefix to scanrelid after making a copy. */
-			indexpr = yb_fix_indexpr_mutator((Node *) indextle->expr,
-											 (void *) &scanrelid);
 			/* Deparse the expression, showing any top-level cast */
-			exprstr = deparse_expression(indexpr, context, useprefix, true);
+			exprstr = deparse_expression((Node *) indextle->expr, context,
+										 useprefix, true);
 			resetStringInfo(&distinct_prefix_key_buf);
 			appendStringInfoString(&distinct_prefix_key_buf, exprstr);
 			/* Emit one property-list item per key */
@@ -6648,26 +6715,85 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 	}
 }
 
-static Node *
-yb_fix_indexpr_mutator(Node *node, int *newvarno)
+static void
+YbExplainMergeScan(PlanState *planstate, List *indextlist,
+				   YbMergeScanInfo *merge_scan_info,
+				   ExplainState *es, List *ancestors)
 {
-	if (node == NULL)
-		return NULL;
+	List	   *saop_keys = NIL;
+	List	   *saops = NIL;
+	int			num_streams = 1;
+	List	   *sort_keys = NIL;
+	ListCell   *lc;
+	List	   *context;
+	StringInfoData sortkeybuf;
+	bool		useprefix;
+	int			keyno;
 
-	if (nodeTag(node) == T_Var)
+	/* If no merge scan, nothing to do. */
+	if (!merge_scan_info)
+		return;
+
+	initStringInfo(&sortkeybuf);
+
+	/* Set up deparsing context */
+	context = set_deparse_context_plan(es->deparse_cxt,
+									   planstate->plan,
+									   ancestors);
+	useprefix = (list_length(es->rtable) > 1 || es->verbose);
+
+	foreach(lc, merge_scan_info->saop_cols)
 	{
-		Var		   *var = palloc(sizeof(Var));
+		YbMergeScanSaopColInfo *item = lfirst(lc);
+		TargetEntry *target = get_tle_by_resno(indextlist,
+											   item->indexcol + 1);
+		char	   *exprstr;
 
-		/* Copy old var into a new one and adjust varno */
-		*var = *((Var *) node);
-		if (!IS_SPECIAL_VARNO(var->varno))
-			var->varno = *newvarno;
-		if (var->varnosyn > 0)
-			var->varnosyn = *newvarno;
+		if (!target)
+			elog(ERROR, "no tlist entry for key %d", item->indexcol);
+		/* Deparse the expression, showing any top-level cast */
+		exprstr = deparse_expression((Node *) target->expr, context,
+									 useprefix, true);
 
-		return (Node *) var;
+		saop_keys = lappend(saop_keys, exprstr);
+		saops = lappend(saops, item->saop);
+		num_streams *= item->num_elems;
 	}
 
-	return expression_tree_mutator(node, yb_fix_indexpr_mutator,
-								   (void *) newvarno);
+	YbSortInfo *sort_cols = merge_scan_info->sort_cols;
+
+	/* Parts copied from show_sort_group_keys. */
+	for (keyno = 0; keyno < sort_cols->numCols; keyno++)
+	{
+		/* find key expression in tlist */
+		AttrNumber	keyresno = sort_cols->sortColIdx[keyno];
+		TargetEntry *target = get_tle_by_resno(indextlist,
+											   keyresno);
+		char	   *exprstr;
+
+		if (!target)
+			elog(ERROR, "no tlist entry for key %d", keyresno);
+		/* Deparse the expression, showing any top-level cast */
+		exprstr = deparse_expression((Node *) target->expr, context,
+									 useprefix, true);
+		resetStringInfo(&sortkeybuf);
+		appendStringInfoString(&sortkeybuf, exprstr);
+		/* Append sort order information */
+		Assert(sort_cols->sortOperators != NULL);
+		show_sortorder_options(&sortkeybuf,
+							   (Node *) target->expr,
+							   sort_cols->sortOperators[keyno],
+							   sort_cols->collations[keyno],
+							   sort_cols->nullsFirst[keyno]);
+		/* Emit one property-list item per sort key */
+		sort_keys = lappend(sort_keys, pstrdup(sortkeybuf.data));
+	}
+
+	if (sort_keys)
+		ExplainPropertyList("Merge Sort Key", sort_keys, es);
+	Assert(saop_keys);
+	ExplainPropertyList("Merge Stream Key", saop_keys, es);
+	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
+	if (es->verbose)
+		show_scan_qual(saops, "Merge Cond", planstate, ancestors, es);
 }

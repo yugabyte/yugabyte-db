@@ -18,7 +18,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
@@ -40,16 +39,12 @@ public class WaitForClockSync extends NodeTaskBase {
 
   private final Duration RETRY_WAIT_TIME = Duration.ofSeconds(10);
 
-  private final NodeUniverseManager nodeUniverseManager;
-
   private static final Pattern lastOffsetRegexPattern =
       Pattern.compile("Last offset\\s*:\\s*([+-]?\\d+\\.\\d+)");
 
   @Inject
-  protected WaitForClockSync(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected WaitForClockSync(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends NodeTaskParams {

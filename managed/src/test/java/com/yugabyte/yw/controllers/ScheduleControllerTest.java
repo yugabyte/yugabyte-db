@@ -26,6 +26,9 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
@@ -56,12 +59,14 @@ public class ScheduleControllerTest extends FakeDBApplication {
   private Schedule defaultIncrementalSchedule;
   private BackupTableParams backupTableParams;
   private BackupRequestParams backupRequestParams;
+  private SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
     backupTableParams = new BackupTableParams();
     backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -911,6 +916,104 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertBadRequest(result, "{\"status\":[\"must be any of [Active, Stopped]\"]}");
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
     assertEquals(schedule.getStatus(), State.Active);
+  }
+
+  @Test
+  public void testToggleScheduleResumeUsesRuntimeConfigDefault() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule =
+        Schedule.updateStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    schedule.updateNextScheduleTaskTime(new Date(System.currentTimeMillis() - 1000L * 3600L));
+    schedule.updateNextIncrementScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000L * 3600L));
+    assertEquals(schedule.getStatus(), State.Stopped);
+    // Default runtime config is false, so backlog should not be set
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(State.Active, schedule.getStatus());
+    assertNotEquals(true, schedule.isBacklogStatus());
+    assertNotEquals(true, schedule.isIncrementBacklogStatus());
+  }
+
+  @Test
+  public void testToggleScheduleResumeWithRuntimeConfigTrue() {
+    RuntimeConfig<Universe> universeConfig = runtimeConfigFactory.forUniverse(defaultUniverse);
+    universeConfig.setValue(UniverseConfKeys.runImmediateBackupOnResume.getKey(), "true");
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule =
+        Schedule.updateStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    schedule.updateNextScheduleTaskTime(new Date(System.currentTimeMillis() - 1000L * 3600L));
+    schedule.updateNextIncrementScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000L * 3600L));
+    assertEquals(schedule.getStatus(), State.Stopped);
+    // Runtime config is true and no explicit param, so backlog should be set
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(State.Active, schedule.getStatus());
+    assertTrue(schedule.isBacklogStatus());
+    assertTrue(schedule.isIncrementBacklogStatus());
+  }
+
+  @Test
+  public void testToggleScheduleResumeExplicitFalseOverridesRuntimeConfig() {
+    RuntimeConfig<Universe> universeConfig = runtimeConfigFactory.forUniverse(defaultUniverse);
+    universeConfig.setValue(UniverseConfKeys.runImmediateBackupOnResume.getKey(), "true");
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule =
+        Schedule.updateStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    schedule.updateNextScheduleTaskTime(new Date(System.currentTimeMillis() - 1000L * 3600L));
+    schedule.updateNextIncrementScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000L * 3600L));
+    assertEquals(schedule.getStatus(), State.Stopped);
+    // Explicit false in request should override runtime config true
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    bodyJson.put("runImmediateBackupOnResume", false);
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(State.Active, schedule.getStatus());
+    assertNotEquals(true, schedule.isBacklogStatus());
+    assertNotEquals(true, schedule.isIncrementBacklogStatus());
   }
 
   /* Async APIs test end */

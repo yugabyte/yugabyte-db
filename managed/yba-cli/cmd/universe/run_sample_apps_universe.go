@@ -42,12 +42,7 @@ var runSampleAppsUniverseCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe",
-				"Run Sample Apps - List Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Run Sample Apps - List Universe")
 		}
 
 		if len(r) < 1 {

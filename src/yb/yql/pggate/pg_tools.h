@@ -44,6 +44,9 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
+std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id);
+
 namespace yb::pggate {
 
 class PgSession;
@@ -75,6 +78,7 @@ class PgWaitEventWatcher {
 };
 
 struct EstimatedRowCount {
+  int sampledrows;
   double live;
   double dead;
 };
@@ -142,7 +146,6 @@ struct TableYbctidHasher {
   size_t operator()(const LightweightTableYbctid& value) const;
 };
 
-using OidSet = std::unordered_set<PgOid>;
 template <class T>
 using TableYbctidSetHelper =
     std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
@@ -151,8 +154,6 @@ using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 
 template <class U>
 using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
-
-using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
 
 struct YbctidBatch {
   YbctidBatch(std::span<const Slice> ybctids_, bool keep_order_)
@@ -182,11 +183,6 @@ struct YbctidGenerator {
   DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
 };
 
-std::string ToString(const YbcAdvisoryLockId& lock_id);
-std::string ToString(const YbcObjectLockId& lock_id);
-
-using TablespaceMap = std::unordered_map<PgObjectId, PgOid, PgObjectIdHash>;
-
 class TablespaceCache {
  public:
   explicit TablespaceCache(size_t capacity);
@@ -202,6 +198,16 @@ class TablespaceCache {
   };
 
   LRUCache<Info, boost::multi_index::member<Info, PgObjectId, &Info::key>> impl_;
+};
+
+class TableLocalityMap {
+ public:
+  void Add(PgOid table_id, const YbcPgTableLocalityInfo& info);
+  const YbcPgTableLocalityInfo& Get(PgOid table_id) const;
+  void Clear();
+
+ private:
+  std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
 };
 
 } // namespace yb::pggate

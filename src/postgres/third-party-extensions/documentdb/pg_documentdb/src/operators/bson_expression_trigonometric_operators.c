@@ -578,7 +578,7 @@ ApplyTrigOperator(bson_value_t *currentValue,
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"%s only supports numeric types, not %s",
+							"%s works exclusively with numeric data types, not with %s",
 							operatorName,
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -654,7 +654,7 @@ ProcessDollarSin(const bson_value_t *currentValue, bson_value_t *result)
 	if (IsBsonValueInfinity(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $sin to %s, value must be in (-inf,inf)",
+							"Unable to use operator $sin on %s, as the value must fall within the range (-inf, inf)",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -678,7 +678,7 @@ ProcessDollarCos(const bson_value_t *currentValue, bson_value_t *result)
 	if (IsBsonValueInfinity(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $cos to %s, value must be in (-inf,inf)",
+							"Cannot use $cos with %s; the value must lie within the range (-inf, inf).",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -702,7 +702,7 @@ ProcessDollarTan(const bson_value_t *currentValue, bson_value_t *result)
 	if (IsBsonValueInfinity(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $tan to %s, value must be in (-inf,inf)",
+							"Unable to use operators tan on %s since the value must lie within the range (-inf, inf)",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -774,7 +774,7 @@ ProcessDollarAsin(const bson_value_t *currentValue, bson_value_t *result)
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $asin to %s, value must be in [-1,1]",
+							"Unable to apply $asin to %s because the provided value must fall within the range [-1, 1]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -798,7 +798,7 @@ ProcessDollarAcos(const bson_value_t *currentValue, bson_value_t *result)
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $acos to %s, value must be in [-1,1]",
+							"$acos cannot be applied to %s because its value must fall within the range [-1,1]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -848,14 +848,14 @@ ProcessDollarAtan2(const bson_value_t *firstValue, const bson_value_t *secondVal
 		if (firstValue->value_type == BSON_TYPE_DOUBLE)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51045), errmsg(
-								"$atan2 only supports numeric types, not %s and %s",
+								"$atan2 can operate solely on numeric types, and does not accept %s or %s as valid inputs",
 								BsonTypeName(firstValue->value_type), BsonTypeName(
 									secondValue->value_type))));
 		}
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51044), errmsg(
-								"$atan2 only supports numeric types, not %s and %s",
+								"$atan2 can operate solely on numeric types, and does not accept %s or %s as valid inputs",
 								BsonTypeName(firstValue->value_type), BsonTypeName(
 									secondValue->value_type))));
 		}
@@ -907,7 +907,7 @@ ProcessDollarAcosh(const bson_value_t *currentValue, bson_value_t *result)
 	if (BsonValueAsDouble(currentValue) < 1.0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $acosh to %s, value must be in [1,inf]",
+							"Cannot use operator acosh on %s as the value must lie within the range [1, infinity]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}
@@ -931,7 +931,7 @@ ProcessDollarAtanh(const bson_value_t *currentValue, bson_value_t *result)
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION50989), errmsg(
-							"cannot apply $atanh to %s, value must be in [-1,1]",
+							"Unable to use operator atanh on %s because the value must be within the range [-1, 1].",
 							BsonValueToJsonForLogging(currentValue)
 							)));
 	}

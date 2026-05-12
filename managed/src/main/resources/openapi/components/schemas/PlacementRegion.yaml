@@ -1,6 +1,10 @@
 title: PlacementRegion
 description: YBA Placement Region. Part of PlacementCloud.
 type: object
+required:
+  - uuid
+  - code
+  - az_list
 properties:
   uuid:
     description: The region provider id.

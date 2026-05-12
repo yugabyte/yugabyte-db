@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -22,7 +21,6 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.controllers.handlers.NodeInstanceHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeDetailsResp;
@@ -68,6 +66,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http;
@@ -81,8 +80,6 @@ import play.mvc.Results;
 public class NodeInstanceController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
-
-  @Inject NodeAgentHandler nodeAgentHandler;
 
   @Inject NodeConfigValidator nodeConfigValidator;
 
@@ -143,8 +140,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.kubernetes) {
+    Provider provider = Util.getProviderForNode(detail, universe);
+    if (provider.getCloudCode() == CloudType.kubernetes) {
       // Return helm values for the corresponding node also for k8s universes.
       helmValues = getAZHelmValues(universe, nodeName);
     }
@@ -172,7 +169,7 @@ public class NodeInstanceController extends AuthenticatedController {
             String.format("Failed to get information about node %s.", nodeName));
       }
       String azName = nodeDetails.cloudInfo.az;
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, cluster);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       // Get AZ uuid
       Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).getConfig();
@@ -203,6 +200,29 @@ public class NodeInstanceController extends AuthenticatedController {
       // Swallow the exception so that user can see other node details.
       return "";
     }
+  }
+
+  /**
+   * GET endpoint for Node instances.
+   *
+   * @param customerUuid the customer UUID
+   * @param nodeIp the node IP address/FQDN (optional)
+   * @return JSON response with Node data
+   */
+  @ApiOperation(
+      value = "List all node instances of a customer",
+      response = NodeInstance.class,
+      nickname = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result listByCustomer(UUID customerUuid, @Nullable String nodeIp) {
+    Customer.getOrBadRequest(customerUuid);
+    List<NodeInstance> instances = NodeInstance.listByCustomer(customerUuid, nodeIp);
+    return PlatformResults.withData(instances);
   }
 
   /**
@@ -475,7 +495,7 @@ public class NodeInstanceController extends AuthenticatedController {
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
       log.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
@@ -500,6 +520,7 @@ public class NodeInstanceController extends AuthenticatedController {
     if (universe.isYbcEnabled()) {
       taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
     }
+    taskParams.runOnlyPrechecks = nodeActionFormData.isRunOnlyPrechecks();
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests

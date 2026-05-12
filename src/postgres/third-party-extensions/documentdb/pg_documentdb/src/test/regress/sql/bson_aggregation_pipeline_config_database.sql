@@ -4,7 +4,7 @@ SET documentdb.next_collection_id TO 7000;
 SET documentdb.next_collection_index_id TO 7000;
 
 
--- these run the default commands used by sh.status().
+-- default commands on config database
 SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "version", "projection": { } }');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "databases", "projection": { }, "sort": { "name": 1 } }');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');

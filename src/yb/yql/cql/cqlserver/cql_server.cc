@@ -16,6 +16,7 @@
 #include <boost/bind.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -103,7 +104,7 @@ Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
-  cql_service->CompleteInit();
+  RETURN_NOT_OK(cql_service->CompleteInit());
 
   cql_service_ = std::move(cql_service);
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service_));
@@ -247,6 +248,10 @@ Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
 Status CQLServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
   return cql_service_->YCQLStatementStats(req, resp);
+}
+
+void CQLServer::ClearMetaDataCache() const {
+  cql_service_->metadata_cache()->Reset();
 }
 
 }  // namespace cqlserver

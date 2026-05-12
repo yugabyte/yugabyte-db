@@ -17,7 +17,7 @@ import { createErrorMessage } from '../../universe-form/utils/helpers';
 import { replicationSlotStyles } from './utils/ReplicationSlotStyles';
 
 //icons
-import DatabaseEvent from '../../../../assets/database-event.svg';
+import DatabaseEvent from '../../../../assets/database-event.svg?img';
 // import Flash from '../../../../assets/flash.svg';
 interface ReplicationTableProps {
   universeUUID: string;

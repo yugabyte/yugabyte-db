@@ -22,6 +22,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/replica_type.h"
 
 #include "yb/util/result.h"
 
@@ -40,7 +41,9 @@ class TablespaceParser {
   // info and just log a warning. This is required for upgrade safety (and eventually to support the
   // a force flag in the yb-admin APIs).
   static Result<ReplicationInfoPB> FromString(
-      const std::string& placement, bool fail_on_validation_error = true);
+    const std::string& live_placement,
+    const std::string& read_replica_placement,
+    bool fail_on_validation_error = true);
   static Result<ReplicationInfoPB> FromQLValue(
       const std::vector<std::string>& placements, bool fail_on_validation_error = true);
 
@@ -49,9 +52,18 @@ class TablespaceParser {
       const CloudInfoPB& src_cloud_info, const CloudInfoPB& dest_cloud_info);
 
  private:
+  static Status ReadReplicaPlacementInfoFromJson(
+     const rapidjson::Document& placement,
+     ReplicationInfoPB& replication_info);
+  static Status PlacementInfoFromJson(
+      const rapidjson::Value& placement, PlacementInfoPB* placement_info,
+      ReplicationInfoPB& replication_info, ReplicaType replica_type);
   static Result<ReplicationInfoPB> FromJson(
-      const std::string& placement_str, const rapidjson::Document& placement,
-      bool fail_on_validation_error);
+      const std::string& live_placement,
+      const rapidjson::Document& live_placement_document,
+      const std::string& read_replica_placement,
+      const rapidjson::Document& read_replica_placement_document,
+      bool fail_on_validation_error = true);
 };
 
 } // namespace yb

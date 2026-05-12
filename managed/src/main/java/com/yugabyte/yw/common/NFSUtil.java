@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.inject.Inject;
@@ -75,9 +76,10 @@ public class NFSUtil implements StorageUtil {
     }
     String storageLocation = getRegionLocationsMap(configData).get(region);
     String bucket = getRegionBucketMap(configData).get(region);
+    List<String> nfsVolumes = getRegionNfsVolumesMap(configData).get(region);
     Map<String, String> credsMap = createCredsMapYbc(storageLocation);
     return YbcBackupUtil.buildCloudStoreSpec(
-        bucket, cloudDir, previousCloudDir, credsMap, Util.NFS);
+        bucket, cloudDir, previousCloudDir, credsMap, Util.NFS, nfsVolumes);
   }
 
   @Override
@@ -89,6 +91,7 @@ public class NFSUtil implements StorageUtil {
       Universe universe) {
     String bucket = getRegionBucketMap(configData).get(region);
     String storageLocation = getRegionLocationsMap(configData).get(region);
+    List<String> nfsVolumes = getRegionNfsVolumesMap(configData).get(region);
     Map<String, String> credsMap = new HashMap<>();
     if (isDsm) {
       String location =
@@ -96,10 +99,11 @@ public class NFSUtil implements StorageUtil {
               cloudDir, bucket, ((CustomerConfigStorageData) configData).backupLocation);
       location = BackupUtil.appendSlash(location);
       credsMap = createCredsMapYbc(((CustomerConfigStorageData) configData).backupLocation);
-      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", credsMap, Util.NFS);
+      return YbcBackupUtil.buildCloudStoreSpec(
+          bucket, location, "", credsMap, Util.NFS, nfsVolumes);
     }
     credsMap = createCredsMapYbc(storageLocation);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", credsMap, Util.NFS);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", credsMap, Util.NFS, nfsVolumes);
   }
 
   private Map<String, String> createCredsMapYbc(String storageLocation) {
@@ -127,6 +131,17 @@ public class NFSUtil implements StorageUtil {
     }
     regionBucketMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, nfsData.nfsBucket);
     return regionBucketMap;
+  }
+
+  private static Map<String, List<String>> getRegionNfsVolumesMap(CustomerConfigData configData) {
+    Map<String, List<String>> regionNfsVolumesMap = new HashMap<>();
+    CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) configData;
+    if (CollectionUtils.isNotEmpty(nfsData.regionLocations)) {
+      nfsData.regionLocations.stream()
+          .forEach(rL -> regionNfsVolumesMap.put(rL.region, rL.nfsVolumes));
+    }
+    regionNfsVolumesMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, nfsData.nfsVolumes);
+    return regionNfsVolumesMap;
   }
 
   public void validateDirectory(CustomerConfigData customerConfigData, Universe universe) {
@@ -256,10 +271,8 @@ public class NFSUtil implements StorageUtil {
 
   private Map<String, Boolean> parseBulkCheckOutputFile(String filePath) {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
-    File targetLocalFile = null;
-    try {
-      targetLocalFile = new File(filePath);
-      BufferedReader bReader = new BufferedReader(new FileReader(targetLocalFile));
+    File targetLocalFile = new File(filePath);
+    try (BufferedReader bReader = new BufferedReader(new FileReader(targetLocalFile))) {
       bReader
           .lines()
           .forEach(
@@ -267,13 +280,11 @@ public class NFSUtil implements StorageUtil {
                 String[] splitLine = fLine.trim().split("\\s+");
                 bulkCheckFileExistsMap.put(splitLine[0], splitLine[1].equals("0") ? false : true);
               });
-      bReader.close();
-      targetLocalFile.delete();
       return bulkCheckFileExistsMap;
     } catch (IOException e) {
       throw new RuntimeException("Error parsing bulk check output for NFS locations.");
     } finally {
-      if (targetLocalFile != null && targetLocalFile.exists()) {
+      if (targetLocalFile.exists()) {
         targetLocalFile.delete();
       }
     }
@@ -511,10 +522,11 @@ public class NFSUtil implements StorageUtil {
 
       // Check if the backup directory exists and is valid
       if (!nfsBackupDir.exists() || !nfsBackupDir.isDirectory()) {
-        log.warn(
-            "Backup directory {} does not exist or is not a directory.",
-            nfsBackupDir.getAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Backup directory "
+                + nfsBackupDir.getAbsolutePath()
+                + " does not exist or is not a directory");
       }
 
       // Define the backup file pattern
@@ -528,14 +540,24 @@ public class NFSUtil implements StorageUtil {
               .orElse(null);
 
       if (latestBackup == null) {
-        log.warn("No backup files found in directory {}.", nfsBackupDir.getAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No backup files found in directory " + nfsBackupDir.getAbsolutePath());
+      }
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (latestBackup.lastModified() < System.currentTimeMillis() - (1000 * 60 * 60 * 24)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
+        }
       }
 
       // Ensure the local directory exists
       if (!localDir.toFile().exists() && !localDir.toFile().mkdirs()) {
-        log.warn("Failed to create local directory: {}", localDir.toAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to create local directory: " + localDir.toAbsolutePath());
       }
 
       // Copy the backup file to the local directory
@@ -550,12 +572,9 @@ public class NFSUtil implements StorageUtil {
       return localBackupFile;
 
     } catch (IOException e) {
-      log.warn("IO error occurred while copying backup: {}", e.getMessage(), e);
-    } catch (Exception e) {
-      log.warn("Unexpected exception while copying backup: {}", e.getMessage(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "IO error occurred while copying backup: " + e.getMessage());
     }
-
-    return null;
   }
 
   @Override

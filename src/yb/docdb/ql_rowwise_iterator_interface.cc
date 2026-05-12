@@ -17,8 +17,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/util/result.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 Result<dockv::SubDocKey> YQLRowwiseIteratorIf::GetSubDocKey(ReadKey read_key) {
   return dockv::SubDocKey();
@@ -51,9 +50,4 @@ Result<bool> YQLRowwiseIteratorIf::FetchTuple(Slice tuple_id, qlexpr::QLTableRow
   return STATUS(NotSupported, "This iterator cannot fetch tuple id");
 }
 
-Result<Slice> YQLRowwiseIteratorIf::FetchDirect(Slice key) {
-  return STATUS(NotSupported, "FetchDirect not supported");
-}
-
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

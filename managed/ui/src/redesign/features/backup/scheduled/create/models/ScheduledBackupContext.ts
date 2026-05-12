@@ -20,6 +20,7 @@ export type ExtendedBackupScheduleProps = {
   incrementalBackupFrequencyTimeUnit: string;
   enablePointInTimeRestore: boolean;
   keyspaceTableList: any[];
+  cronExpression?: string;
 } & IBackupSchedule['backupInfo'];
 
 export enum SubmitLabels {
@@ -65,6 +66,7 @@ export const initialScheduledBackupContextState: ScheduledBackupContext = {
     backupObjects: {
       keyspace: null,
       useTablespaces: true,
+      useRoles: false,
       selectedTables: [],
       tableBackupType: Backup_Options_Type.ALL
     },

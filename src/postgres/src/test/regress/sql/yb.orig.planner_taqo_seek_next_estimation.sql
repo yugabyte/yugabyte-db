@@ -1,6 +1,9 @@
 CREATE DATABASE taqo_seek_next_estimation with colocation = true;
 \c taqo_seek_next_estimation
-SET statement_timeout = '7200s';
+-- A grace period of 2s is added to every RPC (controlled by gflag 'pg_client_extra_timeout_ms').
+-- To avoid crossing the max RPC timeout threshold (7200s), account for the above in setting
+-- the statement timeout.
+SET statement_timeout = '7198s';
 -- CREATE QUERIES
 create table t1 (k1 int, PRIMARY KEY (k1 asc));
 create table t2 (k1 int, k2 int, PRIMARY KEY (k1 asc, k2 asc));

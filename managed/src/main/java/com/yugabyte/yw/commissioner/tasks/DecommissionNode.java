@@ -10,11 +10,15 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -25,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Retryable
+@Abortable
 public class DecommissionNode extends EditUniverseTaskBase {
 
   @Inject
@@ -38,9 +43,31 @@ public class DecommissionNode extends EditUniverseTaskBase {
   }
 
   private void runBasicChecks(Universe universe) {
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (isFirstTry()) {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      if (currentNode == null) {
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
       currentNode.validateActionOnState(NodeActionType.DECOMMISSION);
+      Cluster nodeCluster =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+      long numNodesToCheck =
+          universe.getNodes().stream()
+              .filter(n -> nodeCluster.uuid.equals(currentNode.placementUuid))
+              .filter(
+                  n -> currentNode.dedicatedTo == null || n.dedicatedTo == currentNode.dedicatedTo)
+              .count();
+      if (numNodesToCheck <= nodeCluster.userIntent.replicationFactor) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            currentNode.isMaster
+                ? "Cannot decommission a dedicated master as it causes under-replicated masters"
+                : "Cannot decommission a dedicated tserver as it causes under-replicated"
+                    + " tablets");
+      }
     }
   }
 
@@ -50,57 +77,41 @@ public class DecommissionNode extends EditUniverseTaskBase {
     runBasicChecks(getUniverse());
   }
 
-  // Check that there is a place to move the tablets and if not, make sure there are no tablets
-  // assigned to this tserver. Otherwise, do not allow the remove node task to succeed.
-  public void performPrecheck() {
-    Universe universe = getUniverse();
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-
-    if (!isTabletMovementAvailable(taskParams().nodeName)) {
-      log.debug(
-          "Tablets have nowhere to move off of tserver on node: {}. Checking if there are still"
-              + " tablets assigned to it. A healthy tserver should not be removed.",
-          currentNode.getNodeName());
-      // TODO: Move this into a subtask.
-      checkNoTabletsOnNode(universe, currentNode);
-    }
-    log.debug("Pre-check succeeded");
-  }
-
   @Override
   protected void createPrecheckTasks(Universe universe) {
-
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-    if (currentNode == null) {
-      if (isFirstTry()) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      } else {
-        // We might be here on a retry that actually deleted the node
-        // don't do anything in this case
-        return;
-      }
-    }
-
     if (isFirstTry()) {
+      runBasicChecks(universe);
       setToBeRemovedState(currentNode);
-      configureTaskParams(universe);
+      configureTaskParams(universe, true /* moveMastersFirst */);
     }
 
     // Check again after locking.
     runBasicChecks(getUniverse());
-    boolean alwaysWaitForDataMove =
-        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
-    if (alwaysWaitForDataMove) {
-      performPrecheck();
+    if (currentNode != null) {
+      boolean alwaysWaitForDataMove =
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
+      if (alwaysWaitForDataMove) {
+        createCheckTabletsMovementAvailableTask(taskParams().nodeName);
+      }
     }
+    createComprehensivePrecheckTasks(universe);
     addBasicPrecheckTasks();
   }
 
   @Override
+  protected void freezeUniverseInTxn(Universe universe) {
+    super.freezeUniverseInTxn(universe);
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
+  }
+
+  @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
@@ -108,28 +119,22 @@ public class DecommissionNode extends EditUniverseTaskBase {
         taskParams().getUniverseUUID());
     checkUniverseVersion();
 
-    Universe universe = getUniverse();
-    if (universe.getNode(taskParams().nodeName) == null) {
-      log.info("No node found with name {}", taskParams().nodeName);
-      if (isFirstTry()) {
-        throw new RuntimeException(
-            String.format("Node %s appears to have already been deleted", taskParams().nodeName));
-      } else {
-        log.info("Completing task because no node {} found", taskParams().nodeName);
-      }
-      return;
-    }
-
-    universe =
+    Universe universe =
         lockAndFreezeUniverseForUpdate(
             taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
-      preTaskActions();
-
-      Cluster taskParamsCluster = taskParams().getClusterByNodeName(taskParams().nodeName);
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      taskParams().azUuid = currentNode.azUuid;
-      taskParams().placementUuid = currentNode.placementUuid;
+      if (isFirstTry()) {
+        if (currentNode == null) {
+          String msg =
+              "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+          log.error(msg);
+          throw new RuntimeException(msg);
+        }
+      }
+      preTaskActions();
+      Cluster taskParamsCluster =
+          universe.getUniverseDetails().getClusterByUuid(taskParams().placementUuid);
 
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
@@ -139,6 +144,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
           .getUniverseDetails()
           .upsertCluster(
               taskParamsCluster.userIntent,
+              taskParamsCluster.getPartitions(),
               taskParamsCluster.placementInfo,
               taskParamsCluster.uuid);
 
@@ -150,7 +156,8 @@ public class DecommissionNode extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          true /* force */);
+          true /* force */,
+          true /* moveMastersFirst */);
 
       createUpdateUniverseIntentTask(taskParamsCluster, true /*updatePlacementInfo*/);
 

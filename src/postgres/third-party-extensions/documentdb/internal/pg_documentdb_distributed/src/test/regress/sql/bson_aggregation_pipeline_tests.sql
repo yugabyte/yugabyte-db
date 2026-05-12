@@ -146,7 +146,14 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$facet": { "a" : [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ],  "b" : [ { "$count": "d" } ], "c": [ { "$unwind": "$a.b" } ] } } ], "cursor": {} }');
 
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline" : [{ "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }]}');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline" : [{ "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet": { "a" : [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ],  "b" : [ { "$count": "d" } ], "c": [ { "$unwind": "$a.b" } ] } }]}');
+
+
 EXPlAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$facet": { "a" : [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ],  "b" : [ { "$count": "d" } ], "c": [ { "$unwind": "$a.b" } ] } } ], "cursor": {} }');
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline" : [{ "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }]}');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline" : [{ "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet" : { "results" : [ { "$match" : { "result" : true } } ] } }, { "$facet": { "a" : [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ],  "b" : [ { "$count": "d" } ], "c": [ { "$unwind": "$a.b" } ] } }]}');
 
 -- facet with parent transform:
 SELECT document FROM bson_aggregation_pipeline('db', 
@@ -160,7 +167,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 -- FIND
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": 2 }');
 
+BEGIN;
+set local documentdb.enableIndexOrderbyPushdown to on;
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": 2 }');
+ROLLBACK;
 
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": -2 }');
@@ -233,119 +243,118 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db',
 ROLLBACK;
 
 -- $lookup
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 1, "movie_title" : "Interstellar", "ticket_price" : 15, "tickets_sold" : 120 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings','{ "_id" : 2, "movie_title" : "Inception", "ticket_price" : 13, "tickets_sold" : 100 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 3, "movie_title" : "Dune", "ticket_price" : 18, "tickets_sold" : 95 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 4, "movie_title" : ["Interstellar", "Dune", "Inception"], "ticket_price" : 14, "tickets_sold" : 250 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 6, "movie_title" : {"a": "v", "b" : 2, "c" : [5, 6, 7]} }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_screenings',' { "_id" : 7, "movie_title" : [{"a": { "b" : 2}}, [5, 6, 7], 9, "z"] }', NULL);
 
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 5}', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog',' { "_id" : 11, "title" : "Interstellar", "genre": "Sci-Fi", "available_seats" : 50 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog',' { "_id" : 12, "title" : "Interstellar", "genre": "Sci-Fi", "available_seats" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 13, "title" : "Dune", "genre": "Sci-Fi", "available_seats" : 30 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 14, "title" : "Blade Runner", "genre": "Cyberpunk", "available_seats" : 40 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 15, "title" : "Inception", "genre": "Thriller", "available_seats" : 60 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 16, "title" : null, "genre": "Unknown", "available_seats" : 0 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 17, "title" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "genre": "Experimental" }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 18, "title" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "genre": "Experimental Array" }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_movie_catalog','{ "_id" : 19, "title" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "genre": "Experimental Array" }', NULL);
 
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 12, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 13, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 14, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 15, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 16, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 17, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 18, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
-SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 19, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
-
-
-SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } }, { "$sample": { "size": 3 } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } }, { "$sample": { "size": 3 } } ], "cursor": {} }');
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "coll_dne", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "coll_dne", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [], "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [], "as": "c" } } ], "cursor": {} }');
 
 BEGIN;
 set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 ROLLBACK;
 
-SELECT documentdb_api.shard_collection('db', 'agg_pipeline_orders', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'agg_pipeline_movie_screenings', '{ "_id": "hashed" }', false);
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 BEGIN;
 set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 ROLLBACK;
 
-SELECT documentdb_api.shard_collection('db', 'agg_pipeline_inventory', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'agg_pipeline_movie_catalog', '{ "_id": "hashed" }', false);
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "agg_pipeline_movie_catalog", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "coll_dne", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "coll_dne", "as": "matched_docs", "localField": "title", "foreignField": "title", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [], "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [], "as": "c" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "as": "matched_docs", "pipeline": [ { "$documents": [ { "a": 1}, { "a": 2 } ] }  ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "as": "matched_docs", "pipeline": [ { "$documents": [ { "a": 1}, { "a": 2 } ] }  ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "as": "matched_docs",  "foreignField": "foo", "localField": "_id", "pipeline": [ { "$documents": [ { "a": 1}, { "a": 2 } ] }  ] } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "as": "matched_docs",  "foreignField": "foo", "localField": "_id", "pipeline": [ { "$documents": [ { "a": 1}, { "a": 2 } ] }  ] } } ], "cursor": {} }');
 
 -- $lookup.pipeline Negative tests
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": { "$count": "efe" }, "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": { "$count": "efe" }, "as": "c" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ "$count" ], "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ "$count" ], "as": "c" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ { } ], "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ { } ], "as": "c" } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', 
-    '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ { "$count": "efe", "$match": { "year": 2018 } } ], "as": "c" } } ], "cursor": {} }');
+    '{ "aggregate": "agg_pipeline_movie_screenings", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [ { "$count": "efe", "$match": { "year": 2018 } } ], "as": "c" } } ], "cursor": {} }');
 
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ], "cursor": {} }');
@@ -356,7 +365,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipelin
 
 -- test sort behavior on sharded/unsharded
 SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate" : "agg_pipeline_inventory", "pipeline" : [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } }, { "this_predicate_matches_nothing" : true } ] } }, { "$sort" : { "_id" : -1.0 } }, { "$limit" : 1.0 }, { "$project" : { "_id" : 1.0, "b" : { "$round" : "$a" } } } ], "cursor" : {  }, "lsid" : { "id" : { "$binary" : { "base64": "VJmzOaS5R46C4aFkQzrFaQ==", "subType" : "04" } } }, "$db" : "test" }')
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate" : "agg_pipeline_movie_catalog", "pipeline" : [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } }, { "this_predicate_matches_nothing" : true } ] } }, { "$sort" : { "_id" : -1.0 } }, { "$limit" : 1.0 }, { "$project" : { "_id" : 1.0, "b" : { "$round" : "$a" } } } ], "cursor" : {  }, "lsid" : { "id" : { "$binary" : { "base64": "VJmzOaS5R46C4aFkQzrFaQ==", "subType" : "04" } } }, "$db" : "test" }');
 $Q$);
 SELECT documentdb_distributed_test_helpers.drop_primary_key('db','aggregation_pipeline');
 SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
@@ -375,8 +384,8 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "coll": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ] } } ], "cursor": {} }');
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "coll": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ] } } ], "cursor": {} }');
 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "coll": "agg_pipeline_inventory", "pipeline": [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } } ] } } ] } } ], "cursor": {} }');
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": { "nonexist": { "$exists": true } } }, { "$unionWith": { "coll": "agg_pipeline_inventory", "pipeline": [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } } ] } } ] } } ], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "coll": "agg_pipeline_movie_catalog", "pipeline": [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } } ] } } ] } } ], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": { "nonexist": { "$exists": true } } }, { "$unionWith": { "coll": "agg_pipeline_movie_catalog", "pipeline": [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } } ] } } ] } } ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { } } ], "cursor": {} }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "pipeline": [ ] } } ], "cursor": {} }');
@@ -384,10 +393,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unionWith": { "pipeline": [ { "$documents": [ { "a": 1 }, { "a": 2 } ]}] } } ], "cursor": {} }');
 
 -- $addFields nested usage
-SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "student": "Maya", "homework": [10, 5, 10], "quiz": [10, 8], "extraCredit": 0 }', NULL);
-SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "student": "Ryan", "homework": [5, 6, 5], "quiz": [8, 8], "extraCredit": 8 }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "movie": "Nebula Drift", "critics": [7, 8, 9], "audience": [8, 7], "bonusPoints": 2 }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "movie": "Quantum Heist", "critics": [6, 6, 7], "audience": [7, 6], "bonusPoints": 3 }', NULL);
 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$match": { "extraCredit": { "$gte": 0 } } }, { "$addFields": { "totalHomework": { "$sum": "$homework" }, "totalQuiz": { "$sum": "$quiz" } }}, { "$addFields": { "totalScore": { "$add": [ "$totalHomework", "$totalQuiz", "$extraCredit" ]} }} ], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$match": { "bonusPoints": { "$gte": 0 } } }, { "$addFields": { "totalCritics": { "$sum": "$critics" }, "totalAudience": { "$sum": "$audience" } } }, { "$addFields": { "totalScore": { "$add": [ "$totalCritics", "$totalAudience", "$bonusPoints" ] } } } ], "cursor": {} }');
 
 -- NumberDouble Range+1 and Range-1 Negative test $skip
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$skip": {"$numberDouble" : "-9223372036854776833"} } ], "cursor": {} }');
@@ -438,6 +447,29 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeli
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 10 } }, { "$limit": 1 }, {"$count": "count"} ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": false } }, { "$limit": 1 }, {"$count": "count"} ], "cursor": {} }');
+
+-- turn off using new count aggregates
+set documentdb.enableNewCountAggregates to off;
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 1 } }, {"$count": "count"} ], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unwind": "$a.b" }, { "$count": "d" }, { "$addFields": { "e": "$d" } }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$count": "d" }], "cursor": {} }');
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unwind": "$a.b" }, { "$count": "d" }, { "$addFields": { "e": "$d" } }], "cursor": {} }');
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$count": "d" }], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": null, "count": { "$sum": 1 } } }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": null, "count": { "$sum": {} } } }], "cursor": {} }');
+
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": null, "count": { "$sum": 1 } } }], "cursor": {} }');
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": null, "count": { "$sum": {} } } }], "cursor": {} }');
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": "$a", "count": { "$sum": 1 } } }], "cursor": {} }');
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$group": {"_id": "$a", "count": { "$sum": 5 } } }], "cursor": {} }');
+
+set documentdb.enableNewCountAggregates to on;
+
 
 -- Pipeline directly push to shards if all stages refer to same collection and that is not sharded and is present on the same node as coordinator.
 
@@ -526,3 +558,77 @@ SELECT check_aggregation_stages_limit(1001);
 SELECT check_lookup_stages_limit(1000, 1);
 SELECT check_lookup_stages_limit(1, 1000);
 RESET documentdb.aggregation_stages_limit;
+
+-- $lookup and $unwind stage combined when null results need to be preserved
+SELECT documentdb_api.insert_one('db','lookup_directors','{ "_id": 1, "name": "Alex Veridian" }', NULL);
+SELECT documentdb_api.insert_one('db','lookup_directors','{ "_id": 2, "name": "Morgan Slate" }', NULL);
+SELECT documentdb_api.insert_one('db','lookup_movies','{ "_id": 1, "title": "Shadow Horizon", "director": "Alex Veridian" }', NULL);
+SELECT documentdb_api.insert_one('db','lookup_movies','{ "_id": 2, "title": "Neon Abyss", "director": "Morgan Slate" }', NULL);
+SELECT documentdb_api.insert_one('db','lookup_movies','{ "_id": 3, "title": "Celestial Rift", "director": "Alex Veridian" }', NULL);
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "lookup_movies", "pipeline": [ { "$lookup": { "from": "lookup_directors", "localField": "director", "foreignField": "name", "as": "director_info" } }, { "$unwind": { "path": "$director_info", "preserveNullAndEmptyArrays": true } }, { "$match": { "title": "Celestial Rift" } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "lookup_movies", "pipeline": [ { "$lookup": { "from": "lookup_directors", "localField": "director", "foreignField": "name", "as": "director_info" } }, { "$unwind": { "path": "$director_info", "preserveNullAndEmptyArrays": true } }, { "$match": { "title": "Celestial Rift" } } ], "cursor": {} }');
+
+-- $in: [] with bson_dollar_project_find
+SELECT documentdb_api.insert_one('db', 'collTestEmptyIn', '{"_id": 1, "name": "sheep", "sound": "baa"}');
+SELECT documentdb_api.insert_one('db', 'collTestEmptyIn', '{"_id": 2, "name": "duck", "sound": "quack"}');
+SELECT documentdb_api.insert_one('db', 'collTestEmptyIn', '{"_id": 3, "sound": "quack"}');
+
+-- unsharded
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": { "$in": [] }
+  },                     
+  "projection": { "name": true }
+}');
+
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": { "$in": [] },
+    "name": "sheep"
+  },                     
+  "projection": { "name": true }
+}');
+
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": 2,
+    "name": {"$in": [] }
+  },                     
+  "projection": { "sound": true }
+}');
+
+-- sharded
+SELECT documentdb_api.shard_collection('db', 'collTestEmptyIn', '{"name": "hashed"}', false);
+
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": { "$in": [] }
+  },                     
+  "projection": { "name": true }
+}');
+
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": { "$in": [] },
+    "name": "sheep"
+  },                     
+  "projection": { "name": true }
+}');
+
+SELECT document FROM bson_aggregation_find('db', '{
+  "find": "collTestEmptyIn",
+  "filter": {
+    "_id": 2,
+    "name": {"$in": [] }
+  },                     
+  "projection": { "sound": true }
+}');
+
+-- drop collection
+SELECT documentdb_api.drop_collection('db', 'collTestEmptyIn')

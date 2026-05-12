@@ -32,6 +32,18 @@ export const getReadOnlyClusters = (clusters: Cluster[]) => {
 };
 
 /**
+ * Given a cluster object, return the placement regions.
+ *
+ * Returns an empty array if no placement regions are found.
+ */
+export const getClusterPlacementRegions = (cluster: Cluster | null) => {
+  if (!cluster) {
+    return [];
+  }
+  return cluster.placementInfo?.cloudList?.flatMap((cloud) => cloud.regionList) ?? [];
+};
+
+/**
  * Regex for YB Software Version
  * ```
  * `
@@ -46,7 +58,7 @@ export const getReadOnlyClusters = (clusters: Cluster[]) => {
  * ```
  */
 export const YBSoftwareVersion = {
-  REGEX: /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(?:-(b([1-9]+\d*)|\S+))?$/,
+  REGEX: /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(?:-(b(\d+)|\S+))?$/,
   GroupIndex: {
     VERSION_CORE: 1,
     MAJOR_RELEASE: 2,
@@ -103,10 +115,10 @@ export const compareYBSoftwareVersions = ({
     const buildNumberA = matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
       ? parseInt(matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER])
       : undefined;
-    const buildNumberB = matchA[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
+    const buildNumberB = matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER]
       ? parseInt(matchB[YBSoftwareVersion.GroupIndex.BUILD_NUMBER])
       : undefined;
-    if (buildNumberA && buildNumberB) {
+    if (buildNumberA !== undefined && buildNumberB !== undefined) {
       return buildNumberA - buildNumberB;
     }
 

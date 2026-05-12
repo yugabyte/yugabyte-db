@@ -23,9 +23,8 @@ import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
 //imported styles
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
 //icons
-import LinkIcon from '../../../../../assets/link.svg';
-import { ReactComponent as FlagIcon } from '../../../../../assets/flag.svg';
-import { ReactComponent as WarningBell } from '../../../../../assets/warning-bell.svg';
+import FlagIcon from '../../../../../assets/flag.svg';
+import WarningBell from '../../../../../assets/warning-bell.svg';
 
 interface PreFinalizeModalProps {
   open: boolean;

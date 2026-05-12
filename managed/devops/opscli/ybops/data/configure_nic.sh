@@ -120,6 +120,18 @@ add_ip_rule() {
     fi
 }
 
+# Function to add an ip route.
+# \$1 - the destination network.
+# \$2 - the gateway to route to.
+# \$3 - the network interface.
+add_ip_route() {
+    if ip route show "\${1}" | grep "via \${2} dev \${3}"; then
+        log "Route \${1} via \${2} dev \${3} already set"
+    else
+        ip route add "\${1}" via "\${2}" dev "\${3}"
+    fi
+}
+
 # Function to add a default route for a route table.
 # \$1 - the route table to add the route to.
 # \$2 - the gateway to route to.
@@ -212,6 +224,17 @@ else
     log "It's management CIDR, update rule and route!"
     add_ip_rule "\${new_network_number}" "\${new_subnet_mask}" "${mgmt_rtb_name}"
     add_default_route "${mgmt_rtb_name}" "\${new_routers}" "\${interface}"
+
+    if [ "$cloud" = "aws" ]; then
+        mgmt_cidrs=("10.3.0.0/16" "10.4.0.0/16")
+    elif [ "$cloud" = "gcp" ]; then
+        mgmt_cidrs=("10.6.0.0/16" "10.7.0.0/16")
+    fi
+    for cidr in "\${mgmt_cidrs[@]}"; do
+        log "Adding platform cidr \${cidr} route!"
+        add_ip_route "\${cidr}" "\${new_routers}" "\${interface}"
+    done
+
     if [ '${cloud}' == 'gcp' ]; then
         log "Configure DNAT to allow GCP LB to send resps"
         configure_dnat

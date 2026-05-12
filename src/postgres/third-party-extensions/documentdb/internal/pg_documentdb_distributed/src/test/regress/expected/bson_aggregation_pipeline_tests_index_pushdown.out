@@ -66,12 +66,11 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 ANALYZE documentdb_data.documents_4160;
 -- First scenario with enable_indexscan to off: This technically loads 25000 rows on the bitmap scan
 BEGIN;
-set local documentdb.enableRumIndexScan to off;
 set local seq_page_cost to 5;
 set local rum.enable_semifast_gettuple to on;
 set local documentdb.enableNewSelectivityMode to on;
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "agg_pipeline_index_pushdown", "filter": { "accid": 1 }, "skip": 100, "limit": 100 }');
-                                                               QUERY PLAN                                                                
+                                                                 QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=100 loops=1)
    Task Count: 1
@@ -81,22 +80,18 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) SELECT doc
          Tuple data received from node: 161 kB
          Node: host=localhost port=58070 dbname=regression
          ->  Limit (actual rows=100 loops=1)
-               ->  Bitmap Heap Scan on documents_4160_416000 collection (actual rows=200 loops=1)
-                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::documentdb_core.bson)
-                     Heap Blocks: exact=100
-                     ->  Bitmap Index Scan on "myIdx1" (actual rows=12502 loops=1)
-                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::documentdb_core.bson)
-(13 rows)
+               ->  Index Scan using "myIdx1" on documents_4160_416000 collection (actual rows=200 loops=1)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(10 rows)
 
 ROLLBACK;
 -- now turn on the flag - we should only load as many rows as the skip/limit
 BEGIN;
-set local documentdb.enableRumIndexScan to on;
 set local seq_page_cost to 5;
 set local rum.enable_semifast_gettuple to on;
 set local documentdb.enableNewSelectivityMode to on;
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "agg_pipeline_index_pushdown", "filter": { "accid": 1 }, "skip": 100, "limit": 100 }');
-                                                            QUERY PLAN                                                             
+                                                                 QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=100 loops=1)
    Task Count: 1

@@ -28,8 +28,10 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -98,7 +100,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
@@ -171,6 +172,10 @@ public class HealthChecker {
 
   private final ClusterConsistencyChecker clusterConsistencyChecker;
 
+  private final ConnectivityChecker connectivityChecker;
+
+  private final ConfigHelper configHelper;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -186,7 +191,8 @@ public class HealthChecker {
       NodeUniverseManager nodeUniverseManager,
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
-      YBClientService ybClientService) {
+      YBClientService ybClientService,
+      ConfigHelper configHelper) {
     this(
         environment,
         config,
@@ -201,9 +207,11 @@ public class HealthChecker {
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createConsistencyCheckExecutor(platformExecutorFactory, confGetter),
+        createConnectivityCheckExecutor(platformExecutorFactory, confGetter),
         fileHelperService,
         maintenanceService,
-        ybClientService);
+        ybClientService,
+        configHelper);
   }
 
   HealthChecker(
@@ -220,9 +228,11 @@ public class HealthChecker {
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
       ExecutorService consistencyCheckExecutor,
+      ExecutorService connectivityCheckExecutor,
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
-      YBClientService ybClientService) {
+      YBClientService ybClientService,
+      ConfigHelper configHelper) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -239,6 +249,10 @@ public class HealthChecker {
     this.maintenanceService = maintenanceService;
     this.clusterConsistencyChecker =
         new ClusterConsistencyChecker(consistencyCheckExecutor, confGetter, ybClientService);
+    this.connectivityChecker =
+        new ConnectivityChecker(
+            connectivityCheckExecutor, confGetter, ybClientService, metricService);
+    this.configHelper = configHelper;
   }
 
   public void initialize() {
@@ -253,6 +267,11 @@ public class HealthChecker {
         Duration.ZERO /* initialDelay */,
         Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
         clusterConsistencyChecker::processAll);
+    platformScheduler.schedule(
+        connectivityChecker.getClass().getSimpleName(),
+        Duration.ZERO /* initialDelay */,
+        Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
+        connectivityChecker::processAll);
   }
 
   // The interval at which the checker will run.
@@ -284,15 +303,13 @@ public class HealthChecker {
   private void processMetrics(Customer c, Universe u, Details report) {
 
     boolean hasErrors = false;
-    // This is hacky, but health check data items only make sense if you know order.
-    boolean isMaster = true;
-    boolean isInstanceUp = false;
     try {
       List<Metric> metrics = new ArrayList<>();
       Map<PlatformMetrics, Integer> platformMetrics = new HashMap<>();
       Set<String> nodesWithError = new HashSet<>();
       boolean shouldCollectNodeMetrics = false;
       for (NodeData nodeData : report.getData()) {
+        boolean isMaster = false;
         String node = nodeData.getNode();
         String checkName = nodeData.getMessage();
         boolean checkResult = nodeData.getHasError();
@@ -309,11 +326,6 @@ public class HealthChecker {
         List<Details.Metric> nodeMetrics = nodeData.getMetrics();
         List<Metric> nodeCustomMetrics =
             new ArrayList<>(getNodeMetrics(c, u, nodeData, nodeMetrics));
-        if (checkName.equals(UPTIME_CHECK)) {
-          // No boot time metric means the instance or the whole node is down
-          // and this node shouldn't be counted in other error node count metrics.
-          isInstanceUp = CollectionUtils.isNotEmpty(nodeCustomMetrics);
-        }
         if (checkName.equals(NODE_EXPORTER_CHECK)) {
           shouldCollectNodeMetrics =
               nodeCustomMetrics.stream()
@@ -326,14 +338,7 @@ public class HealthChecker {
         // Get per-check error nodes count metric name.
         PlatformMetrics countMetric = getCountMetricByCheckName(checkName, isMaster);
 
-        // Only increase error nodes metric value in case it's instance up check
-        // or instance is actually up. Otherwise - most probably node is just down
-        // and ssh connection to the node failed during check.
-        boolean increaseNodeCount =
-            isInstanceUp
-                || PlatformMetrics.HEALTH_CHECK_MASTER_DOWN == countMetric
-                || PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN == countMetric;
-        if (countMetric != null && increaseNodeCount) {
+        if (countMetric != null) {
           // checkResult == true -> error -> 1
           int toAppend = checkResult ? 1 : 0;
           platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
@@ -342,7 +347,8 @@ public class HealthChecker {
             || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
             || checkName.equals(UNEXPECTED_PROCESSES_CHECK)
             || checkName.equals(CLOCK_SYNC_CHECK)
-            || checkName.equals(DDL_ATOMICITY_CHECK)) {
+            || checkName.equals(DDL_ATOMICITY_CHECK)
+            || checkName.equals(YNP_VERSION_CHECK)) {
           if (checkName.equals(DDL_ATOMICITY_CHECK) && !checkResult) {
             ddlAtomicitySuccessfulCheckTimestamp.put(
                 u.getUniverseUUID(), report.getTimestampIso().toInstant());
@@ -603,6 +609,17 @@ public class HealthChecker {
         "Health-Check-Cluster-Consistency-Pool", numParallelism, namedThreadFactory);
   }
 
+  private static ExecutorService createConnectivityCheckExecutor(
+      PlatformExecutorFactory executorFactory, RuntimeConfGetter confGetter) {
+    int numParallelism = confGetter.getGlobalConf(GlobalConfKeys.connectivityCheckParallelism);
+
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Health-Check-Connectivity-Pool-%d").build();
+
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Connectivity-Pool", numParallelism, namedThreadFactory);
+  }
+
   public CompletableFuture<Void> runHealthCheck(
       CheckSingleUniverseParams params, Boolean ignoreLastCheck) {
     String universeName = params.universe.getName();
@@ -683,7 +700,6 @@ public class HealthChecker {
     }
     Date startTime = new Date();
     List<NodeInfo> nodeMetadata = new ArrayList<>();
-    String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
     CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.getUniverseUUID());
@@ -703,18 +719,6 @@ public class HealthChecker {
         confGetter.getConfForScope(params.universe, UniverseConfKeys.cqlshConnectivityTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
-      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
-      if (provider == null) {
-        log.warn(
-            "Skipping universe "
-                + params.universe.getName()
-                + " due to invalid provider "
-                + cluster.userIntent.provider);
-        setHealthCheckFailedMetric(params.customer, params.universe);
-
-        return;
-      }
-      providerCode = provider.getCode();
       List<NodeDetails> activeNodes =
           details.getNodesInCluster(cluster.uuid).stream().filter(NodeDetails::isActive).toList();
       for (NodeDetails nd : activeNodes) {
@@ -748,7 +752,19 @@ public class HealthChecker {
       int topKMemThresholdPercent =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
+      Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params.universe);
       for (NodeDetails nodeDetails : sortedDetails) {
+        Provider provider = providerGetter.apply(nodeDetails);
+        if (provider == null) {
+          log.warn(
+              "Skipping universe "
+                  + params.universe.getName()
+                  + " due to invalid provider for node "
+                  + nodeDetails.nodeName);
+          setHealthCheckFailedMetric(params.customer, params.universe);
+
+          return;
+        }
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
         if (nodeInstance != null && nodeInstance.getDetails().instanceName != null) {
@@ -792,7 +808,7 @@ public class HealthChecker {
               .setTserverHttpPort(nodeDetails.tserverHttpPort)
               .setTserverRpcPort(nodeDetails.tserverRpcPort);
         }
-        if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
+        if (provider.getCloudCode() == Common.CloudType.kubernetes) {
           nodeInfo.setK8s(true);
         }
         Map<String, String> tserverGflags =
@@ -849,21 +865,16 @@ public class HealthChecker {
                           GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
-        nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
-        // Check if audit log export was ever enabled and disabled.
-        AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
-        if (auditLogConfig != null) {
-          nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
-        }
-        // Check if query log export was ever enabled and disabled.
-        QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
-        if (queryLogConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(queryLogConfig.isExportActive());
-        }
-        // Check if metrics export was ever enabled and disabled.
-        MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
-        if (metricsExportConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(metricsExportConfig.isExportActive());
+        // Check if any export is currently enabled in the universe.
+        if (params.universe.getUniverseDetails().otelCollectorEnabled) {
+          AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
+          QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
+          MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
+          if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
+              || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
+              || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+            nodeInfo.setOtelCollectorEnabled(true);
+          }
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
@@ -1202,6 +1213,14 @@ public class HealthChecker {
     if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
       commandToRun.add("--cronbased");
     }
+
+    Object ynpVersion =
+        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+    if (ynpVersion != null) {
+      commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
+    } else {
+      log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+    }
     ShellResponse response =
         nodeUniverseManager
             .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
@@ -1342,7 +1361,7 @@ public class HealthChecker {
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;
-    private boolean otelCollectorEnabled;
+    private boolean otelCollectorEnabled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 

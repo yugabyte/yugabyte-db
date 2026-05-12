@@ -45,9 +45,11 @@
 
 #include "yb/encryption/encryption_fwd.h"
 
+#include "yb/rocksdb/db/compaction_context.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/memtable/hash_linklist_rep.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
@@ -118,16 +120,100 @@ class OnFileDeletionListener : public EventListener {
   std::string expected_file_name_;
 };
 
-class CompactionStartedListener : public EventListener {
+class TestCompactionListener : public EventListener {
  public:
   void OnCompactionStarted() override {
     ++num_compactions_started_;
   }
 
+  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& info) override {
+    ++num_compactions_completed_;
+  }
+
   int GetNumCompactionsStarted() { return num_compactions_started_; }
+
+  int GetNumCompactionsCompleted() { return num_compactions_completed_; }
 
  private:
   std::atomic<int> num_compactions_started_;
+  std::atomic<int> num_compactions_completed_;
+};
+
+class DelayedCompactionFeed : public CompactionFeed {
+ public:
+  DelayedCompactionFeed(CompactionFeed* next_feed, int64_t delay_ns)
+      : next_feed_(*next_feed), delay_ns_(delay_ns) {}
+
+  void SetDelayNs(int64_t delay_ns) {
+    delay_ns_ = delay_ns;
+  }
+
+  Status Feed(const Slice& key, const Slice& value) override;
+
+  Status Flush() override { return next_feed_.Flush(); }
+
+ private:
+  CompactionFeed& next_feed_;
+  std::atomic<int64_t> delay_ns_{0};
+};
+
+class DelayedCompactionContext : public CompactionContext {
+ public:
+  DelayedCompactionContext(
+      CompactionContextPtr context, int64_t delay_ns,
+      std::function<void(DelayedCompactionContext* context)> on_destruction_callback)
+      : context_(std::move(context)),
+        feed_(context_->Feed(), delay_ns),
+        on_destruction_callback_(std::move(on_destruction_callback)) {}
+
+  ~DelayedCompactionContext() {
+    on_destruction_callback_(this);
+  }
+
+  DelayedCompactionFeed* Feed() override { return &feed_; }
+
+  yb::storage::UserFrontierPtr GetLargestUserFrontier() const override {
+    return context_->GetLargestUserFrontier();
+  }
+
+  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override {
+    return context_->GetLiveRanges();
+  }
+
+  Status UpdateMeta(FileMetaData* meta) override {
+    return context_->UpdateMeta(meta);
+  }
+
+  void CompactionFinished() override {
+    context_->CompactionFinished();
+  }
+
+ private:
+  CompactionContextPtr context_;
+  DelayedCompactionFeed feed_;
+  std::function<void(DelayedCompactionContext* context)> on_destruction_callback_;
+};
+
+// Wraps an existing CompactionContextFactory, inserting a DelayedCompactionFeed in front of
+// each CompactionContext's feed chain.
+class CompactionContextFactoryDelayer {
+ public:
+  CompactionContextFactoryDelayer() : data_(std::make_shared<Data>()) {}
+  void SetDelayForNextCompactions(yb::MonoDelta delay);
+
+  void SetDelayForAllCompactions(yb::MonoDelta delay);
+
+  std::shared_ptr<CompactionContextFactory> WrapFactory(
+      std::shared_ptr<CompactionContextFactory> original);
+
+ private:
+  struct Data {
+    std::atomic<int64_t> delay_ns{0};
+    std::mutex mutex;
+    std::unordered_set<DelayedCompactionContext*> contexts GUARDED_BY(mutex);
+  };
+
+  std::shared_ptr<Data> data_;
 };
 
 namespace anon {
@@ -470,7 +556,7 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
-  virtual void SleepForMicroseconds(int micros) override {
+  void SleepForMicroseconds(int micros) override {
     sleep_counter_.Increment();
     if (no_sleep_ || time_elapse_only_sleep_) {
       addon_time_.fetch_add(micros);
@@ -480,7 +566,7 @@ class SpecialEnv : public EnvWrapper {
     }
   }
 
-  virtual Status GetCurrentTime(int64_t* unix_time) override {
+  Status GetCurrentTime(int64_t* unix_time) override {
     Status s;
     if (!time_elapse_only_sleep_) {
       s = target()->GetCurrentTime(unix_time);
@@ -491,14 +577,19 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
-  virtual uint64_t NowNanos() override {
+  uint64_t NowNanos() override {
     return (time_elapse_only_sleep_ ? 0 : target()->NowNanos()) +
            addon_time_.load() * 1000;
   }
 
-  virtual uint64_t NowMicros() override {
+  uint64_t NowMicros() override {
     return (time_elapse_only_sleep_ ? 0 : target()->NowMicros()) +
            addon_time_.load();
+  }
+
+  uint64_t NowCpuCycles() override {
+    return (time_elapse_only_sleep_ ? 0 : target()->NowCpuCycles()) +
+           addon_time_.load() * base::CyclesPerSecond() / UnitsInSecond(TimeResolution::kMicros);
   }
 
   Random rnd_;
@@ -615,8 +706,8 @@ class DBHolder {
   std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
-  static const std::string kKeyId;
-  static const std::string kKeyFile;
+  static constexpr const char* kKeyId = "key_id";
+  static constexpr const char* kKeyFile = "universe_key_file";
 
   // Skip some options, as they may not be applicable to a specific test.
   // To add more skip constants, use values 4, 8, 16, etc.

@@ -17,8 +17,8 @@ import {
   verifyAttributes
 } from '../../../utils/UniverseUtils';
 import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
-import { ReactComponent as DraggableIcon } from '../../../redesign/assets/draggable.svg';
-import { ReactComponent as CloseIcon } from '../../../redesign/assets/close.svg';
+import DraggableIcon from '../../../redesign/assets/draggable.svg';
+import CloseIcon from '../../../redesign/assets/close.svg';
 
 const OIDC_ENABLED_DB_VERSION = '2.18.0.0';
 
@@ -167,6 +167,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     let message = CONST_VALUES.EMPTY_STRING;
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
       return 'universeForm.gFlags.identConfLocal';
+    } else if (flagName === MultilineGFlags.YCQL_IDENT_CONF_CSV) {
+      return 'universeForm.gFlags.ycqlIdentConfLocal';
     } else if (flagName === MultilineGFlags.YSQL_PG_CONF_CSV) {
       return message;
     }

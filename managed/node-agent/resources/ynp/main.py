@@ -70,6 +70,11 @@ def main():
     try:
         with open(get_absolute_path(args.config_file)) as f:
             ynp_config = yaml.safe_load(f)
+            # Set default values.
+            extra = ynp_config.setdefault("extra", {})
+            extra.setdefault("cloud_type", "onprem")
+            extra.setdefault("is_cloud", False)
+            extra.setdefault("is_ybm", False)
             for key, value in args.extra_vars.items():
                 # If the section already exists in ynp_config, update it
                 if key in ynp_config:

@@ -485,6 +485,8 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 
 	YbLogOptimizationSummary(affected_entities->entity_list, modified_entities,
 							 nentities);
+	bms_free(modified_entities);
+	YbFreeBitMatrix(&matrix);
 	return skip_entities;
 }
 

@@ -17,6 +17,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/net/net_util.h"
+
 namespace yb {
 namespace cdc {
 
@@ -38,6 +40,11 @@ class CDCServiceContext {
   virtual const std::string& permanent_uuid() const = 0;
 
   virtual Result<uint32> GetAutoFlagsConfigVersion() const = 0;
+
+  // Returns the HostPort for RPC connections to the local server.
+  // Uses DesiredHostPort logic with the local server's cloud info to ensure
+  // endpoint verification succeeds with DNS-based server addresses.
+  virtual Result<HostPort> GetDesiredHostPortForLocal() const = 0;
 
   virtual ~CDCServiceContext() = default;
 };

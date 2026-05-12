@@ -18,6 +18,7 @@ import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { AllowedTasks } from '../../../redesign/helpers/dtos';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 
 import './PointInTimeRecoveryDisableModal.scss';
 
@@ -45,7 +46,9 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
       onHide();
     },
     onError: (err: any) => {
-      toast.error(`Failed to disable point-in-time recovery for ${config.dbName}`);
+      handleServerError(err, {
+        customErrorLabel: `Failed to disable point-in-time recovery for ${config.dbName}`
+      });
       onHide();
     }
   });

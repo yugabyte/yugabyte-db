@@ -19,6 +19,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
 #include "yb/util/uuid.h"

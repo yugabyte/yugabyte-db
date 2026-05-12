@@ -1506,6 +1506,15 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
+		/*
+		 * In minimal preload mode the scan above only includes system rows,
+		 * so any cached list built here would be missing user-defined
+		 * entries. Skip the list preloading entirely and let the lists be
+		 * built on demand from a full catalog scan in SearchCatCacheList.
+		 */
+		if (YbUseMinimalCatalogCachesPreload())
+			continue;
+
 		bool		is_add_to_list_required = true;
 
 		switch (cache_id)
@@ -1673,10 +1682,13 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 			 INSTR_TIME_GET_MICROSEC(duration));
 	}
 
-	/* Done: mark cache(s) as loaded. */
+	/*
+	 * Done: mark cache(s) as loaded. We can only safely set yb_cc_is_fully_loaded
+	 * if we did full preloading; minimal preloading doesn't load user objects.
+	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
-		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		YbNeedAdditionalCatalogTables() &&
+		!YbUseMinimalCatalogCachesPreload())
 	{
 		cache->yb_cc_is_fully_loaded = true;
 		if (idx_cache)
@@ -1897,9 +1909,22 @@ SearchSysCacheLocked1(int cacheId,
 	ItemPointerData tid;
 	LOCKTAG		tag;
 
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
-		return SearchSysCache1(cacheId, key1);
+		HeapTuple tuple = SearchSysCache1(cacheId, key1);
+		if (*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+		{
+			SET_LOCKTAG_TUPLE(tag,
+							cache->cc_relisshared ? InvalidOid : MyDatabaseId,
+							cache->cc_reloid,
+							0,
+							0);
+			(void) LockAcquire(&tag, InplaceUpdateTupleLock, false, false);
+			ReleaseSysCache(tuple);
+			AcceptInvalidationMessages();
+			tuple = SearchSysCache1(cacheId, key1);
+		}
+		return tuple;
 	}
 
 	/*----------

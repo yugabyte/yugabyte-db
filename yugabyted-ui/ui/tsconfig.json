@@ -1,25 +1,33 @@
 {
-    "include": ["src"],
-    "compilerOptions": {
-      "module": "esnext",
-      "target": "esnext",
-      "moduleResolution": "node",
-      "jsx": "preserve",
-      "baseUrl": "./",
-      "paths": {
-        "@app/*": ["./src/*"]
-      },
-      "noEmit": true,
-      "strict": true,
-      "skipLibCheck": true,
-      "forceConsistentCasingInFileNames": true,
-      "resolveJsonModule": true,
-      "allowSyntheticDefaultImports": true,
-      "noImplicitAny": true,
-      "noUnusedLocals": true,
-      "noUnusedParameters": true,
-      "noFallthroughCasesInSwitch": true,
-      "noImplicitReturns": true,
-      "noImplicitThis": true
-    }
+  "include": ["src"],
+  "exclude": [
+    "src/api/**/*.mock.ts",
+    "build",
+    "dist",
+    "node_modules"
+  ],
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2021",
+    "moduleResolution": "node",
+    "jsx": "react", // TODO: change to "react-jsx" when move to new JSX transform from react 17
+    "baseUrl": "./",
+    "paths": {
+      "@app/*": ["./src/*"]
+    },
+    "types": ["vite/client", "vite-plugin-svgr/client"],
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true
   }
+}

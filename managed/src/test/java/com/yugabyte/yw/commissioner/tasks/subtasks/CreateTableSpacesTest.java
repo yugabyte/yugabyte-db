@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
@@ -104,7 +105,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     ShellResponse shellResponse =
         ShellResponse.create(ShellResponse.ERROR_CODE_GENERIC_ERROR, "Error");
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), eq(CreateTableSpaces.FETCH_TABLESPACES_QUERY)))
+            any(), any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
         .thenReturn(shellResponse);
 
     CreateTablespaceParams params =
@@ -112,7 +113,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.getUniverseUUID(),
         params,
-        "All 1 attempts to create tablespaces failed: Error while executing SQL request: Error"
+        "All 1 attempts to create tablespaces failed: Failed to get tablespaces: Error"
             + " occurred. Code: -1. Output: Error");
   }
 
@@ -165,7 +166,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(universeUUID);
 
     CreateTableSpaces task =
-        new CreateTableSpaces(mockBaseTaskDependencies, mockNodeUniverseManager) {
+        new CreateTableSpaces(mockBaseTaskDependencies) {
           @Override
           protected void waitFor(Duration duration) {
             // Noop as no actual task is running.
@@ -181,7 +182,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     ShellResponse shellResponse =
         ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), eq(CreateTableSpaces.FETCH_TABLESPACES_QUERY)))
+            any(), any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
         .thenReturn(shellResponse);
   }
 
@@ -191,7 +192,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
             any(),
             any(),
             any(),
-            AdditionalMatchers.not(eq(CreateTableSpaces.FETCH_TABLESPACES_QUERY))))
+            AdditionalMatchers.not(eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY))))
         .thenReturn(shellResponse);
   }
 

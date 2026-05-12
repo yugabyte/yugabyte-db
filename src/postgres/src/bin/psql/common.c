@@ -228,8 +228,6 @@ NoticeProcessor(void *arg, const char *message)
 {
 	(void) arg;					/* not used */
 
-	yb_set_should_log_filename(!GetVariable(pset.vars, "YB_DISABLE_ERROR_PREFIX"));
-
 	pg_log_info("%s", message);
 }
 

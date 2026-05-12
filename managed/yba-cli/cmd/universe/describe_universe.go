@@ -49,8 +49,7 @@ var describeUniverseCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Describe")
 		}
 
 		if len(r) < 1 {
@@ -63,16 +62,12 @@ var describeUniverseCmd = &cobra.Command{
 
 		universe.Certificates, response, err = authAPI.GetListOfCertificates().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Describe - Get Certificates")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Describe - Get Certificates")
 		}
 
 		universe.Providers, response, err = authAPI.GetListOfProviders().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Describe - Get Providers")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Describe - Get Providers")
 		}
 
 		universe.KMSConfigs, err = authAPI.GetListOfKMSConfigs(

@@ -6,7 +6,6 @@ package azu
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -29,7 +28,7 @@ var updateAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
+		if util.IsEmptyString(configNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -77,7 +76,7 @@ var updateAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(clientID)) != 0 {
+		if !util.IsEmptyString(clientID) {
 			logrus.Debug("Updating Azure Client ID\n")
 			hasUpdates = true
 			requestBody[util.AzureClientIDField] = clientID
@@ -87,7 +86,7 @@ var updateAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tenantID)) != 0 {
+		if !util.IsEmptyString(tenantID) {
 			logrus.Debug("Updating Azure Tenant ID\n")
 			hasUpdates = true
 			requestBody[util.AzureTenantIDField] = tenantID
@@ -97,7 +96,7 @@ var updateAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(clientSecret)) != 0 {
+		if !util.IsEmptyString(clientSecret) {
 			logrus.Debug("Updating Azure Client Secret\n")
 			hasUpdates = true
 			requestBody[util.AzureClientSecretField] = clientSecret

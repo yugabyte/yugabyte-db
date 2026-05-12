@@ -1,0 +1,45 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+
+notifications:
+    commits:      commits@age.apache.org
+    pullrequests: commits@age.apache.org
+
+github:
+  description: "Graph database optimized for fast analysis and real-time data processing. 
+     It is provided as an extension to PostgreSQL."
+  homepage: https://age.apache.org
+  labels:
+    - postgresql
+    - graph-database
+    - analytics
+    - postgresql-extension
+    - graphdb
+    - multi-model-dbms
+    - agensgraph
+    - age-database
+  features:
+    wiki: true
+    issues: true
+    projects: true
+    discussions: true
+
+  enabled_merge_buttons:
+    squash:  true
+    merge:   false
+    rebase:  true

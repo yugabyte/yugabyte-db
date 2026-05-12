@@ -1,0 +1,11 @@
+s/bson_expr_eval_tests//g
+s/bson_aggregation_string_operators_tests//g
+s/and3//g
+s/regex5_tests_runtime//g
+s/regex_options_runtime//g
+s/regex5_tests_index//g
+s/regex_options_index//g
+s/regex//g
+s/bson_aggregation_cursor_tests//g
+s/bson_aggregation_file_cursor_tests//g
+s/test: bson_composite_order_by_index_tests//g

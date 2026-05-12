@@ -44,6 +44,8 @@
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
+#include "yb/encryption/header_manager_impl.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
@@ -318,7 +320,7 @@ Status ReadableLogSegment::RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* f
 
   // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
   // to stream records from this segment based on the tablet leader safe time.
-  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (FLAGS_store_min_start_ht_running_txns) {
     footer_builder->set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
@@ -519,6 +521,11 @@ Status ReadableLogSegment::ParseHeaderMagicAndHeaderLength(const Slice &data,
                    << " and will be treated as a blank segment.";
       *parsed_len = 0;
       return Status::OK();
+    }
+    // Check if file is encrypted
+    if (memcmp(yb::encryption::kEncryptionMagic, data.data(),
+               yb::encryption::kEncryptionMagicLen) == 0) {
+      return STATUS(IllegalState, Substitute("log segment file $0 is encrypted", path()));
     }
     // If no magic and not uninitialized, the file is considered corrupt.
     return STATUS(Corruption, Substitute("Invalid log segment file $0: Bad magic. $1",
@@ -980,13 +987,18 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   estimated_memory_needed += header.msg_length;
 
   if (read_wal_mem_tracker_) {
-    if (!read_wal_mem_tracker_->TryConsume(estimated_memory_needed)) {
-      if (obey_memory_limit) {
-        YB_LOG_EVERY_N_SECS(WARNING, 5) << "Unable to read WAL batch due to insufficient memory";
-        return STATUS(Busy, "Unable to read WAL batch due to insufficient memory");
+    if (!read_wal_mem_tracker_->has_limit()) {
+      // Avoid use of TryConsume unnecessarily to avoid bug; see #29094.
+      read_wal_mem_tracker_->Consume(estimated_memory_needed);
+    } else {
+      if (!read_wal_mem_tracker_->TryConsume(estimated_memory_needed)) {
+        if (obey_memory_limit) {
+          YB_LOG_EVERY_N_SECS(WARNING, 5) << "Unable to read WAL batch due to insufficient memory";
+          return STATUS(Busy, "Unable to read WAL batch due to insufficient memory");
+        }
+        // No pre-consumption done; we will Consume once we know the actual memory usage.
+        estimated_memory_needed = 0;
       }
-      // No pre-consumption done; we will Consume once we know the actual memory usage.
-      estimated_memory_needed = 0;
     }
   }
   RefCntBuffer buffer(header.msg_length);

@@ -29,26 +29,8 @@ def main() -> None:
                 output_file.write(
                     '-- Automatically created by %s (new test?)\n' % os.path.basename(__file__))
 
-    def mask_uuid4s(unmasked_line: str) -> str:
-        uuid_start_indices = []
-        line_copy_with_uuid4s_masked = ""
-        for m in re.finditer(
-          r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}",
-          unmasked_line):
-            uuid_start_indices.append(m.start())
-
-        prev_index = 0
-        for i in uuid_start_indices:
-            line_copy_with_uuid4s_masked += \
-                unmasked_line[prev_index:i] + "********-****-4***-****-************"
-            prev_index = i + len("********-****-4***-****-************")
-
-        line_copy_with_uuid4s_masked += unmasked_line[prev_index:]
-        return line_copy_with_uuid4s_masked
-
-    # Mask any uuids since they are randomly generated and will vary across runs.
     with open(file_path, newline='\n') as input_file:
-        lines = [mask_uuid4s(line.rstrip('\n')) for line in input_file.readlines()]
+        lines = [line.rstrip('\n') for line in input_file.readlines()]
 
     result_lines = []
     i = 0

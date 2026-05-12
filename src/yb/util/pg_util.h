@@ -14,10 +14,13 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "yb/util/net/net_util.h"
 
 namespace yb {
+
+class Status;
 
 std::string PgDeriveSocketDir(const HostPort& host_port);
 

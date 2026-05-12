@@ -23,7 +23,7 @@ import {
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg?img';
 
 interface InitiateSwitchoverModalProps {
   drConfig: DrConfig;

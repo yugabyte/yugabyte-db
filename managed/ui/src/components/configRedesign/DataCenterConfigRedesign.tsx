@@ -11,9 +11,9 @@ import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
-import awsLogo from '../config/ConfigProvider/images/aws.svg';
-import azureLogo from '../config/ConfigProvider/images/azure.svg';
-import gcpLogo from '../config/ConfigProvider/images/gcp.svg';
+import AwsLogo from '../config/ConfigProvider/images/aws.svg?img';
+import AzureLogo from '../config/ConfigProvider/images/azure.svg?img';
+import GcpLogo from '../config/ConfigProvider/images/gcp.svg?img';
 import k8sLogo from '../config/ConfigProvider/images/k8s.png';
 import openshiftLogo from '../config/ConfigProvider/images/redhat.png';
 import tanzuLogo from '../config/ConfigProvider/images/tanzu.png';
@@ -29,18 +29,17 @@ import {
 import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
-import { StorageConfigurationContainer } from '../config';
+import StorageConfigurationContainer from '../config/Storage/StorageConfigurationContainer';
 import { ExportTelemetryConfigurations } from '../../redesign/features/export-telemetry/ExportTelemetryConfiguration';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
-import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
+import { api, regionMetadataQueryKey, runtimeConfigQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { PerfAdvisorOverview } from '../../redesign/features/PerfAdvisor/PerfAdvisorOverview';
 import { fetchGlobalRunTimeConfigs } from '../../api/admin';
-import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ReactRouterProps {
@@ -100,6 +99,10 @@ export const DataCenterConfigRedesign = ({
       (config: any) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
     )?.value === 'true';
   const shouldShowTelemetryProviderTab = isExportLogEnabled || isMetricsExportEnabled;
+  const isNewPerfAdvisorUIEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
+    )?.value === 'true';
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
@@ -270,7 +273,10 @@ export const DataCenterConfigRedesign = ({
               title={t('tab.perfAdvisor.tabLabel')}
               key="perf-advisor-config"
             >
-              <PerfAdvisorOverview activeTab={params.section} />
+              <PerfAdvisorOverview
+                activeTab={params.section}
+                isNewPerfAdvisorUIEnabled={isNewPerfAdvisorUIEnabled}
+              />
             </Tab>
           )}
         </YBTabsWithLinksPanel>
@@ -285,21 +291,21 @@ const getTabTitle = (providerCode: ProviderCode | KubernetesProviderType) => {
     case ProviderCode.AWS:
       return (
         <div className="title">
-          <img src={awsLogo} alt="AWS" className="aws-logo" />
+          <img src={AwsLogo} alt="AWS" className="aws-logo" />
           <span>{i18next.t(`${I18N_KEY_PREFIX}.aws`)}</span>
         </div>
       );
     case ProviderCode.GCP:
       return (
         <div className="title">
-          <img src={gcpLogo} alt="GCP" className="gcp-logo" />
+          <img src={GcpLogo} alt="GCP" className="gcp-logo" />
           <span>{i18next.t(`${I18N_KEY_PREFIX}.gcp`)}</span>
         </div>
       );
     case ProviderCode.AZU:
       return (
         <div className="title">
-          <img src={azureLogo} alt="Azure" className="azure-logo" />
+          <img src={AzureLogo} alt="Azure" className="azure-logo" />
           <span>{i18next.t(`${I18N_KEY_PREFIX}.azu`)}</span>
         </div>
       );

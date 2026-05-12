@@ -122,8 +122,8 @@ public class KubernetesOverridesController extends AuthenticatedController {
       // For every AZ, run helm template with overrides and collect errors.
       for (Cluster cluster : taskParams.clusters) {
         String ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
-        PlacementInfo pi = cluster.placementInfo;
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        PlacementInfo pi = cluster.getOverallPlacement();
+        Provider provider = Util.getSingleProvider(cluster);
         for (Region r : provider.getRegions()) {
           for (AvailabilityZone az : r.getZones()) {
             providersAZSet.add(az.getCode());

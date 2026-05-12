@@ -58,9 +58,9 @@ class DnsResolver {
   explicit DnsResolver(IoService* io_service, const scoped_refptr<MetricEntity>& metric_entity);
   ~DnsResolver();
 
-  std::shared_future<Result<IpAddress>> ResolveFuture(const std::string& host);
-  void AsyncResolve(const std::string& host, const AsyncResolveCallback& callback);
-  Result<IpAddress> Resolve(const std::string& host);
+  std::shared_future<Result<IpAddress>> ResolveFuture(std::string_view host);
+  void AsyncResolve(std::string_view host, const AsyncResolveCallback& callback);
+  Result<IpAddress> Resolve(std::string_view host);
 
  private:
   class Impl;

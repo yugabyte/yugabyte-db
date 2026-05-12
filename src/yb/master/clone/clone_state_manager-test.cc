@@ -19,10 +19,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -32,7 +32,6 @@
 #include "yb/master/clone/external_functions.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -40,11 +39,19 @@
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/physical_time.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(enable_db_clone);
+// This is needed for the mock of GetBlacklist - must be in std namespace for ADL.
+namespace std {
+std::ostream& operator<<(
+    std::ostream& os, const std::unordered_set<yb::HostPort, yb::HostPortHash>& blacklist) {
+  for (const auto& host_port : blacklist) {
+    os << host_port.ToString() << ", ";
+  }
+  return os;
+}
+}
 
 namespace yb {
 namespace master {
@@ -65,16 +72,31 @@ MATCHER_P(CloneTabletRequestPBMatcher, expected, "CloneTabletRequestPBs did not 
   return pb_util::ArePBsEqual(arg, expected, nullptr /* diff_str */);
 }
 
+// This is needed for the mock of GetYsqlMajorCatalogUpgradeInfoAt.
+std::ostream& operator<<(
+    std::ostream& os, const std::optional<YsqlMajorCatalogUpgradeInfoPB>& info) {
+  if (info.has_value()) {
+    os << info->ShortDebugString();
+  } else {
+    os << "<nullopt>";
+  }
+  return os;
+}
+
 // This is needed for the mock of GenerateSnapshotInfoFromScheduleForClone.
 std::ostream& operator<<(
-    std::ostream& os, const Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>& res) {
+    std::ostream& os, const Result<CatalogManagerIf::CloneSnapshotInfo>& res) {
   if (!res.ok()) {
     os << res.status().ToString();
   } else {
-    os << res->first.ShortDebugString();
+    os << res->snapshot_info.ShortDebugString();
     os << "Not snapshotted tablets: ";
-    for (const auto& tablet_id : res->second) {
+    for (const auto& tablet_id : res->not_snapshotted_tablets) {
       os << tablet_id << ", ";
+    }
+    os << "Replication info and num tablets: ";
+    for (const auto& [replication_info, num_tablets] : res->replication_info_and_num_tablets) {
+      os << replication_info.ShortDebugString() << ", " << num_tablets << ", ";
     }
   }
   return os;
@@ -95,6 +117,9 @@ class CloneStateManagerTest : public YBTest {
         Status, ListRestorations,
         (const TxnSnapshotRestorationId& restoration_id,
         ListSnapshotRestorationsResponsePB* resp), (override));
+    MOCK_METHOD(
+        Status, CheckForwardRestoreDisallowed,
+        (const SnapshotScheduleId& schedule_id, HybridTime restore_at), (override));
 
     MOCK_METHOD(Result<TabletInfoPtr>, GetTabletInfo, (const TabletId& tablet_id), (override));
 
@@ -138,7 +163,7 @@ class CloneStateManagerTest : public YBTest {
          CoarseTimePoint deadline, const LeaderEpoch& epoch), (override));
 
     MOCK_METHOD(
-        (Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>),
+        Result<CatalogManagerIf::CloneSnapshotInfo>,
         GenerateSnapshotInfoFromScheduleForClone,
         (const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
         CoarseTimePoint deadline), (override));
@@ -152,6 +177,14 @@ class CloneStateManagerTest : public YBTest {
 
     MOCK_METHOD(Result<TSDescriptorPtr>, GetClosestLiveTserver, (), (override));
     MOCK_METHOD(TSDescriptorVector, GetTservers, (), (override));
+    MOCK_METHOD(Result<BlacklistSet>, GetBlacklist, (), (override));
+    MOCK_METHOD(
+        Result<int64_t>, CountPgYbMigrationRows,
+        (uint32_t database_oid, const ReadHybridTime& read_time), (override));
+    MOCK_METHOD(
+        Result<std::optional<YsqlMajorCatalogUpgradeInfoPB>>, GetYsqlMajorCatalogUpgradeInfoAt,
+        (std::optional<std::reference_wrapper<const ReadHybridTime>> read_time), (override));
+    MOCK_METHOD(bool, IsMajorYsqlUpgradeInProgress, (), (override));
   };
 
  private:
@@ -162,7 +195,6 @@ class CloneStateManagerTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     clone_state_manager_ = std::unique_ptr<CloneStateManager>(
         new CloneStateManager(std::make_unique<MockExternalFunctions>()));
 
@@ -316,12 +348,14 @@ class CloneStateManagerTest : public YBTest {
   }
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
-      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const std::string& target_namespace_name,
-      CoarseTimePoint deadline, const LeaderEpoch& epoch) {
-    return clone_state_manager_->MakeDoneClonePgSchemaCallback(
-      clone_state, snapshot_schedule_id, target_namespace_name, deadline);
-  }
+    CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+    const std::string& target_namespace_name,
+    CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
+    CoarseTimePoint deadline) {
+  return clone_state_manager_->MakeDoneClonePgSchemaCallback(
+      clone_state, snapshot_schedule_id, target_namespace_name, std::move(clone_snapshot_info),
+      deadline);
+}
 
   void AssertCloneIsAborted() {
     auto clone_state = GetLatestCloneState();
@@ -336,8 +370,8 @@ class CloneStateManagerTest : public YBTest {
 
   std::unique_ptr<CloneStateManager> clone_state_manager_;
 
-  const NamespaceId kSourceNamespaceId = "source_namespace_id";
-  const NamespaceId kTargetNamespaceId = "target_namespace_id";
+  const NamespaceId kSourceNamespaceId = GetPgsqlNamespaceId(33333);
+  const NamespaceId kTargetNamespaceId = GetPgsqlNamespaceId(33334);
   const std::string kSourceNamespaceName = "source_namespace_name";
   const std::string kTargetNamespaceName = "target_namespace_name";
   const SnapshotScheduleId kSnapshotScheduleId = SnapshotScheduleId::GenerateRandom();
@@ -422,6 +456,7 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     expected_req.set_target_snapshot_id(kTargetSnapshotId.data(), kTargetSnapshotId.size());
     expected_req.set_target_table_id(kTargetTableId);
     expected_req.set_target_namespace_name(kTargetNamespaceName);
+    expected_req.set_target_namespace_id(kTargetNamespaceId);
     expected_req.set_clone_request_seq_no(1);
     expected_req.set_target_pg_table_id(target_table_->pg_table_id());
     *expected_req.mutable_target_schema() = target_table_->LockForRead()->schema();
@@ -550,6 +585,8 @@ TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
       STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
@@ -565,8 +602,17 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(Status::OK()));
   TSDescriptorPtr dummy_ts_desc = std::make_shared<TSDescriptor>(
       "ts0" /* perm_id*/, RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(
+      Return(CatalogManagerIf::CloneSnapshotInfo()));
+  EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+  EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+    .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(false));
+  EXPECT_CALL(MockFuncs(), CountPgYbMigrationRows(_, _)).WillRepeatedly(Return(1));
   EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillOnce(Return(dummy_ts_desc));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(),
@@ -586,7 +632,7 @@ TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) 
   auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
-      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+      CatalogManagerIf::CloneSnapshotInfo(), CoarseMonoClock::Now() + 10s /* deadline */);
 
   // We expect an upsert when aborting the clone.
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
@@ -600,15 +646,75 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
   auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
-      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+      CatalogManagerIf::CloneSnapshotInfo(), CoarseMonoClock::Now() + 10s /* deadline */);
 
   // We expect an upsert when aborting the clone.
-  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
-      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
+  EXPECT_CALL(MockFuncs(), DoImportSnapshotMeta).WillOnce(Return(
+      STATUS_FORMAT(IllegalState, "Fail DoImportSnapshotMeta for test")));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
 
   AssertCloneIsAborted();
+}
+
+TEST_F_EX(
+    CloneStateManagerTest, CloneBlockedDuringYsqlMajorCatalogUpgrade, CloneStateManagerPgTest) {
+  EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+  EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+      .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone)
+      .WillOnce(Return(CatalogManagerIf::CloneSnapshotInfo()));
+  EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+  EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+      .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(true));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
+      source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
+
+  auto clone_state = GetLatestCloneState();
+  auto lock = clone_state->LockForRead();
+  ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
+  ASSERT_STR_CONTAINS(lock->pb.abort_message(), "YSQL major catalog upgrade is in progress");
+}
+
+TEST_F_EX(
+    CloneStateManagerTest, CloneBlockedWhenRestoreTimeDuringUpgrade, CloneStateManagerPgTest) {
+  const auto non_done_states = {
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB,
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE,
+      YsqlMajorCatalogUpgradeInfoPB::MONITORING,
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
+  };
+  YsqlMajorCatalogUpgradeInfoPB upgrade_info;
+
+  for (auto state : non_done_states) {
+    upgrade_info.set_state(state);
+    LOG(INFO) << "Testing with upgrade state at restore time: "
+              << YsqlMajorCatalogUpgradeInfoPB::State_Name(state);
+    EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+    EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+        .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+    EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone)
+        .WillOnce(Return(CatalogManagerIf::CloneSnapshotInfo()));
+    EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+    EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+        .WillRepeatedly(Return(upgrade_info));
+    EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(false));
+    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+    auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
+        source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+        CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
+
+    auto clone_state = GetLatestCloneState();
+    auto lock = clone_state->LockForRead();
+    ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
+    ASSERT_STR_CONTAINS(
+        lock->pb.abort_message(), "YSQL major catalog upgrade was in state");
+  }
 }
 
 TEST_F(CloneStateManagerTest, AbortInCreatingState) {
@@ -739,6 +845,21 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
             loaded_lock->pb.abort_message(), "aborted by master failover");
     }
   }
+}
+
+TEST_F(CloneStateManagerTest, DisallowCloneIntoForwardRestoreGap) {
+  EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+  EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+      .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(STATUS(NotSupported, "Cannot perform a forward restore.")));
+
+  auto result = CloneNamespace(
+      source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsNotSupported());
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Cannot perform a forward restore.");
 }
 
 } // namespace master

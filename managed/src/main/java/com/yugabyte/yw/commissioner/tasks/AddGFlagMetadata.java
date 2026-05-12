@@ -16,17 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AddGFlagMetadata extends AbstractTaskBase {
 
-  private final GFlagsValidation gFlagsValidation;
-  private final ReleaseManager releaseManager;
-
   @Inject
-  protected AddGFlagMetadata(
-      BaseTaskDependencies baseTaskDependencies,
-      GFlagsValidation gFlagsValidation,
-      ReleaseManager releaseManager) {
+  protected AddGFlagMetadata(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.gFlagsValidation = gFlagsValidation;
-    this.releaseManager = releaseManager;
   }
 
   public static class Params extends AbstractTaskParams {

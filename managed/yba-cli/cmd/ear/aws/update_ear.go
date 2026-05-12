@@ -30,7 +30,7 @@ var updateAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
+		if util.IsEmptyString(configNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -82,8 +82,8 @@ var updateAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(accessKeyID)) != 0 &&
-			len(strings.TrimSpace(secretAccessKey)) != 0 {
+		if !util.IsEmptyString(accessKeyID) &&
+			!util.IsEmptyString(secretAccessKey) {
 			logrus.Debug("Updating AWS credentials\n")
 			hasUpdates = true
 			requestBody[util.AWSAccessKeyEnv] = accessKeyID
@@ -108,7 +108,7 @@ var updateAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(endpoint)) != 0 && strings.Compare(aws.EndPoint, endpoint) != 0 {
+		if !util.IsEmptyString(endpoint) && strings.Compare(aws.EndPoint, endpoint) != 0 {
 			logrus.Debug("Updating AWS endpoint\n")
 			hasUpdates = true
 			requestBody[util.AWSEndpointEnv] = endpoint

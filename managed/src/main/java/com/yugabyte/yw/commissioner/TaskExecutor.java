@@ -43,8 +43,8 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Summary;
+import io.prometheus.metrics.core.metrics.Summary;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -175,6 +175,9 @@ public class TaskExecutor {
   // Skip or perform abortable check for subtasks.
   private final boolean skipSubTaskAbortableCheck;
 
+  // Used for testing to set the max wait time.
+  private volatile Duration maxWaitForTime = Duration.ZERO;
+
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
 
@@ -198,18 +201,20 @@ public class TaskExecutor {
           TASK_EXECUTION_SKIPPED_LABEL);
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
-    return Summary.build(name, description)
+    return Summary.builder()
+        .name(name)
+        .help(description)
         .quantile(0.5, 0.05)
         .quantile(0.9, 0.01)
         .labelNames(labelNames)
-        .register(CollectorRegistry.defaultRegistry);
+        .register(PrometheusRegistry.defaultRegistry);
   }
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
       Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(
+        .labelValues(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getElapsedTime(scheduledTime, startTime, ChronoUnit.SECONDS));
@@ -223,7 +228,7 @@ public class TaskExecutor {
       State state,
       boolean isTaskSkipped) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(
+        .labelValues(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             state.name(),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()),
@@ -332,6 +337,12 @@ public class TaskExecutor {
     }
   }
 
+  @VisibleForTesting
+  // Used to speed up tests.
+  public void setMaxWaitForTime(Duration maxWaitForTime) {
+    this.maxWaitForTime = maxWaitForTime;
+  }
+
   /** Task params for creating a RunnableTask. */
   @Builder
   @Getter
@@ -365,7 +376,7 @@ public class TaskExecutor {
     ITaskParams taskParams = params.getTaskParams();
     ITask task = taskTypeMap.get(params.getTaskType()).get();
     task.initialize(taskParams);
-    return createRunnableTask(task, null, taskParams.getPreviousTaskUUID());
+    return createRunnableTask(task, params.getTaskUuid(), taskParams.getPreviousTaskUUID());
   }
 
   /* Creates a RunnableTask instance for the given task. */
@@ -572,7 +583,7 @@ public class TaskExecutor {
     if (previousTaskUUID != null
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableTaskRuntimeInfoOnRetry)) {
       TaskInfo previousTaskInfo = TaskInfo.getOrBadRequest(previousTaskUUID);
-      if (taskVersion != previousTaskInfo.getTaskVersion()) {
+      if (taskVersion == previousTaskInfo.getTaskVersion()) {
         log.info("Inherting runtime task info from the previous task {}", previousTaskUUID);
         taskInfo.inherit(previousTaskInfo);
         if (log.isDebugEnabled() && taskInfo.getRuntimeInfo() != null) {
@@ -655,6 +666,8 @@ public class TaskExecutor {
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
     private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Configuring;
+    // If set, parent RunnableTask stops after this group.
+    private volatile boolean pausedAfter = false;
 
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
@@ -911,6 +924,15 @@ public class TaskExecutor {
       return this;
     }
 
+    public boolean isPausedAfter() {
+      return pausedAfter;
+    }
+
+    public SubTaskGroup setPausedAfter(boolean pausedAfter) {
+      this.pausedAfter = pausedAfter;
+      return this;
+    }
+
     private String title() {
       return String.format(
           "SubTaskGroup %s of type %s at position %d", name, subTaskGroupType.name(), position);
@@ -1057,7 +1079,11 @@ public class TaskExecutor {
       } finally {
         t = handleAfterRun(t);
         if (t == null) {
-          TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Success));
+          if (this instanceof RunnableTask && ((RunnableTask) this).isPaused()) {
+            TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Paused));
+          } else {
+            TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Success));
+          }
         } else if (ExceptionUtils.hasCause(t, CancellationException.class)) {
           updateTaskDetailsOnError(TaskInfo.State.Aborted, t);
         } else {
@@ -1086,6 +1112,10 @@ public class TaskExecutor {
 
     public boolean hasTaskCompleted() {
       return getTaskInfo().hasCompleted();
+    }
+
+    public boolean hasTaskTerminated() {
+      return getTaskInfo().hasTerminated();
     }
 
     @Override
@@ -1238,6 +1268,8 @@ public class TaskExecutor {
         new AtomicReference<>();
     // Time when the abort is set.
     private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
+    // Set when the task is paused by a subtask group.
+    private volatile boolean paused = false;
 
     RunnableTask(ITask task, UUID taskUuid) {
       super(task);
@@ -1261,6 +1293,10 @@ public class TaskExecutor {
      */
     public TaskCache getTaskCache() {
       return taskCache;
+    }
+
+    public boolean isPaused() {
+      return paused;
     }
 
     /** Invoked by the ExecutorService. Do not invoke this directly. */
@@ -1412,6 +1448,7 @@ public class TaskExecutor {
      * @param abortOnFailure boolean whether to abort peer subtasks on failure of one subtask.
      */
     public void runSubTasks(boolean abortOnFailure) {
+      paused = false;
       Throwable anyThrowable = null;
       try {
         fixSubTaskGroupType();
@@ -1442,6 +1479,10 @@ public class TaskExecutor {
             }
             // Invoke post-run method after successful completion of all subtasks.
             subTaskGroup.handleAfterGroupRun();
+            if (subTaskGroup.isPausedAfter()) {
+              paused = true;
+              break;
+            }
           } catch (CancellationException | RejectedExecutionException e) {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (Throwable t) {
@@ -1478,6 +1519,11 @@ public class TaskExecutor {
      */
     public void waitFor(Duration waitTime) {
       checkNotNull(waitTime);
+      Duration cappedWaitTime = maxWaitForTime;
+      if (cappedWaitTime != null && cappedWaitTime.toMillis() > 0) {
+        waitTime = waitTime.compareTo(cappedWaitTime) > 0 ? cappedWaitTime : waitTime;
+        log.debug("Using the capped max wait time of {}ms", waitTime.toMillis());
+      }
       try {
         if (waiterLatch.await(waitTime.toMillis(), TimeUnit.MILLISECONDS)) {
           // Count reached zero first, another thread must have decreased it.

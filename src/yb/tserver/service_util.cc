@@ -240,8 +240,7 @@ Status CheckPeerIsReady(
                       tablet->tablet_id(),
                       TabletDataState_Name(tablet_data_state)),
                TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
-        .CloneAndAddErrorCode(SplitChildTabletIdsData(
-            std::vector<TabletId>(split_child_tablet_ids.begin(), split_child_tablet_ids.end())));
+        .CloneAndAddErrorCode(SplitChildTabletIdsData(split_child_tablet_ids));
     // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
     // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
     // modified their data state, but all had some failures (code bug?).
@@ -273,12 +272,10 @@ std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
   return nullptr;
 }
 
-namespace {
-
-template <class Key>
-Result<TabletPeerTablet> DoLookupTabletPeer(
+Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const Key& tablet_id) {
+    TabletIdView tablet_id) {
+  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id);
   TabletPeerTablet result;
   auto tablet_peer_result = tablet_manager->GetServingTablet(tablet_id);
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
@@ -306,26 +303,10 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
   return result;
 }
 
-} // namespace
-
-Result<TabletPeerTablet> LookupTabletPeer(
-    TabletPeerLookupIf* tablet_manager,
-    const TabletId& tablet_id) {
-  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id);
-  return DoLookupTabletPeer(tablet_manager, tablet_id);
-}
-
-Result<TabletPeerTablet> LookupTabletPeer(
-    TabletPeerLookupIf* tablet_manager,
-    const Slice& tablet_id) {
-  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id.ToBuffer());
-  return DoLookupTabletPeer(tablet_manager, tablet_id);
-}
-
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
-    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
+    TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp) {
+    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp) {
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
@@ -413,7 +394,7 @@ Status RejectWrite(
       ServiceUnavailable, message, TabletServerDelay(std::chrono::milliseconds(delay_ms)));
   YB_LOG_EVERY_N_SECS(WARNING, 1)
       << "T " << tablet_peer->tablet_id() << " P " << tablet_peer->permanent_uuid()
-      << ": Rejecting Write request, " << status << THROTTLE_MSG;
+      << ": Rejecting Write request, " << status;
   return status;
 }
 
@@ -430,9 +411,9 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
         soft_limit_exceeded_result.current_capacity_pct, score);
     if (soft_limit_exceeded_result.current_capacity_pct >=
             FLAGS_memory_limit_warn_threshold_percentage) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg;
     } else {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg;
     }
     return STATUS(ServiceUnavailable, msg);
   }

@@ -30,7 +30,7 @@ import { GetUniverseUUID, prepareScheduledBackupPayload } from '../../../Schedul
 
 import { createScheduledBackupPolicy } from '../../../api/api';
 
-import { ReactComponent as CheckIcon } from '../../../../../../assets/check-white.svg';
+import CheckIcon from '../../../../../../assets/check-white.svg';
 import BulbIcon from '../../../../../../assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -261,7 +261,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
         open
       />
       <div className={classes.helpText}>
-        <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
+        <BulbIcon alt="--" height={'32px'} width={'32px'} />
         <div>
           <Trans t={t} i18nKey={'helpText'} components={{ br: <br />, a: <a /> }} />
         </div>

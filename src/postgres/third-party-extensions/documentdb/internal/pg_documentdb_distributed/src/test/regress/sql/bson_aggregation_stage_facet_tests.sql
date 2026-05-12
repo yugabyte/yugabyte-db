@@ -5,42 +5,42 @@ SET documentdb.next_collection_id TO 961000;
 SET documentdb.next_collection_index_id TO 961000;
 
 -- Insert data
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 1, "product" : "beer", "unitPrice" : 12, "stock" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 2, "product" : "red wine", "unitPrice" : 20, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 3, "product" : "bread", "unitPrice" : 10, "stock" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 4, "product" : ["beer", "bread", "red wine"], "unitPrice" : 10, "stock" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 5, "product" : "beer", "unitPrice" : 12, "stock" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 6, "product" : "red wine", "unitPrice" : 20, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 7, "product" : "bread", "unitPrice" : 10, "stock" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 8, "product" : ["beer", "bread", "red wine"], "unitPrice" : 10, "stock" : 5 }', NULL);
 
 -- Test filter generation empty input
 SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet1');
 
 -- Test filter generation 
-SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet');
+SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facetTest');
 
-SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facet');
+SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facetTest');
 
 -- Test full facetSQL sql
 WITH "stage0" as (
   SELECT 
     documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facetTest')
 ), 
 "stage1" as (
   WITH FacetStage AS (
     WITH "FacetStage00" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONFIRSTONSORTED(
-          bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$first" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facetTest')
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
@@ -52,14 +52,14 @@ WITH "stage0" as (
     ), 
     "FacetStage10" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONLASTONSORTED(
-          bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$last" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facetTest') 
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
@@ -102,20 +102,20 @@ WITH "stage0" as (
   SELECT 
     documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facetTest')
 ), 
 "stage1" as (
   WITH FacetStage AS (
     WITH "FacetStage00" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONFIRSTONSORTED(
-          bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$first" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facetTest')
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
@@ -127,14 +127,14 @@ WITH "stage0" as (
     ), 
     "FacetStage10" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONLASTONSORTED(
-          bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$last" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facetTest') 
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 

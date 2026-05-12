@@ -91,4 +91,4 @@ The recovery point objective (RPO) for each of these tablets is 0, meaning no da
 
 ## Follower reads
 
-Only the tablet leader can process user-facing write and read requests. Note that while this is the case for strongly consistent reads, YugabyteDB offers reading from followers with relaxed guarantees, which is desired in [some deployment models](/preview/develop/build-global-apps/follower-reads/). All other tablet peers are called followers and merely replicate data. They are available as hot standbys that can take over quickly in case the leader fails.
+Only the tablet leader can process user-facing write and read requests. Note that while this is the case for strongly consistent reads, YugabyteDB offers reading from followers with relaxed guarantees, which is desired in [some deployment models](/stable/develop/build-global-apps/follower-reads/). All other tablet peers are called followers and merely replicate data. They are available as hot standbys that can take over quickly in case the leader fails.

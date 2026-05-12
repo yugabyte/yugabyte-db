@@ -44,6 +44,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
+#include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -284,7 +285,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void InsertTestRows(YBClient* client, const TableHandle& table, int num_rows, int first_row = 0) {
     auto session = CreateSession(client);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      session->Apply(BuildTestRow(table, i));
+      session->Apply(BuildTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -298,7 +299,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void UpdateTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      session->Apply(UpdateTestRow(table, i));
+      session->Apply(UpdateTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -307,14 +308,15 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      session->Apply(DeleteTestRow(table, i));
+      session->Apply(DeleteTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
-  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int index) {
-    auto insert = table.NewInsertOp();
+  shared_ptr<YBqlWriteOp> BuildTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto insert = table.NewInsertOp(arena);
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
@@ -324,8 +326,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return insert;
   }
 
-  shared_ptr<YBqlWriteOp> UpdateTestRow(const TableHandle& table, int index) {
-    auto update = table.NewUpdateOp();
+  shared_ptr<YBqlWriteOp> UpdateTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto update = table.NewUpdateOp(arena);
     auto req = update->mutable_request();
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
@@ -334,8 +337,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return update;
   }
 
-  shared_ptr<YBqlWriteOp> DeleteTestRow(const TableHandle& table, int index) {
-    auto del = table.NewDeleteOp();
+  shared_ptr<YBqlWriteOp> DeleteTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto del = table.NewDeleteOp(arena);
     QLAddInt32HashValue(del->mutable_request(), index);
     return del;
   }
@@ -376,7 +380,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTestScanWithKeyPredicate() {
-    auto op = client_table_.NewReadOp();
+    auto session = client_->NewSession(60s);
+    auto op = client_table_.NewReadOp(session->arena());
     auto req = op->mutable_request();
 
     auto* const condition = req->mutable_where_expr()->mutable_condition();
@@ -384,7 +389,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddInt32Condition(condition, "key", QL_OP_GREATER_THAN_EQUAL, 5);
     client_table_.AddInt32Condition(condition, "key", QL_OP_LESS_THAN_EQUAL, 10);
     client_table_.AddColumns({"key"}, req);
-    auto session = client_->NewSession(60s);
     ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -543,8 +547,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   Result<NamespaceId> GetPGNamespaceId() {
     master::GetNamespaceInfoResponsePB namespace_info;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
+    RETURN_NOT_OK(
+        client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
     return namespace_info.namespace_().id();
   }
 
@@ -615,8 +619,8 @@ class ClientTestForceMasterLookup :
   void SetUp() override {
     ClientTest::SetUp();
     // Do we want to force going to the master instead of using cache.
-    SetAtomicFlag(GetParam(), &FLAGS_TEST_force_master_lookup_all_tablets);
-    SetAtomicFlag(0.5, &FLAGS_TEST_simulate_lookup_timeout_probability);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_lookup_all_tablets) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_timeout_probability) = 0.5;
   }
 
 
@@ -929,10 +933,10 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   // tablet, except the first which is empty.
     auto session = CreateSession();
   for (int i = 1; i < 5; i++) {
-    session->Apply(BuildTestRow(table, 2 + (i * 10)));
-    session->Apply(BuildTestRow(table, 3 + (i * 10)));
-    session->Apply(BuildTestRow(table, 5 + (i * 10)));
-    session->Apply(BuildTestRow(table, 7 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 2 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 3 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 5 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 7 + (i * 10)));
   }
   FlushSessionOrDie(session);
 
@@ -941,8 +945,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    session->Apply(UpdateTestRow(table, 2 + i * 10));
-    session->Apply(UpdateTestRow(table, 5 + i * 10));
+    session->Apply(UpdateTestRow(session->arena(), table, 2 + i * 10));
+    session->Apply(UpdateTestRow(session->arena(), table, 5 + i * 10));
   }
   FlushSessionOrDie(session);
 
@@ -951,8 +955,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    session->Apply(DeleteTestRow(table, 5 + i*10));
-    session->Apply(DeleteTestRow(table, 7 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 5 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 7 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -961,8 +965,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    session->Apply(DeleteTestRow(table, 2 + i*10));
-    session->Apply(DeleteTestRow(table, 3 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 2 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 3 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -1185,7 +1189,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   auto session = CreateSession();
   ASSERT_FALSE(session->TEST_HasPendingOperations());
 
-  auto insert = client_table_.NewInsertOp();
+  auto insert = client_table_.NewInsertOp(session->arena());
   // Try inserting without specifying a key: should fail.
   client_table_.AddInt32ColumnValue(insert->mutable_request(), "int_val", 54321);
   client_table_.AddStringColumnValue(insert->mutable_request(), "string_val", "hello world");
@@ -1208,7 +1212,7 @@ void ApplyInsertToSession(YBSession* session,
                                     int int_val,
                                     const char* string_val,
                                     std::shared_ptr<YBqlOp>* op = nullptr) {
-  auto insert = table.NewInsertOp();
+  auto insert = table.NewInsertOp(session->arena());
   QLAddInt32HashValue(insert->mutable_request(), row_key);
   table.AddInt32ColumnValue(insert->mutable_request(), "int_val", int_val);
   table.AddStringColumnValue(insert->mutable_request(), "string_val", string_val);
@@ -1219,19 +1223,19 @@ void ApplyInsertToSession(YBSession* session,
 }
 
 void ApplyUpdateToSession(YBSession* session,
-                                    const TableHandle& table,
-                                    int row_key,
-                                    int int_val) {
-  auto update = table.NewUpdateOp();
+                          const TableHandle& table,
+                          int row_key,
+                          int int_val) {
+  auto update = table.NewUpdateOp(session->arena());
   QLAddInt32HashValue(update->mutable_request(), row_key);
   table.AddInt32ColumnValue(update->mutable_request(), "int_val", int_val);
   session->Apply(update);
 }
 
 void ApplyDeleteToSession(YBSession* session,
-                                    const TableHandle& table,
-                                    int row_key) {
-  auto del = table.NewDeleteOp();
+                          const TableHandle& table,
+                          int row_key) {
+  auto del = table.NewDeleteOp(session->arena());
   QLAddInt32HashValue(del->mutable_request(), row_key);
   session->Apply(del);
 }
@@ -1254,16 +1258,16 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_TRUE(std::regex_match(
         error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} timed out after deadline expired, passed.*")))
+        std::regex(".*LookupByKeyRpc \\{.*\\} timed out after deadline expired, passed.*")))
         << error->status().ToString();
   }
 
   LOG(INFO) << "Time out the actual write on the tablet server";
   {
     google::FlagSaver saver;
-    SetAtomicFlag(true, &FLAGS_log_inject_latency);
-    SetAtomicFlag(110, &FLAGS_log_inject_latency_ms_mean);
-    SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency_ms_mean) = 110;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency_ms_stddev) = 0;
 
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->TEST_FlushAndGetOpsErrors();
@@ -2462,12 +2466,13 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
-  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
-  PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, arena, &sidecars);
+  auto* psql_write_request = pgsql_write_op->mutable_request();
 
-  psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
-  PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+  psql_write_request->add_range_column_values()->mutable_value()->ref_string_value("pgsql_key1");
+  auto* pgsql_column = psql_write_request->add_column_values();
   // 1 is the index for column value.
 
   pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
@@ -2488,10 +2493,10 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the YQL table.
   client::TableHandle table;
   EXPECT_OK(table.Open(yql_table_name, client_.get()));
-  std::shared_ptr<YBqlWriteOp> write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
-  QLWriteRequestPB* const req = write_op->mutable_request();
-  req->add_range_column_values()->mutable_value()->set_string_value("key1");
-  QLColumnValuePB* column = req->add_column_values();
+  auto write_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
+  auto* const req = write_op->mutable_request();
+  req->add_range_column_values()->mutable_value()->ref_string_value("key1");
+  auto* column = req->add_column_values();
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
@@ -2665,22 +2670,19 @@ TEST_F(ClientTest, GetNamespaceInfo) {
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(
-      client_->GetNamespaceInfo("" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
 
   // SQL colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
   ASSERT_TRUE(resp.colocated());
   auto namespace_id = resp.namespace_().id();
 
-  ASSERT_OK(
-      client_->GetNamespaceInfo(namespace_id, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(namespace_id, &resp));
   ASSERT_EQ(resp.namespace_().id(), namespace_id);
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
@@ -2795,12 +2797,13 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   shared_ptr<YBTable> pgsql_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId, &pgsql_table));
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
   auto create_insert_pgsql_row = [&](const std::string& key) -> YBPgsqlWriteOpPtr {
-    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, &sidecars);
-    PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
-    psql_write_request->add_range_column_values()->mutable_value()->set_string_value(key);
-    PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, arena, &sidecars);
+    auto* psql_write_request = pgsql_write_op->mutable_request();
+    psql_write_request->add_range_column_values()->mutable_value()->dup_string_value(key);
+    auto* pgsql_column = psql_write_request->add_column_values();
     pgsql_column->set_column_id(pgsql_table->schema().ColumnId(1));
     pgsql_column->mutable_expr()->mutable_value()->set_int64_value(3);
     return pgsql_write_op;
@@ -2899,6 +2902,10 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   ASSERT_EQ(attempt_num, 2);
 }
 
+// Note: This class has custom initialization for postgres instead of using
+// MiniTabletServer::SetPgServerHandlers. Hence tests would not work if they restart the tserver
+// hosting the ysql connections, and try to create a new connection. Avoid inheriting this class
+// for other tests.
 class ColocationClientTest: public ClientTest {
  public:
   void SetUp() override {
@@ -2952,9 +2959,11 @@ class ColocationClientTest: public ClientTest {
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
     pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-    RETURN_NOT_OK(pg_supervisor_->Start());
+    RETURN_NOT_OK(pg_supervisor_->StartAndMaybePause());
 
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+
+    RETURN_NOT_OK(pg_ts->server()->StartYSQLLeaseRefresher());
     return Status::OK();
   }
 
@@ -3080,6 +3089,112 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
   ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
 }
 
+namespace {
+
+auto MakePartitionList(PartitionListVersion version) -> VersionedTablePartitionListPtr {
+  auto partition_list = std::make_shared<VersionedTablePartitionList>();
+  partition_list->version = version;
+  return partition_list;
+}
+
+} // namespace
+
+TEST_F(ClientTest, MetaCacheIgnoreNonTargetTable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  // Process tablet locations should ignore non-target tables.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kVectorTableId, kVectorTableVersion }));
+
+  // Standard read path.
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kMainTableId, kVectorTableVersion });
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
+}
+
+TEST_F(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation) {
+  const TableId kTargetTableId = "target_table";
+  const TableId kOtherTableId = "other_table";
+  constexpr PartitionListVersion kTargetTableVersion = 100;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kTargetTableId, MakePartitionList(kTargetTableVersion));
+  meta_cache.InvalidateTableCache(kOtherTableId, MakePartitionList(kTargetTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id("tablet_1");
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.set_stale(false);
+  location.set_is_deleted(true);
+  location.add_table_ids(kOtherTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kTargetTableId, kTargetTableVersion}));
+}
+
+TEST_F(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kVectorTableId, kVectorTableVersion}));
+
+  // Main table should still use its own partition list version and process successfully.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kMainTableVersion}));
+
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kVectorTableVersion});
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
+}
+
 class ClientTestWithHashAndRangePk : public ClientTest {
  public:
   void SetUp() override {
@@ -3093,8 +3208,9 @@ class ClientTestWithHashAndRangePk : public ClientTest {
     ClientTest::SetUp();
   }
 
-  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int h, int r, int v) {
-    auto insert = table.NewInsertOp();
+  shared_ptr<YBqlWriteOp> BuildTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int h, int r, int v) {
+    auto insert = table.NewInsertOp(arena);
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, h);
     const auto& columns = table.schema().columns();
@@ -3132,7 +3248,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
         }
         auto session = CreateSession(client_.get());
         for (int r = 0; r < num_rows_per_batch; r++) {
-          session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0));
+          session->Apply(BuildTestRow(session->arena(), client_table_, batch_hash_key, r, 0));
         }
         auto flush_future = session->FlushFuture();
         ASSERT_EQ(flush_future.wait_for(kFlushTimeout), std::future_status::ready)

@@ -23,6 +23,7 @@ export interface OtherAdvancedProps {
   awsArnString: string;
   useSystemd: boolean;
   accessKeyCode: string;
+  enableExposingService: boolean;
 }
 
 export interface AccessKey {
@@ -53,4 +54,6 @@ export interface ProxyAdvancedProps {
   webProxyPort?: number;
   byPassProxyList: boolean;
   byPassProxyListValues: string[];
+  /** Yup only */
+  proxyServerType?: string;
 }

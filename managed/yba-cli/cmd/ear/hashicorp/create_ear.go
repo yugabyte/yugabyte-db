@@ -6,7 +6,6 @@ package hashicorp
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -57,13 +56,13 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(roleID)) == 0 {
+		if util.IsEmptyString(roleID) {
 			token := ""
 			token, err = cmd.Flags().GetString("token")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(token)) == 0 {
+			if util.IsEmptyString(token) {
 				token, err = util.HashicorpVaultTokenFromEnv()
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -81,10 +80,10 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			requestBody[util.HashicorpVaultRoleIDField] = roleID
-			if len(strings.TrimSpace(secretID)) > 0 {
+			if !util.IsEmptyString(secretID) {
 				requestBody[util.HashicorpVaultSecretIDField] = secretID
 			}
-			if len(strings.TrimSpace(namespace)) > 0 {
+			if !util.IsEmptyString(namespace) {
 				requestBody[util.HashicorpVaultAuthNamespaceField] = namespace
 			}
 		}
@@ -93,7 +92,7 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(address)) == 0 {
+		if util.IsEmptyString(address) {
 			address, err = util.HashicorpVaultAddressFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -105,14 +104,14 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(engine)) != 0 {
+		if !util.IsEmptyString(engine) {
 			requestBody[util.HashicorpVaultEngineField] = engine
 		}
 		keyName, err := cmd.Flags().GetString("key-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(keyName)) != 0 {
+		if !util.IsEmptyString(keyName) {
 			requestBody[util.HashicorpVaultKeyNameField] = keyName
 		}
 
@@ -120,20 +119,14 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(mountPath)) != 0 {
+		if !util.IsEmptyString(mountPath) {
 			requestBody[util.HashicorpVaultMountPathField] = mountPath
 		}
 
 		rTask, response, err := authAPI.CreateKMSConfig(util.HashicorpVaultEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"EAR: Hashicorp Vault",
-				"Create",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "EAR: Hashicorp Vault", "Create")
 		}
 
 		earutil.WaitForCreateEARTask(authAPI,

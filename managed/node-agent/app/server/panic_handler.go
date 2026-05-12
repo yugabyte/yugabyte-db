@@ -35,13 +35,13 @@ func requestHeaderValue(md metadata.MD, header string) string {
 	return value
 }
 
-func withTracingIDs(srvCtx context.Context) context.Context {
+func withRequestHeaders(srvCtx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(srvCtx)
 	if !ok {
 		md = nil
 	}
 	ctx := srvCtx
-	for key, val := range util.TracingIDs {
+	for key, val := range util.ContextKeys {
 		ctx = context.WithValue(
 			ctx,
 			val,
@@ -66,7 +66,7 @@ func UnaryPanicHandler() grpc.UnaryServerInterceptor {
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
-		ctx = withTracingIDs(ctx)
+		ctx = withRequestHeaders(ctx)
 		response, err = handler(ctx, req)
 		return
 	})
@@ -88,7 +88,7 @@ func StreamPanicHandler() grpc.StreamServerInterceptor {
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
-		ctx = withTracingIDs(ctx)
+		ctx = withRequestHeaders(ctx)
 		stream = &serverStream{stream, ctx}
 		err = handler(srv, stream)
 		return

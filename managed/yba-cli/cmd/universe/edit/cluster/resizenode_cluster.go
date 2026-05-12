@@ -6,7 +6,6 @@ package cluster
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -77,7 +76,7 @@ var resizeNodeCmd = &cobra.Command{
 
 		cluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 
-		if cluster == (ybaclient.Cluster{}) {
+		if universeutil.IsClusterEmpty(cluster) {
 			err := fmt.Errorf(
 				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
 			)
@@ -102,7 +101,7 @@ var resizeNodeCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(instanceType)) != 0 {
+			if !util.IsEmptyString(instanceType) {
 				userIntent.SetMasterInstanceType(instanceType)
 			}
 		}
@@ -119,7 +118,7 @@ var resizeNodeCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(instanceType)) != 0 {
+		if !util.IsEmptyString(instanceType) {
 			userIntent.SetInstanceType(instanceType)
 		}
 
@@ -148,9 +147,7 @@ var resizeNodeCmd = &cobra.Command{
 		rEdit, response, err := authAPI.ResizeNode(universeUUID).
 			ResizeNodeParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Edit Volume Size of Primary Cluster")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Edit Volume Size of Primary Cluster")
 		}
 
 		waitForEditClusterTask(

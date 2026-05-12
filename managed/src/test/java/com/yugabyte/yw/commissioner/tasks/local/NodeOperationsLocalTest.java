@@ -3,6 +3,9 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -11,10 +14,13 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -23,12 +29,17 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClient;
@@ -186,6 +197,132 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
       assertEquals(NodeDetails.NodeState.Live, details.state);
     }
     verifyUniverseState(universe);
+  }
+
+  @Test
+  public void testRemoveNodeFromUniverseGeoFAIL() throws InterruptedException {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+
+    taskParams.nodePrefix = "univConfCreate";
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 2, 3);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1);
+
+    UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partitionInfo.setDefaultPartition(true);
+    partitionInfo.setName("geo1");
+    partitionInfo.setTablespaceName("geo1TableSpace");
+    partitionInfo.setReplicationFactor(3);
+    partitionInfo.setPlacement(placementInfo);
+
+    PlacementInfo placementInfo2 = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), placementInfo2, 1, 1);
+    UniverseDefinitionTaskParams.PartitionInfo partitionInfo2 =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partitionInfo2.setName("geo2");
+    partitionInfo2.setPlacement(placementInfo2);
+    partitionInfo2.setReplicationFactor(1);
+    partitionInfo2.setTablespaceName("geo2TableSpace");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 5;
+    taskParams.upsertPrimaryCluster(userIntent, Arrays.asList(partitionInfo, partitionInfo2), null);
+    assertTrue(taskParams.getPrimaryCluster().isGeoPartitioned());
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    Universe universe = createUniverse(taskParams);
+    verifyUniverseState(universe);
+    initYSQL(universe, "table_in_geo1", partitionInfo.getTablespaceName());
+
+    NodeDetails nodeDetails =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.azUuid.equals(az1.getUuid()))
+            .findFirst()
+            .get();
+
+    TableSpaceStructures.TableSpaceInfo az1Tablespace =
+        initTablespace("az1_tablespace", az1.getUuid(), 3);
+    String createTblSpace = CreateTableSpaces.getTablespaceCreationQuery(az1Tablespace);
+
+    ShellResponse response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeDetails,
+            universe,
+            YUGABYTE_DB,
+            createTblSpace,
+            20,
+            userIntent.isYSQLAuthEnabled(),
+            false);
+    assertTrue("Message is " + response.getMessage(), response.isSuccess());
+    initYSQL(universe, "table_in_az_geo", "az1_tablespace");
+
+    String nodeName = nodeDetails.nodeName;
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.REMOVE;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    // Although there are excessive nodes in az1 (3 nodes 2 replicas) for normal tables,
+    // this should fail as tablespace az1_tablespace  occupies the whole az.
+    TaskInfo taskInfo = checkAndWaitForTask(result, TaskInfo.State.Failure);
+    TaskInfo subTaskInfo =
+        taskInfo.getSubTasks().stream()
+            .filter(st -> st.getTaskType() == TaskType.CheckTabletsMovementAvailableForNode)
+            .findFirst()
+            .get();
+    String expectedMsg =
+        "Non-empty tablespace az1_tablespace has 3 replicas in zone az-1,"
+            + " but there will be only 2 nodes after operation";
+    assertThat(subTaskInfo.getErrorMessage(), CoreMatchers.containsString(expectedMsg));
+  }
+
+  @Test
+  public void testRemoveNodeFromUniverseFAIL() throws InterruptedException, IOException {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+
+    taskParams.nodePrefix = "univConfCreate";
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 2, 3);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1);
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 4;
+    userIntent.specificGFlags = getGFlags("follower_unavailable_considered_failed_sec", "5");
+    taskParams.upsertPrimaryCluster(userIntent, null, placementInfo);
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(az1.getUuid()))
+        .forEach(az -> az.replicationFactor = 2);
+    Universe universe = createUniverse(taskParams);
+    verifyUniverseState(universe);
+
+    List<NodeDetails> az1Nodes =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.azUuid.equals(az1.getUuid()))
+            .collect(Collectors.toList());
+    NodeDetails toRemove = az1Nodes.get(0);
+    // Killing tserver on the other node.
+    killProcessOnNode(
+        universe.getUniverseUUID(), az1Nodes.get(1).nodeName, UniverseTaskBase.ServerType.TSERVER);
+    log.debug("Killed tserver on {}", az1Nodes.get(1).cloudInfo.private_ip);
+    Thread.sleep(TimeUnit.SECONDS.toMillis(60));
+    String nodeName = toRemove.nodeName;
+    NodeActionFormData formData = new NodeActionFormData();
+
+    formData.nodeAction = NodeActionType.REMOVE;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    TaskInfo taskInfo = checkAndWaitForTask(result, TaskInfo.State.Failure);
+    TaskInfo subTaskInfo =
+        taskInfo.getSubTasks().stream()
+            .filter(st -> st.getTaskType() == TaskType.CheckTabletsMovementAvailableForNode)
+            .findFirst()
+            .get();
+    String expectedMsg = "Expected to have 0 tablets on the node to remove it";
+    assertThat(subTaskInfo.getErrorMessage(), CoreMatchers.containsString(expectedMsg));
   }
 
   @Test
@@ -393,10 +530,16 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     checkAndWaitForTask(result);
   }
 
-  private void checkAndWaitForTask(Result result) throws InterruptedException {
+  private TaskInfo checkAndWaitForTask(Result result) throws InterruptedException {
+    return checkAndWaitForTask(result, TaskInfo.State.Success);
+  }
+
+  private TaskInfo checkAndWaitForTask(Result result, TaskInfo.State state)
+      throws InterruptedException {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), 500);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(state, taskInfo.getTaskState());
+    return taskInfo;
   }
 }

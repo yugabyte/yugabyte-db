@@ -84,11 +84,11 @@ std::string KeyBytes::ToString() const {
   return FormatSliceAsStr(data_.AsSlice());
 }
 
-void KeyBytes::AppendString(const std::string& raw_string) {
+void KeyBytes::AppendString(std::string_view raw_string) {
   ZeroEncodeAndAppendStrToKey(raw_string, data_);
 }
 
-void KeyBytes::AppendDescendingString(const std::string &raw_string) {
+void KeyBytes::AppendDescendingString(std::string_view raw_string) {
   ComplementZeroEncodeAndAppendStrToKey(raw_string, data_);
 }
 

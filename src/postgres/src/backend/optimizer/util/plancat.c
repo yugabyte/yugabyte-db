@@ -187,6 +187,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	else
 		hasindex = relation->rd_rel->relhasindex;
 
+	if (IsYugaByteEnabled())
+		rel->ybRelationName = pstrdup(RelationGetRelationName(relation));
+
 	if (hasindex)
 	{
 		List	   *indexoidlist;
@@ -228,9 +231,23 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * are constructing is only used by the planner --- the executor
 			 * still needs to insert into "invalid" indexes, if they're marked
 			 * indisready.
+			 *
+			 * YB note: Proceed to load the index's expressions and predicate
+			 * for YB-backed relations into the index's relcache entry even
+			 * if the index is invalid. This information will be used by the
+			 * planner to optimize UPDATE queries, much before the execution
+			 * layer has had a chance to load it. Skip populating the index's
+			 * optimizer info so that the planner recognizes that the index is
+			 * not ready for scans.
 			 */
 			if (!index->indisvalid)
 			{
+				if (IsYBRelation(relation))
+				{
+					(void) RelationGetIndexExpressions(indexRelation);
+					(void) RelationGetIndexPredicate(indexRelation);
+				}
+
 				index_close(indexRelation, NoLock);
 				continue;
 			}
@@ -422,6 +439,63 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			/* Build targetlist using the completed indexprs data */
 			info->indextlist = build_index_tlist(root, info, relation);
 
+			/*
+			 * YB: Check if this is an LSM secondary index. If it is, append the base
+			 * table's primary key columns as decodable from ybidxbasectid.
+			 */
+			if (IsYBRelation(relation) && !index->indisprimary &&
+				info->relam == LSM_AM_OID &&
+				yb_enable_primary_key_decode_from_index)
+			{
+				Bitmapset  *pk_bms = YBGetTablePrimaryKeyBms(relation);
+
+				if (pk_bms != NULL)
+				{
+					int			bms_idx = -1;
+					int			missing_pk_count = 0;
+					AttrNumber	missing_pk_attnums[INDEX_MAX_KEYS];
+					Bitmapset  *idx_keys_bms = NULL;
+
+					/* Only check through user columns (attnum > 0), skip system columns. */
+					for (int j = 0; j < ncolumns; j++)
+						if (info->indexkeys[j] > 0)
+							idx_keys_bms = bms_add_member(idx_keys_bms, info->indexkeys[j]);
+
+					/* Scan for primary keys not in the index. */
+					while ((bms_idx = bms_next_member(pk_bms, bms_idx)) >= 0)
+					{
+						AttrNumber	pk_attnum = bms_idx +
+							YBGetFirstLowInvalidAttributeNumber(relation);
+
+						if (!bms_is_member(pk_attnum, idx_keys_bms) &&
+							missing_pk_count < INDEX_MAX_KEYS - ncolumns)
+							missing_pk_attnums[missing_pk_count++] = pk_attnum;
+					}
+					bms_free(idx_keys_bms);
+
+					/* Rebuild indextlist with the extra columns. */
+					if (missing_pk_count > 0)
+					{
+						int			new_ncols = ncolumns + missing_pk_count;
+
+						info->indexkeys = (int *)
+							repalloc(info->indexkeys, sizeof(int) * new_ncols);
+						info->canreturn = (bool *)
+							repalloc(info->canreturn, sizeof(bool) * new_ncols);
+
+						for (int j = 0; j < missing_pk_count; j++)
+						{
+							info->indexkeys[ncolumns + j] = missing_pk_attnums[j];
+							info->canreturn[ncolumns + j] = true;
+						}
+
+						info->ncolumns = new_ncols;
+						info->yb_num_decoded_pk_cols = missing_pk_count;
+						info->indextlist = build_index_tlist(root, info, relation);
+					}
+				}
+			}
+
 			info->indrestrictinfo = NIL;	/* set later, in indxpath.c */
 			info->predOK = false;	/* set later, in indxpath.c */
 			info->unique = index->indisunique;
@@ -460,6 +534,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				/* For other index types, just set it to "unknown" for now */
 				info->tree_height = -1;
 			}
+
+			if (IsYugaByteEnabled())
+				info->ybIndexName = pstrdup(RelationGetRelationName(indexRelation));
 
 			index_close(indexRelation, NoLock);
 

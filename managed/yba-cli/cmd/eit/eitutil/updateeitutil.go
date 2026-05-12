@@ -26,7 +26,7 @@ func UpdateEITValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -50,16 +50,14 @@ func GetEITConfig(
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
 		callSite := "EIT"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, callSite, "Update - Get Certificates")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Update - Get Certificates")
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				if certType != "" {
@@ -76,7 +74,7 @@ func GetEITConfig(
 
 	if len(r) < 1 {
 		errMessage := ""
-		if len(strings.TrimSpace(certType)) == 0 {
+		if util.IsEmptyString(certType) {
 			errMessage = fmt.Sprintf("No configurations with name: %s found\n", eitName)
 		} else {
 			errMessage = fmt.Sprintf(
@@ -101,8 +99,7 @@ func UpdateEITUtil(
 
 	rUpdate, response, err := authAPI.EditCertificate(eitUUID).Certificate(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Update")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Update")
 	}
 
 	if !rUpdate.GetSuccess() {
@@ -118,9 +115,7 @@ func UpdateEITUtil(
 
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"EIT", "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "EIT", "List")
 	}
 
 	var r []ybaclient.CertificateInfoExt

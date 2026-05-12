@@ -46,7 +46,6 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "executor/yb_fdw.h"
 #include "pg_yb_utils.h"
 
 
@@ -462,16 +461,10 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation))
-		{
-			/* Get the custom YB FDW directly */
-			fdwroutine = (FdwRoutine *) yb_fdw_handler();
-		}
-		else
-		{
-			/* Get the info by consulting the catalogs and the FDW code */
-			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
-		}
+		Assert(!IsYBRelation(relation));
+
+		/* Get the info by consulting the catalogs and the FDW code */
+		fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 
 		/* Save the data for later reuse in CacheMemoryContext */
 		cfdwroutine = (FdwRoutine *) MemoryContextAlloc(CacheMemoryContext,

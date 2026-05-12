@@ -226,13 +226,14 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 							 bool bitmapindex)
 {
 	ListCell   *lc;
+	int			ncols = indexinfo->ncolumns - indexinfo->yb_num_decoded_pk_cols;
 
 	foreach(lc, colrefs)
 	{
 		bool		found = false;
 		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
 
-		for (int i = 0; i < indexinfo->ncolumns; i++)
+		for (int i = 0; i < ncols; i++)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
@@ -310,7 +311,8 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 							IndexOptInfo *indexinfo, bool bitmapindex,
 							List **local_quals, List **rel_remote_quals,
 							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs, Oid relid)
+							List **idx_colrefs, Oid relid,
+							Bitmapset *non_pushable_attnums)
 {
 	ListCell   *lc;
 
@@ -331,6 +333,28 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		 * outer references replaced with Params.
 		 */
 		Assert(!ri->yb_pushable || pushable);
+
+		/*
+		 * If the filter clause involves a decoded PK
+		 * column, disable pushdown.
+		 */
+		if (pushable && non_pushable_attnums)
+		{
+			ListCell   *lc2;
+
+			foreach(lc2, colrefs)
+			{
+				YbExprColrefDesc *colref =
+					castNode(YbExprColrefDesc, lfirst(lc2));
+
+				if (bms_is_member(colref->attno, non_pushable_attnums))
+				{
+					pushable = false;
+					break;
+				}
+			}
+		}
+
 		if (!pushable)
 			*local_quals = lappend(*local_quals, ri->clause);
 		/*
@@ -571,7 +595,7 @@ YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 	headers[0] = '-';
 	headers[1] = '\t';
 	prev_len = 2;				/* for '-\t' chars */
-	for (int j = 0; j < nentities; j++)
+	for (int j = 0; j < nfields; j++)
 	{
 		AttrNumber	attnum = affected_entities->col_info_list[j].attnum;
 
@@ -858,9 +882,10 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 								  skip_entities);
 	}
 
+	List *index_list = RelationGetIndexList(rel);
 	ListCell   *lc = NULL;
 
-	foreach(lc, rel->rd_indexlist)
+	foreach(lc, index_list)
 	{
 		Oid			index_oid = lfirst_oid(lc);
 
@@ -897,20 +922,19 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		 * over the respective expression trees. It is possible that the
 		 * expression or predicate isn't applicable to this update, but the cost
 		 * of validating that will be prohibitively expensive.
+		 * Note: It is not guaranteed that indexDesc will contain the expression
+		 * trees at this point. Therefore, the NULL values of rd_indpred or
+		 * rd_indexprs cannot be relied upon. Instead, directly lookup the
+		 * pg_index entry of the index which should have been cached by now.
+		 * This is done in YbComputeIndexExprOrPredicateAttrs().
 		 */
 		Bitmapset  *extraattrs = NULL;
 
-		if (indexDesc->rd_indpred)
-		{
-			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
-											   Anum_pg_index_indpred, offset);
-		}
+		YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
+										   Anum_pg_index_indpred, offset);
 
-		if (indexDesc->rd_indexprs)
-		{
-			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
-											   Anum_pg_index_indexprs, offset);
-		}
+		YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
+										   Anum_pg_index_indexprs, offset);
 
 		if (extraattrs)
 		{

@@ -44,10 +44,7 @@ var updateReleaseCmd = &cobra.Command{
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "Release", "Create - List Releases")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Create - List Releases")
 		}
 
 		requestedReleaseList := make([]ybaclient.ResponseRelease, 0)
@@ -72,7 +69,7 @@ var updateReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(state)) != 0 {
+		if !util.IsEmptyString(state) {
 			if strings.Compare(strings.ToUpper(state), requestedRelease.GetState()) != 0 {
 				logrus.Fatal(
 					formatter.Colorize(
@@ -92,7 +89,7 @@ var updateReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tag)) != 0 {
+		if !util.IsEmptyString(tag) {
 			logrus.Debug("Updating tag")
 			requestedRelease.SetReleaseTag(tag)
 		}
@@ -110,7 +107,7 @@ var updateReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(notes)) != 0 {
+		if !util.IsEmptyString(notes) {
 			logrus.Debug("Updating notes")
 			requestedRelease.SetReleaseNotes(notes)
 		}
@@ -125,8 +122,7 @@ var updateReleaseCmd = &cobra.Command{
 		rUpdate, response, err := authAPI.UpdateNewRelease(
 			requestedRelease.GetReleaseUuid()).Release(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Update")
 		}
 
 		if !rUpdate.GetSuccess() {
@@ -142,17 +138,16 @@ var updateReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(requestedRelease.GetReleaseUuid()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release",
-				"Update - Get Release",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Update - Get Release")
 		}
 
-		r := make([]ybaclient.ResponseRelease, 0)
-		r = append(r, rGet)
+		r := util.CheckAndAppend(
+			make([]ybaclient.ResponseRelease, 0),
+			rGet,
+			fmt.Sprintf("An error occurred while updating YugabyteDB version %s (%s)",
+				version,
+				requestedRelease.GetReleaseUuid()),
+		)
 
 		releaseCtx := formatter.Context{
 			Command: "update",

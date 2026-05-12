@@ -14,7 +14,6 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -44,13 +43,10 @@ public class CreateTable extends AbstractTaskBase {
   private static final long RETRY_DELAY_SEC = 30;
   private static final long MIN_RETRY_COUNT = 3;
   private static final long TOTAL_ATTEMPTS_DURATION_SEC = TimeUnit.MINUTES.toSeconds(10);
-  private final NodeUniverseManager nodeUniverseManager;
 
   @Inject
-  protected CreateTable(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected CreateTable(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   // Parameters for create table task.

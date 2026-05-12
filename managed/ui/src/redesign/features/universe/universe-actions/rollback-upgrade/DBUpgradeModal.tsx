@@ -53,11 +53,11 @@ import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 
 //icons
-import BulbIcon from '../../../../assets/bulb.svg';
-import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
-import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
-import WarningIcon from '../../../../assets/warning-triangle.svg';
-import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
+import BulbIcon from '../../../../assets/bulb.svg?img';
+import ExclamationIcon from '../../../../assets/exclamation-traingle.svg?img';
+import UpgradeArrow from '../../../../assets/upgrade-arrow.svg';
+import WarningIcon from '../../../../assets/warning-triangle.svg?img';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg?img';
 
 interface DBUpgradeModalProps {
   open: boolean;
@@ -139,11 +139,17 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
     universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
 
-  const { data: pitrConfig } = useQuery(['pitrConfig', universeUUID], () => getPITRConfigs(universeUUID), { enabled: open });
+  const { data: pitrConfig } = useQuery(
+    ['pitrConfig', universeUUID],
+    () => getPITRConfigs(universeUUID),
+    { enabled: open }
+  );
 
   const hasPITRConfig = pitrConfig?.length > 0;
 
-  const hasXclusterDR = universeData?.drConfigUuidsAsSource?.length > 0 || universeData?.drConfigUuidsAsTarget?.length > 0;
+  const hasXclusterDR =
+    universeData?.drConfigUuidsAsSource?.length > 0 ||
+    universeData?.drConfigUuidsAsTarget?.length > 0;
 
   const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
@@ -232,8 +238,9 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     ...versionsAboveCurrent.map((e: any) => ({
       version: e,
       info: releases[e],
-      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${isVersionStable(e) ? '(Stable)' : '(Preview)'
-        }`
+      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
+        isVersionStable(e) ? '(Stable)' : '(Preview)'
+      }`
     }))
   ];
 
@@ -605,18 +612,18 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                 suppressFormatError: true
               }
             }) >= 0 && (
-                <Box className={classes.greyFooter}>
-                  <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
-                  <Box ml={0.5} mt={0.5}>
-                    <Typography variant="body2">
-                      {t('universeActions.dbRollbackUpgrade.footerMsg1')}
-                      <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
-                      {t('universeActions.dbRollbackUpgrade.footerMsg2')}
-                      <div>{t('universeActions.dbRollbackUpgrade.footerMsg3')}</div>
-                    </Typography>
-                  </Box>
+              <Box className={classes.greyFooter}>
+                <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
+                <Box ml={0.5} mt={0.5}>
+                  <Typography variant="body2">
+                    {t('universeActions.dbRollbackUpgrade.footerMsg1')}
+                    <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
+                    {t('universeActions.dbRollbackUpgrade.footerMsg2')}
+                    <div>{t('universeActions.dbRollbackUpgrade.footerMsg3')}</div>
+                  </Typography>
                 </Box>
-              )}
+              </Box>
+            )}
             {universeHasXcluster && (
               <Box className={classes.xclusterBanner}>
                 <Box display="flex" mr={1}>
@@ -634,39 +641,33 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                 </Box>
               </Box>
             )}
-            {
-              (hasXclusterDR || hasPITRConfig) && (
-                <Box className={clsx(classes.xclusterBanner, classes.pitrBanner)}>
-                  <Box display="flex" mr={1}>
-                    <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
-                  </Box>
-                  <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
-                    {
-                      hasPITRConfig && (
-                        <span>
-                          <Trans
-                            i18nKey="universeActions.dbRollbackUpgrade.pitrNotSupported"
-                            components={{ b: <b /> }}
-                          />
-                        </span>
-                      )
-                    }
-                    {
-                      hasXclusterDR && (
-                        <Box display="flex" mt={hasPITRConfig ? 1 : 0}>
-                          <span>
-                            <Trans
-                              i18nKey="universeActions.dbRollbackUpgrade.xClusterWarning2"
-                              components={{ b: <b /> }}
-                            />
-                          </span>
-                        </Box>
-                      )
-                    }
-                  </Box>
+            {(hasXclusterDR || hasPITRConfig) && (
+              <Box className={clsx(classes.xclusterBanner, classes.pitrBanner)}>
+                <Box display="flex" mr={1}>
+                  <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
                 </Box>
-              )
-            }
+                <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
+                  {hasPITRConfig && (
+                    <span>
+                      <Trans
+                        i18nKey="universeActions.dbRollbackUpgrade.pitrNotSupported"
+                        components={{ b: <b /> }}
+                      />
+                    </span>
+                  )}
+                  {hasXclusterDR && (
+                    <Box display="flex" mt={hasPITRConfig ? 1 : 0}>
+                      <span>
+                        <Trans
+                          i18nKey="universeActions.dbRollbackUpgrade.xClusterWarning2"
+                          components={{ b: <b /> }}
+                        />
+                      </span>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            )}
           </Box>
         </Box>
       </FormProvider>

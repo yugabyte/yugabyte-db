@@ -13,8 +13,10 @@
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
+import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import com.yugabyte.core.TransactionState;
 import com.yugabyte.util.PSQLException;
 import com.yugabyte.util.PSQLState;
@@ -23,7 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
-import org.yb.YBTestRunner;
+import org.yb.YBParameterizedTestRunner;
 
 import java.sql.Array;
 import java.sql.Connection;
@@ -47,10 +49,25 @@ import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgTransactions extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
+  private final boolean objectLockingEnabled;
+  private final boolean concurrentDDLEnabled;
+
+  public TestPgTransactions(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
+    this.objectLockingEnabled = objectLockingEnabled;
+    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  }
+
+  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  public static List<Object[]> parameters() {
+    return Arrays.asList(
+        new Object[]{false, false},
+        new Object[]{true, false},
+        new Object[]{true, true});
+  }
 
   private static boolean isYBTransactionError(PSQLException ex) {
     // TODO: Refactor the function to check for specific error codes instead of checking multiple
@@ -82,6 +99,10 @@ public class TestPgTransactions extends BasePgSQLTest {
     appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
     // Auto Analyze makes testSerializableReadDelayWrite time out on a few build.
     flags.put("ysql_enable_auto_analyze", "false");
+    flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
+    flags.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
+    flags.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
     return flags;
   }
 
@@ -197,11 +218,15 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testSnapshotReadDelayWrite() throws Exception {
+    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
+                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.REPEATABLE_READ);
   }
 
   @Test
   public void testSerializableReadDelayWrite() throws Exception {
+    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
+                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.SERIALIZABLE);
   }
 
@@ -1307,5 +1332,65 @@ public class TestPgTransactions extends BasePgSQLTest {
     );
 
     restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  // Test for #30739.
+  @Test
+  public void testCatalogSnapshotDoesNotCorruptReadPoint() throws Exception {
+    Assume.assumeFalse("This test requires concurrent DDL to be off", concurrentDDLEnabled);
+
+    try (Statement setup = connection.createStatement()) {
+      setup.execute("CREATE TYPE test_mood AS ENUM ('sad', 'ok', 'happy')");
+      setup.execute("CREATE TABLE test (id INT PRIMARY KEY, val INT, " +
+                    "m test_mood DEFAULT 'happy')");
+      setup.execute("INSERT INTO test VALUES (1, 0, 'happy')");
+    }
+
+    AtomicBoolean stop = new AtomicBoolean(false);
+    AtomicBoolean writerFailed = new AtomicBoolean(false);
+
+    Thread writer = new Thread(() -> {
+      try (Connection wConn = getConnectionBuilder().connect();
+           Statement wStmt = wConn.createStatement()) {
+        int i = 0;
+        while (!stop.get()) {
+          wStmt.execute(
+            String.format("UPDATE test SET val = %d WHERE id = 1", ++i));
+        }
+      } catch (Exception e) {
+        LOG.error("Writer thread failed", e);
+        writerFailed.set(true);
+      }
+    });
+    writer.start();
+
+    try {
+      try (Connection rConn = getConnectionBuilder().connect();
+           Statement rStmt = rConn.createStatement()) {
+        for (int attempt = 0; attempt < 20; attempt++) {
+          ResultSet rs = rStmt.executeQuery(
+              "SELECT t.val AS val_before, " +
+              "       (SELECT val FROM test WHERE id = t.id) AS val_after " +
+              "FROM test t " +
+              "WHERE t.id = 1 " +
+              "  AND pg_sleep(1) IS NOT NULL " +
+              "  AND enum_range(t.m) IS NOT NULL");
+          assertTrue(rs.next());
+          int valBefore = rs.getInt("val_before");
+          int valAfter = rs.getInt("val_after");
+          LOG.info("Attempt " + attempt + ": val_before=" + valBefore +
+                   ", val_after=" + valAfter);
+          assertEquals(
+              "Read point corrupted by GetCatalogSnapshot mid-statement: " +
+              "val_before=" + valBefore + " val_after=" + valAfter,
+              valBefore, valAfter);
+        }
+      }
+    } finally {
+      stop.set(true);
+      writer.join(5000);
+    }
+
+    assertFalse("Writer thread failed unexpectedly", writerFailed.get());
   }
 }

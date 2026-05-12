@@ -7,8 +7,6 @@ export { default as YBPanelItem } from './YBPanelItem/YBPanelItem';
 export { default as YBWidget } from './YBWidget/YBWidget';
 export { default as YBTabsPanel } from './YBTabsPanel/YBTabsPanel';
 export { default as YBTabsWithLinksPanel } from './YBTabsPanel/YBTabsWithLinksPanel';
-export { default as UniverseInfoPanel } from './UniverseInfoPanel/UniverseInfoPanel';
-export { default as UniverseInfoPanelContainer } from './UniverseInfoPanel/UniverseInfoPanelContainer';
 export { default as ConnectStringPanel } from './ConnectStringPanel/ConnectStringPanel';
 export { default as ResourceStringPanel } from './ResourceStringPanel/ResourceStringPanel';
 export { default as ResourceStringPanelContainer } from './ResourceStringPanel/ResourceStringPanelContainer';

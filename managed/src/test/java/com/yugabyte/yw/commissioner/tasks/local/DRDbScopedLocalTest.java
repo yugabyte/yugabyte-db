@@ -122,7 +122,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     userIntent.replicationFactor = replicationFactor;
 
     // Set to use new db version for master/tserver.
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    Provider provider = Util.getSingleProvider(userIntent);
     LocalCloudInfo localCloudInfo = provider.getDetails().getCloudInfo().getLocal();
     localCloudInfo.setYugabyteBinDir(ybBinPath);
     provider.update();

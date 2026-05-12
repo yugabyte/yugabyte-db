@@ -24,11 +24,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -72,7 +72,12 @@ public class MultiTableBackup extends UniverseTaskBase {
   @ApiModel(value = "MultiTableBackupParams", description = "Multi-table backup parameters")
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
-    public List<UUID> tableUUIDList = new ArrayList<>();
+
+    public Params() {
+      super();
+      // FIXME: Remove this once the references are fixed.
+      tableUUIDList = new ArrayList<>();
+    }
   }
 
   public Params params() {
@@ -88,10 +93,10 @@ public class MultiTableBackup extends UniverseTaskBase {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
 
@@ -238,15 +243,15 @@ public class MultiTableBackup extends UniverseTaskBase {
         // Clear previous subtasks if any.
         getRunnableTask().reset();
 
-        if (cloudType != CloudType.kubernetes) {
-          // Ansible Configure Task for copying xxhsum binaries from
-          // third_party directory to the DB nodes.
-          installThirdPartyPackagesTask(universe)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
-        } else {
+        if (isK8s) {
           installThirdPartyPackagesTaskK8s(
                   universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        } else {
+          // Skip the backup tools installation as it depends on the removed ansible dependency
+          log.warn(
+              "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                  + " installed");
         }
 
         if (params().alterLoadBalancer) {
@@ -330,7 +335,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
 
         if (params().actionType == ActionType.CREATE) {
-          BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
           metricService.setOkStatusMetric(
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
@@ -349,7 +354,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
       if (params().actionType == ActionType.CREATE) {
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        BACKUP_FAILURE_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
@@ -446,7 +451,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     }
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
@@ -456,7 +461,9 @@ public class MultiTableBackup extends UniverseTaskBase {
       if (shouldTakeBackup) {
         schedule.updateBacklogStatus(true);
         log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
-        SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        SCHEDULED_BACKUP_FAILURE_COUNTER
+            .labelValues(metricLabelsBuilder.getPrometheusValues())
+            .inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
@@ -490,7 +497,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         taskUUID,
         taskParams.getUniverseUUID(),
         universe.getName());
-    SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
   }

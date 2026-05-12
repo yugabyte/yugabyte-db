@@ -1,0 +1,71 @@
+in_memory:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+regular_check:
+SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [])
+
+intent_write:
+Wrote 5 key/value pairs to kIntents RocksDB:
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { days: 0 time: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
+ 2. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) { 11: "a" }
+ 4. PutCF: SubDocKey(DocKey(ColocationId=20000, [], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+in_memory:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kWeakRead, kWeakWrite, kStrongRead]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [ColumnId(11)]), [kStrongRead, kStrongWrite]}
+
+
+regular_check:
+SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [])
+
+regular_check:
+SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [ColumnId(11)])
+
+intent_write:
+Wrote 8 key/value pairs to kIntents RocksDB:
+ 1. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [ColumnId(11)]) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(1) "b"
+ 3. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(2) null
+ 5. PutCF: SubDocKey(DocKey(ColocationId=20000, [], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+ 7. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+in_memory:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey(ColocationId=20000, [], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+regular_check:
+SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [])
+
+intent_write:
+Wrote 4 key/value pairs to kIntents RocksDB:
+ 1. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), []) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(3) DEL
+ 3. PutCF: SubDocKey(DocKey(ColocationId=20000, [], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+regular_write:
+Wrote 3 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [HT{ days: 0 time: 0 }]) => { 11: "a" }
+ 2. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [ColumnId(11); HT{ days: 0 time: 0 }]) => "b"
+ 3. PutCF: SubDocKey(DocKey(ColocationId=20000, [], ["1"]), [HT{ days: 0 time: 0 }]) => DEL
+
+

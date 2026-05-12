@@ -27,8 +27,7 @@ public class TestPgRegressPgStatStatements extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT,
-                isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/contrib/pg_stat_statements"),
                      "yb_schedule");

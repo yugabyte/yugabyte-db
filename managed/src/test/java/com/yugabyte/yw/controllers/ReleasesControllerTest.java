@@ -124,6 +124,42 @@ public class ReleasesControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateReleaseKubernetes_StringArchitecture() {
+    String url = String.format("/api/customers/%s/ybdb_release", defaultCustomer.getUuid());
+    ObjectNode jsonBody = Json.newObject();
+    UUID r1UUID = UUID.randomUUID();
+    jsonBody.put("release_uuid", r1UUID.toString());
+    jsonBody.put("version", "2.21.1.0");
+    jsonBody.put("yb_type", "YBDB");
+    jsonBody.put("release_type", "LTS");
+    ArrayNode jArtifacts = Json.newArray();
+    ObjectNode jArtifact = Json.newObject();
+    jArtifact.put("package_url", "http://download.yugabyte.com/my_release.tgz");
+    jArtifact.put("platform", ReleaseArtifact.Platform.KUBERNETES.toString());
+    jArtifact.put("architecture", "");
+    jArtifact.put("sha256", "1234asdf");
+    jArtifacts.add(jArtifact);
+    jsonBody.set("artifacts", jArtifacts);
+    Result result = doPostRequest(url, jsonBody);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertTrue(r1UUID.equals(UUID.fromString(resultJson.get("resourceUUID").asText())));
+
+    Release foundRelease = Release.get(r1UUID);
+    assertNotNull(foundRelease);
+    assertEquals("2.21.1.0", foundRelease.getVersion());
+    assertEquals("YBDB", foundRelease.getYb_type().toString());
+    assertEquals("LTS", foundRelease.getReleaseType());
+    List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
+    assertEquals(1, artifacts.size());
+    assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
+    assertEquals(ReleaseArtifact.Platform.KUBERNETES, artifacts.get(0).getPlatform());
+    assertNull(artifacts.get(0).getArchitecture());
+  }
+
+  @Test
   public void testListRelease() {
     when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
@@ -250,6 +286,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
     Result result = doGetRequest(url);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
+    System.out.println("resultJson: " + resultJson);
     assertEquals(r1.getVersion(), resultJson.get("version").asText());
     assertEquals(r1.getReleaseUUID().toString(), resultJson.get("release_uuid").asText());
     JsonNode artifacts = resultJson.get("artifacts");
@@ -348,6 +385,9 @@ public class ReleasesControllerTest extends FakeDBApplication {
         String.format(
             "/api/customers/%s/ybdb_release/%s",
             defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+
+    // Two artifacts with the same platform+architecture both match the existing artifact;
+    // the second one's updates win.
     final ObjectNode jsonBody = Json.newObject();
     ArrayNode jArtifacts = Json.newArray();
     ObjectNode jArtifact = Json.newObject();
@@ -362,10 +402,13 @@ public class ReleasesControllerTest extends FakeDBApplication {
     jArtifact2.put("sha256", "new_sha256");
     jArtifacts.add(jArtifact2);
     jsonBody.set("artifacts", jArtifacts);
-    System.out.println("testing bad request");
-    Result result = assertPlatformException(() -> doPutRequest(url, jsonBody));
-    assertBadRequest(
-        result, "artifact matching platform LINUX and architecture x86_64 already exists");
+    Result result = doPutRequest(url, jsonBody);
+    assertOk(result);
+    ReleaseArtifact foundRA = ReleaseArtifact.get(ra1.getArtifactUUID());
+    assertEquals("new_sha256", foundRA.getSha256());
+    assertEquals("http://other.com", foundRA.getPackageURL());
+
+    // Adding a new artifact with a different architecture succeeds
     final ObjectNode jsonBody2 = Json.newObject();
     jArtifacts = Json.newArray();
     jArtifact = Json.newObject();
@@ -380,7 +423,6 @@ public class ReleasesControllerTest extends FakeDBApplication {
     jArtifact2.put("sha256", "new_sha256");
     jArtifacts.add(jArtifact2);
     jsonBody2.set("artifacts", jArtifacts);
-    System.out.println("testing good request");
     result = doPutRequest(url, jsonBody2);
     assertOk(result);
     List<ReleaseArtifact> artifacts = r1.getArtifacts();
@@ -397,6 +439,93 @@ public class ReleasesControllerTest extends FakeDBApplication {
     }
     assertTrue(foundOriginal);
     assertTrue(foundNew);
+  }
+
+  @Test
+  public void testUpdateArtifactMatchesByPlatformArchitecture() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    ReleaseArtifact ra1 =
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "http://old-url.com");
+    r1.addArtifact(ra1);
+    String url =
+        String.format(
+            "/api/customers/%s/ybdb_release/%s",
+            defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+    ObjectNode jsonBody = Json.newObject();
+    ArrayNode jArtifacts = Json.newArray();
+    ObjectNode jArtifact = Json.newObject();
+    jArtifact.put("package_url", "http://new-url.com");
+    jArtifact.put("platform", ReleaseArtifact.Platform.LINUX.toString());
+    jArtifact.put("architecture", Architecture.x86_64.toString());
+    jArtifact.put("sha256", "new_sha256");
+    jArtifacts.add(jArtifact);
+    jsonBody.set("artifacts", jArtifacts);
+    Result result = doPutRequest(url, jsonBody);
+    assertOk(result);
+    ReleaseArtifact foundRA = ReleaseArtifact.get(ra1.getArtifactUUID());
+    assertEquals("new_sha256", foundRA.getSha256());
+    assertEquals("http://new-url.com", foundRA.getPackageURL());
+    List<ReleaseArtifact> artifacts = r1.getArtifacts();
+    assertEquals(1, artifacts.size());
+  }
+
+  @Test
+  public void testUpdateArtifactPackageUrlByPlatformArchitectureKubernetes() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    ReleaseArtifact ra1 =
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.KUBERNETES, null, "http://old-k8s.com");
+    r1.addArtifact(ra1);
+    String url =
+        String.format(
+            "/api/customers/%s/ybdb_release/%s",
+            defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+    ObjectNode jsonBody = Json.newObject();
+    ArrayNode jArtifacts = Json.newArray();
+    ObjectNode jArtifact = Json.newObject();
+    jArtifact.put("package_url", "http://new-k8s.com");
+    jArtifact.put("platform", ReleaseArtifact.Platform.KUBERNETES.toString());
+    jArtifact.put("sha256", "k8s_sha256");
+    jArtifacts.add(jArtifact);
+    jsonBody.set("artifacts", jArtifacts);
+    Result result = doPutRequest(url, jsonBody);
+    assertOk(result);
+    ReleaseArtifact foundRA = ReleaseArtifact.get(ra1.getArtifactUUID());
+    assertEquals("k8s_sha256", foundRA.getSha256());
+    assertEquals("http://new-k8s.com", foundRA.getPackageURL());
+    List<ReleaseArtifact> artifacts = r1.getArtifacts();
+    assertEquals(1, artifacts.size());
+  }
+
+  @Test
+  public void testUpdateArtifactOnlyUrlChangePreservesArtifactIdentity() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    ReleaseArtifact ra1 =
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.aarch64, "http://original.com");
+    r1.addArtifact(ra1);
+    UUID originalArtifactUUID = ra1.getArtifactUUID();
+    String url =
+        String.format(
+            "/api/customers/%s/ybdb_release/%s",
+            defaultCustomer.getUuid(), r1.getReleaseUUID().toString());
+    ObjectNode jsonBody = Json.newObject();
+    ArrayNode jArtifacts = Json.newArray();
+    ObjectNode jArtifact = Json.newObject();
+    jArtifact.put("package_url", "http://replacement.com");
+    jArtifact.put("platform", ReleaseArtifact.Platform.LINUX.toString());
+    jArtifact.put("architecture", Architecture.aarch64.toString());
+    jArtifacts.add(jArtifact);
+    jsonBody.set("artifacts", jArtifacts);
+    Result result = doPutRequest(url, jsonBody);
+    assertOk(result);
+    ReleaseArtifact foundRA = ReleaseArtifact.get(originalArtifactUUID);
+    assertNotNull(foundRA);
+    assertEquals("http://replacement.com", foundRA.getPackageURL());
+    assertEquals(ReleaseArtifact.Platform.LINUX, foundRA.getPlatform());
+    assertEquals(Architecture.aarch64, foundRA.getArchitecture());
+    assertEquals("sha256", foundRA.getSha256());
   }
 
   @Test

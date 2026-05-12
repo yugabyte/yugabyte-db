@@ -41,10 +41,7 @@ ERROR:  function alt_func1(integer) is not an aggregate
 ALTER AGGREGATE alt_func1(int) OWNER TO regress_alter_generic_user3;  -- failed (not aggregate)
 ERROR:  function alt_func1(integer) is not an aggregate
 ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;  -- failed (not aggregate)
-ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
-LINE 1: ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
+ERROR:  function alt_func1(integer) is not an aggregate
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func2;  -- failed (name conflict)
 ERROR:  function alt_func2(integer) already exists in schema "alt_nsp1"
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func3;  -- OK
@@ -60,10 +57,6 @@ ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user2;  -- failed (
 ERROR:  must be member of role "regress_alter_generic_user2"
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- OK
 ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- OK
-ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
-LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 SET SESSION AUTHORIZATION regress_alter_generic_user2;
 CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 + 2';
@@ -75,7 +68,6 @@ CREATE AGGREGATE alt_agg1 (
 CREATE AGGREGATE alt_agg2 (
   sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = -100
 );
-ERROR:  function "alt_agg2" already exists with same argument types
 ALTER FUNCTION alt_func3(int) RENAME TO alt_func4;	-- failed (not owner)
 ERROR:  must be owner of function alt_func3
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func4;	-- OK
@@ -93,16 +85,11 @@ ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;   -- OK
 ALTER AGGREGATE alt_agg3(int) OWNER TO regress_alter_generic_user2;  -- failed (not owner)
 ERROR:  must be owner of function alt_agg3
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user3"
 ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;  -- failed (not owner)
-ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
-LINE 1: ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
+ERROR:  must be owner of function alt_agg3
 ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- failed (name conflict)
-ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
-LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
+ERROR:  function alt_agg2(integer) already exists in schema "alt_nsp2"
 RESET SESSION AUTHORIZATION;
 SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   FROM pg_proc p, pg_namespace n, pg_authid a
@@ -111,14 +98,15 @@ SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   ORDER BY nspname, proname;
  nspname  |  proname  | prorettype | prokind |           rolname           
 ----------+-----------+------------+---------+-----------------------------
- alt_nsp1 | alt_agg2  | integer    | a       | regress_alter_generic_user3
+ alt_nsp1 | alt_agg2  | integer    | a       | regress_alter_generic_user2
  alt_nsp1 | alt_agg3  | integer    | a       | regress_alter_generic_user1
  alt_nsp1 | alt_agg4  | integer    | a       | regress_alter_generic_user2
  alt_nsp1 | alt_func2 | integer    | f       | regress_alter_generic_user2
  alt_nsp1 | alt_func3 | integer    | f       | regress_alter_generic_user1
  alt_nsp1 | alt_func4 | integer    | f       | regress_alter_generic_user2
+ alt_nsp2 | alt_agg2  | integer    | a       | regress_alter_generic_user3
  alt_nsp2 | alt_func2 | integer    | f       | regress_alter_generic_user3
-(7 rows)
+(8 rows)
 
 --
 -- We would test collations here, but it's not possible because the error
@@ -739,8 +727,9 @@ drop cascades to text search parser alt_ts_prs3
 drop cascades to text search template alt_ts_temp2
 drop cascades to text search template alt_ts_temp3
 DROP SCHEMA alt_nsp2 CASCADE; -- YB: output different due to above commenting out
-NOTICE:  drop cascades to 7 other objects
-DETAIL:  drop cascades to function alt_nsp2.alt_func2(integer)
+NOTICE:  drop cascades to 8 other objects
+DETAIL:  drop cascades to function alt_nsp2.alt_agg2(integer)
+drop cascades to function alt_nsp2.alt_func2(integer)
 drop cascades to operator alt_nsp2.@-@(integer,integer)
 drop cascades to operator family alt_nsp2.alt_opf2 for access method hash
 drop cascades to text search configuration alt_nsp2.alt_ts_conf2

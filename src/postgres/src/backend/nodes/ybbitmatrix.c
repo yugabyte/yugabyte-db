@@ -104,14 +104,19 @@ YbBitMatrixSetRow(YbBitMatrix *matrix, int row_idx, bool value)
 	int			lower = row_idx * matrix->ncols;
 	int			upper = lower + matrix->ncols - 1;
 
+	if (value)
+	{
+		matrix->data = bms_add_range(matrix->data, lower, upper);
+		return;
+	}
+
 	/*
 	 * TODO(kramanathan): Optimize extra palloc in setting values to false.
 	 * This can be done be implementing a bms_del_range function.
 	 */
-	matrix->data = (value ?
-					bms_add_range(matrix->data, lower, upper) :
-					bms_del_members(matrix->data,
-									bms_add_range(NULL, lower, upper)));
+	Bitmapset  *deletion_range = bms_add_range(NULL, lower, upper);
+	matrix->data = bms_del_members(matrix->data, deletion_range);
+	bms_free(deletion_range);
 }
 
 /*

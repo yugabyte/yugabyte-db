@@ -16,7 +16,7 @@ import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { MAX_RELEASE_TAG_CHAR, MAX_RELEASE_VERSION_CHAR } from '../helpers/utils';
 
-import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
+import Delete from '../../../../redesign/assets/trashbin.svg';
 
 const DOCS_LINK = 'https://docs.yugabyte.com/preview/releases/yba-releases/';
 

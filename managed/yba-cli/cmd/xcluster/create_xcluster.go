@@ -54,7 +54,7 @@ var createXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 && !skipBootstrap {
+		if util.IsEmptyString(storageConfigNameFlag) && !skipBootstrap {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -72,8 +72,8 @@ var createXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 ||
-			len(strings.TrimSpace(targetUniName)) == 0 {
+		if util.IsEmptyString(sourceUniName) ||
+			util.IsEmptyString(targetUniName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source or target universe name\n", formatter.RedColor))
@@ -83,12 +83,12 @@ var createXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tableUUIDs)) == 0 {
+		if util.IsEmptyString(tableUUIDs) {
 			tableType, err := cmd.Flags().GetString("table-type")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(tableType)) == 0 {
+			if util.IsEmptyString(tableType) {
 				cmd.Help()
 				logrus.Fatalln(
 					formatter.Colorize(
@@ -142,12 +142,7 @@ var createXClusterCmd = &cobra.Command{
 				IncludeColocatedParentTables(true).
 				XClusterSupportedOnly(true).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"xCluster",
-					"Create - List Tables")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Create - List Tables")
 			}
 
 			tableTypeFlag, err := cmd.Flags().GetString("table-type")
@@ -226,9 +221,7 @@ var createXClusterCmd = &cobra.Command{
 			storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 			rStorageConfigList, response, err := storageConfigListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Backup", "Create - Get Storage Configuration")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup", "Create - Get Storage Configuration")
 			}
 
 			storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -274,7 +267,7 @@ var createXClusterCmd = &cobra.Command{
 					StorageConfigUUID: storageUUID,
 					Parallelism:       util.GetInt32Pointer(int32(parallelism)),
 				},
-				Tables:         util.StringSliceFromString(tableNeedBootstrapUUIDs),
+				Tables:         tableNeedBootstrapUUIDs,
 				AllowBootstrap: util.GetBoolPointer(allowBootstrap),
 			}
 		}
@@ -282,9 +275,10 @@ var createXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateXClusterConfig().
 			XclusterReplicationCreateFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Create")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf(
 			"The xcluster config %s between source universe %s (%s) "+
@@ -318,15 +312,22 @@ var createXClusterCmd = &cobra.Command{
 
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"xCluster",
-					"Create - Get xCluster")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Create - Get xCluster")
 			}
-			r := make([]ybaclient.XClusterConfigGetResp, 0)
-			r = append(r, rXCluster)
+
+			r := util.CheckAndAppend(
+				make([]ybaclient.XClusterConfigGetResp, 0),
+				rXCluster,
+				fmt.Sprintf(
+					"The xcluster config %s between source universe %s (%s) "+
+						"and target universe %s (%s) has not been created",
+					name,
+					sourceUniverse.GetName(),
+					sourceUniverseUUID,
+					targetUniverse.GetName(),
+					targetUniverseUUID,
+				),
+			)
 
 			xcluster.SourceUniverse = sourceUniverse
 			xcluster.TargetUniverse = targetUniverse
@@ -341,12 +342,13 @@ var createXClusterCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		task := util.CheckTaskAfterCreation(rTask)
 		taskCtx := formatter.Context{
 			Command: "create",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }

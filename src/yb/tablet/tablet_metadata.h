@@ -64,10 +64,9 @@
 
 namespace yb::tablet {
 
-using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+using TableInfoMap = UnorderedStringMap<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
-extern const std::string kSnapshotsDirName;
 
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
@@ -133,6 +132,7 @@ struct TableInfo {
             Primary primary,
             std::string table_id,
             std::string namespace_name,
+            NamespaceId namespace_id,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
@@ -183,7 +183,11 @@ struct TableInfo {
     return cotable_id.IsNil();
   }
 
+  bool IsVectorIndex() const;
   bool NeedVectorIndex() const;
+
+  MetricAttributeMap CreateMetricAttributeMap() const;
+  MetricEntityPtr CreateMetricEntity(MetricRegistry* registry) const;
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -326,8 +330,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const REQUIRES(data_mutex_);
+  Result<TableInfoPtr> GetTableInfo(TableIdView table_id) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(TableIdView table_id) const REQUIRES(data_mutex_);
 
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
@@ -368,7 +372,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   [[deprecated]]
   SchemaPtr schema(const TableId& table_id = "") const;
 
-  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
+  Result<std::shared_ptr<qlexpr::IndexMap>> index_map(const TableId& table_id = "") const;
 
   SchemaVersion primary_table_schema_version() const;
 
@@ -403,6 +407,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
+  std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -445,9 +450,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_cdc_sdk_replication() const;
 
-  Result<bool> SetAllCDCRetentionBarriers(
+  Status SetAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff, bool initial_retention_barrier);
+
+  std::string AllCDCRetentionBarriersToString() const EXCLUDES(data_mutex_);
 
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
@@ -546,6 +553,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> AddTable(
       const std::string& table_id,
       const std::string& namespace_name,
+      const NamespaceId& namespace_id,
       const std::string& table_name,
       const TableType table_type,
       const Schema& schema,
@@ -565,6 +573,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
   std::vector<TableInfoPtr> GetAllColocatedTableInfos() const;
+  std::vector<TableInfoPtr> GetAllColocatedVectorIndexes() const;
 
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
@@ -681,7 +690,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Return standard "T xxx P yyy" log prefix.
   const std::string& LogPrefix() const;
 
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
+  std::vector<TabletId> split_child_tablet_ids() const;
 
   OpId split_op_id() const;
 
@@ -689,7 +698,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // before performing such deletion.
   OpId GetOpIdToDeleteAfterAllApplied() const;
 
-  void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+  void SetSplitDone(const OpId& op_id, const std::vector<TabletId>& children);
 
   // Methods for handling clone requests that this tablet has applied.
   void MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no);
@@ -872,7 +881,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

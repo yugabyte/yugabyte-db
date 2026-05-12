@@ -1,4 +1,4 @@
--- collMod database command implementation for the Mongo wire protocol
+-- collMod database command implementation for the wire protocol
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.coll_mod(
     IN p_database_name text,
     IN p_collection_name text, 

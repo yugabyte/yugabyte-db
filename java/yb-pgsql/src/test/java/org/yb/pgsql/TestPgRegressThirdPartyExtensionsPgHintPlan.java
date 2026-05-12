@@ -40,6 +40,9 @@ public class TestPgRegressThirdPartyExtensionsPgHintPlan extends BasePgRegressTe
 
   @Test
   public void schedule() throws Exception {
+    // Connection Manager backend routing needs to be deterministic since the query_id warnings
+    // depend on the order in which backends get attached
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_hint_plan"),
                      "yb_schedule");

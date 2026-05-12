@@ -23,18 +23,15 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload;
 import com.yugabyte.yw.common.AppConfigHelper;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.diagnostics.SupportBundlePublisher;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
@@ -57,12 +54,9 @@ import play.libs.Json;
 @Abortable
 public class CreateSupportBundle extends AbstractTaskBase {
 
-  @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config staticConfig;
-  @Inject private NodeUniverseManager nodeUniverseManager;
-  @Inject RuntimeConfGetter confGetter;
   @Inject private SupportBundlePublisher supportBundlePublisher;
 
   private final OperatorStatusUpdater operatorStatusUpdater;

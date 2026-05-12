@@ -24,16 +24,14 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-using std::vector;
-
 namespace yb::dockv {
 
 namespace {
 
-template <class Factory>
+template <class Factory, class ColumnValuesPB>
 Result<std::vector<typename Factory::ResultType>> DoQLKeyColumnValuesToPrimitiveValues(
-    Factory& factory, const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
-    const Schema &schema, size_t column_idx, const size_t column_count) {
+    Factory& factory, const ColumnValuesPB& column_values,
+    const Schema &schema, size_t column_idx, size_t column_count) {
   std::vector<typename Factory::ResultType> result;
   for (const auto& column_value : column_values) {
     if (!schema.is_key_column(column_idx)) {
@@ -66,9 +64,26 @@ Result<KeyEntryValues> QLKeyColumnValuesToPrimitiveValues(
       factory, column_values, schema, column_idx, column_count);
 }
 
+Result<KeyEntryValues> QLKeyColumnValuesToPrimitiveValues(
+    const ArenaList<LWQLExpressionPB>& column_values,
+    const Schema& schema, size_t column_idx, size_t column_count) {
+  dockv::KeyEntryValueFactory factory;
+  return DoQLKeyColumnValuesToPrimitiveValues(
+      factory, column_values, schema, column_idx, column_count);
+}
+
 Result<std::vector<Slice>> QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
+    Arena& arena) {
+  dockv::KeyEntryValueAsSliceFactory factory{arena};
+  return DoQLKeyColumnValuesToPrimitiveValues(
+      factory, column_values, schema, column_idx, column_count);
+}
+
+Result<std::vector<Slice>> QLKeyColumnValuesToPrimitiveValues(
+    const ArenaList<LWQLExpressionPB>& column_values,
+    const Schema& schema, size_t column_idx, size_t column_count,
     Arena& arena) {
   dockv::KeyEntryValueAsSliceFactory factory{arena};
   return DoQLKeyColumnValuesToPrimitiveValues(

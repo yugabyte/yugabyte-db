@@ -48,23 +48,45 @@ bool CatalogEntityWithTasks::HasTasks(server::MonitoredTaskType type) const {
 }
 
 void CatalogEntityWithTasks::AddTask(server::MonitoredTaskPtr task) {
-  bool abort_task = false;
+  AddTaskInternal(task, /*allow_multiple_of_same_type=*/true);
+}
+
+bool CatalogEntityWithTasks::AddTaskIfNotPresent(server::MonitoredTaskPtr task) {
+  return AddTaskInternal(task, /*allow_multiple_of_same_type=*/false);
+}
+
+bool CatalogEntityWithTasks::AddTaskInternal(
+    server::MonitoredTaskPtr task, bool allow_multiple_of_same_type) {
+  Status status = Status::OK();
   {
     std::lock_guard l(mutex_);
-    if (!closing_) {
+    if (closing_) {
+      status = STATUS(Expired, "Table closing");
+    } else if (!allow_multiple_of_same_type) {
+      const auto task_type = task->type();
+      for (const auto& existing_task : pending_tasks_) {
+        if (existing_task->type() == task_type) {
+          status =
+              STATUS_FORMAT(InvalidArgument, "Task of type $0 already exists", task->type_name());
+          break;
+        }
+      }
+    }
+
+    if (status.ok()) {
       pending_tasks_.insert(task);
       if (tasks_tracker_) {
         tasks_tracker_->AddTask(task);
       }
-    } else {
-      abort_task = true;
     }
   }
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
-  if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"), /* call_task_finisher */ true);
+  if (!status.ok()) {
+    task->AbortAndReturnPrevState(status, /*call_task_finisher=*/true);
+    return false;
   }
+  return true;
 }
 
 bool CatalogEntityWithTasks::RemoveTask(const server::MonitoredTaskPtr& task) {

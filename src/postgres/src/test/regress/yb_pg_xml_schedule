@@ -1,0 +1,11 @@
+# src/test/regress/yb_pg_xml_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# XML-related tests.
+####################################################################################################
+# Dependency for xml
+test: yb.port.test_setup
+
+test: yb.port.xmlmap
+test: xml

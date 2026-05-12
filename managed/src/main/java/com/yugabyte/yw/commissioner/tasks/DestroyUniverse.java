@@ -131,6 +131,10 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      // Unregister universe from PA Collector if it was registered
+      createUnregisterUniverseFromPaCollectorTask(universe.getUniverseUUID())
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
       // cleanup the supportBundles if any
       deleteSupportBundle(universe.getUniverseUUID());
 
@@ -344,12 +348,13 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
       xClusterConfigs.forEach(
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
+            boolean hasPitrConfigs = !xClusterConfig.getPitrConfigs().isEmpty();
             createDeleteXClusterConfigSubtasks(
                 xClusterConfig,
                 false /* keepEntry */,
                 params().isForceDelete,
-                true /* deleteSourcePitrConfigs */,
-                true /* deleteTargetPitrConfigs */);
+                hasPitrConfigs /* deleteSourcePitrConfigs */,
+                hasPitrConfigs /* deleteTargetPitrConfigs */);
           });
 
       // When the last xCluster config associated with this DR config is deleted, the dr config

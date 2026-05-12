@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import atexit
 import time
 import errno
 import logging
@@ -14,6 +15,8 @@ import threading
 import re
 import random
 import string
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from enum import Enum
 # Stop event to signal the background thread to stop.:
 bg_thread_stop_event = threading.Event()
@@ -60,6 +63,10 @@ TSERVER_BINARY = "/home/yugabyte/bin/yb-tserver"
 CONTROLLER_BINARY = "/home/yugabyte/controller/bin/yb-controller-server"
 GFLAGS_TEMPLATE_FILE = "/opt/{}/conf/server.conf.template"
 GFLAGS_GENERATED_FILE = "/tmp/yugabyte/{}/conf/server.conf"
+CERT_MANAGER_DIR = "/home/yugabyte/cert-manager"
+ACTUAL_CERTS_DIR = "/mnt/disk0/certs"
+CERT_DIR_EVENTS_TO_WATCH = ['deleted', 'moved', 'created']
+DEFAULT_WATCHER_DEBOUNCE_SEC = 2.0
 
 
 class ProcessType(Enum):
@@ -280,13 +287,15 @@ def process_type(command):
         return ProcessType.Controller
 
 
-def parse_zone_from_flags():
+def parse_zone_from_flags(command):
     infile = GFLAGS_TEMPLATE_FILE.format(process_type(command).value)
+    zone = None
     with open(infile, 'r') as instream:
         content = instream.readlines()
         for line in content:
             if "--placement_zone" in line:
                 zone = line.split("=")[-1].strip()
+                break
     return zone
 
 
@@ -300,7 +309,7 @@ def set_exported_instance_env(command):
         else:
             pod_type = "yb-tserver"
         ordinal_index = os.getenv("HOSTNAME").split("-")[-1]
-        availability_zone = parse_zone_from_flags()
+        availability_zone = parse_zone_from_flags(command)
         # if we cannot find zone for some reason, we should just call it yb-tserver-0
         # in multi-zone deployments, we will have to format it like  yb-tserver-0_us-west1-ae
         if availability_zone.strip():
@@ -314,6 +323,167 @@ def set_exported_instance_env(command):
             e, traceback.format_exc()))
         # set it back to hostname in case there is an exception
         os.environ["EXPORTED_INSTANCE"] = os.getenv("HOSTNAME")
+
+
+class DirEventHandler(FileSystemEventHandler):
+
+    def __init__(self, callback, events_to_watch, callback_args=None,
+                 debounce_sec=DEFAULT_WATCHER_DEBOUNCE_SEC):
+        """
+        Args:
+            callback: Function to call when relevant events occur.
+            events_to_watch: List of event types to watch (e.g., ['deleted', 'moved', 'created']).
+            callback_args: Tuple of arguments to pass to the callback function.
+            debounce_sec: Seconds to wait before triggering callback after last event.
+        """
+        self.callback = callback
+        self.callback_args = callback_args or ()
+        self.debounce_sec = debounce_sec
+        self.events_to_watch = events_to_watch
+        self._timer = None
+        self._lock = threading.Lock()
+
+    def on_any_event(self, event):
+        if event.is_directory:
+            return
+        if event.event_type in self.events_to_watch:
+            self._debounced_callback()
+
+    def _debounced_callback(self):
+        with self._lock:
+            if self._timer:
+                self._timer.cancel()
+
+            self._timer = threading.Timer(
+                self.debounce_sec,
+                self._run_callback,
+            )
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _run_callback(self):
+        logging.info("Detected directory change, invoking callback")
+        try:
+            self.callback(*self.callback_args)
+        except Exception:
+            logging.exception("Callback failed")
+
+
+class DirWatcher:
+
+    def __init__(self, watch_dir, callback, events_to_watch, callback_args=None,
+                 debounce_sec=DEFAULT_WATCHER_DEBOUNCE_SEC, recursive=False):
+        """
+        Args:
+            watch_dir: Directory path to watch.
+            callback: Function to call when relevant events occur.
+            events_to_watch: List of event types to watch (e.g., ['deleted', 'moved', 'created']).
+            callback_args: Tuple of arguments to pass to the callback function.
+            debounce_sec: Seconds to wait before triggering callback after last event.
+            recursive: Whether to watch subdirectories recursively.
+        """
+        self.watch_dir = watch_dir
+        self.callback = callback
+        self.callback_args = callback_args or ()
+        self.debounce_sec = debounce_sec
+        self.events_to_watch = events_to_watch
+        self.recursive = recursive
+        self._observer = None
+
+    def start(self):
+        handler = DirEventHandler(
+            self.callback,
+            self.events_to_watch,
+            self.callback_args,
+            self.debounce_sec,
+        )
+
+        observer = Observer()
+        observer.schedule(
+            handler,
+            self.watch_dir,
+            recursive=self.recursive,
+        )
+        observer.start()
+        self._observer = observer
+        logging.info("Started directory watcher on %s", self.watch_dir)
+
+    def stop(self):
+        if self._observer:
+            logging.info("Stopping directory watcher on %s", self.watch_dir)
+            self._observer.stop()
+            self._observer.join()
+
+
+def start_cert_manager_watcher(server_fqdn):
+    watcher = DirWatcher(
+        watch_dir=CERT_MANAGER_DIR,
+        events_to_watch=CERT_DIR_EVENTS_TO_WATCH,
+        callback=reload_cert_manager_certs,
+        callback_args=(server_fqdn,),
+    )
+    watcher.start()
+    return watcher
+
+
+def reload_cert_manager_certs(server_fqdn):
+    try:
+        _copy_cert_manager_root_cert()
+        if _check_cert_manager_server_certs():
+            _copy_cert_manager_server_cert_and_key(server_fqdn)
+        else:
+            logging.error("Failed to verify tls certs, skipping copy")
+    except Exception as e:
+        logging.error("Error while reloading cert manager certs: {}, traceback: {}".format(
+            e, traceback.format_exc()))
+
+
+def _check_cert_manager_server_certs():
+    logging.info("Verifying cert manager server certs")
+    try:
+        result = subprocess.run(
+            [
+                "openssl", "verify",
+                "-CAfile", os.path.join(ACTUAL_CERTS_DIR, "ca.crt"),
+                "-untrusted", os.path.join(CERT_MANAGER_DIR, "tls.crt"),
+                os.path.join(CERT_MANAGER_DIR, "tls.crt"),
+            ],
+            capture_output=True,
+        )
+        return result.returncode == 0
+    except Exception as e:
+        logging.error("Error verifying certs: %s", e)
+        return False
+
+
+def _copy_cert_manager_root_cert():
+    src_cert_path = os.path.join(CERT_MANAGER_DIR, "ca.crt")
+    dst_cert_path = os.path.join(ACTUAL_CERTS_DIR, "ca.crt")
+    logging.info("Refreshing root cert")
+    shutil.copy(src_cert_path, dst_cert_path)
+    os.chmod(dst_cert_path, 0o600)
+
+
+def _copy_cert_manager_server_cert_and_key(server_fqdn):
+    src_cert_path = os.path.join(CERT_MANAGER_DIR, "tls.crt")
+    dst_cert_path = os.path.join(ACTUAL_CERTS_DIR, f"node.{server_fqdn}.crt")
+    logging.info("Refreshing server cert and key")
+    shutil.copy(src_cert_path, dst_cert_path)
+    dst_key_path = os.path.join(ACTUAL_CERTS_DIR, f"node.{server_fqdn}.key")
+    shutil.copy(os.path.join(CERT_MANAGER_DIR, "tls.key"), dst_key_path)
+    os.chmod(dst_cert_path, 0o600)
+    os.chmod(dst_key_path, 0o600)
+
+
+def get_server_fqdn():
+    fqdn = os.getenv("SERVER_FQDN")
+    if not fqdn:
+        logging.error("SERVER_FQDN environment variable must be set")
+        sys.exit(1)
+    return (
+        fqdn.replace("${HOSTNAME}", os.getenv("HOSTNAME", ""))
+        .replace("${NAMESPACE}", os.getenv("NAMESPACE", ""))
+    )
 
 
 if __name__ == "__main__":
@@ -350,6 +520,11 @@ if __name__ == "__main__":
         target=background_sub_env_gflags, args=(subs_env_gflags_interval, command))
     subs_env_gflags_thread.daemon = True
     subs_env_gflags_thread.start()
+
+    if os.getenv("CERT_MANAGER_ENABLED", "false").lower() == "true":
+        server_fqdn = get_server_fqdn()
+        cert_watcher = start_cert_manager_watcher(server_fqdn)
+        atexit.register(cert_watcher.stop)
     # Delete PG Unix Socket Lock files that can be left after a previous
     # ungraceful exit of the container.
     if process_type(command) is ProcessType.Tserver:

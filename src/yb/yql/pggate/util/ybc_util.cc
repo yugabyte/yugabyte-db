@@ -30,7 +30,10 @@
 
 #include "yb/gutil/stringprintf.h"
 
+#include "yb/tserver/tserver_cgroup_manager.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
@@ -48,6 +51,9 @@
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 namespace yb::pggate {
 
@@ -168,18 +174,14 @@ class StatusWrapper {
 
 YBPgErrorCode FetchErrorCode(YbcStatus s) {
   StatusWrapper wrapper(s);
-  const uint8_t* pg_err_ptr = wrapper->ErrorData(PgsqlErrorTag::kCategory);
-  // If we have PgsqlError explicitly set, we decode it
-  YBPgErrorCode result = pg_err_ptr != nullptr ? PgsqlErrorTag::Decode(pg_err_ptr)
-                                               : YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+  auto result = PgsqlError::ValueFromStatus(*wrapper).value_or(YBPgErrorCode::YB_PG_INTERNAL_ERROR);
 
   // If there's a schema version mismatch, we need to return the status code 40001.
   // When we get a schema version mismatch, DocDB will set the PgsqlResponsePB::RequestStatus
   // to PGSQL_STATUS_SCHEMA_VERSION_MISMATCH. Note that this is a separate field from the above
   // PgsqlErrorTag.
-  const uint8_t* pgsql_err_ptr = wrapper->ErrorData(PgsqlRequestStatusTag::kCategory);
-  if (PgsqlRequestStatusTag::Decode(pgsql_err_ptr) ==
-      PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
+  if (const auto pgsql_err = PgsqlRequestStatus::ValueFromStatus(*wrapper);
+      pgsql_err && *pgsql_err == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
     LOG_IF(DFATAL, result != YBPgErrorCode::YB_PG_INTERNAL_ERROR)
         << "Expected schema version mismatch error to be YB_PG_INTERNAL_ERROR, got "
         << ToString(result);
@@ -189,36 +191,33 @@ YBPgErrorCode FetchErrorCode(YbcStatus s) {
   // If the error is the default generic YB_PG_INTERNAL_ERROR (as we also set in AsyncRpc::Failed)
   // then we try to deduce it from a transaction error.
   if (result == YBPgErrorCode::YB_PG_INTERNAL_ERROR) {
-    const uint8_t* txn_err_ptr = wrapper->ErrorData(TransactionErrorTag::kCategory);
-    if (txn_err_ptr != nullptr) {
-      switch (TransactionErrorTag::Decode(txn_err_ptr)) {
-        case TransactionErrorCode::kNone:
-          break;
-        case TransactionErrorCode::kAborted:
-          result = YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
-          break;
-        case TransactionErrorCode::kReadRestartRequired:
-          result = YBPgErrorCode::YB_PG_YB_RESTART_READ;
-          break;
-        case TransactionErrorCode::kConflict:
-          result = YBPgErrorCode::YB_PG_YB_TXN_CONFLICT;
-          break;
-        case TransactionErrorCode::kSnapshotTooOld:
-          result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
-          break;
-        case TransactionErrorCode::kDeadlock:
-          result = YBPgErrorCode::YB_PG_YB_DEADLOCK;
-          break;
-        case TransactionErrorCode::kSkipLocking:
-          result = YBPgErrorCode::YB_PG_YB_TXN_SKIP_LOCKING;
-          break;
-        case TransactionErrorCode::kLockNotFound:
-          result = YBPgErrorCode::YB_PG_YB_TXN_LOCK_NOT_FOUND;
-          break;
-        default:
-          result = YBPgErrorCode::YB_PG_YB_TXN_ERROR;
-          break;
-      }
+    switch (TransactionError::ValueFromStatus(*wrapper).value_or(TransactionErrorCode::kNone)) {
+      case TransactionErrorCode::kNone:
+        break;
+      case TransactionErrorCode::kAborted:
+        result = YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
+        break;
+      case TransactionErrorCode::kReadRestartRequired:
+        result = YBPgErrorCode::YB_PG_YB_RESTART_READ;
+        break;
+      case TransactionErrorCode::kConflict:
+        result = YBPgErrorCode::YB_PG_YB_TXN_CONFLICT;
+        break;
+      case TransactionErrorCode::kSnapshotTooOld:
+        result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+        break;
+      case TransactionErrorCode::kDeadlock:
+        result = YBPgErrorCode::YB_PG_YB_DEADLOCK;
+        break;
+      case TransactionErrorCode::kSkipLocking:
+        result = YBPgErrorCode::YB_PG_YB_TXN_SKIP_LOCKING;
+        break;
+      case TransactionErrorCode::kLockNotFound:
+        result = YBPgErrorCode::YB_PG_YB_TXN_LOCK_NOT_FOUND;
+        break;
+      default:
+        result = YBPgErrorCode::YB_PG_YB_TXN_ERROR;
+        break;
     }
   }
   return result;
@@ -253,10 +252,6 @@ bool YBCStatusIsUnknownSession(YbcStatus s) {
   // However, since we are unable to distinguish between the two, we handle both cases identically.
   return StatusWrapper(s)->IsInvalidArgument() &&
          FetchErrorCode(s) == YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
-}
-
-bool YBCStatusIsDuplicateKey(YbcStatus s) {
-  return StatusWrapper(s)->IsAlreadyPresent();
 }
 
 bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
@@ -296,9 +291,8 @@ int YBCStatusLineNumber(YbcStatus s) {
 }
 
 const char* YBCStatusFuncname(YbcStatus s) {
-  const std::string funcname_str =
-    FuncNameTag::Decode(StatusWrapper(s)->ErrorData(FuncNameTag::kCategory));
-  return funcname_str.empty() ? nullptr : YBCPAllocStdString(funcname_str);
+  const auto funcname = FuncName::ValueFromStatus(*StatusWrapper(s));
+  return funcname ? YBCPAllocStdString(*funcname) : nullptr;
 }
 
 size_t YBCStatusMessageLen(YbcStatus s) {
@@ -318,20 +312,19 @@ const char* YBCMessageAsCString(YbcStatus s) {
 }
 
 unsigned int YBCStatusRelationOid(YbcStatus s) {
-  return RelationOidTag::Decode(StatusWrapper(s)->ErrorData(RelationOidTag::kCategory));
+  return RelationOid(*StatusWrapper(s)).value();
 }
 
 const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
   const char** result = nullptr;
-  const std::vector<std::string>& args = PgsqlMessageArgsTag::Decode(
-      StatusWrapper(s)->ErrorData(PgsqlMessageArgsTag::kCategory));
+  const auto args = PgsqlMessageArgs::ValueFromStatus(*StatusWrapper(s));
   if (nargs) {
-    *nargs = args.size();
+    *nargs = args ? args->size() : 0;
   }
-  if (!args.empty()) {
+  if (args && !args->empty()) {
     size_t i = 0;
-    result = static_cast<const char**>(YBCPAlloc(args.size() * sizeof(const char*)));
-    for (const std::string& arg : args) {
+    result = static_cast<const char**>(YBCPAlloc(args->size() * sizeof(const char*)));
+    for (const auto& arg : *args) {
       result[i++] = YBCPAllocStdString(arg);
     }
   }
@@ -340,10 +333,22 @@ const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
 
 YbcStatus YBCInit(const char* argv0,
                   YbcPallocFn palloc_fn,
-                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn) {
+                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn,
+                  YbcSwitchMemoryContextFn switch_mem_context_fn,
+                  YbcCreateMemoryContextFn create_mem_context_fn,
+                  YbcDeleteMemoryContextFn delete_mem_context_fn) {
   YBCSetPAllocFn(palloc_fn);
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
+  }
+  if (switch_mem_context_fn) {
+    YBCSetSwitchMemoryContextFn(switch_mem_context_fn);
+  }
+  if (create_mem_context_fn) {
+    YBCSetCreateMemoryContextFn(create_mem_context_fn);
+  }
+  if (delete_mem_context_fn) {
+    YBCSetDeleteMemoryContextFn(delete_mem_context_fn);
   }
   auto status = InitGFlags(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
@@ -889,12 +894,41 @@ void YBCUpdateInitPostgresMetrics() {
 
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+  return dockv::PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(slice);
 }
 
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
+  return CHECK_RESULT(
+      dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
+}
+
+bool YBCIsObjectLockingEnabled() {
+  return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+}
+
+bool YBCIsAutoAnalyzeEnabled() {
+  return FLAGS_ysql_enable_auto_analyze_infra && FLAGS_ysql_enable_auto_analyze;
+}
+
+void YBCSetupCgroups() {
+#ifdef __linux__
+  const char* initial_cgroup = getenv("YB_PG_INITIAL_CGROUP");
+  if (initial_cgroup) {
+    auto status = MoveProcessToCgroupPath(initial_cgroup);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to move to cgroup " << initial_cgroup << ": " << status;
+      return;
+    }
+  }
+  const char* cgroup_management = getenv("YB_PG_CGROUP_MANAGEMENT");
+  if (cgroup_management && atoi(cgroup_management)) {
+    auto status = SetupCgroupManagement(ClearChildCgroups::kFalse);
+    if (!status.ok()) {
+      LOG(FATAL) << "Failed to setup cgroups: " << status;
+    }
+  }
+#endif
 }
 
 } // extern "C"

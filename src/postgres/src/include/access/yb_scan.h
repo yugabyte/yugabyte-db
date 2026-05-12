@@ -39,6 +39,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
+extern bool yb_test_skip_binding_scan_keys;
+extern bool yb_enable_advanced_index_cond_fold;
 
 /*
  * In fact, only initial fetch uses the default size, we estimate the number
@@ -152,31 +154,21 @@ typedef struct YbScanDescData
 #define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2)	/* A pair of lower/upper
 												 * bounds per column max */
 
-	/*
-	 * Base of a scan descriptor - Currently it is used either by
-	 * postgres::heap or Yugabyte. It contains basic information that defines
-	 * a scan.
-	 * - Relation: Which table to scan.
-	 * - Keys: Scan conditions. In YB ScanKey could be one of two types:
-	 *   - key for regular column
-	 *   - key which represents the yb_hash_code function.
-	 * The keys array holds keys of both types. All regular keys go before keys
-	 * for yb_hash_code. Keys in range [0, nkeys) are regular keys. Keys in
-	 * range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code. Such
-	 * separation allows to process regular and non-regular keys independently.
-	 */
-	TableScanDescData rs_base;
-
 	/* The handle for the internal YB Select statement. */
 	YbcPgStatement handle;
 	bool		is_exec_done;
 
-	/* Secondary index used in this scan. */
+	/*
+	 * These fields are constant and initialized during YbBeginScan.
+	 * "table" is the table (not index).  It is set even for Index Only Scan.
+	 * "index" is the index, if applicable.  NULL otherwise.
+	 */
+	Relation	table;
 	Relation	index;
 
 	/*
 	 * ScanKey could be one of two types:
-	 *  - key which represents the yb_hash_code function.
+	 *  - key searching on DocDB hash code (aka yb_hash_code pushdown).
 	 *  - otherwise
 	 * hash_code_keys holds the first type; keys holds the second.
 	 */
@@ -184,18 +176,21 @@ typedef struct YbScanDescData
 	/* Number of elements in the above array. */
 	int			nkeys;
 	/*
-	 * List of ScanKey for keys which represent the yb_hash_code function.
+	 * List of ScanKey for keys with YB_SK_SEARCHHASHCODE (yb_hash_code
+	 * pushdown).  Remember, YB_SK_SEARCHHASHCODE is not set for all
+	 * yb_hash_code expressions!
+	 *
 	 * Prefer List over array because this is likely to have zero or a few
 	 * elements in most cases.
 	 */
 	List	   *hash_code_keys;
 
 	/*
-	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
-	 * could be false negatives: it could say false when they are in fact all
-	 * bound.
+	 * True if any type of recheck (YB or PG) is needed because not all scan
+	 * keys are bound.  There could be false positives: it could say true when
+	 * recheck is actually not needed.
 	 */
-	bool		all_ordinary_keys_bound;
+	bool		needs_recheck;
 
 	/* Destination for queried data from Yugabyte database */
 	TupleDesc	target_desc;
@@ -264,6 +259,15 @@ extern TableScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
+/*
+ * Begin a heap scan for index build/backfill that only fetches columns
+ * needed by the index (as defined in IndexInfo).
+ */
+extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
+														Snapshot snapshot,
+														struct IndexInfo *indexInfo);
+
+
 extern void YbBindDatumToColumn(YbcPgStatement stmt,
 								int attr_num,
 								Oid type_id,
@@ -294,24 +298,19 @@ extern void YbApplyPrimaryPushdown(YbcPgStatement dml,
 extern void YbApplySecondaryIndexPushdown(YbcPgStatement dml,
 										  const YbPushdownExprs *pushdown);
 
-/*
- * The ybc_idx API is used to process the following SELECT.
- *   SELECT data FROM heapRelation WHERE rowid IN
- *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
- */
-extern YbScanDesc ybcBeginScan(Relation relation,
-							   Relation index,
-							   bool xs_want_itup,
-							   int nkeys,
-							   ScanKey key,
-							   Scan *pg_scan_plan,
-							   YbPushdownExprs *rel_pushdown,
-							   YbPushdownExprs *idx_pushdown,
-							   List *aggrefs,
-							   int distinct_prefixlen,
-							   YbcPgExecParameters *exec_params,
-							   bool is_internal_scan,
-							   bool fetch_ybctids_only);
+extern YbScanDesc YbBeginScan(Relation table,
+							  Relation index,
+							  bool xs_want_itup,
+							  int nkeys,
+							  ScanKey keys,
+							  Scan *pg_scan_plan,
+							  YbPushdownExprs *rel_pushdown,
+							  YbPushdownExprs *idx_pushdown,
+							  List *aggrefs,
+							  int distinct_prefixlen,
+							  YbcPgExecParameters *exec_params,
+							  bool is_internal_scan,
+							  bool fetch_ybctids_only);
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
@@ -319,19 +318,18 @@ extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
 extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
 
 /*
- * Used in Agg node init phase to determine whether YB preliminary check or PG
- * recheck may be needed.
+ * Used in Agg node init phase to determine whether YB recheck or PG recheck
+ * may be needed.
  */
-extern bool YbPredetermineNeedsRecheck(Relation relation,
+extern bool YbPredetermineNeedsRecheck(Scan *scan,
+									   Relation relation,
 									   Relation index,
 									   bool xs_want_itup,
 									   ScanKey keys,
 									   int nkeys);
 
-extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir,
-									   bool *recheck);
-extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir,
-										 bool *recheck);
+extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir);
+extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir);
 extern bool ybc_getnext_aggslot(IndexScanDesc scan, YbcPgStatement handle,
 								bool index_only_scan);
 
@@ -363,6 +361,8 @@ extern Oid	ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
  */
 #define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
 
+extern void ybcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
+								 Oid foreigntableid);
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan,
 							bool is_uncovered_idx_scan, Cost *startup_cost,
@@ -393,6 +393,7 @@ typedef struct YbSampleData
 {
 	/* The handle for the internal YB Sample statement. */
 	YbcPgStatement handle;
+	YbcPgExecParameters exec_params;
 
 	Relation	relation;
 	int			targrows;		/* # of rows to collect */
@@ -411,6 +412,7 @@ extern int	ybParallelWorkers(double numrows);
 
 extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
+extern void yb_rescan_partition_key_data(void *data);
 extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 							  YbcPgExecParameters *exec_params,
 							  bool is_forward);

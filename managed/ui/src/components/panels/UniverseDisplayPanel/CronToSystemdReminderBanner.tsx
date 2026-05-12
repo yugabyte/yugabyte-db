@@ -3,7 +3,7 @@ import { Box, Collapse, makeStyles, Typography, useTheme } from '@material-ui/co
 import { Trans, useTranslation } from 'react-i18next';
 import { getStoredBooleanValue } from '../../../redesign/helpers/utils';
 
-import { ReactComponent as MegaphoneIcon } from '../../../redesign/assets/megaphone.svg';
+import MegaphoneIcon from '../../../redesign/assets/megaphone.svg';
 
 const useStyles = makeStyles((theme) => ({
   banner: {

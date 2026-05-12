@@ -25,13 +25,13 @@ SELECT documentdb_api.insert_one('db','test_coll','{"_id":"3", "a": { "$numberIn
 -- switch to the new user (user_2)
 SELECT current_user as original_user \gset
 ALTER TABLE documentdb_data.documents_11980 OWNER TO user_2;
-\c regression user_2
+\c - user_2
 
 -- should fail index creation
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_coll", "indexes": [ { "key" : { "a": 1 }, "name": "index_a"}] }', true);
 
 -- switch back to default user
-\c regression :original_user
+\c - :original_user
 ALTER TABLE documentdb_data.documents_11980 OWNER TO documentdb_admin_role;
 
 -- index creation should succeed

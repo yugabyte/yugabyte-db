@@ -25,8 +25,11 @@
 
 namespace yb::qlexpr {
 
-void SerializeValue(
-    const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
+namespace {
+
+template <class Value>
+void DoSerializeValue(
+    const std::shared_ptr<QLType>& ql_type, QLClient client, const Value& pb,
     WriteBuffer* buffer) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   if (IsNull(pb)) {
@@ -97,7 +100,7 @@ void SerializeValue(
     }
     case DataType::JSONB: {
       std::string json;
-      common::Jsonb jsonb(pb.jsonb_value());
+      common::Jsonb jsonb(AsString(pb.jsonb_value()));
       CHECK_OK(jsonb.ToJsonString(&json));
       CQLEncodeBytes(json, buffer);
       return;
@@ -117,22 +120,24 @@ void SerializeValue(
       return;
     }
     case DataType::MAP: {
-      const QLMapValuePB& map = pb.map_value();
+      const auto& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
       auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(map.keys_size());
       CQLEncodeLength(length, buffer);
       const auto& keys_type = ql_type->params()[0];
       const auto& values_type = ql_type->params()[1];
-      for (int i = 0; i < length; i++) {
-        SerializeValue(keys_type, client, map.keys(i), buffer);
-        SerializeValue(values_type, client, map.values(i), buffer);
+      auto key_it = map.keys().begin();
+      auto value_it = map.values().begin();
+      for (int i = 0; i < length; ++i, ++key_it, ++value_it) {
+        SerializeValue(keys_type, client, *key_it, buffer);
+        SerializeValue(values_type, client, *value_it, buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
     }
     case DataType::SET: {
-      const QLSeqValuePB& set = pb.set_value();
+      const auto& set = pb.set_value();
       auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
       CQLEncodeLength(length, buffer); // number of elements in collection
@@ -144,7 +149,7 @@ void SerializeValue(
       return;
     }
     case DataType::LIST: {
-      const QLSeqValuePB& list = pb.list_value();
+      const auto& list = pb.list_value();
       auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
       CQLEncodeLength(length, buffer);
@@ -157,18 +162,20 @@ void SerializeValue(
     }
 
     case DataType::USER_DEFINED_TYPE: {
-      const QLMapValuePB& map = pb.map_value();
+      const auto& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
       auto start_pos = CQLStartCollection(buffer);
 
       // For every field the UDT has, we try to find a corresponding map entry. If found we
       // serialize the value, else null. Map keys should always be in ascending order.
-      int key_idx = 0;
+      auto key_it = map.keys().begin();
+      auto value_it = map.values().begin();
       for (size_t i = 0; i < ql_type->udtype_field_names().size(); i++) {
-        if (key_idx < map.keys_size() &&
-            implicit_cast<size_t>(map.keys(key_idx).int16_value()) == i) {
-          SerializeValue(ql_type->param_type(i), client, map.values(key_idx), buffer);
-          key_idx++;
+        if (key_it != map.keys().end() &&
+            implicit_cast<size_t>(key_it->int16_value()) == i) {
+          SerializeValue(ql_type->param_type(i), client, *value_it, buffer);
+          ++key_it;
+          ++value_it;
         } else { // entry not found -> writing null
           CQLEncodeLength(-1, buffer);
         }
@@ -178,7 +185,7 @@ void SerializeValue(
       return;
     }
     case DataType::FROZEN: {
-      const QLSeqValuePB& frozen = pb.frozen_value();
+      const auto& frozen = pb.frozen_value();
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
         case DataType::MAP: {
@@ -188,9 +195,10 @@ void SerializeValue(
           CQLEncodeLength(length, buffer);
           const auto& keys_type = type->params()[0];
           const auto& values_type = type->params()[1];
+          auto elem_it = frozen.elems().begin();
           for (int i = 0; i < length; i++) {
-            SerializeValue(keys_type, client, frozen.elems(2 * i), buffer);
-            SerializeValue(values_type, client, frozen.elems(2 * i + 1), buffer);
+            SerializeValue(keys_type, client, *elem_it++, buffer);
+            SerializeValue(values_type, client, *elem_it++, buffer);
           }
           CQLFinishCollection(start_pos, buffer);
           return;
@@ -209,8 +217,10 @@ void SerializeValue(
         }
         case DataType::USER_DEFINED_TYPE: {
           auto start_pos = CQLStartCollection(buffer);
-          for (int i = 0; i < frozen.elems_size(); i++) {
-            SerializeValue(type->param_type(i), client, frozen.elems(i), buffer);
+          int i = 0;
+          for (const auto& elem : frozen.elems()) {
+            SerializeValue(type->param_type(i), client, elem, buffer);
+            ++i;
           }
           CQLFinishCollection(start_pos, buffer);
           return;
@@ -222,12 +232,13 @@ void SerializeValue(
       break;
     }
     case DataType::TUPLE: {
-      const QLSeqValuePB& tuple = pb.tuple_value();
+      const auto& tuple = pb.tuple_value();
       size_t num_elems = tuple.elems_size();
       DCHECK_EQ(num_elems, ql_type->params().size());
       auto start_pos = CQLStartCollection(buffer);
-      for (size_t i = 0; i < num_elems; i++) {
-        SerializeValue(ql_type->param_type(i), client, tuple.elems(static_cast<int>(i)), buffer);
+      auto elem_it = tuple.elems().begin();
+      for (size_t i = 0; i < num_elems; ++i, ++elem_it) {
+        SerializeValue(ql_type->param_type(i), client, *elem_it, buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
@@ -242,6 +253,20 @@ void SerializeValue(
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
+}
+
+} // namespace
+
+void SerializeValue(
+    const std::shared_ptr<QLType>& ql_type, QLClient client, const QLValuePB& pb,
+    WriteBuffer* buffer) {
+  DoSerializeValue(ql_type, client, pb, buffer);
+}
+
+void SerializeValue(
+    const std::shared_ptr<QLType>& ql_type, QLClient client, const LWQLValuePB& pb,
+    WriteBuffer* buffer) {
+  DoSerializeValue(ql_type, client, pb, buffer);
 }
 
 }  // namespace yb::qlexpr

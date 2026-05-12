@@ -236,9 +236,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
       Universe universe, List<NodeDetails> nodes, String newVersion) {
     createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());
     // Start yb-controller process and wait for it to get responsive.
-    createStartYbcProcessTasks(
-        new HashSet<>(nodes),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+    createStartYbcProcessTasks(new HashSet<>(nodes));
     createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
         .setSubTaskGroupType(getTaskSubGroupType());
   }

@@ -164,7 +164,7 @@ Replace the following:
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
-To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
+To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/develop/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
   </div>
 
@@ -224,7 +224,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [GUI clients](/preview/integrations/tools/).
+For information on using popular third-party tools with YugabyteDB, see [GUI clients](/stable/integrations/tools/).
 
 ## Run workloads
 

@@ -8,7 +8,6 @@ import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
-import { useSelector } from 'react-redux';
 import { AxiosError } from 'axios';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
@@ -18,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import {
   OptionProps,
   RadioGroupOrientation,
+  YBButton as YBRedesignedButton,
   YBInput,
   YBInputField,
   YBRadioGroupField,
@@ -58,6 +58,7 @@ import {
   getYBAHost
 } from '../../utils';
 import {
+  useIsProviderValidationEnabled,
   addItem,
   constructAccessKeysEditPayload,
   deleteItem,
@@ -67,7 +68,6 @@ import {
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
-import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
 import { QuickValidationErrorKeys } from './AWSProviderCreateForm';
 import { getInvalidFields, useValidationStyles } from './utils';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -76,7 +76,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -212,13 +212,15 @@ export const AWSProviderEditForm = ({
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
   const [isForceSubmitting, setIsForceSubmitting] = useState<boolean>(false);
-  const featureFlags = useSelector((state: any) => state.featureFlags);
   const [
     quickValidationErrors,
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
   const { t } = useTranslation();
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.aws
+  );
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<AWSProviderEditFormFieldValues>({
     defaultValues: defaultValues,
@@ -254,7 +256,8 @@ export const AWSProviderEditForm = ({
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
     customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
+    customerRuntimeConfigQuery.isIdle ||
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }
@@ -263,13 +266,13 @@ export const AWSProviderEditForm = ({
     error: Error | AxiosError<YBPStructuredError | YBPError>
   ) => {
     if (
-      featureFlags.test.enableAWSProviderValidation &&
+      isValidationEnabled &&
       isAxiosError<YBPStructuredError | YBPError>(error) &&
       isYBPBeanValidationError(error) &&
       error.response?.data.error
     ) {
       // Handle YBBeanValidationError
-      const { errorSource, ...validationErrors } = error.response?.data.error;
+      const { errorSource, ...validationErrors } = error.response?.data.error ?? {};
       const invalidFields = validationErrors ? getInvalidFields(validationErrors) : [];
       if (invalidFields) {
         setQuickValidationErrors(validationErrors ?? null);
@@ -328,9 +331,9 @@ export const AWSProviderEditForm = ({
   };
   const onFormValidateAndSubmit: SubmitHandler<AWSProviderEditFormFieldValues> = async (
     formValues
-  ) => onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
+  ) => onFormSubmit(formValues, isValidationEnabled);
   const onFormForceSubmit: SubmitHandler<AWSProviderEditFormFieldValues> = async (formValues) =>
-    onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
+    onFormSubmit(formValues, isValidationEnabled, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -779,7 +782,7 @@ export const AWSProviderEditForm = ({
                 />
               </FormField>
             </FieldGroup>
-            {!!featureFlags.test.enableAWSProviderValidation && !!quickValidationErrors && (
+            {isValidationEnabled && !!quickValidationErrors && (
               <YBBanner variant={YBBannerVariant.DANGER}>
                 <Typography variant="body1">Fields failed validation:</Typography>
                 <ul className={validationClasses.errorList}>
@@ -806,9 +809,7 @@ export const AWSProviderEditForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <SubmitInProgress
-                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
-              />
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
@@ -818,11 +819,7 @@ export const AWSProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText={
-                  featureFlags.test.enableAWSProviderValidation
-                    ? 'Validate and Apply Changes'
-                    : 'Apply Changes'
-                }
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}

@@ -17,18 +17,18 @@ import cronstrue from 'cronstrue';
 import { Grid, makeStyles, Typography } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBToggle } from '../../../../components';
+import { YBTag, YBTag_Types } from '../../../../../components/common/YBTag';
 import { YBConfirmModal } from '../../../../../components/modals';
 import EditScheduledPolicyModal from './EditScheduledPolicyModal';
 import ScheduledBackupShowIntervalsModal from './ScheduledBackupShowIntervalsModal';
 import ScheduledPolicyShowTables from './ScheduledPolicyShowTables';
+import { IBackupSchedule, IBackupScheduleStatus } from '../../../../../components/backupv2';
 import { convertMsecToTimeFrame } from '../../../../../components/backupv2/scheduled/ScheduledBackupUtils';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { RbacValidator } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { deleteSchedulePolicy, toggleScheduledBackupPolicy } from '../api/api';
-import { TableTypeLabel } from '../../../../helpers/dtos';
-import { YBTag, YBTag_Types } from '../../../../../components/common/YBTag';
-import { IBackupSchedule, IBackupScheduleStatus } from '../../../../../components/backupv2';
+import { TableType, TableTypeLabel } from '../../../../helpers/dtos';
 
 interface ScheduledCardProps {
   schedule: IBackupSchedule;
@@ -126,7 +126,7 @@ const useStyles = makeStyles((theme) => ({
   inactive: {
     color: theme.palette.grey[500],
     '&:hover': {
-      color: theme.palette.grey[500],
+      color: theme.palette.grey[500]
     }
   }
 }));
@@ -219,7 +219,9 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           </YBTag>
           <YBToggle
             checked={isScheduleEnabled}
-            label={isScheduleEnabled ? t('enabled') : isScheduleCreating ? t('creating') : t('disabled')}
+            label={
+              isScheduleEnabled ? t('enabled') : isScheduleCreating ? t('creating') : t('disabled')
+            }
             onClick={(e: any) => {
               toggleSchedule.mutate({
                 scheduleUUID: schedule.scheduleUUID,
@@ -282,6 +284,9 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
             <span>{t('scope')}</span>
             <span>{t('keyspace')}</span>
             <span>{t('tables')}</span>
+            {schedule.backupInfo.backupType === TableType.PGSQL_TABLE_TYPE && (
+              <span>{t('rolesAndGrants')}</span>
+            )}
           </div>
           <div>
             <span>{schedule.backupInfo?.fullBackup ? t('fullBackup') : t('tableBackup')}</span>
@@ -292,17 +297,24 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
               )}
             </span>
             <span>{wrapTableName(schedule.backupInfo?.keyspaceList?.[0]?.tablesList)}</span>
+            {schedule.backupInfo.backupType === TableType.PGSQL_TABLE_TYPE && (
+              <span>{schedule.backupInfo.useRoles ? 'Included' : 'Not Included'}</span>
+            )}
           </div>
         </div>
         <div className={classes.nextScheduledDates}>
           <div>
-            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('lastBackup')}</div>
+            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+              {t('lastBackup')}
+            </div>
             <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
               {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
             </div>
           </div>
           <div>
-            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('nextBackup')}</div>
+            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+              {t('nextBackup')}
+            </div>
             <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
               {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
             </div>
@@ -311,7 +323,9 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
       </div>
       <div className={classes.footer}>
         <div>
-          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('backupIntervals')}</div>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+            {t('backupIntervals')}
+          </div>
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {backupInterval} -{' '}
             <Trans
@@ -331,30 +345,38 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           </div>
         </div>
         <div>
-          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('incrementalBackup')}</div>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+            {t('incrementalBackup')}
+          </div>
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.incrementalBackupFrequency === 0 ? t('disabled') : t('enabled')}
           </div>
         </div>
         <div>
-          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('pitr')}</div>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+            {t('pitr')}
+          </div>
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.backupInfo.pointInTimeRestoreEnabled ? t('enabled') : t('disabled')}
           </div>
         </div>
         <div>
-          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('retentionPeriod')}</div>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+            {t('retentionPeriod')}
+          </div>
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.backupInfo?.timeBeforeDelete
               ? convertMsecToTimeFrame(
-                schedule.backupInfo.timeBeforeDelete,
-                schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-              )
+                  schedule.backupInfo.timeBeforeDelete,
+                  schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+                )
               : 'Indefinitely'}
           </div>
         </div>
         <div>
-          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('storageConfig')}</div>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
+            {t('storageConfig')}
+          </div>
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {storageConfig ? (
               <a
@@ -383,18 +405,16 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
       >
         {t('deleteModal.deleteMsg')}
       </YBConfirmModal>
-      {
-        showEditModal && (
-          <EditScheduledPolicyModal
-            visible={showEditModal}
-            onHide={() => {
-              setShowEditModal(false);
-            }}
-            universeUUID={universeUUID}
-            schedule={schedule}
-          />
-        )
-      }
+      {showEditModal && (
+        <EditScheduledPolicyModal
+          visible={showEditModal}
+          onHide={() => {
+            setShowEditModal(false);
+          }}
+          universeUUID={universeUUID}
+          schedule={schedule}
+        />
+      )}
 
       <ScheduledBackupShowIntervalsModal
         schedule={schedule}

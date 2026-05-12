@@ -25,6 +25,11 @@ mx-central-1:
  latitude: 20.5888
  longitude: -100.3899
 
+me-central-1:
+ name: Middle East (UAE)
+ latitude: 25.2048
+ longitude: 55.2708
+
 ap-east-1:
   name: "Asia Pacific (Hong Kong)"
   latitude: 22.2793

@@ -156,6 +156,7 @@ message ConfigureServerInput {
     repeated string processes = 3;
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
+    bool configureCgroup = 6;
 }
 
 message ConfigureServerOutput {
@@ -194,4 +195,14 @@ message DestroyServerInput {
 }
 
 message DestroyServerOutput {
+}
+
+message YnpPreflightCheckInput {
+    string configJson = 1;
+    string remoteTmp = 2;
+}
+
+message YnpPreflightCheckOutput {
+    uint32 exitCode = 1;
+    string output = 2;
 }

@@ -87,7 +87,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		}
 
 		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if primaryCluster == (ybaclient.Cluster{}) {
+		if universeutil.IsClusterEmpty(primaryCluster) {
 			err := fmt.Errorf(
 				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
 			)
@@ -98,9 +98,7 @@ var upgradeVMImageCmd = &cobra.Command{
 
 		provider, response, err := authAPI.GetProvider(primaryUserIntent.GetProvider()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Upgrade Linux Version - Get Provider")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade Linux Version - Get Provider")
 		}
 
 		var primaryResultImageBundle string
@@ -139,7 +137,7 @@ var upgradeVMImageCmd = &cobra.Command{
 				}
 			}
 
-			if rrCluster == (ybaclient.Cluster{}) {
+			if universeutil.IsClusterEmpty(rrCluster) {
 				err := fmt.Errorf(
 					"No read replica cluster found in universe " + universeName + " (" + universeUUID + ")\n",
 				)
@@ -183,7 +181,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		}
 
 		req := ybaclient.VMImageUpgradeParams{
-			ImageBundles:                   &imageBundleInfo,
+			ImageBundles:                   imageBundleInfo,
 			Clusters:                       clusters,
 			UpgradeOption:                  "Rolling",
 			SleepAfterTServerRestartMillis: tserverDelay,
@@ -193,9 +191,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		rUpgrade, response, err := authAPI.UpgradeVMImage(universeUUID).
 			VmimageUpgradeParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe",
-				"Upgrade Linux Version")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade Linux Version")
 		}
 
 		logrus.Info(

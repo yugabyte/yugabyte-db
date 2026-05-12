@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/io/pgbson.c
+ * src/io/pgbson.c
  *
  * The BSON type serialization.
  *
@@ -12,6 +12,7 @@
 #include <utils/builtins.h>
 #include <lib/stringinfo.h>
 #include <utils/timestamp.h>
+#include <utils/json.h>
 
 #define PRIVATE_PGBSON_H
 #include "io/pgbson.h"
@@ -92,7 +93,7 @@ BsonDocumentValueCountKeys(const bson_value_t *value)
 	if (value->value_type != BSON_TYPE_ARRAY && value->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("Expected value of type array or document")));
+						errmsg("Value must be either an array type or a document type")));
 	}
 	bson_t bson;
 	if (!bson_init_static(&bson, value->value.v_doc.data,
@@ -187,7 +188,7 @@ PgbsonToHexadecimalString(const pgbson *bsonDocument)
 
 
 /*
- * Initializes a pgbson structure from a mongodb extended json
+ * Initializes a pgbson structure from an extended json
  * syntax string.
  */
 pgbson *
@@ -208,8 +209,7 @@ PgbsonInitFromJson(const char *jsonString)
 
 
 /*
- * PgbsonToJsonForLogging converts a pgbson structure to a mongodb
- * extended json syntax string.
+ * PgbsonToJsonForLogging converts a pgbson structure to an extended json syntax string.
  */
 const char *
 PgbsonToJsonForLogging(const pgbson *bsonDocument)
@@ -226,12 +226,8 @@ PgbsonToJsonForLogging(const pgbson *bsonDocument)
 }
 
 
-/*
- * BsonValueToJsonForLogging converts a bson_value structure to a mongodb
- * extended json syntax string.
- */
-const char *
-BsonValueToJsonForLogging(const bson_value_t *value)
+static const char *
+BsonValueToJsonForLoggingCore(const bson_value_t *value, bool quoteStrings)
 {
 	bson_t bson;
 	pgbson *bsonDocument;
@@ -262,13 +258,18 @@ BsonValueToJsonForLogging(const bson_value_t *value)
 		case BSON_TYPE_UTF8:
 		{
 			/* create a string that has the original string, \0, and the quotes. */
-			char *finalString = palloc(value->value.v_utf8.len + 1 + 2);
-			finalString[0] = '"';
-			memcpy(&finalString[1], value->value.v_utf8.str, value->value.v_utf8.len);
-			finalString[value->value.v_utf8.len + 1] = '"';
-			finalString[value->value.v_utf8.len + 2] = 0;
+			if (quoteStrings)
+			{
+				StringInfoData strData;
+				initStringInfo(&strData);
+				escape_json(&strData, value->value.v_utf8.str);
+				returnValue = strData.data;
+			}
+			else
+			{
+				returnValue = pnstrdup(value->value.v_utf8.str, value->value.v_utf8.len);
+			}
 
-			returnValue = finalString;
 			break;
 		}
 
@@ -333,6 +334,28 @@ BsonValueToJsonForLogging(const bson_value_t *value)
 }
 
 
+/*
+ * BsonValueToJsonForLogging converts a bson_value structure to an extended json syntax string.
+ */
+const char *
+BsonValueToJsonForLogging(const bson_value_t *value)
+{
+	bool quoteStrings = true;
+	return BsonValueToJsonForLoggingCore(value, quoteStrings);
+}
+
+
+/*
+ * BsonValueToJsonForLogging converts a bson_value structure to
+ * simplified an extended json syntax string.
+ */
+const char *
+BsonValueToJsonForLoggingWithOptions(const bson_value_t *value, bool quoteStrings)
+{
+	return BsonValueToJsonForLoggingCore(value, quoteStrings);
+}
+
+
 /**
  * Gets the prefix for bson values of BSON for constructing messages
  *
@@ -369,7 +392,7 @@ FormatBsonValueForShellLogging(const bson_value_t *bson)
 		case BSON_TYPE_DECIMAL128:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("Decimal 128 operation is not supported yet")));
+							errmsg("Decimal 128 operations are currently unsupported")));
 		}
 
 		case BSON_TYPE_DOCUMENT:
@@ -415,7 +438,7 @@ FormatBsonValueForShellLogging(const bson_value_t *bson)
 
 
 /*
- * Converts a pgbson structure to a mongodb extended json
+ * Converts a pgbson structure to an extended json
  * syntax string.
  */
 const char *
@@ -449,7 +472,15 @@ PgbsonToLegacyJson(const pgbson *bsonDocument)
 	}
 
 	/* since bson strings are palloced - we can simply return the string created. */
+#if BSON_CHECK_VERSION(1, 29, 0)
+
+	/*
+	 * bson_as_json is deprecated since mongodb-c-driver 1.29.0
+	 */
+	return bson_as_legacy_extended_json(&bson, NULL);
+#else
 	return bson_as_json(&bson, NULL);
+#endif
 }
 
 
@@ -701,7 +732,10 @@ BsonValueInitIterator(const bson_value_t *value, bson_iter_t *iterator)
 {
 	if (value->value_type != BSON_TYPE_DOCUMENT && value->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errmsg("expected a document or array to init iterator")));
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+						errmsg(
+							"expected a document or array to init iterator, got %s",
+							BsonTypeName(value->value_type))));
 	}
 
 	if (!bson_iter_init_from_data(iterator, value->value.v_doc.data,
@@ -720,7 +754,7 @@ BsonValueInitIterator(const bson_value_t *value, bson_iter_t *iterator)
 /*
  * Initializes a bson writer so that it's ready to write data
  */
-void
+pgbson_require_alignment() void
 PgbsonWriterInit(pgbson_writer *writer)
 {
 	bson_init(&(writer->innerBson));
@@ -738,6 +772,13 @@ PgbsonHeapWriterInit()
 	pgbson_heap_writer *writer = palloc0(sizeof(pgbson_heap_writer));
 	writer->innerBsonRef = bson_new();
 	return writer;
+}
+
+
+void
+PgbsonHeapWriterReset(pgbson_heap_writer *writer)
+{
+	bson_reinit(writer->innerBsonRef);
 }
 
 
@@ -764,7 +805,7 @@ PgbsonArrayWriterGetSize(pgbson_array_writer *writer)
 /*
  * Gets the length of the bson currently written into the heap writer.
  */
-uint32_t
+pgbson_require_alignment() uint32_t
 PgbsonHeapWriterGetSize(pgbson_heap_writer *writer)
 {
 	return writer->innerBsonRef->len;
@@ -796,6 +837,23 @@ PgbsonWriterAppendValue(pgbson_writer *writer, const char *path, uint32_t pathLe
 						const bson_value_t *value)
 {
 	if (!bson_append_value(&(writer->innerBson), path, pathLength, value))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"adding %s value: failed due to value being too large",
+							BsonTypeName(value->value_type)))
+				);
+	}
+}
+
+
+/*
+ * Appends a bson value as a single element array to pgbson heap writer.
+ */
+void
+PgbsonHeapWriterAppendValue(pgbson_heap_writer *writer, const char *path,
+							uint32_t pathLength, const bson_value_t *value)
+{
+	if (!bson_append_value(writer->innerBsonRef, path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding %s value: failed due to value being too large",
@@ -840,7 +898,7 @@ PgbsonWriterAppendInt32(pgbson_writer *writer, const char *path, uint32_t pathLe
 /*
  * Appends given double to the writer with the specified path.
  */
-void
+pgbson_require_alignment() void
 PgbsonWriterAppendDouble(pgbson_writer *writer, const char *path, uint32_t pathLength,
 						 double value)
 {
@@ -895,11 +953,31 @@ PgbsonWriterAppendDateTime(pgbson_writer *writer, const char *path, uint32_t
 						   pathLength,
 						   TimestampTz timestamp)
 {
-	pg_time_t secondsSinceEpoch = timestamptz_to_time_t(timestamp);
-	int64_t milliSecondsSinceEpoch = secondsSinceEpoch * 1000;
+	/*
+	 * bson_append_date_time expects milliseconds since the Unix epoch (1970-01-01 UTC).
+	 * PostgreSQL's TimestampTz is microseconds since the PostgreSQL epoch (2000-01-01).
+	 * Obtain whole seconds since Unix epoch using timestamptz_to_time_t() (leveraging
+	 * core's epoch conversion), then add the millisecond component computed from the
+	 * microsecond remainder of the original TimestampTz. Because the PG→Unix epoch
+	 * offset is an integral number of whole seconds, (timestamp % USECS_PER_SEC)
+	 * yields the same microsecond-within-second component a Unix-based remainder
+	 * would—except it may be negative for pre‑2000 timestamps due to C's truncation
+	 * toward zero. Normalize a negative remainder by "borrowing" one second so the
+	 * remainder is always in [0, USECS_PER_SEC). This keeps millisecond precision
+	 * and avoids floating point operations.
+	 */
+	time_t secondsSinceUnixEpoch = timestamptz_to_time_t(timestamp);
+	int64 usecRem = timestamp % USECS_PER_SEC;
+	if (usecRem < 0)
+	{
+		usecRem += USECS_PER_SEC;
+		secondsSinceUnixEpoch -= 1;
+	}
+	Assert(usecRem >= 0 && usecRem < USECS_PER_SEC);
+	int64 milliSinceUnixEpoch = ((int64) secondsSinceUnixEpoch) * 1000 + (usecRem / 1000);
 
 	if (!bson_append_date_time(&(writer->innerBson), path, pathLength,
-							   milliSecondsSinceEpoch))
+							   milliSinceUnixEpoch))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
@@ -961,7 +1039,7 @@ PgbsonWriterAppendTimestamp(pgbson_writer *writer, const char *path, uint32_t pa
 /*
  * Appends a "start array" to the writer and returns a writer to append to the child array inserted.
  */
-void
+pgbson_require_alignment() void
 PgbsonWriterStartArray(pgbson_writer *writer, const char *path, uint32_t pathLength,
 					   pgbson_array_writer *childWriter)
 {
@@ -1000,7 +1078,7 @@ PgbsonHeapWriterStartArray(pgbson_heap_writer *writer, const char *path, uint32_
 /*
  * Finishes appending an array to the current writer.
  */
-void
+pgbson_require_alignment() void
 PgbsonWriterEndArray(pgbson_writer *writer, pgbson_array_writer *childWriter)
 {
 	if (!bson_append_array_end(&(writer->innerBson), &(childWriter->innerBson)))
@@ -1221,7 +1299,7 @@ PgbsonArrayWriterGetIndex(pgbson_array_writer *writer)
 /*
  * Writes a value to a nested array at the current index.
  */
-void
+pgbson_require_alignment() void
 PgbsonArrayWriterWriteValue(pgbson_array_writer *writer,
 							const bson_value_t *value)
 {
@@ -1257,7 +1335,7 @@ PgbsonArrayWriterWriteNull(pgbson_array_writer *writer)
 /*
  * Writes a bson document to a nested array at the current index.
  */
-void
+pgbson_require_alignment() void
 PgbsonArrayWriterWriteDocument(pgbson_array_writer *writer,
 							   const pgbson *bson)
 {
@@ -1299,7 +1377,7 @@ PgbsonWriterAppendEmptyArray(pgbson_writer *writer, const char *path, uint32_t p
 /*
  * Appends a bson value as a single element array to pgbson writer.
  */
-void
+pgbson_require_alignment() void
 PgbsonWriterAppendBsonValueAsArray(pgbson_writer *writer, const char *path, uint32_t
 								   pathLength, const bson_value_t *value)
 {
@@ -1375,19 +1453,43 @@ PgbsonWriterCopyDocumentDataToBsonValue(pgbson_writer *writer, bson_value_t *bso
 }
 
 
+bson_value_t
+PgbsonWriterGetValue(pgbson_writer *writer)
+{
+	bson_value_t bsonValue = { 0 };
+	uint32_t writerSize = PgbsonWriterGetSize(writer);
+	bsonValue.value_type = BSON_TYPE_DOCUMENT;
+	bsonValue.value.v_doc.data = (uint8_t *) bson_get_data(&writer->innerBson);
+	bsonValue.value.v_doc.data_len = writerSize;
+	return bsonValue;
+}
+
+
+bson_value_t
+PgbsonHeapWriterGetValue(pgbson_heap_writer *writer)
+{
+	bson_value_t bsonValue = { 0 };
+	uint32_t writerSize = PgbsonHeapWriterGetSize(writer);
+	bsonValue.value_type = BSON_TYPE_DOCUMENT;
+	bsonValue.value.v_doc.data = (uint8_t *) bson_get_data(writer->innerBsonRef);
+	bsonValue.value.v_doc.data_len = writerSize;
+	return bsonValue;
+}
+
+
 /*
  * Finalizes the pgbson_writer and creates a pgbson structure from the writer.
  * The writer is deemed unusable after this point.
  */
-pgbson *
-PgbsonWriterGetPgbson(pgbson_writer *writer)
+pgbson_require_alignment() pgbson *
+PgbsonWriterGetPgbson(pgbson_writer * writer)
 {
 	return CreatePgbsonfromBson_t(&(writer->innerBson), true);
 }
 
 
 /*
- * Gets an iterator over the current pgbson_writer.
+ * Retrieves an iterator object for accessing the current pgbson_writer instance.
  */
 void
 PgbsonWriterGetIterator(pgbson_writer *writer, bson_iter_t *iterator)
@@ -1670,8 +1772,8 @@ BsonValueToDocumentPgbson(const bson_value_t *value)
  * Creates a pgbson structure from a libbson bson_t type.
  * the bson_t is optionally destroyed and the memory reclaimed after conversion.
  */
-pgbson *
-CreatePgbsonfromBson_t(bson_t *document, bool destroyDocument)
+pgbson_require_alignment() pgbson *
+CreatePgbsonfromBson_t(bson_t * document, bool destroyDocument)
 {
 	pgbson *pgbsonValue = CreatePgbsonfromBsonBytes(bson_get_data(document),
 													document->len);

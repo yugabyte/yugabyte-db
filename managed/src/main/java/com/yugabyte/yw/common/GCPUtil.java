@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
@@ -58,6 +59,7 @@ import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -133,6 +135,11 @@ public class GCPUtil implements CloudUtil {
         || backupLocation.startsWith(HTTPS_PROTOCOL_PREFIX))) {
       throw new PlatformServiceException(PRECONDITION_FAILED, "Not a GCS location");
     }
+  }
+
+  @Override
+  public boolean isIamEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageGCSData) config.getDataObject()).useGcpIam;
   }
 
   @Override
@@ -568,15 +575,15 @@ public class GCPUtil implements CloudUtil {
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
         con.connect();
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        String inputLine;
-        StringBuffer content = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-          content.append(inputLine);
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+          String inputLine;
+          StringBuffer content = new StringBuffer();
+          while ((inputLine = in.readLine()) != null) {
+            content.append(inputLine);
+          }
+          JsonNode response = Json.mapper().readTree(content.toString());
+          PRICE_JSON = response.get("gcp_price_list");
         }
-        in.close();
-        JsonNode response = Json.mapper().readTree(content.toString());
-        PRICE_JSON = response.get("gcp_price_list");
       }
       JsonNode prices = PRICE_JSON.findValue(instanceType);
       Double spotPrice = prices.findValue(region).asDouble();
@@ -606,7 +613,12 @@ public class GCPUtil implements CloudUtil {
             EXPECTATION_FAILED, "Error while creating Storage service from GCS Data!");
       }
 
-      validateOnLocation(storage, YbcBackupUtil.DEFAULT_REGION_STRING, configData, permissions);
+      validateOnLocation(
+          storage,
+          YbcBackupUtil.DEFAULT_REGION_STRING,
+          configData,
+          permissions,
+          gcsData.immutableStorage);
 
       if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
         for (RegionLocations location : gcsData.regionLocations) {
@@ -615,7 +627,8 @@ public class GCPUtil implements CloudUtil {
                 EXPECTATION_FAILED, "Region of a location cannot be empty.");
           }
 
-          validateOnLocation(storage, location.region, configData, permissions);
+          validateOnLocation(
+              storage, location.region, configData, permissions, gcsData.immutableStorage);
         }
       }
     } else {
@@ -631,7 +644,8 @@ public class GCPUtil implements CloudUtil {
       Storage storage,
       String bucketName,
       String prefix,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -661,7 +675,9 @@ public class GCPUtil implements CloudUtil {
       validateListBlobs(storage, bucketName, completeFileName);
     }
 
-    validateDelete(storage, bucketName, completeFileName);
+    if (!skipDelete) {
+      validateDelete(storage, bucketName, completeFileName);
+    }
   }
 
   /**
@@ -672,9 +688,10 @@ public class GCPUtil implements CloudUtil {
       Storage storage,
       String region,
       CustomerConfigData configData,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, null);
-    validateOnBucket(storage, cLInfo.bucket, cLInfo.cloudPath, permissions);
+    validateOnBucket(storage, cLInfo.bucket, cLInfo.cloudPath, permissions, skipDelete);
   }
 
   /**
@@ -1100,8 +1117,19 @@ public class GCPUtil implements CloudUtil {
       }
 
       if (mostRecentBackup == null) {
-        log.warn("Could not find YB Anywhere backup in gs://{}", cLInfo.bucket);
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find YB Anywhere backup in GCS bucket");
+      }
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (mostRecentBackup
+            .getUpdateTimeOffsetDateTime()
+            .isBefore(OffsetDateTime.now().minusDays(1))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
+        }
       }
 
       log.info(
@@ -1114,11 +1142,13 @@ public class GCPUtil implements CloudUtil {
       return localFile;
 
     } catch (StorageException e) {
-      log.error("Error downloading YB Anywhere backup: {}", e.getMessage(), e);
-    } catch (Exception e) {
-      log.error("Unexecpted exception downloading YB Anywhere backup: {}", e.getMessage(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "GCS error downloading YB Anywhere backup: " + e.getMessage());
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "IO error occurred while downloading YB Anywhere backup: " + e.getMessage());
     }
-    return null;
   }
 
   public boolean downloadRemoteReleases(

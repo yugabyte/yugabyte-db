@@ -75,7 +75,8 @@ OD_SERVER_POOL_FREE_DECLARE(ldap, od_ldap_server_t, od_ldap_server_free)
 		od_list_t *target = NULL;                                      \
 		switch (state) {                                               \
 		case OD_SERVER_UNDEF:                                          \
-			if (server->yb_sticky_connection) {                     \
+			if (server->yb_sticky_connection ||					\
+					server->yb_replication_connection) {                     \
 				pool->yb_count_sticky--;                       \
 			}													  \
 			break;                                                 \
@@ -169,10 +170,9 @@ static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool
 	return server;
 }
 
-static inline od_server_t *
-yb_od_server_pool_idle_version_matching(od_server_pool_t *pool,
-					int64_t logical_client_version,
-					bool version_matching_connect_higher_version)
+static inline od_server_t *yb_od_server_pool_idle_version_matching(
+	od_server_pool_t *pool, int64_t logical_client_version,
+	enum yb_od_alter_guc_adoption guc_adoption_strategy)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server;
@@ -180,14 +180,44 @@ yb_od_server_pool_idle_version_matching(od_server_pool_t *pool,
 	od_list_foreach_safe(target, i, n)
 	{
 		server = od_container_of(i, od_server_t, link);
-		if (!server->marked_for_close &&
-		    (server->logical_client_version == logical_client_version ||
-		     (version_matching_connect_higher_version &&
-		      server->logical_client_version >= logical_client_version)))
+		if (server->yb_marked_for_close)
+			continue;
+		switch (guc_adoption_strategy) {
+		case YB_GUC_ADOPTION_FLUCTUATING:
 			return server;
+		case YB_GUC_ADOPTION_GRADUAL:
+			if (server->yb_logical_client_version >=
+			    logical_client_version)
+				return server;
+			break;
+		case YB_GUC_ADOPTION_CONNECTION_STATIC:
+			if (server->yb_logical_client_version ==
+			    logical_client_version)
+				return server;
+			break;
+		}
 	}
 
 	return NULL;
+}
+
+static inline bool
+yb_od_server_pool_active_has_matching_version(od_server_pool_t *pool,
+					      int64_t logical_client_version)
+{
+	od_list_t *target = &pool->active;
+	od_server_t *server;
+	od_list_t *i;
+	od_list_foreach(target, i)
+	{
+		server = od_container_of(i, od_server_t, link);
+		if (server->yb_marked_for_close)
+			continue;
+		if (server->yb_logical_client_version == logical_client_version)
+			return true;
+	}
+
+	return false;
 }
 
 static inline od_server_t *od_server_pool_foreach(od_server_pool_t *pool,

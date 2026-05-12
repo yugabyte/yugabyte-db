@@ -103,7 +103,13 @@ def remote_copy_psql_query(pod_name, psql_query):
 
 def run_psql(psql_query):
     psql_cmd = None
-    psql_common_args = ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t']
+    psql_common_args = [
+        '-U', os.environ.get('POSTGRES_USER', 'postgres'),
+        '-d', os.environ.get('POSTGRES_DB', 'yugaware'),
+        '-h', os.environ.get('POSTGRES_HOST', 'localhost'),
+        '-p', os.environ.get('POSTGRES_PORT', '5432'),
+        '-t',
+    ]
     if args.install_type == "standalone":
         psql_cmd = ["psql"]
         psql_cmd.extend(psql_common_args)

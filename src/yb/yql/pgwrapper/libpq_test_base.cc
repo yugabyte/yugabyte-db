@@ -17,8 +17,10 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -63,11 +65,20 @@ Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   }).Connect();
 }
 
+Result<PGConn> LibPqTestBase::ConnectToTsForDB(
+    const ExternalTabletServer& pg_ts, const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts.bind_host(),
+    .port = pg_ts.ysql_port(),
+    .dbname = db_name,
+  }).Connect();
+}
+
 Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
     const ExternalTabletServer& pg_ts, const string& user) {
   return PGConnBuilder({
     .host = pg_ts.bind_host(),
-    .port = pg_ts.pgsql_rpc_port(),
+    .port = pg_ts.ysql_port(),
     .user = user
   }).Connect(true);
 }
@@ -88,12 +99,8 @@ Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_n
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
-  const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
-  if (pgerr == nullptr) {
-    return false;
-  }
-  YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
-  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+  const auto pgerr = PgsqlError::ValueFromStatus(status);
+  return pgerr && *pgerr == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
 }
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
@@ -337,33 +344,28 @@ std::vector<YsqlMetric> LibPqTestBase::ParsePrometheusMetrics(const std::string&
 }
 
 // Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
 std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metrics_output) {
   std::vector<YsqlMetric> parsed_metrics;
 
   // Parse the JSON string
-  rapidjson::Document document;
-  document.Parse(metrics_output.c_str());
+  JsonDocument doc;
+  auto document = EXPECT_RESULT(doc.Parse(metrics_output));
 
-  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
-  const auto& server = document[0];
-  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
-  const auto& metrics = server["metrics"];
-  for (const auto& metric : metrics.GetArray()) {
+  EXPECT_TRUE(document.IsArray() && EXPECT_RESULT(document.size()) > 0);
+  for (const auto& metric : EXPECT_RESULT(document[0]["metrics"].GetArray())) {
     EXPECT_TRUE(
-        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
-        metric.HasMember("rows"));
+        metric["name"].IsValid() && metric["count"].IsValid() && metric["sum"].IsValid() &&
+        metric["rows"].IsValid());
+    auto metric_name = EXPECT_RESULT(metric["name"].GetString());
     std::unordered_map<std::string, std::string> labels;
-    if (metric.HasMember("table_name")) {
-      labels["table_name"] = metric["table_name"].GetString();
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    if (metric["table_name"].IsValid()) {
+      labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
     }
 
     parsed_metrics.emplace_back(
-        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
-        0  // JSON doesn't include timestamp
-    );
+        metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
+        0,  // JSON doesn't include timestamp
+        "", "", EXPECT_RESULT(metric["sum"].GetInt64()));
   }
 
   return parsed_metrics;
@@ -414,7 +416,43 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   // actually propagated.
   constexpr int kSleepSeconds = 2;
   LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
-  std::this_thread::sleep_for(kSleepSeconds * 1s);
+  std::this_thread::sleep_for(kSleepSeconds * kTimeMultiplier * 1s);
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "metric for " + table_name + " not found");
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheListMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "list miss metric for " + table_name + " not found");
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheNegMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "negative miss metric for " + table_name + " not found");
 }
 
 } // namespace pgwrapper

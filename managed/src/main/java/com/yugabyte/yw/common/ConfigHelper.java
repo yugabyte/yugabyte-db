@@ -117,6 +117,25 @@ public class ConfigHelper {
         + buildNumber;
   }
 
+  public static String getYnpVersion(Environment environment) {
+    String configFile = "version_metadata.json";
+    InputStream inputStream = environment.resourceAsStream(configFile);
+    if (inputStream == null) {
+      return null;
+    }
+    try {
+      JsonNode jsonNode = Json.parse(inputStream);
+      JsonNode ynpVersionNode = jsonNode.get("ynp_version");
+      if (ynpVersionNode != null && !ynpVersionNode.isNull()) {
+        return ynpVersionNode.asText();
+      }
+      return null;
+    } catch (Exception e) {
+      LOG.warn("Failed to read ynp_version from version_metadata.json", e);
+      return null;
+    }
+  }
+
   public void loadSoftwareVersiontoDB(Environment environment) {
     String version = getCurrentVersion(environment);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
@@ -128,6 +147,10 @@ public class ConfigHelper {
         getConfig(ConfigType.YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
     ywMetadata.put("yugaware_uuid", ywUUID);
     ywMetadata.put("version", version);
+    String ynpVersion = getYnpVersion(environment);
+    if (ynpVersion != null) {
+      ywMetadata.put("ynp_version", ynpVersion);
+    }
     loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
   }
 

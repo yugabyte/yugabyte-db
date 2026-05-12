@@ -104,10 +104,6 @@ inline Slice StrongWriteSuffix(Slice key) {
   return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
 }
 
-inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
-  return StrongWriteSuffix(key.AsSlice());
-}
-
 inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
   return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
 }
@@ -203,7 +199,7 @@ IntentAwareIterator::IntentAwareIterator(
     const FastBackwardScan use_fast_backward_scan,
     const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek)
     : read_time_(read_operation_data.read_time),
-      encoded_read_time_(read_operation_data.read_time),
+      encoded_read_time_(read_operation_data.read_time, read_operation_data.write_id),
       txn_op_context_(txn_op_context),
       upperbound_(&kKeyEntryTypeMaxByte, 1),
       lowerbound_(&kKeyEntryTypeMinByte, 1),
@@ -220,7 +216,8 @@ IntentAwareIterator::IntentAwareIterator(
         docdb::CreateIntentsIteratorWithHybridTimeFilter(
             doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
             &intent_upperbound_, read_opts.cache_restart_block_keys,
-            GetIntentsDBStatistics(read_operation_data.statistics)));
+            GetIntentsDBStatistics(read_operation_data.statistics),
+            read_operation_data.use_ht_file_filter));
   }
   // WARNING: It is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
@@ -779,6 +776,14 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   return result;
 }
 
+Result<Slice> IntentAwareIterator::FetchValue(Slice key) {
+  UpdateFilterKey(key);
+  Seek(key, SeekFilter::kAll, Full::kTrue);
+  auto fetch_result = VERIFY_RESULT_REF(Fetch());
+
+  return fetch_result.key == key ? fetch_result.value : Slice{};
+}
+
 template <bool kDescending>
 void IntentAwareIterator::FillEntry() {
   if (regular_entry_) {
@@ -1053,20 +1058,19 @@ Result<EncodedDocHybridTime> IntentAwareIterator::FindMatchingIntentRecordDocHyb
 
 Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     Slice key_without_ht) {
-  size_t other_encoded_ht_size =
-      VERIFY_RESULT(dockv::CheckHybridTimeSizeAndValueType(iter_->key()));
-  Slice iter_key_without_ht = iter_->key();
-  iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
+  auto iter_key = iter_->key();
+  size_t other_encoded_ht_size = VERIFY_RESULT(dockv::CheckHybridTimeSizeAndValueType(iter_key));
+  auto iter_key_without_ht = iter_key.WithoutSuffix(1 + other_encoded_ht_size);
   if (key_without_ht == iter_key_without_ht) {
     EncodedDocHybridTime result;
-    RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(iter_->key(), &result));
+    RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(iter_key, &result));
     UpdateMaxSeenHt(result, key_without_ht);
     return result;
   }
   return EncodedDocHybridTime();
 }
 
-Result<HybridTime> IntentAwareIterator::FindOldestRecord(
+Result<DocHybridTime> IntentAwareIterator::FindOldestRecord(
     Slice key_without_ht, HybridTime min_hybrid_time) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(key_without_ht) << ", " << min_hybrid_time;
 #define DOCDB_DEBUG
@@ -1078,19 +1082,19 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   if (!VERIFY_RESULT_REF(Fetch())) {
     VLOG_WITH_FUNC(4) << "Returning kInvalid";
-    return HybridTime::kInvalid;
+    return DocHybridTime::kInvalid;
   }
 
   EncodedDocHybridTime encoded_min_hybrid_time(min_hybrid_time, kMaxWriteId);
 
-  HybridTime result;
+  DocHybridTime result = DocHybridTime::kInvalid;
   if (intent_iter_->Initialized()) {
     auto intent_dht = VERIFY_RESULT(FindMatchingIntentRecordDocHybridTime(key_without_ht));
     VLOG_WITH_FUNC(4) << "Looking for Intent Record found ?  =  "
             << !intent_dht.empty();
     if (!intent_dht.empty() && intent_dht > encoded_min_hybrid_time) {
-      result = VERIFY_RESULT(intent_dht.Decode()).hybrid_time();
-      VLOG_WITH_FUNC(4) << " oldest_record_ht is now " << result;
+      result = VERIFY_RESULT(intent_dht.Decode());
+      VLOG_WITH_FUNC(4) << " oldest_record_dht is now " << result;
     }
   } else {
     VLOG_WITH_FUNC(4) << "intent_iter_ not Initialized";
@@ -1106,26 +1110,31 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   RETURN_NOT_OK(status_);
 
   if (iter_->Valid()) {
+    VLOG_WITH_FUNC(4) << "Find prev: " << DebugDumpKeyToStr(iter_->key());
     SkipFutureRecords<Direction::kForward>(iter_->Prev());
   } else {
     HandleStatus(iter_->status());
     RETURN_NOT_OK(status_);
+    VLOG_WITH_FUNC(4) << "Seek to last";
     SkipFutureRecords<Direction::kForward>(iter_->SeekToLast());
   }
 
   if (regular_entry_) {
     auto regular_dht = VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
-    VLOG(4) << "Looking for Matching Regular Record found   =  " << regular_dht.ToString();
+    VLOG_WITH_FUNC(4) << "Looking for Matching Regular Record found = " << regular_dht.ToString();
     if (!regular_dht.empty()) {
-      auto ht = VERIFY_RESULT(regular_dht.Decode()).hybrid_time();
-      if (ht > min_hybrid_time) {
-        result.MakeAtMost(ht);
+      auto decoded_dht = VERIFY_RESULT(regular_dht.Decode());
+      if (decoded_dht.hybrid_time() > min_hybrid_time) {
+        // MakeAtMost: pick the older (smaller) of the two DocHybridTimes.
+        if (!result.is_valid() || decoded_dht < result) {
+          result = decoded_dht;
+        }
       }
     }
   } else {
-    VLOG(4) << "regular_value_ is empty";
+    VLOG_WITH_FUNC(4) << "regular_value_ is empty";
   }
-  VLOG(4) << "Returning " << result;
+  VLOG_WITH_FUNC(4) << "Returning " << result;
   return result;
 }
 
@@ -1239,7 +1248,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
       auto max_allowed = value.compare(encoded_read_time_.local_limit.AsSlice()) > 0
           ? encoded_read_time_.global_limit.AsSlice()
           : encoded_read_time_.read.AsSlice();
-      if (encoded_doc_ht.compare(max_allowed) > 0) {
+      if (encoded_doc_ht.compare(max_allowed) >= 0) {
         auto encoded_intent_doc_ht_result = DocHybridTime::EncodedFromStart(&value);
         if (!HandleStatus(encoded_intent_doc_ht_result)) {
           return;
@@ -1247,7 +1256,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
         regular_entry_ = { .key = entry->key, .value = value };
         return;
       }
-    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) > 0) {
+    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) >= 0) {
       // If a value does not contain the hybrid time of the intent that wrote the original
       // transaction, then it either (a) originated from a single-shard transaction or (b) the
       // intent hybrid time has already been garbage-collected during a compaction because the
@@ -1417,10 +1426,13 @@ const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
   return resolved_intent_txn_dht_;
 }
 
-EncodedReadHybridTime::EncodedReadHybridTime(const ReadHybridTime& read_time)
-    : read(read_time.read, kMaxWriteId),
-      local_limit(read_time.local_limit, kMaxWriteId),
-      global_limit(read_time.global_limit, kMaxWriteId),
+EncodedReadHybridTime::EncodedReadHybridTime(
+    const ReadHybridTime& read_time, IntraTxnWriteId write_id)
+    : read(read_time.read, write_id),
+      local_limit(read_time.local_limit, write_id),
+      global_limit(read_time.global_limit, write_id),
+      // We use kMaxWriteId for the in_txn_limit. write id is specified
+      // for reads to enforce uniqueness check during index backfill.
       in_txn_limit(read_time.in_txn_limit, kMaxWriteId),
       local_limit_gt_read(read_time.local_limit > read_time.read) {
 }
@@ -1465,10 +1477,6 @@ void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice ke
       && max_seen_ht_data_.max_seen_ht_key.empty()) {
     max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
   }
-}
-
-void AppendStrongWrite(KeyBytes* out) {
-  out->AppendRawBytes(StrongWriteSuffix(*out));
 }
 
 }  // namespace yb::docdb

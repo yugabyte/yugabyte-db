@@ -4,6 +4,10 @@ headerTitle: Deploy on Kubernetes
 linkTitle: Kubernetes
 description: Deploy YugabyteDB clusters natively on Kubernetes with various providers
 headcontent: Deploy YugabyteDB natively on Kubernetes
+aliases:
+  - /deploy/kubernetes/
+  - /stable/deploy/public-clouds/azure/aks/
+  - /stable/deploy/public-clouds/gcp/gke/
 menu:
   stable:
     identifier: deploy-kubernetes

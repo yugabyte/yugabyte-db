@@ -15,35 +15,43 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_error.h"
 
+#include "yb/tablet/tablet_error.h"
+
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+
+using namespace std::literals;
 
 namespace yb::tserver {
 
 struct TabletServerErrorTag : IntegralErrorTag<TabletServerErrorPB::Code> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 5;
+  static constexpr CategoryDescriptor kCategory{5, "tablet server error"sv};
 
-  typedef TabletServerErrorPB::Code Code;
+  using Code = TabletServerErrorPB::Code;
 
   static const std::string& ToMessage(Code code) {
     return TabletServerErrorPB::Code_Name(code);
   }
 };
 
-typedef StatusErrorCodeImpl<TabletServerErrorTag> TabletServerError;
+using TabletServerError = StatusErrorCodeImpl<TabletServerErrorTag>;
 
 class MonoDeltaTraits {
  public:
-  typedef MonoDelta ValueType;
-  typedef int64_t RepresentationType;
+  using ValueType = MonoDelta;
+  using  RepresentationType = int64_t;
 
   static MonoDelta FromRepresentation(RepresentationType source) {
     return MonoDelta::FromNanoseconds(source);
@@ -60,14 +68,14 @@ class MonoDeltaTraits {
 
 struct TabletServerDelayTag : IntegralBackedErrorTag<MonoDeltaTraits> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 8;
+  static constexpr CategoryDescriptor kCategory{8, "tablet server delay"sv};
 
   static std::string ToMessage(MonoDelta value) {
     return value.ToString();
   }
 };
 
-typedef StatusErrorCodeImpl<TabletServerDelayTag> TabletServerDelay;
+using TabletServerDelay = StatusErrorCodeImpl<TabletServerDelayTag>;
 
 void SetupError(TabletServerErrorPB* error, const Status& s);
 

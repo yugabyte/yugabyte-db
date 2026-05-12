@@ -2,8 +2,11 @@
 title: Get started with CDC in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
-description: Get started with Change Data Capture in YugabyteDB.
+description: Start using CDC with gRPC replication in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
+aliases:
+  - /stable/explore/change-data-capture/cdc-get-started/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
 menu:
   stable:
     parent: explore-change-data-capture-grpc-replication
@@ -157,7 +160,7 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8881476960074,
+      "ts_ms": 1775704408457,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:5::0:0\"]",
@@ -168,7 +171,7 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
       "xmin": null
     },
     "op": "u", --> 4
-    "ts_ms": 1646149134341,
+    "ts_ms": 1775704408463,
     "transaction": null
   }
 }
@@ -510,7 +513,7 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation/). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 
@@ -524,9 +527,9 @@ To stream the changes for the new table, delete the existing connector and deplo
 
 You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the YB-TServer reference and [Change data capture flags](../../../../reference/configuration/yb-master/#change-data-capture-cdc-flags) section of the YB-Master reference. The following flags are particularly important for configuring CDC:
 
-- [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) - Controls retention of intents, in ms. If a request for change records is not received for this interval, un-streamed intents are garbage collected and the CDC stream is considered expired. This expiry is not reversible, and the only course of action would be to create a new CDC stream. The default value of this flag is 4 hours (4 x 3600 x 1000 ms).
+- [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) - Controls retention of intents, in ms. If a request for change records is not received for this interval, un-streamed intents are garbage collected and the CDC stream is considered expired. This expiry is not reversible, and the only course of action would be to create a new CDC stream. The default value of this flag is 8 hours (8 x 3600 x 1000 ms).
 
-- [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 4 hours (14400 seconds).
+- [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 8 hours (28800 seconds).
 
 - [cdc_snapshot_batch_size](../../../../reference/configuration/yb-tserver/#cdc-snapshot-batch-size) - This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../debezium-connector-yugabytedb/) configuration.
 
@@ -542,7 +545,7 @@ The following flags control the retention of data required by CDC:
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}
-When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows. 
+When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows.
 
 The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these before image modes may degrade read performance. This happens because compaction activities are halted in the database when these before image modes are used, leading to inefficient key lookups as reads must traverse multiple SST files.
 {{< /warning >}}

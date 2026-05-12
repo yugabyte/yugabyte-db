@@ -5,11 +5,11 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
-import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
@@ -453,6 +453,11 @@ public enum TaskType {
       CustomerTask.TaskType.Install,
       CustomerTask.TargetType.NodeAgent),
 
+  ProvisionUniverseNodes(
+      com.yugabyte.yw.commissioner.tasks.ProvisionUniverseNodes.class,
+      CustomerTask.TaskType.ProvisionUniverseNodes,
+      CustomerTask.TargetType.Universe),
+
   DeleteCustomerConfig(
       com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class,
       CustomerTask.TaskType.Delete,
@@ -493,9 +498,19 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyQueryLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyKubernetesQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyKubernetesQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   ModifyMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.upgrade.ModifyMetricsExportConfig.class,
       CustomerTask.TaskType.ModifyMetricsExportConfig,
+      CustomerTask.TargetType.Universe),
+
+  ConfigureExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureExportTelemetryConfig.class,
+      CustomerTask.TaskType.ConfigureExportTelemetryConfig,
       CustomerTask.TargetType.Universe),
 
   InstallYbcSoftware(
@@ -713,7 +728,17 @@ public enum TaskType {
 
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
-      CustomerTask.TaskType.OperatorImportUniverse,
+      CustomerTask.TaskType.OperatorImport,
+      CustomerTask.TargetType.Universe),
+
+  RegisterUniverseWithPACollector(
+      com.yugabyte.yw.commissioner.tasks.RegisterUniverseWithPACollector.class,
+      CustomerTask.TaskType.RegisterWithPACollector,
+      CustomerTask.TargetType.Universe),
+
+  UnregisterUniverseFromPACollector(
+      com.yugabyte.yw.commissioner.tasks.UnregisterUniverseFromPACollector.class,
+      CustomerTask.TaskType.UnregisterFromPACollector,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -739,6 +764,9 @@ public enum TaskType {
   PersistSystemdUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade.class),
 
   PersistUseClockbound(com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound.class),
+
+  PersistEnableMultiTenancy(
+      com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy.class),
 
   UpdateNodeDetails(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails.class),
 
@@ -817,6 +845,12 @@ public enum TaskType {
 
   UniverseUpdateSucceeded(
       com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded.class),
+
+  RegisterUniverseWithPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector.class),
+
+  UnregisterUniverseFromPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UnregisterUniverseFromPaCollector.class),
 
   UpdateAndPersistGFlags(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags.class),
 
@@ -905,6 +939,10 @@ public enum TaskType {
 
   WaitForReplicationDrain(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain.class),
+
+  XClusterFailoverWithOnDemandSnapshot(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterFailoverWithOnDemandSnapshot
+          .class),
 
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
@@ -1127,7 +1165,12 @@ public enum TaskType {
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
+  CheckShellConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity.class),
+
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  CheckCpuCgroup(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup.class),
 
   CheckOpentelemetryOperator(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
@@ -1168,6 +1211,9 @@ public enum TaskType {
 
   UpdateAndPersistMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig.class),
+
+  UpdateAndPersistExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -1231,6 +1277,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  CheckDbNodePortConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity.class),
+
   SupportBundleComponentDownload(
       com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
 
@@ -1265,7 +1314,33 @@ public enum TaskType {
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
 
   UpdateAndPersistKubernetesImmutableYbc(
-      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class),
+
+  CheckTabletsMovementAvailable(CheckTabletsMovementAvailable.class),
+
+  CheckTabletsMovementAvailableForNode(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode.class),
+
+  MoveTablesTask(com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask.class),
+
+  DropTablespacesTask(com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask.class),
+
+  CheckServiceLiveness(com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness.class),
+
+  CheckNodeCommandExecution(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution.class),
+
+  CheckNodeDataDirDiskSpace(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
+
+  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class),
+
+  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class),
+
+  SaveSoftwareUpgradeProgress(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class),
+
+  CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1325,11 +1400,13 @@ public enum TaskType {
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
           .put(ModifyQueryLoggingConfig, 57)
+          .put(ModifyKubernetesQueryLoggingConfig, 64)
           .put(ModifyMetricsExportConfig, 58)
-          .put(KubernetesToggleImmutableYbc, 59)
-          .put(UpgradeKubernetesYbcGFlags, 60)
-          .put(UpdateYbcThrottleFlags, 61)
-          .put(UpdateK8sYbcThrottleFlags, 62)
+          .put(ConfigureExportTelemetryConfig, 59)
+          .put(KubernetesToggleImmutableYbc, 60)
+          .put(UpgradeKubernetesYbcGFlags, 61)
+          .put(UpdateYbcThrottleFlags, 62)
+          .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

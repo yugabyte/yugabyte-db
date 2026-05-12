@@ -27,9 +27,11 @@ func UpdateEARConfig(
 	callSite := fmt.Sprintf("EAR: %s", earCode)
 	rTask, response, err := authAPI.EditKMSConfig(earUUID).KMSConfig(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Update")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Update")
 	}
+
+	util.CheckTaskAfterCreation(rTask)
+
 	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The ear %s (%s) is being updated",
@@ -72,7 +74,7 @@ func UpdateEARConfig(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }
 
@@ -84,8 +86,7 @@ func GetEARConfig(
 	kmsConfigsMap, response, err := authAPI.ListKMSConfigs().Execute()
 	if err != nil {
 		callSite := fmt.Sprintf("EAR: %s", earCode)
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Update - Fetch EAR")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Update - Fetch EAR")
 	}
 	var r []util.KMSConfig
 

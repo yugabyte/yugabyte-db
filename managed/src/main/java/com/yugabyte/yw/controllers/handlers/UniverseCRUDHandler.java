@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
@@ -42,6 +43,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -93,6 +96,7 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -129,6 +133,9 @@ import play.mvc.Http.Status;
 
 @Singleton
 public class UniverseCRUDHandler {
+
+  private static final String FIPS_STABLE_RELEASE = "2025.2.0.0-b18";
+  private static final String FIPS_PREVIEW_RELEASE = "2.29.0.0-b31";
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
 
@@ -221,10 +228,15 @@ public class UniverseCRUDHandler {
                 PlacementInfoUtil.getDefaultRegion(taskParams))
             || PlacementInfoUtil.didAffinitizedLeadersChange(
                 currentCluster.placementInfo, cluster.placementInfo)
+            || PlacementInfoUtil.areReplicasChanged(
+                currentCluster.placementInfo, cluster.placementInfo)
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
             || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || (cluster.userIntent.providerType == Common.CloudType.kubernetes
+                && !isSameInstanceTypes(
+                    cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
                 != currentCluster.userIntent.enableExposingService;
 
@@ -281,9 +293,28 @@ public class UniverseCRUDHandler {
   }
 
   private static boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
-    return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
-        && currentCluster.userIntent.deviceInfo.volumeSize
-            < cluster.userIntent.deviceInfo.volumeSize;
+    if (currentCluster.userIntent.providerType != Common.CloudType.kubernetes) {
+      return false;
+    }
+    Set<UUID> currentAZs = currentCluster.placementInfo.getAllAZUUIDs();
+    for (UUID azUUID : cluster.placementInfo.getAllAZUUIDs()) {
+      // Skip for new AZs being added
+      if (!currentAZs.contains(azUUID)) {
+        continue;
+      }
+      for (boolean isDedicatedMaster : new boolean[] {false, true}) {
+        DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+        DeviceInfo currentDeviceInfo =
+            currentCluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+        if (currentDeviceInfo != null
+            && newDeviceInfo != null
+            && currentDeviceInfo.volumeSize < newDeviceInfo.volumeSize) {
+          LOG.info("Volume size changed for {}!", isDedicatedMaster ? "Master" : "Tserver");
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
@@ -378,6 +409,7 @@ public class UniverseCRUDHandler {
     if (cluster.placementInfo != null && cluster.placementInfo.hasRankOrdering()) {
       PlacementInfoUtil.validatePriority(cluster.placementInfo);
     }
+    // Old geo-partitioning.
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
@@ -388,10 +420,37 @@ public class UniverseCRUDHandler {
             && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
+    if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      // Always create FIPS enabled universe on FIPS enabled YBA
+      taskParams.fipsEnabled = true;
+    }
     try {
       Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
       PlacementInfoUtil.updateUniverseDefinition(
           taskParams, universe, customer.getId(), cluster.uuid);
+      if (taskParams.clusterOperation == ClusterOperationType.EDIT) {
+        Cluster universePrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+        // userIntentOverrides for kubernetes operator universes are managed by
+        // operator; skip the default handling here.
+        if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)
+            && !taskParams.isKubernetesOperatorControlled) {
+          cluster.userIntent.setUserIntentOverrides(
+              KubernetesUtil.generateVolumeOverridesForUserIntent(
+                  cluster.userIntent.getUserIntentOverrides(),
+                  cluster.placementInfo.getAllAZUUIDs(),
+                  universePrimaryCluster.userIntent.universeOverrides,
+                  universePrimaryCluster.userIntent.azOverrides,
+                  PlacementInfoUtil.findRetainedAZs(
+                      cluster.placementInfo,
+                      taskParams.currentClusterType == ClusterType.PRIMARY
+                          ? universePrimaryCluster.placementInfo
+                          : universe
+                              .getUniverseDetails()
+                              .getReadOnlyClusters()
+                              .get(0)
+                              .placementInfo)));
+        }
+      }
       try {
         taskParams.updateOptions =
             getUpdateOptions(taskParams, taskParams.clusterOperation, cluster, universe);
@@ -640,7 +699,7 @@ public class UniverseCRUDHandler {
       }
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
@@ -705,7 +764,7 @@ public class UniverseCRUDHandler {
       if (c.placementInfo != null && c.placementInfo.hasRankOrdering()) {
         PlacementInfoUtil.validatePriority(c.placementInfo);
       }
-      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
       if (c.userIntent.specificGFlags != null) {
@@ -724,6 +783,18 @@ public class UniverseCRUDHandler {
           c.userIntent.specificGFlags =
               SpecificGFlags.construct(c.userIntent.masterGFlags, c.userIntent.tserverGFlags);
         }
+      }
+
+      // Update device info in userIntent for Kubernetes.
+      // For operator-controlled universes, userIntentOverrides (and the universe-overrides
+      // merge into base deviceInfo) are managed entirely by operator.
+      if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)
+          && !taskParams.isKubernetesOperatorControlled) {
+        KubernetesUtil.applyVolumeChanges(
+            c.userIntent,
+            c.placementInfo,
+            taskParams.getPrimaryCluster().userIntent.universeOverrides,
+            taskParams.getPrimaryCluster().userIntent.azOverrides);
       }
     }
 
@@ -930,20 +1001,92 @@ public class UniverseCRUDHandler {
           nodeDetails.otelCollectorMetricsPort = otelPort;
         }
       }
-      if (!Util.isOnPremManualProvisioning(taskParams)
-          && !Util.isKubernetesBasedUniverse(taskParams)
+      if (UpdateOOMServiceState.isEarlyoomInstallationPossible(confGetter, taskParams, customer)
           && taskParams.additionalServicesStateData == null) {
-        boolean enableEarlyoomFeature =
-            confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
-        if (enableEarlyoomFeature) {
-          AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
-          Boolean enableEarlyoom =
-              confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
-          String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
-          servicesStateData.setEarlyoomConfig(
-              AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
-          servicesStateData.setEarlyoomEnabled(enableEarlyoom);
-          taskParams.additionalServicesStateData = servicesStateData;
+        AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
+        Boolean enableEarlyoom =
+            confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
+        String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+        servicesStateData.setEarlyoomConfig(
+            AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+        servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+        taskParams.additionalServicesStateData = servicesStateData;
+      }
+
+      if (taskParams.fipsEnabled
+          && Util.compareYBVersions(
+                  userIntent.ybSoftwareVersion, FIPS_STABLE_RELEASE, FIPS_PREVIEW_RELEASE, true)
+              < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DB release " + userIntent.ybSoftwareVersion + " does not support FIPS");
+      }
+
+      UserIntent.MultiTenancyConfig mtConfig = userIntent.getMultiTenancy();
+      if (mtConfig != null && mtConfig.isEnableQos()) {
+        if (!confGetter
+            .getCustomerConf(customer)
+            .getBoolean(UniverseConfKeys.allowMultiTenancy.getKey())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Multi-tenancy is not allowed. Please set runtime flag"
+                  + " 'yb.universe.allow_multi_tenancy' to true.");
+        }
+        if (Util.compareYBVersions(
+                userIntent.ybSoftwareVersion,
+                Util.MULTITENANCY_SUPPORTED_DB_VERSION_STABLE,
+                Util.MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW,
+                true)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Current software version is below minimum supported DB version for"
+                  + " multi-tenancy.");
+        }
+        boolean skipYcqlPrecheck =
+            confGetter
+                .getCustomerConf(customer)
+                .getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey());
+        if (skipYcqlPrecheck && !userIntent.enableYSQL) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YSQL API should be enabled to enable multi-tenancy");
+        } else if (!(userIntent.enableYSQL && !userIntent.enableYCQL)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YSQL API should be enabled and YCQL api disabled to enable multi-tenancy");
+        }
+        for (Cluster cluster : taskParams.clusters) {
+          if (cluster.userIntent.providerType == Common.CloudType.kubernetes) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Multi-tenancy QoS is not supported for Kubernetes universes.");
+          }
+          Provider provider =
+              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+          if (cluster.userIntent.providerType == Common.CloudType.onprem) {
+            Provider clusterProvider =
+                Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+            if (!clusterProvider.getDetails().getCloudInfo().getOnprem().isEnableMultiTenancy()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  "Multi-tenancy must be enabled on the on-premises provider '"
+                      + clusterProvider.getName()
+                      + "' before it can be enabled on the universe. "
+                      + "Ensure cgroup provisioning is completed first.");
+            }
+          } else if (!confGetter.getConfForScope(
+              provider, ProviderConfKeys.enableCgroupConfiguration)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cgroup configuration runtime flag 'yb.node_agent.enable_cgroup_configuration' for"
+                    + " provider '"
+                    + provider.getName()
+                    + "' before it can be enabled on the universe.");
+          }
+        }
+        if (mtConfig.getQosMaxDbCpuPercent() != null
+            && (mtConfig.getQosMaxDbCpuPercent() <= 0.0
+                || mtConfig.getQosMaxDbCpuPercent() > 100.0)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "QoS max db cpu percent should be between 0 and 100( inclusive ).");
         }
       }
     }
@@ -1009,6 +1152,8 @@ public class UniverseCRUDHandler {
               }
             }
           }
+          // Mark universe with volume migrated
+          universe.updateConfig(ImmutableMap.of(Universe.VOLUME_MIGRATED, Boolean.toString(true)));
           // Label the Kubernetes resources with universe name, zone
           // name. Done only for newly created universes.
           universe.updateConfig(
@@ -1082,7 +1227,7 @@ public class UniverseCRUDHandler {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
 
-        maybeSetMemoryLimitGflags(customer, universe, primaryCluster);
+        maybeSetNewInstallGflags(customer, universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -1229,20 +1374,40 @@ public class UniverseCRUDHandler {
 
     // Update Primary cluster
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    if (!primaryCluster.isGeoPartitioned()
+        && primaryCluster.getPartitions() != null
+        && primaryCluster.getPartitions().size() > 1) {
+      LOG.info("Marking universe {} as geo partitioned", taskParams.getUniverseUUID());
+      primaryCluster.setGeoPartitioned(true);
+    }
     for (Cluster readOnlyCluster : u.getUniverseDetails().getReadOnlyClusters()) {
       validateConsistency(primaryCluster, readOnlyCluster);
     }
 
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
       notHelm2LegacyOrBadRequest(u);
       checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+      PlacementInfoUtil.applyK8sStsIndexIncrement(
+          primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
+      // Operator-controlled universes manage userIntentOverrides themselves.
+      if (!taskParams.isKubernetesOperatorControlled) {
+        primaryCluster.userIntent.setUserIntentOverrides(
+            KubernetesUtil.generateVolumeOverridesForUserIntent(
+                primaryCluster.userIntent.getUserIntentOverrides(),
+                primaryCluster.placementInfo.getAllAZUUIDs(),
+                primaryCluster.userIntent.universeOverrides,
+                primaryCluster.userIntent.azOverrides,
+                PlacementInfoUtil.findRetainedAZs(
+                    primaryCluster.placementInfo,
+                    u.getUniverseDetails().getPrimaryCluster().placementInfo)));
+      }
     } else {
       mergeNodeExporterInfo(u, taskParams);
     }
-    PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Universe);
   }
 
@@ -1250,13 +1415,26 @@ public class UniverseCRUDHandler {
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
-    PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
+    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
       notHelm2LegacyOrBadRequest(u);
       checkHelmChartExists(cluster.userIntent.ybSoftwareVersion);
+      PlacementInfoUtil.applyK8sStsIndexIncrement(
+          cluster, taskParams.getNodesInCluster(cluster.uuid));
+      // Operator-controlled universes manage userIntentOverrides themselves.
+      if (!taskParams.isKubernetesOperatorControlled) {
+        cluster.userIntent.setUserIntentOverrides(
+            KubernetesUtil.generateVolumeOverridesForUserIntent(
+                cluster.userIntent.getUserIntentOverrides(),
+                cluster.placementInfo.getAllAZUUIDs(),
+                u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
+                u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
+                PlacementInfoUtil.findRetainedAZs(
+                    cluster.placementInfo,
+                    u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo)));
+      }
     }
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
   }
@@ -1366,6 +1544,12 @@ public class UniverseCRUDHandler {
     return Universe.maybeGetUniverseByName(customer.getId(), name)
         .map(value -> Collections.singletonList(UniverseResp.create(value, null, confGetter)))
         .orElseGet(Collections::emptyList);
+  }
+
+  public UniverseResp findByUUID(Customer customer, UUID universeUUID) {
+    return Universe.maybeGet(universeUUID)
+        .map(value -> UniverseResp.create(value, null, confGetter))
+        .orElse(null);
   }
 
   public UUID destroy(
@@ -1546,7 +1730,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    addOnCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    addOnCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1561,7 +1746,7 @@ public class UniverseCRUDHandler {
 
     // TODO: do we need this?
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster.placementInfo);
+        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -1630,7 +1815,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    readOnlyCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -1673,7 +1859,7 @@ public class UniverseCRUDHandler {
     }
 
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster.placementInfo);
+        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -1743,6 +1929,15 @@ public class UniverseCRUDHandler {
 
   public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
+    return clusterDelete(customer, universe, clusterUUID, isForceDelete, null);
+  }
+
+  public UUID clusterDelete(
+      Customer customer,
+      Universe universe,
+      UUID clusterUUID,
+      Boolean isForceDelete,
+      KubernetesResourceDetails resourceDetails) {
     List<Cluster> existingNonPrimaryClusters =
         universe.getUniverseDetails().getNonPrimaryClusters();
 
@@ -1766,6 +1961,9 @@ public class UniverseCRUDHandler {
       taskParams.clusterUUID = clusterUUID;
       taskParams.isForceDelete = isForceDelete;
       taskParams.expectedUniverseVersion = universe.getVersion();
+      if (resourceDetails != null) {
+        taskParams.setKubernetesResourceDetails(resourceDetails);
+      }
       taskUUID = commissioner.submit(TaskType.ReadOnlyKubernetesClusterDelete, taskParams);
     } else {
       switch (cluster.clusterType) {
@@ -2371,6 +2569,62 @@ public class UniverseCRUDHandler {
     }
   }
 
+  /**
+   * Verifies that each node's persisted {@link CloudSpecificInfo#instance_type} matches the
+   * effective instance type from {@link UserIntent#getInstanceTypeForNode(NodeDetails)} (including
+   * AZ overrides). Drift causes {@link PlacementInfoUtil#shouldReplaceNode} to treat nodes as
+   * needing replacement and can turn a simple expand into a full move.
+   */
+  @VisibleForTesting
+  public static void checkInstanceTypeConsistency(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (details == null
+        || details.getPrimaryCluster() == null
+        || details.getPrimaryCluster().userIntent == null) {
+      return;
+    }
+    List<Cluster> clusters = details.clusters;
+    if (clusters == null || clusters.isEmpty()) {
+      return;
+    }
+    List<String> mismatchMessages = new ArrayList<>();
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent == null) {
+        continue;
+      }
+      if (cluster.userIntent.providerType == Common.CloudType.kubernetes) {
+        continue;
+      }
+      UserIntent userIntent = cluster.userIntent;
+      for (NodeDetails node : details.getNodesInCluster(cluster.uuid)) {
+        if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
+          continue;
+        }
+        if (node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.instance_type)) {
+          continue;
+        }
+        String expected = userIntent.getInstanceTypeForNode(node);
+        String actual = node.cloudInfo.instance_type;
+        if (!Objects.equals(actual, expected)) {
+          mismatchMessages.add(
+              String.format(
+                  "%s [azUuid=%s, dedicatedTo=%s]: actual=%s, expected=%s",
+                  node.nodeName, node.getAzUuid(), node.dedicatedTo, actual, expected));
+        }
+      }
+    }
+    if (!mismatchMessages.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Instance type metadata is inconsistent for node(s): %s. "
+                  + "This blocks edits because it would trigger a full move. "
+                  + "Reconcile the universe metadata (e.g. node cloudInfo.instance_type vs "
+                  + "userIntent and overrides) before retrying.",
+              StringUtils.join(mismatchMessages, "; ")));
+    }
+  }
+
   // TODO This is used by calls originating from the UI that are not in swagger APIs. More
   // validations may be needed later like checking the fields of all NodeDetails objects because
   // the existing nodes in the universe are replaced by these nodes in the task params. UI sends
@@ -2379,7 +2633,10 @@ public class UniverseCRUDHandler {
   private void checkTaskParamsForUpdate(
       Universe universe, UniverseDefinitionTaskParams taskParams) {
 
+    checkInstanceTypeConsistency(universe);
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
 
     Set<UUID> taskParamClustersUuids =
         taskParams.clusters.stream()
@@ -2432,6 +2689,20 @@ public class UniverseCRUDHandler {
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (isK8s
+          && !Objects.equals(
+              Util.getSingleProviderUUID(curCluster), Util.getSingleProviderUUID(newCluster))) {
+        String msg =
+            String.format(
+                "Provider can't change during editing of the universe. "
+                    + "Expected provider %s but found %s for cluster type: %s",
+                Util.getSingleProviderUUID(curCluster),
+                Util.getSingleProviderUUID(newCluster),
+                newCluster.clusterType);
+        LOG.error(msg);
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
+
       if (newCluster.placementInfo != null && newCluster.placementInfo.hasRankOrdering()) {
         PlacementInfoUtil.validatePriority(newCluster.placementInfo);
       }
@@ -2455,6 +2726,51 @@ public class UniverseCRUDHandler {
                   + newBundle.getDetails().getArch());
         }
       }
+      if (CollectionUtils.isEmpty(newCluster.getPartitions())
+          != CollectionUtils.isEmpty(curCluster.getPartitions())) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
+      }
+      if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
+        PlacementInfoUtil.validatePartitions(newCluster);
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
+            curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
+            newCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+
+        for (UniverseDefinitionTaskParams.PartitionInfo cur : currentMap.values()) {
+          UniverseDefinitionTaskParams.PartitionInfo newPartition = newMap.get(cur.getUuid());
+          if (newPartition == null) {
+            if (cur.isDefaultPartition()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot delete default partition " + cur.getName());
+            }
+          } else {
+            boolean autoTablespaceUpdate =
+                confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
+            if (!autoTablespaceUpdate
+                && !cur.getTablespaceName().equals(newPartition.getTablespaceName())) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot automatically modify partition name");
+            }
+            boolean tablespaceMoveWithTemporary =
+                confGetter.getGlobalConf(GlobalConfKeys.tablespaceMoveWithTemporary);
+            TableSpaceStructures.TableSpaceInfo newTbs =
+                TableSpaceUtil.partitionToTablespace(newPartition);
+            TableSpaceStructures.TableSpaceInfo oldTbs = TableSpaceUtil.partitionToTablespace(cur);
+            if (!newTbs.equals(oldTbs)
+                && cur.getTablespaceName().equals(newPartition.getTablespaceName())
+                && !tablespaceMoveWithTemporary) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot modify partition without renaming tablespace");
+            }
+          }
+          if (newCluster.clusterType == ClusterType.ASYNC && newMap.size() > 1) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Multiple partitions for readonly cluster is not supported");
+          }
+        }
+      }
+
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded
@@ -2462,7 +2778,8 @@ public class UniverseCRUDHandler {
           String newInstanceType = newIntent.getInstanceTypeForNode(nodeDetails);
           String curInstanceType = curIntent.getInstanceTypeForNode(nodeDetails);
           // Verifying that instance type was not changed for existing nodes.
-          if (!Objects.equals(newInstanceType, curInstanceType)) {
+          if (!Objects.equals(newInstanceType, curInstanceType)
+              && curIntent.providerType != Common.CloudType.kubernetes) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
@@ -2550,6 +2867,16 @@ public class UniverseCRUDHandler {
                     curIntent.isUseYbdbInbuiltYbc(),
                     newIntent.isUseYbdbInbuiltYbc()));
           }
+          if (!Objects.equals(curIntent.getMultiTenancy(), newIntent.getMultiTenancy())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change multi-tenancy config for existing node %s"
+                        + " through EditUniverse",
+                    nodeDetails.nodeName,
+                    curIntent.getMultiTenancy(),
+                    newIntent.getMultiTenancy()));
+          }
         }
       }
       Set<NodeDetails> toBeAdded =
@@ -2581,38 +2908,50 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetMemoryLimitGflags(
+  private void maybeSetNewInstallGflags(
       Customer customer, Universe universe, Cluster primaryCluster) {
 
-    if (null == primaryCluster
-        || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
-        || Util.compareYBVersions(
+    Map<String, String> newInstallMasterGflags = new HashMap<>();
+    Map<String, String> newInstallTserverGflags = new HashMap<>();
+
+    if (primaryCluster != null
+        && primaryCluster.userIntent.providerType.isVM()
+        && !primaryCluster.userIntent.dedicatedNodes
+        && !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
+        && Util.compareYBVersions(
                 primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
-            < 0
-        || !primaryCluster.userIntent.providerType.isVM()
-        || primaryCluster.userIntent.dedicatedNodes) {
-      return;
+            >= 0) {
+      newInstallMasterGflags.putAll(
+          Map.of(
+              "enforce_tablet_replica_limits",
+              "true",
+              "split_respects_tablet_replica_limits",
+              "true"));
+      if (primaryCluster.userIntent.enableYSQL) {
+        newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+      }
     }
 
-    Map<String, String> masterNewInstGflags =
-        new HashMap<>(
-            Map.of(
-                "enforce_tablet_replica_limits",
-                "true",
-                "split_respects_tablet_replica_limits",
-                "true"));
-    Map<String, String> tserverNewInstGFlags = new HashMap<>();
-
-    Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
-    tserverNewInstGFlags.putAll(memNewInstFlag);
-    masterNewInstGflags.putAll(memNewInstFlag);
+    // Add new flags for versions >= 2.29.0.0 or 2025.2.0.0
+    if (primaryCluster != null
+        && Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2025.2.0.0", "2.29.0.0", true)
+            >= 0
+        && primaryCluster.userIntent.enableYSQL) {
+      Map<String, String> newFlags =
+          Map.of(
+              "yb_enable_read_committed_isolation", "true",
+              "ysql_pg_conf_csv", "yb_enable_cbo=on");
+      newInstallTserverGflags.putAll(newFlags);
+      newInstallMasterGflags.putAll(newFlags);
+    }
 
     SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
-    if (!tserverNewInstGFlags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
+    if (!newInstallTserverGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.TSERVER, newInstallTserverGflags);
     }
-    if (!masterNewInstGflags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+    if (!newInstallMasterGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.MASTER, newInstallMasterGflags);
     }
     LOG.info(
         "Setting new install gflags to {} on universe {}",

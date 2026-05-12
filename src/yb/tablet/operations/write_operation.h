@@ -41,8 +41,9 @@
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
+
+using AsyncWriteCallback = boost::function<void(Result<OpId>)>;
 
 // An operation for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including the Replicate and Commit PB messages
@@ -69,7 +70,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
     return true;
   }
 
-  void SetAsyncWrite(boost::function<void(OpId)> callback);
+  void SetAsyncWrite(AsyncWriteCallback callback);
 
   void AddedAsPending(const TabletPtr& tablet) override;
 
@@ -101,13 +102,18 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   // Commits the mvcc transaction and updates the metrics.
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
 
+  Status ApplyOperation(int64_t leader_term, bool skip_opid_update);
+
   // Aborts the mvcc transaction.
   Status DoAborted(const Status& status) override;
 
   HybridTime WriteHybridTime() const override;
 
-  boost::function<void(OpId)> added_to_leader_callback_;
+  AsyncWriteCallback async_write_callback_;
+
+  bool apply_completed_ = false;
 };
 
-}  // namespace tablet
-}  // namespace yb
+bool IsTxnAborted(const Status& status);
+
+}  // namespace yb::tablet

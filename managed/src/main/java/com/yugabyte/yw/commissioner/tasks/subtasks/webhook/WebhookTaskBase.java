@@ -52,6 +52,6 @@ public abstract class WebhookTaskBase extends AbstractTaskBase {
 
   private ApiHelper getApiHelper() {
     WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
-    return new ApiHelper(wsClient);
+    return new ApiHelper(wsClient, wsClientRefresher.getMaterializer());
   }
 }

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: cmd_show
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/cmd_show/
 type: docs
 ---
 

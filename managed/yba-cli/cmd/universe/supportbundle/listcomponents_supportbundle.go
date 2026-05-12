@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 var listSupportBundleComponentsUniverseCmd = &cobra.Command{
@@ -23,13 +22,7 @@ var listSupportBundleComponentsUniverseCmd = &cobra.Command{
 
 		r, response, err := authAPI.ListSupportBundleComponents().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"List Components",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "List Components")
 		}
 
 		sbString := util.GetPrintableList(r)

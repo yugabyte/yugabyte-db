@@ -31,7 +31,7 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<VTableDataPtr> YQLTablesVTable::RetrieveData(const QLReadRequestPB& request) const {
+Result<VTableDataPtr> YQLTablesVTable::RetrieveData(const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
 
   auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);

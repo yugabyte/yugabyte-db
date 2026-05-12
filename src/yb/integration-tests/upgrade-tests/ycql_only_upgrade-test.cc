@@ -75,7 +75,7 @@ class YcqlOnlyUpgradeTest : public UpgradeTestBase {
     std::vector<client::YBOperationPtr> ops;
 
     for (auto i = 0; i < 10; i++) {
-      auto op = table_.NewInsertOp();
+      auto op = table_.NewInsertOp(session->arena());
       int32_t key = row_count_++;
       QLAddInt32HashValue(op->mutable_request(), key);
       ops.push_back(std::move(op));

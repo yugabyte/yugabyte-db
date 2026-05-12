@@ -30,13 +30,7 @@ var controlAlertCmd = &cobra.Command{
 
 		customerDetails, response, err := authAPI.CustomerDetail().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert",
-				"Control - Get Customer",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Control - Get Customer")
 		}
 
 		if customerDetails.GetUuid() == "" {
@@ -47,7 +41,7 @@ var controlAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if strings.TrimSpace(callhomeLevel) == "" {
+		if util.IsEmptyString(callhomeLevel) {
 			callhomeLevel = customerDetails.GetCallhomeLevel()
 		}
 		callhomeLevel = strings.ToUpper(callhomeLevel)
@@ -111,7 +105,7 @@ var controlAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if strings.TrimSpace(emailFrom) == "" {
+			if util.IsEmptyString(emailFrom) {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"Email from is required when email-alerts is enabled\n",
@@ -125,7 +119,7 @@ var controlAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if strings.TrimSpace(smtpServer) == "" {
+			if util.IsEmptyString(smtpServer) {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"SMTP server is required when email-alerts is enabled\n",
@@ -207,23 +201,19 @@ var controlAlertCmd = &cobra.Command{
 
 		_, response, err = authAPI.UpdateCustomer().Customer(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert", "Control")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Control")
 		}
 
 		customerDetails, response, err = authAPI.CustomerDetail().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert",
-				"Control - Get Customer",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Control - Get Customer")
 		}
 
-		r := make([]ybaclient.CustomerDetailsData, 0)
-		r = append(r, customerDetails)
+		r := util.CheckAndAppend(
+			make([]ybaclient.CustomerDetailsData, 0),
+			customerDetails,
+			"No customer details found",
+		)
 
 		customerCtx := formatter.Context{
 			Command: "describe",

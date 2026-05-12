@@ -1,87 +1,137 @@
-import { useFormContext } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
-import { styled, Typography } from '@material-ui/core';
-import { mui, YBTooltip, YBWarning } from '@yugabyte-ui-library/core';
-import { FaultToleranceTypeField } from '../../fields/fault-tolerance/FaultToleranceTypeField';
-import { FAULT_TOLERANCE_TYPE } from '../../fields/FieldNames';
-import { ReplicationFactorField } from '../../fields/replication-factor/ReplicationFactorField';
-import {
-  ReplicationStatusAvailabilityStatus,
-  ReplicationStatusCard
-} from '../nodes-availability/ReplicationStatusCard';
-import { FaultToleranceType, ResilienceAndRegionsProps } from './dtos';
-import { ResilienceTooltip } from './ResilienceTooltip';
 import { useState } from 'react';
-const { Box, Collapse } = mui;
+import { Trans, useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
+import pluralize from 'pluralize';
+import { mui } from '@yugabyte-ui-library/core';
+import { FaultToleranceTypeField, ReplicationFactorField } from '../../fields';
+import { ResilienceTooltip } from './index';
+import { FaultToleranceType, ResilienceAndRegionsProps } from './dtos';
+import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from '../../fields/FieldNames';
+import { ResilienceRequirementCard } from './ResilienceRequirementCard';
 
-const Link = styled('span')(({ theme }) => ({
-  color: `${theme.palette.primary[600]}`,
-  textDecoration: 'underline',
-  cursor: 'pointer',
-  '&:hover': {
-    textDecoration: 'underline',
-    color: `${theme.palette.primary[600]}`
-  }
+const { Box, styled, Typography } = mui;
+
+const Link = styled('span')(() => ({
+  textDecorationLine: 'underline',
+  textDecorationStyle: 'dotted',
+  cursor: 'pointer'
+}));
+
+const Root = styled(Box)(({ theme }) => ({
+  padding: '24px',
+  border: `1px solid ${theme.palette.grey[200]}`,
+  borderRadius: '8px',
+  gap: '24px',
+  display: 'flex',
+  flexDirection: 'column'
+}));
+
+const ChooseResilienceCard = styled(Box)(({ theme }) => ({
+  padding: '32px 24px',
+  display: 'flex',
+  gap: '32px',
+  border: `1px solid ${theme.palette.grey[200]}`,
+  borderRadius: '8px',
+  flexDirection: 'column'
+}));
+
+const NoneCautionRow = styled(Box)(() => ({
+  display: 'flex',
+  gap: '8px',
+  alignItems: 'center'
+}));
+
+const CautionBadge = styled(Box)(() => ({
+  backgroundColor: '#FFEEC8',
+  borderRadius: '6px',
+  padding: '4px 6px',
+  fontSize: '11.5px',
+  fontWeight: 500,
+  color: '#9D6C00',
+  whiteSpace: 'nowrap',
+  lineHeight: '16px'
 }));
 
 export const GuidedMode = () => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions.guidedMode'
   });
-  const { watch } = useFormContext<ResilienceAndRegionsProps>();
-
-  const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
   const [showResilienceTooltip, setShowResilienceTooltip] = useState(false);
+  const { watch, getValues } = useFormContext<ResilienceAndRegionsProps>();
+  const resilienceFactor = watch(RESILIENCE_FACTOR);
+  const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
+  const isNone = faultToleranceType === FaultToleranceType.NONE;
 
   return (
-    <Box
-      sx={{
-        padding: '24px',
-        display: 'flex',
-        flexDirection: 'column',
-        border: '1px solid #D7DEE4',
-        borderRadius: '8px'
-      }}
-    >
-      <div>
-        {t('instruction')} &nbsp;
-        <Link
-          onClick={() => {
-            setShowResilienceTooltip(true);
+    <Root>
+      <Typography
+        variant="body2"
+        sx={(theme) => ({ fontWeight: 500, lineHeight: '16px', color: theme.palette.grey[900] })}
+      >
+        <Trans
+          i18nKey="helpText"
+          t={t}
+          components={{
+            a: (
+              <Link
+                onClick={() => {
+                  setShowResilienceTooltip(true);
+                }}
+              />
+            )
           }}
-          title={t('helpText')}
-        >
-          {t('helpText')}
-        </Link>
-      </div>
-      <div style={{ display: 'flex', gap: '8px', marginTop: '32px', alignItems: 'center' }}>
-        <FaultToleranceTypeField name={FAULT_TOLERANCE_TYPE} label={t('faultTolerance')} t={t} />
-        {faultToleranceType !== FaultToleranceType.NONE && (
-          <div style={{ marginTop: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <Typography variant="body2">{t('resilientTo')}</Typography>
-            <ReplicationFactorField hideLabel replication_options={['1', '2', '3']} />
-            <Typography variant="body2">
-              {t(`${faultToleranceType}.name`)}
-              {t('outages')}
-            </Typography>
-          </div>
-        )}
-      </div>
-      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <ReplicationStatusAvailabilityStatus />
-        <ReplicationStatusCard hideSubText />
-        <Collapse in={faultToleranceType === FaultToleranceType.NONE}>
-          <YBWarning chipText={t('faultToleranceNone.caution')}>
-            {t('faultToleranceNone.msg')}
-          </YBWarning>
-        </Collapse>
-      </div>
+        />
+      </Typography>
       <ResilienceTooltip
         open={showResilienceTooltip}
         onClose={() => {
           setShowResilienceTooltip(false);
         }}
       />
-    </Box>
+      <ChooseResilienceCard>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '8px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            '.yb-MuiFormControlLabel-root': { marginBottom: '0 !important' }
+          }}
+        >
+          {t('resilientTo')}
+          <ReplicationFactorField
+            hideLabel
+            replication_options={['1', '2', '3']}
+            fieldName={RESILIENCE_FACTOR}
+            segmentDisabled={isNone}
+          />
+          <FaultToleranceTypeField
+            name={FAULT_TOLERANCE_TYPE}
+            label=""
+            t={t}
+            sx={{ width: '160px', minWidth: '160px' }}
+          />
+          {!isNone && (
+            <>
+              {' '}
+              {pluralize(t('resilienceOutageWord'), resilienceFactor)}.
+            </>
+          )}
+        </Box>
+        {isNone && (
+          <NoneCautionRow>
+            <CautionBadge>{t('cautionLabel')}</CautionBadge>
+            <Typography
+              variant="body2"
+              sx={{ color: '#4E5F6D', fontSize: '13px', lineHeight: '19px', fontWeight: 400 }}
+            >
+              {t('noneResilienceCautionMsg')}
+            </Typography>
+          </NoneCautionRow>
+        )}
+        <ResilienceRequirementCard resilienceAndRegionsProps={getValues()} placementStep="resilience" />
+      </ChooseResilienceCard>
+    </Root>
   );
 };

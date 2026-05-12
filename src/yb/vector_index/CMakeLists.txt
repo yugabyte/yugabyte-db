@@ -34,12 +34,13 @@ set(VECTOR_INDEX_SRCS
   vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc
+  vector_lsm_metrics.cc
   )
 
 set(VECTOR_INDEX_LIBS
-  rocksdb
   vector_index_proto
   yb_common
+  yb_storage
   yb_util
   )
 

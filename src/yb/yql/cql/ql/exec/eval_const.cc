@@ -41,9 +41,35 @@ using std::string;
 namespace yb {
 namespace ql {
 
+template <class Col, class KeyExtractor>
+void CleanupDuplicates(Col& col, KeyExtractor key_extractor) {
+  std::stable_sort(col.begin(), col.end(), [&key_extractor](const auto& lhs, const auto& rhs) {
+    return *key_extractor(lhs) < *key_extractor(rhs);
+  });
+  auto w = col.begin();
+  if (w == col.end()) {
+    return;
+  }
+  auto p = w;
+  auto first_eq = key_extractor(*w);
+  for (auto it = w; ++it != col.end(); p = it) {
+    auto current = key_extractor(*it);
+    if (*first_eq != *current) {
+      if (p != w) {
+        *w = std::move(*p);
+      }
+      ++w;
+      first_eq = current;
+    }
+  }
+  if (p != w) {
+    *w = std::move(*p);
+  }
+  col.erase(++w, col.end());
+}
 
 Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
-                             QLValuePB *const_pb,
+                             QLValueMsg *const_pb,
                              bool negate) {
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
     SetNull(const_pb);
@@ -54,7 +80,7 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
       return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), const_pb);
 
     case ExprOperator::kBindVar: {
-      QLExpressionPB expr_pb;
+      LWQLExpressionPB expr_pb(&const_pb->arena());
       RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
       *const_pb = std::move(*expr_pb.mutable_value());
       return Status::OK();
@@ -121,7 +147,7 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value: {
@@ -183,7 +209,8 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
       break;
     }
     case InternalType::kDecimalValue: {
-      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
+      const_pb->ref_decimal_value(VERIFY_RESULT(const_pt->ToDecimal(const_pb->arena(), negate)));
+      return Status::OK();
     }
     case InternalType::kTimestampValue: {
       int64_t value;
@@ -216,7 +243,8 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
       break;
     }
     case InternalType::kVarintValue: {
-      return const_pt->ToVarInt(const_pb->mutable_varint_value(), negate);
+      const_pb->ref_varint_value(VERIFY_RESULT(const_pt->ToVarInt(const_pb->arena(), negate)));
+      return Status::OK();
     }
 
     default:
@@ -227,11 +255,12 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kDecimalValue: {
-      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
+      const_pb->ref_decimal_value(VERIFY_RESULT(const_pt->ToDecimal(const_pb->arena(), negate)));
+      return Status::OK();
     }
     case InternalType::kFloatValue: {
       long double value;
@@ -255,7 +284,7 @@ Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
 
 // The following numeric functions might be needed if we fold constant at compile time.
 // Leave them here for now.
-Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   int64_t value = const_pt->value();
   if (negate) {
@@ -292,7 +321,7 @@ Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   long double value = const_pt->value();
   if (negate) {
@@ -314,10 +343,11 @@ Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstText *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kStringValue:
-      return const_pt->ToString(const_pb->mutable_string_value());
+      const_pb->ref_string_value(const_pt->ToString(const_pb->arena()));
+      break;
     case InternalType::kTimestampValue: {
       int64_t value = 0;
       RETURN_NOT_OK(const_pt->ToTimestamp(&value, ql_metrics_));
@@ -365,7 +395,7 @@ Status Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kBoolValue:
       const_pb->set_bool_value(const_pt->value());
@@ -378,7 +408,7 @@ Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValueMsg *const_pb) {
   const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kBinaryValue: {
@@ -387,9 +417,9 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) 
         return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
       }
 
-      string bytes;
-      a2b_hex(value->c_str(), &bytes, input_size / 2);
-      const_pb->set_binary_value(bytes);
+      auto out = static_cast<char*>(const_pb->arena().AllocateBytes(input_size / 2));
+      a2b_hex(value->c_str(), out, input_size / 2);
+      const_pb->ref_binary_value(Slice(out, input_size / 2));
       break;
     }
     default:
@@ -400,7 +430,7 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) 
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValueMsg *const_pb) {
   const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kUuidValue: {
@@ -428,49 +458,49 @@ Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->ql_type()->main()) {
     case DataType::MAP: {
-      QLMapValuePB *map_value = const_pb->mutable_map_value();
+      auto *map_value = const_pb->mutable_map_value();
       for (auto &key : const_pt->keys()) {
         // Expect key to be constant because CQL only allows collection of constants.
-        QLValuePB *key_pb = map_value->add_keys();
+        QLValueMsg *key_pb = map_value->add_keys();
         RETURN_NOT_OK(PTConstToPB(key, key_pb));
       }
 
       for (auto &value : const_pt->values()) {
         // Expect value to be constant because CQL only allows collection of constants.
-        QLValuePB *value_pb = map_value->add_values();
+        QLValueMsg *value_pb = map_value->add_values();
         RETURN_NOT_OK(PTConstToPB(value, value_pb));
       }
       break;
     }
 
     case DataType::SET: {
-      QLSeqValuePB *set_value = const_pb->mutable_set_value();
+      auto *set_value = const_pb->mutable_set_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = set_value->add_elems();
+        QLValueMsg *elem_pb = set_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
     }
 
     case DataType::LIST: {
-      QLSeqValuePB *list_value = const_pb->mutable_list_value();
+      auto *list_value = const_pb->mutable_list_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = list_value->add_elems();
+        QLValueMsg *elem_pb = list_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
     }
 
     case DataType::TUPLE: {
-      QLSeqValuePB *tuple_value = const_pb->mutable_tuple_value();
+      auto *tuple_value = const_pb->mutable_tuple_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = tuple_value->add_elems();
+        QLValueMsg *elem_pb = tuple_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
@@ -478,15 +508,15 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
 
     case DataType::USER_DEFINED_TYPE: {
       // Internally UDTs are maps with field names as keys
-      QLMapValuePB *map_value = const_pb->mutable_map_value();
+      auto *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
       for (size_t i = 0; i < field_values.size(); i++) {
         // Skipping unset fields.
         if (field_values[i] != nullptr) {
-          QLValuePB *key_pb = map_value->add_keys();
+          QLValueMsg *key_pb = map_value->add_keys();
           key_pb->set_int16_value(narrow_cast<int16_t>(i));
           // Expect value to be constant because CQL only allows collection of constants.
-          QLValuePB *value_pb = map_value->add_values();
+          QLValueMsg *value_pb = map_value->add_values();
           RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
         }
       }
@@ -496,38 +526,43 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
     case DataType::FROZEN: {
       // For frozen types we need to do the de-duplication and ordering at the QL level since we
       // serialize it here already.
-      QLSeqValuePB *frozen_value = const_pb->mutable_frozen_value();
+      auto *frozen_value = const_pb->mutable_frozen_value();
 
       switch (const_pt->ql_type()->param_type(0)->main()) {
         case DataType::MAP: {
-          std::map<QLValuePB, QLValuePB> map_values;
+          std::vector<std::pair<LWQLValuePB*, LWQLValuePB*>> map_values;
           auto keys_it = const_pt->keys().begin();
           auto values_it = const_pt->values().begin();
           while (keys_it != const_pt->keys().end() && values_it != const_pt->values().end()) {
-            QLValuePB key_pb;
-            RETURN_NOT_OK(PTConstToPB(*keys_it, &key_pb));
-            RETURN_NOT_OK(PTConstToPB(*values_it, &map_values[key_pb]));
+            auto& back = map_values.emplace_back(
+                const_pb->arena().NewArenaObject<LWQLValuePB>(),
+                const_pb->arena().NewArenaObject<LWQLValuePB>());
+            RETURN_NOT_OK(PTConstToPB(*keys_it, back.first));
+            RETURN_NOT_OK(PTConstToPB(*values_it, back.second));
             keys_it++;
             values_it++;
           }
 
+          CleanupDuplicates(map_values, [](const auto& p) { return p.first; });
+
           for (auto &pair : map_values) {
-            *frozen_value->add_elems() = std::move(pair.first);
-            *frozen_value->add_elems() = std::move(pair.second);
+            frozen_value->mutable_elems()->push_back_ref(pair.first);
+            frozen_value->mutable_elems()->push_back_ref(pair.second);
           }
           break;
         }
 
         case DataType::SET: {
-          std::set<QLValuePB> set_values;
+          std::vector<LWQLValuePB*> set_values;
           for (const auto &elem : const_pt->values()) {
-            QLValuePB elem_pb;
-            RETURN_NOT_OK(PTConstToPB(elem, &elem_pb));
-            set_values.insert(std::move(elem_pb));
+            RETURN_NOT_OK(PTConstToPB(
+                elem, set_values.emplace_back(const_pb->arena().ArenaObjectFactory())));
           }
 
-          for (auto &elem : set_values) {
-            *frozen_value->add_elems() = std::move(elem);
+          CleanupDuplicates(set_values, std::identity());
+
+          for (auto* elem : set_values) {
+            frozen_value->mutable_elems()->push_back_ref(elem);
           }
           break;
         }
@@ -535,7 +570,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
         case DataType::LIST: {
           for (auto &elem : const_pt->values()) {
             // Expected elem to be constant because CQL only allows collection of constants.
-            QLValuePB *elem_pb = frozen_value->add_elems();
+            QLValueMsg *elem_pb = frozen_value->add_elems();
             RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
           }
           break;
@@ -545,7 +580,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
           for (size_t i = 0; i < field_values.size(); i++) {
-            QLValuePB *value_pb = frozen_value->add_elems();
+            QLValueMsg *value_pb = frozen_value->add_elems();
             if (field_values[i] != nullptr) {
               // Expect value to be constant because CQL only allows collection of constants.
               RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));

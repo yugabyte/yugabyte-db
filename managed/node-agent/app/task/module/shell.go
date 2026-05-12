@@ -386,7 +386,7 @@ func userEnv(
 			env = append(env, entry)
 		}
 	}
-	if util.FileLogger().IsDebugEnabled() {
+	if util.FileLogger().IsDebugEnabled(ctx) {
 		util.FileLogger().Debugf(ctx, "Env: %v", env)
 	}
 	err = cmd.Wait()

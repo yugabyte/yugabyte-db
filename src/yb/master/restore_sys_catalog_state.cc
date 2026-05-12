@@ -16,6 +16,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.messages.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -45,7 +46,6 @@
 
 using namespace std::placeholders;
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(enable_fast_pitr);
 
 namespace yb {
@@ -56,7 +56,7 @@ namespace {
 Status ApplyWriteRequest(
     const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider,
-    const QLWriteRequestPB& write_request,
+    const QLWriteRequestMsg& write_request,
     docdb::DocWriteBatch* write_batch) {
   const std::string kLogPrefix = "restored tablet: ";
   dockv::SchemaPackingRegistry schema_packing_registry(kLogPrefix);
@@ -68,10 +68,12 @@ Status ApplyWriteRequest(
   };
   qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
+      write_request,
+      write_request.schema_version(), doc_read_context, index_map,
+      /* unique_index_key_projection= */ nullptr,
       TransactionOperationContext());
-  QLResponsePB response;
-  RETURN_NOT_OK(operation.Init(&response));
+  auto response = write_request.arena().NewArenaObject<LWQLResponsePB>();
+  RETURN_NOT_OK(operation.Init(response));
   return operation.Apply(apply_data);
 }
 
@@ -79,12 +81,13 @@ Status WriteEntry(
     int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch) {
-  QLWriteRequestPB write_request;
+  auto arena = SharedThreadSafeArena();
+  auto write_request = arena->NewArenaObject<LWQLWriteRequestPB>();
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       type, item_id, data, op_type, doc_read_context->schema(),
-      &write_request));
-  write_request.set_schema_version(kSysCatalogSchemaVersion);
-  return ApplyWriteRequest(doc_read_context, schema_packing_provider, write_request, write_batch);
+      write_request));
+  write_request->set_schema_version(kSysCatalogSchemaVersion);
+  return ApplyWriteRequest(doc_read_context, schema_packing_provider, *write_request, write_batch);
 }
 
 bool TableDeletedOrHidden(const SysTablesEntryPB& table) {
@@ -196,7 +199,7 @@ class PgCatalogRestorePatch : public RestorePatch {
     }
     auto column_id = VERIFY_RESULT(
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-    QLValuePB value_pb;
+    LWQLValuePB value_pb(nullptr);
     value_pb.set_int64_value(catalog_version_);
     auto doc_path = dockv::DocPath(
         catalog_version_key_.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
@@ -247,7 +250,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   }
 
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
-    if (!table_.IsPgYbCatalogMeta() || !FLAGS_ysql_enable_db_catalog_version_mode) {
+    if (!table_.IsPgYbCatalogMeta()) {
       return false;
     }
     dockv::SubDocKey sub_doc_key;
@@ -397,13 +400,20 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
         VERIFY_RESULT(GetPgsqlDatabaseOid(id)), Corruption,
         "Namespace entry in restoring and existing state are different");
   }
+  // Preserve clone_request_seq_no from the existing (pre-restore) state so that post-PITR clones
+  // get a seq_no that doesn't collide with clone state entries that survived the restore.
+  auto it = existing_objects_.namespaces.find(id);
+  if (it != existing_objects_.namespaces.end()) {
+    pb->set_clone_request_seq_no(std::max(
+        pb->clone_request_seq_no(), it->second.clone_request_seq_no()));
+  }
   return true;
 }
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    if (!FLAGS_enable_fast_pitr) {
       restoration_.restoring_system_tables.emplace(id);
       return false;
     }
@@ -821,7 +831,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
     restoration_.parent_to_child_tables[pb.parent_table_id()].push_back(id);
   }
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    if (!FLAGS_enable_fast_pitr) {
       LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
       restoration_.existing_system_tables.emplace(id, pb.name());
       return Status::OK();

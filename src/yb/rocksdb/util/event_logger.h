@@ -175,11 +175,13 @@ class EventLoggerStream {
     }
   }
   friend class EventLogger;
-  explicit EventLoggerStream(Logger* logger);
-  explicit EventLoggerStream(LogBuffer* log_buffer);
+  explicit EventLoggerStream(Logger* logger, InfoLogLevel log_level = InfoLogLevel::INFO_LEVEL);
+  explicit EventLoggerStream(
+      LogBuffer* log_buffer, InfoLogLevel log_level = InfoLogLevel::INFO_LEVEL);
   // exactly one is non-nullptr
   Logger* const logger_;
   LogBuffer* const log_buffer_;
+  InfoLogLevel log_level_;
   // ownership
   JSONWriter* json_writer_;
 };
@@ -196,12 +198,21 @@ class EventLogger {
 
   explicit EventLogger(Logger* logger) : logger_(logger) {}
   EventLoggerStream Log() { return EventLoggerStream(logger_); }
+  EventLoggerStream Log(InfoLogLevel log_level) {
+    return EventLoggerStream(logger_, log_level);
+  }
   EventLoggerStream LogToBuffer(LogBuffer* log_buffer) {
     return EventLoggerStream(log_buffer);
   }
+  EventLoggerStream LogToBuffer(LogBuffer* log_buffer, InfoLogLevel log_level) {
+    return EventLoggerStream(log_buffer, log_level);
+  }
   void Log(const JSONWriter& jwriter);
   static void Log(Logger* logger, const JSONWriter& jwriter);
+  static void Log(Logger* logger, InfoLogLevel log_level, const JSONWriter& jwriter);
   static void LogToBuffer(LogBuffer* log_buffer, const JSONWriter& jwriter);
+  static void LogToBuffer(
+      LogBuffer* log_buffer, InfoLogLevel log_level, const JSONWriter& jwriter);
 
  private:
   Logger* logger_;

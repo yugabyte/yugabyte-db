@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_comment
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_comment/
 type: docs
 ---
 

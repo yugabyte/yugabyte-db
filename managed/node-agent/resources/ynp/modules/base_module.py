@@ -1,5 +1,5 @@
 from jinja2 import Environment, FileSystemLoader
-from utils.filters import split_servers
+from utils.filters import split_string
 import inspect
 
 
@@ -26,7 +26,7 @@ class BaseYnpModule:
         }
         env = Environment(loader=FileSystemLoader(template_dir))
         # Register the custom filter
-        env.filters['split_servers'] = split_servers
+        env.filters['split_string'] = split_string
 
         output = {}
         for template_name, template_path in templates.items():

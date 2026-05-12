@@ -264,10 +264,14 @@ class XClusterClient {
 
   // Updates the schema version of the table by 2, and then inserts the packed schema into the
   // historical set of schemas for all tablets.
-  // current_schema_version is passed to avoid sending repeated alter table requests.
+  // current_consumer_schema_version is passed to avoid sending repeated alter table requests.
   Status InsertPackedSchemaForXClusterTarget(
       const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-      uint32_t current_schema_version, const std::optional<ColocationId>& colocation_id);
+      uint32_t current_consumer_schema_version, const std::optional<ColocationId>& colocation_id);
+
+  Status HandleNewSchemaForAutomaticXClusterTarget(
+      const TableId& table_id, const std::string& replication_group_id,
+      const std::string& stream_id, uint32_t producer_schema_version, const SchemaPB& schema);
 
  private:
   CoarseTimePoint GetDeadline() const;

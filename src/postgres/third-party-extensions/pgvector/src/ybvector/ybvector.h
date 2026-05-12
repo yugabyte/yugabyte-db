@@ -91,8 +91,9 @@ extern IndexBuildResult *ybvectorbackfill(Relation heap, Relation index,
 									   struct IndexInfo *indexInfo,
 									   struct YbBackfillInfo *bfinfo,
 									   struct YbPgExecOutParam *bfresult);
-extern bool ybvectormightrecheck(Relation heapRelation, Relation indexRelation,
-							  bool xs_want_itup, ScanKey keys, int nkeys);
+extern bool ybvectormightrecheck(Scan *scan,
+								 Relation heapRelation, Relation indexRelation,
+								 bool xs_want_itup, ScanKey keys, int nkeys);
 
 extern bool ybvectorcopartitionedcanreturn(Relation index, int attno);
 

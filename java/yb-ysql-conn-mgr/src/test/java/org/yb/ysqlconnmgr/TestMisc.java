@@ -26,6 +26,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 import com.google.common.collect.ImmutableMap;
@@ -541,5 +542,73 @@ public class TestMisc extends BaseYsqlConnMgr {
     testPreparedStatementHashCollisionsHelper();
     modifyExtendedQueryProtocolAndRestartCluster(false);
     testPreparedStatementHashCollisionsHelper();
+  }
+
+  @Test
+  public void testLargeDbAndUserNames() throws Exception {
+    // Test that database and user names longer than 63 characters are truncated
+    // to 63 characters and connections succeed.
+
+    ConnectionBuilder connBuilder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+
+    // Generate a 63-character name and a longer 70-character name with same prefix
+    String dbName63 = new String(new char[63]).replace('\0', 'd');
+    String dbName70 = dbName63 + "1234567";
+
+    String userName63 = new String(new char[63]).replace('\0', 'u');
+    String userName70 = userName63 + "1234567";
+
+    // Test database name truncation
+    try (Connection conn = connBuilder.connect();
+        Statement stmt = conn.createStatement()) {
+      // Create database with exactly 63 characters
+      stmt.execute(String.format("CREATE DATABASE %s", dbName63));
+      LOG.info("Created database with 63-character name");
+    } catch (Exception e) {
+      LOG.error("Failed to create database with 63-character name", e);
+      fail();
+    }
+
+    // Try connecting with a 70-character name (should truncate to 63 and succeed)
+    try (Connection conn = connBuilder.withDatabase(dbName70).connect();
+        Statement stmt = conn.createStatement()) {
+      // Verify we're connected to the correct database
+      ResultSet rs = stmt.executeQuery("SELECT current_database()");
+      assertTrue("No result from current_database()", rs.next());
+      String actualDbName = rs.getString(1);
+      assertEquals("Database name should be truncated to 63 characters",
+          dbName63, actualDbName);
+      LOG.info("Successfully connected with truncated database name");
+    } catch (Exception e) {
+      LOG.error("Failed to connect with 70-character database name", e);
+      fail();
+    }
+
+    // Test user name truncation
+    try (Connection conn = connBuilder.connect();
+        Statement stmt = conn.createStatement()) {
+      // Create user with exactly 63 characters
+      stmt.execute(String.format("CREATE ROLE %s LOGIN", userName63));
+      LOG.info("Created user with 63-character name");
+    } catch (Exception e) {
+      LOG.error("Failed to create user with 63-character name", e);
+      fail();
+    }
+
+    // Try connecting with a 70-character name (should truncate to 63 and succeed)
+    try (Connection conn = connBuilder.withUser(userName70).connect();
+        Statement stmt = conn.createStatement()) {
+      // Verify we're connected as the correct user
+      ResultSet rs = stmt.executeQuery("SELECT current_user");
+      assertTrue("No result from current_user", rs.next());
+      String actualUserName = rs.getString(1);
+      assertEquals("User name should be truncated to 63 characters",
+          userName63, actualUserName);
+      LOG.info("Successfully connected with truncated user name");
+    } catch (Exception e) {
+      LOG.error("Failed to connect with 70-character user name", e);
+      fail();
+    }
   }
 }

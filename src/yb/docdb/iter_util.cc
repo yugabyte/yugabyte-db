@@ -165,14 +165,14 @@ const rocksdb::KeyValueEntry& DoPerformRocksDBSeek(
       "    Seek() calls:     $8\n",
       file_name, line,
       dockv::BestEffortDocDBKeyToStr(seek_key),
-      FormatSliceAsStr(seek_key),
+      seek_key.ToDebugString(),
       iter->Valid()         ? dockv::BestEffortDocDBKeyToStr(iter->key())
       : iter->status().ok() ? "N/A"
                             : iter->status().ToString(),
-      iter->Valid()         ? FormatSliceAsStr(iter->key())
+      iter->Valid()         ? iter->key().ToDebugString()
       : iter->status().ok() ? "N/A"
                             : iter->status().ToString(),
-      iter->Valid()         ? FormatSliceAsStr(iter->value())
+      iter->Valid()         ? iter->value().ToDebugString()
       : iter->status().ok() ? "N/A"
                             : iter->status().ToString(),
       stats.num_nexts,

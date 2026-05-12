@@ -24,7 +24,7 @@
 
 #include "yb/util/size_literals.h"
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 namespace rocksdb {
 

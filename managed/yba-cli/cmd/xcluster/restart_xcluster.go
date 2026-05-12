@@ -46,7 +46,7 @@ var restartXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
+		if util.IsEmptyString(storageConfigNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -93,9 +93,7 @@ var restartXClusterCmd = &cobra.Command{
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rStorageConfigList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup", "Create - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Create - Get Storage Configuration")
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -152,9 +150,10 @@ var restartXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.RestartXClusterConfig(uuid).
 			XclusterReplicationRestartFormData(req).IsForceDelete(forceDelete).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Restart")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Restart")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The xcluster %s is being restarted",
 			formatter.Colorize(uuid, formatter.GreenColor))
@@ -173,21 +172,21 @@ var restartXClusterCmd = &cobra.Command{
 
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"xCluster",
-					"Restart - Get xCluster",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Restart - Get xCluster")
 			}
+
+			xclusterConfig := util.CheckAndDereference(
+				rXCluster,
+				"No xcluster found with uuid "+uuid,
+			)
+
 			r := make([]ybaclient.XClusterConfigGetResp, 0)
-			r = append(r, rXCluster)
+			r = append(r, xclusterConfig)
 
 			sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
 				authAPI, "", "",
-				rXCluster.GetSourceUniverseUUID(),
-				rXCluster.GetTargetUniverseUUID(),
+				xclusterConfig.GetSourceUniverseUUID(),
+				xclusterConfig.GetTargetUniverseUUID(),
 				"Restart",
 			)
 
@@ -207,12 +206,13 @@ var restartXClusterCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		task := util.CheckTaskAfterCreation(rTask)
 		taskCtx := formatter.Context{
 			Command: "restart",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }

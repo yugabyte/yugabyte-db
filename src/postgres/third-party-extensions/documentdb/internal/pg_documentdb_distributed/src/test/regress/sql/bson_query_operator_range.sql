@@ -24,6 +24,7 @@ Set local citus.log_remote_commands to on; -- Will print Citus rewrites of the q
 Set local citus.log_local_commands to on; -- Will print the local queries 
 Set local log_statement to 'all'; -- Verbose logging
 -- if there is no index we don't optimize the  a > 1 & a < 5 to  a <> {1, 5} (aka the range operator) 
+SET local documentdb_core.enableCollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} }, "collation" : {"locale" : "en", "strength" : 1} }');
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} }, "collation" : {"locale" : "en", "strength" : 1}  }');
 END;
@@ -46,10 +47,21 @@ Set local citus.log_remote_commands to on; -- Will print Citus rewrites of the q
 Set local citus.log_local_commands to on; -- Will print the local queries 
 Set local log_statement to 'all'; -- Verbose logging
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
-EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
 
 -- when collation is present $push down of $range query is not done, and we use the unoptimized version (workitem=3423305)
+SET local documentdb_core.enableCollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} }, "collation" : {"locale" : "en", "strength" : 1} }');
+ROLLBACK;
+
+BEGIN;
+SET local client_min_messages TO ERROR;
+set local citus.enable_local_execution to off; -- Simulate remote exection with a single nodes
+Set local citus.log_remote_commands to on; -- Will print Citus rewrites of the queries
+Set local citus.log_local_commands to on; -- Will print the local queries 
+Set local log_statement to 'all'; -- Verbose logging
+EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
+
+SET local documentdb_core.enableCollation TO on;
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } ,"collation" : {"locale" : "en", "strength" : 1} }');
 END;
 
@@ -60,7 +72,6 @@ Set local citus.log_remote_commands to on; -- Will print Citus rewrites of the q
 Set local citus.log_local_commands to on; -- Will print the local queries 
 Set local log_statement to 'all'; -- Verbose logging
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$in": [ 5, 6, 7] }, "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
-EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "b": { "$in": [ 5, 6, 7] }, "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
 END;
 
 -- Shard orders collection on item 
@@ -74,6 +85,14 @@ Set local citus.log_local_commands to on; -- Will print the local queries
 Set local log_statement to 'all'; -- Verbose logging
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
+END;
+
+BEGIN;
+SET local client_min_messages TO ERROR;
+set local citus.enable_local_execution to off; -- Simulate remote exection with a single nodes
+Set local citus.log_remote_commands to on; -- Will print Citus rewrites of the queries
+Set local citus.log_local_commands to on; -- Will print the local queries 
+Set local log_statement to 'all'; -- Verbose logging
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_query", "filter": { "a": { "$gt": 1 }, "a" : {"$lt" : 5} } }');
 END;
 
@@ -127,6 +146,11 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests", "filter": { "val": { "$gt": 1 }, "val" : {"$lt" : 3} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests", "filter": { "val": { "$gt": 1, "$lt" : 3} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests", "filter": { "val": { "$gt": 1 }, "val" : {"$lt" : 3} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests", "filter": { "val": { "$gt": 1, "$lt" : 3} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 END;
@@ -179,6 +203,11 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests2", "
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests2", "filter": { "val": { "$gte": 3, "$lte": 3} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests2", "filter": { "val": { "$gt": 3, "$lt": 5} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests2", "filter": { "val": { "$gte": 3, "$lt": 5} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "range_js_tests2", "filter": { "val": { "$gte": {"$minKey" : 1}, "$lte": {"$maxKey" : 1}} }, "projection": { "_id": 0, "val": 1 }, "sort": { "val": 1 } }');
 END;
 
@@ -195,6 +224,11 @@ BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "daterangecoll", "filter": { "createdAt": { "$gte": { "$date": { "$numberLong": "2657899731608" }}, "$lte": { "$date": { "$numberLong": "2657991031608" }} } }, "projection": { "_id": 0, "createdAt": 1 }, "sort": { "createdAt": 1 } }');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_find('db', '{ "find": "daterangecoll", "filter": { "createdAt": { "$gte": { "$date": { "$numberLong": "2657899731608" }}, "$lte": { "$date": { "$numberLong": "2657991031608" }} } }, "projection": { "_id": 0, "createdAt": 1 }, "sort": { "createdAt": 1 } }');
 END;
 

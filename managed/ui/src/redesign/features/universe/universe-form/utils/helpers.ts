@@ -25,6 +25,12 @@ import {
   INHERITED_FIELDS_FROM_PRIMARY,
   TOAST_AUTO_DISMISS_INTERVAL
 } from './constants';
+import {
+  clampMultiTenancyQosMaxDbCpuPercent,
+  clampMultiTenancyQosMaxDbCount,
+  MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
+} from '../../universe-actions/edit-multi-tenancy/multiTenancyQosDbCount';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
@@ -182,7 +188,13 @@ export const getFormData = (
   clusterType: ClusterType,
   providerConfig?: YBProvider
 ) => {
-  const { communicationPorts, encryptionAtRestConfig, rootCA, clientRootCA, rootAndClientRootCASame } = universeData;
+  const {
+    communicationPorts,
+    encryptionAtRestConfig,
+    rootCA,
+    clientRootCA,
+    rootAndClientRootCASame
+  } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
   if (!cluster) return DEFAULT_FORM_DATA;
@@ -230,7 +242,7 @@ export const getFormData = (
       arch: universeData.arch,
       imageBundleUUID: userIntent.imageBundleUUID,
       rootCA,
-      clientRootCA : rootAndClientRootCASame ? '' : clientRootCA,
+      clientRootCA: rootAndClientRootCASame ? '' : clientRootCA,
       rootAndClientRootCASame: rootAndClientRootCASame
     },
     advancedConfig: {
@@ -244,13 +256,27 @@ export const getFormData = (
       customizePort: false, //** */
       ybcPackagePath: null, //** */,
       enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
-      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false),
+      enableMultiTenancyQos: _.get(userIntent, 'multiTenancy.enableQos', false),
+      multiTenancyQosMaxDbCpuPercent: (() => {
+        const v = _.get(userIntent, 'multiTenancy.qosMaxDbCpuPercent');
+        return typeof v === 'number' && !Number.isNaN(v)
+          ? v
+          : MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK;
+      })(),
+      multiTenancyQosMaxDbCount: (() => {
+        const v = _.get(userIntent, 'multiTenancy.qosMaxDbCount');
+        return typeof v === 'number' && !Number.isNaN(v)
+          ? v
+          : MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK;
+      })()
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
       ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
       : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
-    azOverrides: userIntent.userIntentOverrides?.azOverrides,
+    azOverrides: (userIntent.azOverrides as Record<string, string>) ?? {},
+    k8sAzOverrides: userIntent.userIntentOverrides?.azOverrides ?? {},
     proxyConfig: userIntent.proxyConfig,
     specificGFlagsAzOverrides: userIntent.specificGFlags?.perAZ ?? {},
     universeOverrides: userIntent.universeOverrides,
@@ -291,6 +317,7 @@ export const getUserIntent = (
     instanceTags,
     gFlags,
     azOverrides,
+    k8sAzOverrides,
     proxyConfig,
     universeOverrides,
     inheritFlagsFromPrimary,
@@ -310,7 +337,9 @@ export const getUserIntent = (
     deviceInfo: instanceConfig.deviceInfo,
     assignPublicIP: instanceConfig.assignPublicIP,
     enableNodeToNodeEncrypt: instanceConfig.enableNodeToNodeEncrypt,
-    enableClientToNodeEncrypt: instanceConfig.enableClientToNodeEncrypt,
+    enableClientToNodeEncrypt: instanceConfig.rootAndClientRootCASame
+      ? instanceConfig.enableNodeToNodeEncrypt
+      : instanceConfig.enableClientToNodeEncrypt,
     enableYSQL: instanceConfig.enableYSQL,
     enableYSQLAuth: instanceConfig.enableYSQLAuth,
     enableYCQL: instanceConfig.enableYCQL,
@@ -327,6 +356,17 @@ export const getUserIntent = (
     enableConnectionPooling: _.get(advancedConfig, 'enableConnectionPooling', false),
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
+
+  if (advancedConfig.enableMultiTenancyQos) {
+    const qosMaxDbCpuPercent = clampMultiTenancyQosMaxDbCpuPercent(
+      advancedConfig.multiTenancyQosMaxDbCpuPercent
+    );
+
+    const rawCount = advancedConfig.multiTenancyQosMaxDbCount;
+    const qosMaxDbCount = clampMultiTenancyQosMaxDbCount(rawCount);
+
+    intent.multiTenancy = { enableQos: true, qosMaxDbCpuPercent, qosMaxDbCount };
+  }
 
   if (enableRRGflags) {
     if (clusterType === ClusterType.ASYNC && inheritFlagsFromPrimary) {
@@ -357,7 +397,10 @@ export const getUserIntent = (
 
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
-  if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
+  // Helm: userIntent.azOverrides (YAML strings per AZ)
+  if (!_.isEmpty(azOverrides)) (intent as unknown as Record<string, unknown>).azOverrides = azOverrides;
+  // K8s: userIntent.userIntentOverrides.azOverrides
+  if (!_.isEmpty(k8sAzOverrides)) intent.userIntentOverrides = { azOverrides: k8sAzOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
@@ -381,7 +424,10 @@ export const getUserIntent = (
   if (instanceConfig.enableYCQLAuth && instanceConfig.ycqlPassword)
     intent.ycqlPassword = instanceConfig.ycqlPassword;
 
-  if(!instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption || !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)){
+  if (
+    !instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption ||
+    !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)
+  ) {
     intent.deviceInfo = omit(intent.deviceInfo, 'cloudVolumeEncryption');
   }
 

@@ -49,6 +49,10 @@
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
       "every": "Every",
+      "actions": "Actions",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "recommended": "Recommended",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -90,6 +94,10 @@
           "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
         }
       }
+    },
+    "toast": {
+      "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -232,7 +240,10 @@
         "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in an xCluster configuration as the source universe will interrupt the replication and require a restart of the xCluster configuration to resume replication after TLS rotation is completed.",
-        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations.",
+        "upgradeOptions": "Upgrade Options",
+        "selectUpgradeoption": "Select Upgrade Option",
+        "selectAndApply": "Select Upgrade Option and Apply"
       },
       "masterFailover": {
         "warning": {
@@ -257,6 +268,272 @@
         "addAvailabilityZone": "Add Availability Zone",
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
+      },
+      "dbUpgrade": {
+        "sharedComponents": {
+          "rollingUpdateBatchSettings": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "maxNodesPerBatchTooltipRollback": "Applies to T-Servers.\nMasters are rolled back one at a time.",
+            "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers).",
+            "seconds": "seconds",
+            "validationError": {
+              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
+              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}.",
+              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
+            }
+          }
+        },
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
+          "stepper": {
+            "dbVersion": "DATABASE VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE"
+          },
+          "summaryCard": {
+            "targetVersion": "TARGET VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE",
+            "canaryUpgrade": "Canary Upgrade",
+            "expressUpgrade": "Express Upgrade",
+            "masterServers": "Master Servers",
+            "readReplica": "read replica",
+            "pause": "PAUSE",
+            "rollingUpgrade": "Rolling Upgrade",
+            "concurrentUpgrade": "Concurrent Upgrade",
+            "batch": "BATCH",
+            "maxSize": "MAX SIZE",
+            "waitTime": "WAIT TIME",
+            "nodeCount_one": "{{count}} Node",
+            "nodeCount_other": "{{count}} Nodes"
+          },
+          "dbVersionStep": {
+            "stepTitle": "Database Version",
+            "stepDescription": "What database version do you want to upgrade to?",
+            "currentVersion": "Current Version",
+            "targetVersion": "Target Version",
+            "runPreupgradeCheck": "Run Pre-upgrade Check",
+            "upgradeInfoCard": {
+              "ysqlMajorVersionUpgrade": "YSQL Major Upgrade",
+              "ysqlMajorVersionUpgradeInfo": "This major upgrade upgrades your cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "upgradeInfo": "Upgrades the cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "finalizationRequired": "Finalization required",
+              "finalizationRequiredTooltip": "After upgrading, you must finalize the upgrade to complete the process. Until finalized, some features may be restricted.",
+              "rollbackAvailable": "<bold>Rollback available</bold> — Until finalization (back to v{{currentVersion}})",
+              "rollbackAvailableAnytime": "<bold>Rollback available</bold> — Anytime after upgrade (back to v{{currentVersion}})",
+              "temporaryRestrictions": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlocked": "DDLs and <underline>some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlocked": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is completed.",
+              "someOperationsBlockedFinalization": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "clusterMayHaveSlowerPerformance": "The cluster may have slower performance.",
+              "learnMoreAboutUpgrade": "Learn more about the upgrade"
+            }
+          },
+          "upgradeMethodStep": {
+            "stepTitle": "Upgrade Method",
+            "express": {
+              "title": "Express upgrade",
+              "description": "Runs straight through; rollback is only allowed after the upgrade is completed."
+            },
+            "canary": {
+              "title": "Canary upgrade",
+              "tag": "Advanced",
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities.",
+              "unavailableTooltip": "Not available for this universe. Learn more about <dbUpgradeRequirementsLink>canary upgrade requirements</dbUpgradeRequirementsLink>."
+            },
+            "upgradePace": {
+              "title": "Upgrade Pace",
+              "rolling": "Rolling upgrade",
+              "concurrent": "Concurrent upgrade of all nodes."
+            },
+            "concurrentUpgradeDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the upgrade is in progress.",
+            "recommendationLabel": "Recommendation",
+            "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
+          },
+          "upgradePlanStep": {
+            "stepTitle": "Upgrade Plan",
+            "stepDescription": "The upgrade runs in a controlled sequence. Add pauses to monitor and evaluate the Universe before proceeding.",
+            "upgradeStage": {
+              "upgradeMasterServers": "Upgrade Master Servers",
+              "upgradeTservers": "Upgrade T-Servers",
+              "upgradePrimaryClusterTServers": "Upgrade Primary Cluster T-Servers",
+              "upgradeReadReplicaTServers": "Upgrade Read Replica T-Servers"
+            },
+            "executionOrder": "Execution Order",
+            "addMonitoringPause": "Add Monitoring Pause",
+            "pauseToMonitorUpgrade": "Pause to monitor upgrade",
+            "pauseAfterFirstAzTooltip": "<bold>Pause after the first AZ</bold> to validate the upgrade on a single AZ and keep a faster rollback path if needed.",
+            "reminder": "Reminder",
+            "pauseRequiresManualResume": "Every pause requires you to manually resume the upgrade."
+          },
+          "upgradePaceStep": {
+            "stepTitle": "Upgrade Pace"
+          },
+          "submitLabel": {
+            "next": "Next",
+            "upgrade": "Upgrade"
+          },
+          "toast": {
+            "dbUpgradeFailed": "Database upgrade request failed",
+            "dbUpgradePrecheckFailed": "Database pre-check request failed"
+          }
+        },
+        "rollbackModal": {
+          "modalTitle": "Roll Back Upgrade",
+          "confirmationMessage": "Are you sure you want to roll back to",
+          "rollbackPaceTitle": "ROLLBACK PACE",
+          "rollbackPaceRolling": {
+            "postUpgrade": "Rolling rollback",
+            "upgradeInProgress": "Rolling rollback of nodes in upgraded AZs"
+          },
+          "rollbackPaceConcurrent": {
+            "postUpgrade": "Concurrent rollback of all nodes",
+            "upgradeInProgress": "Concurrent rollback of all upgraded nodes"
+          },
+          "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
+          "upgradedAzsLabel": "Upgraded AZs:",
+          "submitLabel": "Proceed to Roll Back",
+          "toast": {
+            "rollbackFailedLabel": "Rollback request failed"
+          }
+        },
+        "finalizeModal": {
+          "modalTitle": "One last reminder before we proceed...",
+          "noRollBackAfterFinalize": "After the upgrade is finalized, you won't be able to roll back.",
+          "makeSureToEvaluatePerformance": "Make sure you evaluate the universe performance before finalizing the upgrade.",
+          "evaluationLink": "View recommended evaluation steps",
+          "submitLabel": "Proceed to finalize the upgrade",
+          "toast": {
+            "finalizeUpgradeFailedLabel": "Finalize DB upgrade request failed"
+          }
+        },
+        "dbUpgradeManagementSidePanel": {
+          "title": "Upgrade Monitor",
+          "descriptionTitle": "DESCRIPTION",
+          "description": "Upgrade to YugabyteDB {{targetDbVersion}}",
+          "ysqlMajorUpgrade": "YSQL Major Upgrade",
+          "progressPanel": {
+            "title": "Upgrade Progress",
+            "rollBack": "Roll Back",
+            "resumeUpgrade": "Resume Upgrade",
+            "finalizeUpgradeNow": "Finalize Upgrade Now",
+            "readReplicaTag": "Read Replica",
+            "temporaryRestrictions": {
+              "tag": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlockedForUpgrade": "DDLs and <dbUpgradeImpactDocLink>some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlockedForUpgrade": "<dbUpgradeImpactDocLink>Some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is completed.",
+              "universeMayHaveSlowerPerformance": "The universe may have slower performance."
+            },
+            "assessPerformance": {
+              "upgrade": {
+                "title": "Before resuming upgrade, assess your universe's performance",
+                "description": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
+              },
+              "finalize": {
+                "title": "Before finalizing, assess your universe's performance",
+                "description": "Compare the performance of PostgreSQL statements before and after upgrade."
+              }
+            },
+            "operationBanner": {
+              "preCheckInProgressBanner": "Pre-check in progress. This may take a few minutes.",
+              "preCheckSuccessBanner": "Universe is ready for upgrade.",
+              "preCheckFailedBanner": "Pre-check failed. Universe does not meet upgrade requirements. <viewDetailsLink>View error details</viewDetailsLink>",
+              "upgradeInProgressBanner": "Upgrade in progress. DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+              "upgradeSuccessBanner": "Upgrade completed.",
+              "upgradeFailedBanner": "Failed to upgrade. <viewDetailsLink>View error details</viewDetailsLink>"
+            },
+            "preCheckStage": {
+              "title": "Pre-Check",
+              "description": "Checks upgrade readiness and flags anything that needs fixing."
+            },
+            "upgradeMasterServersStage": {
+              "title": "Upgrade Master Servers",
+              "description": "This step upgrades master servers to <bold>{{version}}</bold>."
+            },
+            "upgradeAzStage": {
+              "title": "Upgrade AZ : {{azLabel}}",
+              "description": "This step upgrades T-servers in {{azName}} to <bold>{{version}}</bold>.",
+              "assessPerformanceTitle": "Before resuming upgrade, assess your universe's performance",
+              "assessPerformanceDescription": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
+            },
+            "finalizeStage": {
+              "title": "Finalize Upgrade",
+              "assessPerformanceTitle": "Before finalizing, assess your universe's performance",
+              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade."
+            },
+            "toast": {
+              "resumeUpgradeFailedLabel": "Resume DB upgrade request failed"
+            }
+          }
+        },
+        "clusterBanner": {
+          "actions": {
+            "viewDetails": "View Details",
+            "openUpgradeMonitor": "Open Upgrade Monitor",
+            "upgradeDatabase": "Upgrade Database",
+            "retry": "Retry"
+          },
+          "precheckInProgress": {
+            "title": "Upgrade pre-check in progress.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "precheckIssuesFound": {
+            "title": "Upgrade pre-check found issues.",
+            "description": "Universe does not meet DB upgrade requirements.",
+            "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
+          },
+          "precheckPassed": {
+            "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
+            "descriptionPg15": "Universe is ready for PG15 upgrade.",
+            "description": "Universe is ready for DB upgrade."
+          },
+          "upgradingSoftware": {
+            "title": "Upgrading software.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "softwareUpgradeFailed": {
+            "title": "Software upgrade failed."
+          },
+          "upgradePausedForMonitoring": {
+            "title": "Upgrade paused for monitoring.",
+            "description": "Review universe health, then resume or roll back."
+          },
+          "finalizeOrRollBack": {
+            "title": "Finalize or Roll Back Upgrade.",
+            "description": "Assess universe performance and finalize or roll back.",
+            "rollBack": "Roll Back",
+            "finalizeUpgradeNow": "Finalize Upgrade Now"
+          },
+          "upgradeAborted": {
+            "title": "Upgrade aborted.",
+            "description": "Upgrade was canceled because universe does not meet upgrade requirements."
+          },
+          "rollingBack": {
+            "title": "Rolling back upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "rollbackFailed": {
+            "title": "Failed to roll back."
+          },
+          "finalizing": {
+            "title": "Finalizing upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "finalizeFailed": {
+            "title": "Failed to finalize upgrade."
+          },
+          "upgradeCompleted": {
+            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
+          }
+        }
       },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
@@ -327,13 +604,17 @@
         }
       },
       "paUniverseStatus": {
-        "enableTitle": "Enable Perf Advisor",
-        "disableTitle": "Disable Perf Advisor",
-        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+        "enableTitle": "Enable Performance Monitoring",
+        "disableTitle": "Disable Performance Monitoring",
+        "enablePaUniverseFailure": "Failed to enable Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
+        "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
+        "enableAdvancedObservability": "Enable Advanced Observability",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
+        "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -367,6 +648,18 @@
         "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
+      },
+      "multiTenancy": {
+        "modalTitle": "Edit multi-tenancy (QoS)",
+        "toggleLabel": "Enable QoS multi-tenancy",
+        "subText": "Configure QoS-based multi-tenancy for YSQL. Requires cgroup support, compatible DB version, and YSQL-only access (YCQL disabled).",
+        "cpuPercentLabel": "Max DB CPU % (qosMaxDbCpuPercent)",
+        "cpuPercentHelper": "0–100",
+        "dbCountLabel": "Max DB count (qosMaxDbCount)",
+        "dbCountHelper": "Integer ≥ 1",
+        "changeWarningRf3": "<strong>Note!</strong> Changing multi-tenancy may require a rolling restart of <strong>{{universeName}}</strong>.",
+        "changeWarningRf1": "<strong>Note!</strong> Changing multi-tenancy may require a restart of <strong>{{universeName}}</strong>.",
+        "requestFailedLabel": "Request to update YSQL settings failed"
       },
       "supportBundle": {
         "editCustomPrometheusQueriesModal": {
@@ -506,7 +799,8 @@
         "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
         "enterUniverseName": "Enter universe name to confirm delete:",
         "forceDeleteCheckbox": "Ignore Errors and Force Delete",
-        "modalTitle": "Delete Read Replica of {{universeName}}"
+        "modalTitle": "Delete Read Replica of {{universeName}}",
+        "deletionStarted": "Deletion is in progress"
       },
       "gFlags": {
         "loadingGflagGroups": "Loading Gflag groups ...",
@@ -567,11 +861,13 @@
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
         "identConfLocal": "map-name idp-user/group/role database-username",
+        "ycqlIdentConfLocal": "idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
         "pgConfDescription": "CSV formatted line represented list of postgres setting assignments.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
-        "identConfPostgreSQL": "PostgreSQL. ",
-        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfPostgreSQL": "PostgreSQL",
+        "identConfDescriptionSecond": ". Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "ycqlIdentConfDescriptionSecond": " except the omission of the map-name. Enter each mapping as a new row, comprising the external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
         "readLess": "Read Less",
@@ -594,6 +890,18 @@
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
+      },
+      "azOverrides": {
+        "modalTitle": "AZ Resource Overrides",
+        "sectionTitle": "Availability Zone Overrides",
+        "editAZOverrides": "Edit AZ Overrides",
+        "addStorageOverrides": "Add Storage Overrides",
+        "editStorageOverrides": "Edit storage overrides",
+        "addAZ": "Add AZ",
+        "addAnotherAZ": "Add Another AZ",
+        "availabilityZone": "Availability Zone",
+        "volumeCount": "Volume count",
+        "volumeSizeGib": "Volume size (Gib)"
       },
       "instanceConfig": {
         "assignPublicIP": "Assign Public IP",
@@ -620,9 +928,11 @@
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
+        "storageClass": "Storage Class",
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
@@ -669,6 +979,7 @@
         "encryptionSettings": {
           "title": "Encryption Settings",
           "encryptionInTransit": "Encryption in Transit",
+          "enableEncryptionInTransit": "Enable encryption in transit",
           "encryptionAtRest": "Encryption at Rest",
           "enableClientToNodeTLS": "Enable Client-to-Node TLS",
           "enableClientToNodeTLSHelper": "Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint.",
@@ -761,6 +1072,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
@@ -768,11 +1080,13 @@
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
-        "tpServiceUrlLabel": "Perf Advisor Service URL",
+        "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "ybPlatformMetricsUsernameLabel": "Yugabyte Platform Metrics Username",
+        "ybPlatformMetricsPasswordLabel": "Yugabyte Platform Metrics Password",
         "apiTokenLabel": "YBA API Token",
-        "tpApiTokenLabel": "TP API Token",
+        "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -784,6 +1098,7 @@
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
         "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
+        "perfAdvisorRegistrationFailure": "Failed to fetch Perf Advisor registration status, please try again",
         "editDialog": {
           "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
@@ -1064,6 +1379,7 @@
           "status": {
             "Initializing": "Initializing",
             "Replicating": "Replicating",
+            "Paused": "Paused",
             "Switchover in Progress": "Switchover in Progress",
             "Failover in Progress": "Failover in Progress",
             "Halted": {
@@ -1078,6 +1394,7 @@
             "Ready to replicate": "Ready to replicate",
             "Waiting for DR": "Waiting for DR",
             "Replicating data": "Replicating data",
+            "Replication paused": "Replication paused",
             "Preparing for switchover": "Preparing for switchover",
             "Switching to DR replica": "Switching to DR replica",
             "Universe marked as DR failed": "Marked as DR failed",
@@ -1087,6 +1404,7 @@
             "Unconfigured for DR": "Unconfigured",
             "Bootstrapping": "Bootstrapping",
             "Receiving data, Ready for reads": "Receiving data, Ready for reads",
+            "Replication paused": "Replication paused",
             "Switching to DR primary": "Switching to DR primary",
             "Universe marked as DR failed": "Marked as DR failed",
             "undefined": "Undefined"
@@ -1192,6 +1510,7 @@
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
             },
             "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "currentRetentionPeriod": "Current: {{retentionPeriod}}",
             "retentionPeriod": {
               "label": "Snapshot Retention Period",
               "tooltip": "A longer snapshot retention period requires more disk space."
@@ -1959,6 +2278,13 @@
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
       },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
+      },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
       },
@@ -2291,6 +2617,7 @@
       "includeYugabyteVersions": "Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog",
       "addLinuxVersion": "Add Linux Version",
       "editLinuxVersion": "Edit Linux Version",
+      "viewLinuxVersion": "View Linux Version",
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
@@ -2321,6 +2648,7 @@
         "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
+          "view": "View",
           "delete": "Delete",
           "setDefault": "Set as default",
           "alreadyIsDefault": "This version is already set as the default.",
@@ -2488,6 +2816,7 @@
       "actions": {
         "retry": "Retry",
         "abort": "Abort",
+        "rollback": "Rollback",
         "diffs": {
           "Update": "View Universe Changes",
           "SoftwareUpgrade": "View Software Upgrade Changes",
@@ -2499,10 +2828,14 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
+          "rollbackConfirmTitle": "Rollback Task ?",
+          "rollbackConfirmMsg": "Do you really want to rollback this task?",
           "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
-          "taskRetryFailed": "Task retry failed"
+          "taskRetryFailed": "Task retry failed",
+          "taskRollbackSuccess": "Task rollback started",
+          "taskRollbackFailed": "Task rollback failed"
         }
       },
       "info": {
@@ -2521,7 +2854,8 @@
         "Success": "Completed",
         "Running": "In Progress",
         "Abort": "Aborting",
-        "Aborted": "Aborted"
+        "Aborted": "Aborted",
+        "Paused": "Paused"
       },
       "progress": {
         "title": "Progress",
@@ -2535,6 +2869,7 @@
       },
       "banner": {
         "viewDetails": "View Details",
+        "retry": "Retry",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
@@ -2670,6 +3005,11 @@
           "storageConfig": "Storage Config",
           "folderName": "Folder Name"
         },
+        "error": {
+          "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
+          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
+          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+        },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
           "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."
@@ -2720,7 +3060,7 @@
           "universeMetrics": "Universe Metrics (Prometheus Data)"
         },
         "exportDestination": "Export Destination",
-        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yba_backups",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yugabyte/yba_backups",
         "submitButton": "Export",
         "toast": {
           "createBackupRequestSuccess": "Exporting platform...",
@@ -2739,7 +3079,7 @@
         "localBackup": {
           "provideBackupFilePath": "Provide the backup file path",
           "filePath": "File Path",
-          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+          "filePathPlaceholder": "ex. /opt/yugabyte/yba_backups/<backupFileName>"
         },
         "cloudBackup": {
           "configureBackupStorageConfigPrompt": {
@@ -2750,7 +3090,7 @@
           "selectStorageConfig": "Select the storage config that contains the backup",
           "storageConfig": "Storage config",
           "selectBackupFolder": "Specify the backup folder",
-          "folder": "Folder",
+          "folder": "Folder Name",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
         "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
@@ -2879,6 +3219,9 @@
       "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
+      "splunkTokenTooltip": "Indicate this is the Splunk HEC token and where to generate it",
+      "splunkURLTooltip": "Clarify required format (include protocol and port, e.g., https://<host>:8088)",
+      "splunkURLPlaceholder": "https://<host>:8088/services/collector/event",
       "endpointURL": "Endpoint URL",
       "source": "Source (Optional)",
       "sourceType": "Source Type (Optional)",
@@ -2901,6 +3244,26 @@
         "apiTokenTooltip": "Create an access token with <bold>ingest metrics</bold>,  <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope in Manage > Access Tokens in your Dynatrace.",
         "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
         "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
+      },
+      "otlp": {
+        "endpoint": "Endpoint URL",
+        "endpointTooltip": "OTLP receiver endpoint (e.g. https://otlp-gateway.example.com/otlp). For HTTP, /v1/logs and /v1/metrics are used when optional endpoints are not set.",
+        "protocol": "Protocol",
+        "protocolGrpc": "gRPC",
+        "protocolHttp": "HTTP",
+        "logsEndpoint": "Logs endpoint",
+        "logsEndpointTooltip": "Optional. HTTP only. Override URL for logs; if empty, main endpoint is used.",
+        "logsEndpointPlaceholder": "https://example.com:4318/v1/logs",
+        "metricsEndpoint": "Metrics endpoint",
+        "metricsEndpointTooltip": "Optional. HTTP only. Override URL for metrics; if empty, main endpoint is used.",
+        "metricsEndpointPlaceholder": "https://example.com:4318/v1/metrics",
+        "timeoutSeconds": "Timeout (seconds)",
+        "timeoutSecondsPlaceholder": "Optional",
+        "compression": "Compression",
+        "bearerToken": "Bearer Token",
+        "validationEndpointRequired": "Endpoint is required",
+        "validationProtocolRequired": "Protocol is required",
+        "validationFieldRequired": "This field is required"
       },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
@@ -3101,10 +3464,14 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Backup roles and grants",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "Back up roles and grants to preserve database access controls after restore.",
+            "backupRolesSubText2": "<b>Note:</b> Applies to full and incremental backups.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3189,6 +3556,7 @@
           "scope": "Scope",
           "keyspace": "Keyspace",
           "tables": "Tables",
+          "rolesAndGrants": "Roles and Grants",
           "lastBackup": "Last Backup",
           "nextBackup": "Next Backup",
           "fullBackup": "Full Backup",
@@ -3238,6 +3606,10 @@
           "tables": "Tables",
           "allTables": "All Tables",
           "restoreTo": "Restore to",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesNotApplicable": "N/A",
+          "restoreRolesOff": "Off",
+          "restoreRolesOn": "On",
           "restoreSize": "Restore Size",
           "targetUniverse": "Target Universe",
           "kmsConfig": "KMS Config",
@@ -3245,7 +3617,15 @@
         },
         "source": {
           "selectKeyspace": "Select the keyspace(s) you want to restore",
-          "selectTime": "Select time to restore to",
+          "selectDatabase": "Select the database(s) you want to restore",
+          "selectTime": "Choose restore point",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesHelpText": "Restore roles and grants to preserve database access controls after restore.",
+          "restoreRolesTooltip1": "Roles and grants not available",
+          "restoreRolesTooltip2": "This backup was created without roles and grants. Select a different backup to restore access controls.",
+          "restoreRolesOnMsg1": "Note:",
+          "restoreRolesOnMsg2": "Roles are restored Universe-wide; grants are limited to selected databases.",
+          "restoreRolesOnMsg3": "Existing destination roles are not overwritten (including credentials and attributes). We only add missing role memberships and object grants from the backup.",
           "mostRecentIncremental": "Most recent incremental backup",
           "backupTime": "Backup time",
           "earlierPointInTime": "An earlier point in time ",
@@ -3269,6 +3649,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
@@ -3297,8 +3678,8 @@
         "general": "General",
         "generalSettings": "General Settings",
         "placement": "Placement",
-        "resilienceAndRegions": "Resilience and Regions",
-        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "resilienceAndRegions": "Regions",
+        "nodesAndAvailabilityZone": "Availability Zones and Nodes",
         "hardware": "Hardware",
         "instanceSettings": "Instance Settings",
         "database": "Database",
@@ -3315,15 +3696,17 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Cloud Provider",
+        "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges to complete this step.",
+        "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
         "databaseVersion": "Database Version",
         "databaseVersionPlaceholder": "Select Database Version",
         "errMsg": {
           "universeNameRequired": "Universe name is required",
           "cloudProviderRequired": "Cloud provider is required",
-          "universeNameUnique": "Universe with this name already exists",
+          "universeNameUnique": "Universe name \"{{display_name}}\" is already taken. Use a different name.",
           "providerConfigurationRequired": "Provider configuration is required",
           "databaseVersionRequired": "Database version is required"
         }
@@ -3338,57 +3721,71 @@
         },
         "formType": {
           "guidedMode": "Guided Mode",
-          "freeForm": "Free Form"
+          "expertMode": "Expert Mode"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
-          "node": "Node"
+          "node": "Node",
+          "caution": "Caution!",
+          "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
-        "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
-        "freeFormFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+        "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
+        "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
+        "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
           "regions": "Region is required",
           "resilienceFormMode": "Resilience form mode is required",
           "resilienceType": "Resilience type is required",
           "singleAvailabilityZoneRequired": "Availability zone is required for single node clusters",
-          "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
-          "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
-          "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
-          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
+          "regionErrExceeds": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_regions}} regions</b>. The current configuration exceeds this limit.",
+          "regionErrTooFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_regions}} regions</b>. The current configuration falls below this requirement.",
+          "regionUnavailable": "<b>Regions unavailable:</b> The following region is not available at this time: <b>“{{region_display}}”</b>. Select a different region or try again later.",
+          "azErrFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The selected regions in total provide fewer than <b>{{required_zones}} availability zones</b>.",
+          "azErrMany": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. Selecting more than <b>{{required_zones}} regions</b> automatically exceeds this limit.",
+          "nodeErr": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>1 region</b>. You have selected <b>{{selected_regions}} regions</b>. Update your selection to proceed.",
+          "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
+          "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
+          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster",
-          "helpText": "What is this?",
-          "faultTolerance": "Fault Tolerance",
+          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "selectedResilienceRequires": "Selected resilience level requires:",
+          "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
+          "wordRegion": "region",
+          "wordAvailabilityZone": "availability zone",
+          "wordNode": "node",
+          "requirementTagRegions": "{{count}} {{entity}}",
+          "requirementTagRegionsOnePlus": "1+ {{entity}}",
+          "requirementTagAvailabilityZones": "{{count}} {{entity}}",
+          "requirementTagNodesMinimum": "{{count}} {{entity}} minimum",
+          "nodesStepTitleOutageResilience": "{{count}} {{entity}} outage resilience requires:",
+          "noneResilienceCautionMsg": "Clusters that are not resilient to outages are subject to downtime during failures and operations that require a restart.",
+          "cautionLabel": "Caution!",
+          "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region Level",
+            "title": "Region",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node Level",
+            "title": "Node",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node"
           },
           "AZ_LEVEL": {
-            "title": "Availability Zone Level",
+            "title": "Availability",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
           "NONE": {
-            "title": "None",
-            "subText": "Not resilient to outages."
+            "title": "None (Not resilient)",
+            "subText": "Not resilient to any outages"
           },
-          "resilientTo": "Resilient to",
-          "outages": " outages",
-          "faultToleranceNone": {
-            "msg": "Clusters with no fault tolerance won't be resilient to outages and are subject to downtime during operations that require a restart.",
-            "caution": "Caution!"
-          }
+          "resilientTo": "Resilient to"
         },
         "infoTooltips": {
           "resilience": {
@@ -3396,35 +3793,64 @@
             "header": "What is Resilience?",
             "msg": "Resiliency is the ability to withstand and recover from various types of failures. A resilient database system has a high fault tolerance. It is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events.",
             "learnMore": "Learn More"
-          },
-          "guidedMode": "Guided mode uses the selected cluster's fault tolerance to suggest optimal setup requirements for achieving the intended outcome.",
-          "freeForm": "Free form flow is optimal for users who want to create unique cluster setups. <b>(Advanced)</b>"
+          }
         }
       },
       "nodesAndAvailability": {
-        "freeForm": {
+        "expertMode": {
           "nodes": "Nodes",
-          "totalNodes": "Total Nodes"
+          "totalNodes": "Total Nodes",
+          "replicationFactorLabel": "Replication Factor (RF)",
+          "replicationFactorInfoAria": "Learn about replication factor",
+          "disabledRfTooltip": "RF {{rf}} is not supported for this setup. RF must be equal to or greater than the number of availability zones. The current setup exceeds this limit.",
+          "requirementHint": "Requirement: <rf>RF {{rf}}</rf> requires either <az>{{rf}} AZs</az> or a minimum of <nodes>{{rf}} total nodes</nodes> across AZs.",
+          "requirementHintSingleAZ": "Requirement: <rf>RF {{rf}}</rf> requires <az>{{rf}} AZ</az>.",
+          "replicationFactorInfo": "Number of copies of data in a YugabyteDB cluster. <a>Learn more</a>"
         },
         "guidedMode": {
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
-          "totalNodes": "Total Nodes"
+          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
+          "totalNodes": "Total Nodes",
+          "totalNodesTserver": "Total Nodes (Tserver)"
+        },
+        "inferredResilienceCard": {
+          "resilientMessage": "Current setup is resilient to <b>{{count}} {{outageLevel}}</b>",
+          "notResilientBody": "<b>Caution!</b> Current setup is not resilient to any outages. Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+          "regionOutage": "region outage",
+          "availabilityZoneOutage": "availability zone outage",
+          "nodeOutage": "node outage"
         },
         "availabilityZones": {
-          "title": "Availability Zones",
+          "title": "Availability Zones and Nodes",
           "region": "Region {{region_count}}",
-          "add_button": "Add Availability Zone"
+          "add_button": "Add Availability Zone",
+          "tooltips": {
+            "regionTag": "You can add or remove regions in the previous step (Regions).",
+            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
+            "addAvailabilityZoneDisabledExpert": "RF {{rf}} supports exactly {{rf}} availability zones. To add more zones, increase the RF value.<br/><a>Learn more</a>",
+            "addAvailabilityZoneDisabledExpertMaxRf": "RF {{rf}} supports exactly {{rf}} availability zones.<br/><a>Learn more</a>",
+            "regionNoMoreAz": "This region has only {{count}} availability zones.",
+            "guidedNodeCount": "To set up a cluster with different node counts per availability zone, switch to <b>Expert Mode</b> in the previous step (Regions).",
+            "learnMore": "Learn more"
+          },
+          "errMsg": {
+            "selectedAz": "Selected availability zones: <b>{{count}}</b>",
+            "requiredAz": "Required availability zones: <b>{{count}}</b>"
+          }
         },
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
           "disabledToolip": "you need atleast {{nodeCount}} nodes to enable this option",
-          "title": "Advanced Configuration",
+          "title": "Advanced Configurations",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
+          "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
+          "helpText2": "<b>Recommended</b> for deployments with many databases or very large table counts.",
           "totalNodes": "Total Nodes",
           "totalTServer": "Total T-Server Nodes",
-          "totalMaster": "Total Master Nodes"
+          "totalMaster": "Total Master Server Nodes",
+          "tooltip": "Master node count is system-assigned and is equal to the cluster’s replication factor. This is to maintain consensus and fault tolerance.<br><br> <a>Learn more</a>"
         },
         "replicationFactorCard": {
           "title": "Setup Requirements",
@@ -3448,21 +3874,29 @@
           "title": "YugabyteDB 101",
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
-          "FtAndRf": "Correlation between Fault Tolerance and Replication Factor",
-          "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
-          "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
-          "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+          "learn": "<a>Learn more about Replication Factor.</a>"
         },
         "prefferedInfoModal": {
           "title": "YugabyteDB 101",
           "prefferedQues": "What is the preferred availability zone?",
           "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
           "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
-          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+          "note": "<b>Note:</b><br><br> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
         },
         "errMsg": {
-          "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
-          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. "
+          "azCountTooFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration falls below this requirement.",
+          "azCountTooMany": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration exceeds this requirement.",
+          "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
+          "expertRfPlacementRequirement": "<b>Invalid configuration:</b> RF <b>{{rf}}</b> requires either <b>at least {{rf}} availability zones</b> or <b>at least {{rf}} total nodes</b> across zones.",
+          "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
+          "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
+          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
+          "nodeLevelGuidedExactlyOneAz": "<b>Invalid configuration:</b> Guided node-level resilience requires exactly <b>one availability zone</b>. Remove extra zones to proceed.",
+          "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
+          "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
+          "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
+          "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
         }
       },
       "instanceSettings": {
@@ -3474,7 +3908,48 @@
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
-          "invalidStorageType": "Invalid storage type"
+          "invalidStorageType": "Invalid storage type",
+          "required": "{{field}} is required"
+        },
+        "assignPublicIP": "Assign Public IP",
+        "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
+        "dedicatedNodes": "Use dedicated nodes for processes",
+        "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
+        "ebs": "EBS Type",
+        "instanceType": "Instance Type",
+        "ephemeralStorageWarning": "Selected storage type is local (ephemeral). If a node is stopped, rebooted, or fails, the data on its disk is wiped. <1>Learn more</1>",
+        "premiumv2StorageHelper": "Selected storage type is not available in all regions. If any of the regions you have selected don't support the storage type, the deployment will fail.",
+        "hyperdiskStorageHelper": "Selected storage type is not supported by all instance types. Using an unsupported combination will cause deployment to fail. <1>Learn more</1>",
+        "k8NumCores": "Number of Cores",
+        "k8Memory": "Memory (Gib)",
+        "useSpotInstance": "Use Spot Instances",
+        "kmsConfig": "Key Management Service Config",
+        "kmsConfigPlaceHolder": "Select Configuration",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
+        "ssd": "Storage Type (SSD)",
+        "useTimeSync": "Use {{provider}} Time Sync",
+        "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "volumeSizeUnit": "GB",
+        "throughputUnit": "MB/s",
+        "k8VolumeSizeUnit": "Gib",
+        "cpuArch": "CPU Architecture",
+        "x86_64": "x86 (Intel)",
+        "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
+        "linuxVersion": "Linux Version",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version, {{ebs}} and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the \"Default Instance Configuration\".",
+        "EBSVolume": {
+          "title": "EBS Volume Encryption"
         }
       },
       "databaseSettings": {
@@ -3496,7 +3971,7 @@
         },
         "conPool": {
           "label": "Enable Connection Pooling",
-          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.  <1>Learn more</1>",
           "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
           "YSQLWarn": "Enable YSQL first to use connection pooling.",
           "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -3513,6 +3988,7 @@
       },
       "securitySettings": {
         "publicIPTitle": "Public IP assignment",
+        "networkAcessTitle": "Network Access",
         "eitTitle": "Encryption in Transit Settings",
         "earTitle": "Encryption at Rest Settings",
         "publicIPField": {
@@ -3531,22 +4007,49 @@
           "selectRootCert": "Select Root Certificate",
           "rootCertificatePlaceHolder": "Select",
           "genSelfSignedCert": "Generate Self Signed Certificate",
-          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption"
-        }
+          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption",
+          "eitLabel": "Enable Encryption in Transit",
+          "nodeToNodeLabel": "<strong>Node-to-Node</strong> Encryption",
+          "clientToNodeLabel": "<strong>Client-to-Node</strong> Encryption",
+          "certTypeLabel": "Certificate Type",
+          "selfGenerated": "Use system-generated (self-signed) certificate",
+          "customManaged": "Use customer-managed certificate"
+        },
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
       },
       "proxySettings": {
         "header": "Proxy Configuration",
+        "validation": {
+          "required": "Required",
+          "selectAtLeastOneProxyType": "You must select at least one proxy server type.",
+          "httpsUrlInvalid": "Invalid endpoint. URL must start with  “https://”",
+          "httpUrlInvalid": "Invalid endpoint. URL must start with  “http://”",
+          "bypassRequired": "Required",
+          "bypassInvalidEntries": "Remove invalid entries",
+          "bypassUrlNotAllowed": "Invalid entry",
+          "bypassInvalidEntry": "Invalid entry",
+          "globalNextError": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        },
+        "proxyServerType": {
+          "heading": "Proxy Server Type",
+          "subheading": "Select at least one proxy server type."
+        },
+        "bypassProxySection": {
+          "toggleLabel": "Bypass Proxy List (Optional)",
+          "tooltip": "List of domains/IPs that should bypass the proxy."
+        },
         "enableProxyServer": {
           "toggleLabel": "Enable Proxy Server",
           "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
           "learnMore": "Learn more",
           "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
-          "serverLabel": "Server",
+          "secureWebProxyEndpoint": "Secure Proxy Server Endpoint (HTTPS)",
           "serverPlaceholder": "https://proxy.example.com",
           "webServerPlacehoder": "http://proxy.example.com",
           "portLabel": "Port",
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",
+          "webProxyLabel": "Web Proxy Server Endpoint (HTTP)",
           "byPassProxy": "Bypass Proxy List",
           "byPassListPlaceholder": "example.com:8080",
           "byPassHelper": "Separate multiple values by pressing <b>Enter, Space,</b> or <b>Comma</b>."
@@ -3588,7 +4091,16 @@
           "addTag": "Add User Tag"
         },
         "accessKeyLabel": "Access Key",
-        "arnField": "Instance Profile ARN"
+        "accessKeyRequired": "Access Key is required",
+        "arnField": "Instance Profile ARN",
+        "ipv6Field": {
+          "label": "Enable IPV6",
+          "subText": "Use IPV6 networking for connections between the DB servers."
+        },
+        "networkAccessField": {
+          "label": "Enable Public Network Access",
+          "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -3599,6 +4111,14 @@
         "totalStorage": "Total Storage",
         "universe": "Universe",
         "universeTotal": "Universe Total"
+      },
+      "validation": {
+        "confirmPassword": "Passwords should match",
+        "fieldRequired": "This field is required",
+        "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
+        "required": "{{field}} is required",
+        "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
       }
     },
     "geoPartition": {
@@ -3609,14 +4129,246 @@
         "title": "Before You Start...",
         "description": "The <b>existing regions</b> in your cluster,  will be designated as your  \"<b>primary</b>\"  Geo-partition.",
         "desc_ques": "What is a primary Geo-partition?",
-        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>"
+        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>",
+        "existingRegions": "Existing Regions",
+        "geoPartition1": "Geo Partition 1",
+        "primary": "Primary"
       },
       "geoPartitionGeneralSettings": {
         "title": "General Settings",
-        "displayName": "Display Name",
+        "displayName": "Geo partition display name",
         "addGeoPartition": "Add Geo Partition",
+        "addNewGeoPartition": "Next: Add New Geo Partition",
         "tablespaceName": "Tablespace Name",
-        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
+        "existingRegions": "Existing Regions",
+        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "tablespaceNameRequiredError": "Tablespace name is required",
+        "displayNameRequiredError": "Geo Partition Name is required"
+      },
+      "geoPartitionNodesAndAvailability": {
+        "instanceType": "Instance Type",
+        "volume": "Volume",
+        "ebsType": "EBS Type",
+        "iops": "IOPS",
+        "throughput": "Throughput",
+        "nodes": "Node Size"
+      }
+    },
+    "editUniverse": {
+      "totalNodes": "{{total}} Nodes",
+      "readReplica": "Read Replica",
+      "preferredRank": "Preferred Rank {{rank}}",
+      "tabs": {
+        "general": "General",
+        "placement": "Placement",
+        "hardware": "Hardware",
+        "security": "Security",
+        "database": "Database",
+        "advanced": "Advanced"
+      },
+      "general": {
+        "title": "General",
+        "databaseVersion": "Database Version",
+        "clusterId": "Cluster ID",
+        "provider": "Provider",
+        "providerConfig": "Provider Config",
+        "totalNodes": "Total Nodes",
+        "faultTolerance": "Fault Tolerance",
+        "encryption": "Encryption",
+        "dateCreated": "Date Created",
+        "inTransit": "In-Transit",
+        "atRest": "at-Rest",
+        "regionResilient": "Resilient to {{count}} Region outage",
+        "azResilient": "Resilient to {{count}} Availability Zone outage",
+        "nodeResilient": "Resilient to {{count}} Node outage",
+        "notResilient": "Not Resilient to outages",
+        "primaryCluster": "Primary Cluster",
+        "asyncCluster": "Async Cluster",
+        "cpuArch": "CPU Architecture",
+        "linuxVersion": "Linux Version",
+        "defaultInstanceType": "Default Instance Type",
+        "region": "Region",
+        "primary": "Primary",
+        "readReplica": "Read Replica",
+        "preferredRank1": "Preferred Rank 1",
+        "allLocation": "All Locations",
+        "geoPartition": "Geo Partition"
+      },
+      "placement": {
+        "actions": "Actions",
+        "editResilienceAndRegions": "Edit Resilience and Regions",
+        "editNodesAndAvailabilityZones": "Edit Nodes and Availability Zones",
+        "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "clusterPlacement": "Cluster Placement",
+        "addReadReplica": "Add Read Replica",
+        "readReplica": "Read Replica",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addGeoPartition": "Add Geo Partition",
+        "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "faultTolerance": "Fault Tolerance",
+        "replicationFactor": "Replication Factor",
+        "totalNodes": "Total Nodes",
+        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
+        "tServers": "T-Servers",
+        "masters": "Masters",
+        "region": "Region",
+        "availabilityZone": "Availability Zone",
+        "noOfNodes": "No. of Nodes",
+        "reviewChanges": "Review Changes",
+        "editPlacementConfirmModal": {
+          "title": "Review Changes",
+          "summary": "Summary of instance configuration changes:",
+          "current": "Current",
+          "new": "New",
+          "faultTolerance": "Fault Tolerance:",
+          "totalNodes": "Total Nodes:",
+          "node": "node",
+          "rank": "Rank {{rank}}",
+          "notPreferred": "Not Preferred",
+          "confirmAndApply": "Confirm and Apply",
+          "faultToleranceTypes": {
+            "REGION_LEVEL": "{{count}} Region outage",
+            "AZ_LEVEL": "{{count}} Availability Zone outage",
+            "NODE_LEVEL": "{{count}} Node outage",
+            "NONE": "None"
+          }
+        },
+        "geoParitionPlacementView": {
+          "title": "Geo Partitions",
+          "addGeoPartition": "Add Geo Partition"
+        },
+        "menuEditPlacement": "Edit Placement",
+        "menuDeleteReadReplica": "Delete Read Replica"
+      },
+      "editResilienceAndRegions": {
+        "title": "Edit Placement"
+      },
+      "hardware": {
+        "totalClusterNodes": "Total Cluster Nodes",
+        "clusterInstance": "Cluster Instance",
+        "instanceType": "Instance Type",
+        "volumeAndNode": "volume / node",
+        "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
+        "ebsType": "ebs type",
+        "iops": "provisioned IOPS / Node",
+        "throughput": "provisioned throughput / Node",
+        "throughtputValue": "{{throughput}} MB/s",
+        "tServerInstance": "T-Server Instance",
+        "masterServerInstance": "Master Server Instance",
+        "editHardwareModal": {
+          "title": "Cluster Instance",
+          "submitLabel": "Review Changes"
+        }
+      },
+      "security": {
+        "publicIPAssignment": "Public IP Assignment",
+        "encryptionInTransit": "Encryption In Transit",
+        "encryptionAtRest": "Encryption At Rest",
+        "nodeToNode": "Node to Node Encryption",
+        "clientToNode": "Client to Node Encryption",
+        "encryption": "Encryption"
+      },
+      "database": {
+        "ysql": "YSQL",
+        "ycql": "YCQL",
+        "connectionPooling": "Connection Pooling",
+        "postgresCompatibility": "Postgres Compatibility",
+        "ysqlAuthentication": "YSQL Authentication",
+        "ycqlAuthentication": "YCQL Authentication",
+        "interface": "Interface",
+        "features": "Features",
+        "advancedConfigFlags": "Advanced Config Flags",
+        "editYSQLSettings": "Edit YSQL Settings",
+        "editYCQLSettings": "Edit YCQL Settings",
+        "editConnectionPooling": "Edit Connection Pooling Settings",
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings",
+        "noGflagsAdded": "You have not added any database configuration flags yet",
+        "addFlag": "Add Configuration Flag"
+      },
+      "advanced": {
+        "proxyConfiguration": "Proxy Configuration",
+        "proxyServer": "Proxy Server",
+        "secureWebProxy": "Secure Web Proxy (HTTPS)",
+        "webProxy": "Web Proxy (HTTP)",
+        "bypassProxyList": "Bypass Proxy List",
+        "editProxyConfiguration": "Edit Proxy Configuration"
+      },
+      "masterServerNodeAllocationModal": {
+        "title": "Master Server Node Allocation",
+        "editMasterServer": "Edit Master Server Instance  (Optional)",
+        "subText": "You can change master server instance settings at any time by going to:",
+        "settingsAndHardware": "Settings > Hardware"
+      }
+    },
+    "readReplica": {
+      "addRR": {
+        "title": "Add Read Replica",
+        "placement": "Placement",
+        "regionsAndAZ": "Regions and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost",
+        "instanceOptional": "Instance Settings (Optional)",
+        "advancedFlags": "Advanced Config Flags",
+        "advancedFlagLabel": "Customize Database Config Flags for Read Replica",
+        "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
+        "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
+        "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "regionsSectionTitle": "Regions",
+        "regionLabel": "Region {{index}}",
+        "availabilityZone": "Availability Zone",
+        "nodes": "Nodes",
+        "replicationFactor": "Replication Factor",
+        "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
+        "totalNodesPlacement": "Total Nodes",
+        "addAvailabilityZone": "Add Availability Zone",
+        "removeRegion": "Remove region",
+        "addRegion": "Add Region",
+        "newRegionBadge": "NEW",
+        "undoChange": "Undo Change",
+        "legendPrimaryCluster": "Primary Cluster",
+        "legendReadReplica": "Read Replica",
+        "legendSecondary": "Secondary",
+        "loadingRegions": "Loading regions…",
+        "rrInstance": "Read Replica Instance",
+        "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
+        "primaryClusterInstSettings": "Primary Cluster Instance Settings",
+        "kmsConfig": "Key Management Service Config",
+        "reviewCostSummary": {
+          "primaryCluster": "Primary Cluster",
+          "readReplicaTitle": "Read Replica"
+        },
+        "reviewSummary": {
+          "daily": "Daily",
+          "monthly": "Monthly",
+          "universeTotal": "Universe total",
+          "totalNodes": "Total nodes",
+          "totalCores": "Total cores",
+          "totalMemory": "Total memory",
+          "totalStorage": "Total storage"
+        },
+        "toast": {
+          "addRRFailed": "Failed to add read replica",
+          "updateRRFailed": "Failed to update read replica"
+        },
+        "validation": {
+          "invalidArchitecture": "Invalid CPU Architecture",
+          "positiveNumber": "{{field}} must be a positive number",
+          "minValue": "{{field}} must be at least {{min}}",
+          "maxValue": "{{field}} must be at most {{max}}",
+          "invalidStorageClass": "Invalid storage class",
+          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
+          "invalidStorageType": "Invalid storage type",
+          "required": "{{field}} is required",
+          "regionRequired": "Select a region.",
+          "zoneRequired": "Select an availability zone.",
+          "nodesPositiveInteger": "Nodes must be a positive whole number.",
+          "universeUuidMissing": "Universe identifier is missing."
+        }
       }
     }
   }

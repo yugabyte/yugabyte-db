@@ -26,7 +26,8 @@ step "s1_lock_status"       {
         hash_cols, range_cols, attnum, column_id, multiple_rows_locked
     FROM yb_lock_status(null,null)
     ORDER BY
-        relation::regclass::text, granted, hash_cols NULLS FIRST, range_cols NULLS FIRST;
+        relation::regclass::text, granted, hash_cols NULLS FIRST, range_cols NULLS FIRST,
+        is_explicit NULLS FIRST, column_id NULLS FIRST;
 }
 step "s1_lock_status_blockers" {
     WITH uuids AS (SELECT DISTINCT unnest(blocked_by) as uuid

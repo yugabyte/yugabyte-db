@@ -1,0 +1,272 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 380000;
+SET documentdb.next_collection_id TO 3800;
+SET documentdb.next_collection_index_id TO 3800;
+set enable_seqscan TO off;
+set documentdb.forceUseIndexIfAvailable to on;
+set documentdb.forceDisableSeqScan to on;
+SELECT documentdb_api.drop_collection('array_query_db', 'array_operator_tests') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('array_query_db', '{ "createIndexes": "array_operator_tests", "indexes": [ { "key": { "value": 1 }, "enableCompositeTerm": true, "name": "queryoperator_value" }, { "key": { "value.subfield": 1 }, "enableCompositeTerm": true, "name": "queryoperator_value_subfield" }] }', true) IS NOT NULL;
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+\i sql/bson_query_operator_array_tests_core.sql
+-- some documents with mixed types
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 1, "value": 42 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 2, "value": -999 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 3, "value": { "longNum": "2048" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 4, "value": false }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 5, "value": "alpha beta" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 6, "value": { "subfield": 7 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 7, "value": { "dateField": { "longNum": "654321" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now insert some documents with arrays with those terms
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 100, "value": [ 42, "bravo charlie", false ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 101, "value": [ false, -999, { "subfield": 7 }, 8, 9, 10 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 102, "value": [ false, -999, { "subfield": 7 }, 42, 99, { "dateField": { "longNum": "654321" } } ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now insert some documents with arrays of arrays of those terms
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 200, "value": [ 42, [ false, "alpha beta" ] ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 201, "value": [ false, -999, { "subfield": 7 }, [ 42, "bravo charlie", false ] ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 202, "value": [ [ false, -999, { "subfield": 7 }, 8, 9, 10 ] ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert empty arrays
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 300, "value": [ ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('array_query_db', 'array_operator_tests', '{ "_id": 301, "value": [ [], "zuluValue" ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$eq": [ 42, "bravo charlie", false ] } } }');
+                                                                                      document                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$gt": [ 42, "bravo charlie", false ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+ { "_id" : { "$numberInt" : "202" }, "value" : [ [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$gte": [ 42, "bravo charlie", false ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+ { "_id" : { "$numberInt" : "202" }, "value" : [ [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(7 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$gt": [ false, -999, { "subfield": 7 }, 42, 99, { "dateField": { "longNum": "654321" } } ] } } }');
+                                                                                      document                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$gte": [ false, -999, { "subfield": 7 }, 42, 99, { "dateField": { "longNum": "654321" } } ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$lt": [ true, -999, { "subfield": 7 }, 42, 99, { "dateField": { "longNum": "654321" } } ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+ { "_id" : { "$numberInt" : "202" }, "value" : [ [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] ] }
+ { "_id" : { "$numberInt" : "300" }, "value" : [  ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(8 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$lte": [ true, -999, { "subfield": 7 }, 42, 99, { "dateField": { "longNum": "654321" } } ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+ { "_id" : { "$numberInt" : "202" }, "value" : [ [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] ] }
+ { "_id" : { "$numberInt" : "300" }, "value" : [  ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(8 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$eq": [ ] } } }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "300" }, "value" : [  ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$in": [ [ 42, "bravo charlie", false ], [ 42, [ false, "alpha beta" ] ] ]} } }');
+                                                                                      document                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$in": [ [ 42, "bravo charlie", false ], [ ] ]} } }');
+                                                                                      document                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+ { "_id" : { "$numberInt" : "300" }, "value" : [  ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(4 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$size": 3 } } }');
+                                              document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$size": 2 } } }');
+                                               document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+ { "_id" : { "$numberInt" : "301" }, "value" : [ [  ], "zuluValue" ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$size": 0 } } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "300" }, "value" : [  ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$all": [ 42, false ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$all": [ 42 ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "42" } }
+ { "_id" : { "$numberInt" : "100" }, "value" : [ { "$numberInt" : "42" }, "bravo charlie", false ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "200" }, "value" : [ { "$numberInt" : "42" }, [ false, "alpha beta" ] ] }
+(4 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$all": [ { "$elemMatch": { "$gt": 0 } }, { "$elemMatch": { "subfield": 7 } } ] } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$all": [ { "$elemMatch": { "$gt": 8, "$lt": 10 } }, { "$elemMatch": { "subfield": 7 } } ] } } }');
+                                                                                                document                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$elemMatch": { "$gt": 8, "$lt": 10 } } } }');
+                                                                                                document                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('array_query_db', '{ "find": "array_operator_tests", "filter": { "value": { "$elemMatch": { "subfield": { "$gt": 0 } } } } }');
+                                                                                                          document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+ { "_id" : { "$numberInt" : "102" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, { "$numberInt" : "42" }, { "$numberInt" : "99" }, { "dateField" : { "longNum" : "654321" } } ] }
+ { "_id" : { "$numberInt" : "201" }, "value" : [ false, { "$numberInt" : "-999" }, { "subfield" : { "$numberInt" : "7" } }, [ { "$numberInt" : "42" }, "bravo charlie", false ] ] }
+(3 rows)
+

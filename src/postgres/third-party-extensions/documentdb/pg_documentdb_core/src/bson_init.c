@@ -42,6 +42,9 @@ bool BsonTextUseJsonRepresentation = DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION;
 #define DEFAULT_ENABLE_COLLATION false
 bool EnableCollation = DEFAULT_ENABLE_COLLATION;
 
+#define DEFAULT_SKIP_BSON_ARRAY_TRAVERSE_OPTIMIZATION false
+bool SkipBsonArrayTraverseOptimization = DEFAULT_SKIP_BSON_ARRAY_TRAVERSE_OPTIMIZATION;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -79,6 +82,14 @@ InitDocumentDBCoreConfigurations(const char *prefix)
 			"Determines whether collation is supported."),
 		NULL, &EnableCollation,
 		DEFAULT_ENABLE_COLLATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.skipBsonArrayTraverseOptimization", prefix),
+		gettext_noop(
+			"Determines whether to skip the optimization for traversing arrays in bson documents."),
+		NULL, &SkipBsonArrayTraverseOptimization,
+		DEFAULT_SKIP_BSON_ARRAY_TRAVERSE_OPTIMIZATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

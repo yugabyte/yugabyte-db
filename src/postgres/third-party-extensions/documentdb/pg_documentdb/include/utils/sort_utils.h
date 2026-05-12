@@ -53,6 +53,7 @@ typedef struct SortContext
 	List *sortSpecList;
 	SortDirection sortDirection;
 	SortType sortType;
+	const char *collationString;
 } SortContext;
 
 

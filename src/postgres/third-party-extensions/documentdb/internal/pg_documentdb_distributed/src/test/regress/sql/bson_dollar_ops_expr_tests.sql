@@ -15,5 +15,5 @@ SELECT document FROM documentdb_api.collection('db', 'bsonexprtests') WHERE docu
 
 -- invalid scenarios
 SELECT document FROM documentdb_api.collection('db', 'bsonexprtests') WHERE document @@ '{ "a": { "$elemMatch": { "$expr": { "$isArray": "$a" } } } }';
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"$expr": "$a" } } } }', '{}');
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"$expr": "$a" } } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
 SELECT document FROM documentdb_api.collection('db', 'bsonexprtests') WHERE document @@ '{ "$expr": "$$a" }';

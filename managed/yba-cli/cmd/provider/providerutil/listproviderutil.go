@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -37,18 +36,17 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	var r []ybaclient.Provider
 	var response *http.Response
 
-	if len(strings.TrimSpace(providerCode)) != 0 {
+	if !util.IsEmptyString(providerCode) {
 		providerListRequest = providerListRequest.ProviderCode(providerCode)
 		r, response, err = providerListRequest.Execute()
 		callSite := "Provider"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, callSite, "List")
 		}
-	} else if len(strings.TrimSpace(commandCall)) == 0 {
+	} else if util.IsEmptyString(commandCall) {
 		codes := []string{
 			util.AWSProviderType,
 			util.GCPProviderType,
@@ -59,8 +57,7 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 			providerListRequest = providerListRequest.ProviderCode(c)
 			rCode, response, err := providerListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Provider", "List")
 			}
 			r = append(r, rCode...)
 		}

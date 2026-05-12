@@ -31,6 +31,7 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
+  useIsProviderValidationEnabled,
   addItem,
   constructAccessKeysEditPayload,
   deleteItem,
@@ -71,6 +72,7 @@ import {
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 
 interface OnPremProviderEditFormProps {
   editProvider: EditProvider;
@@ -168,8 +170,15 @@ export const OnPremProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.onprem
+  );
 
-  if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
+  if (
+    customerRuntimeConfigQuery.isLoading ||
+    customerRuntimeConfigQuery.isIdle ||
+    isRuntimeConfigLoading
+  ) {
     return <YBLoading />;
   }
   if (customerRuntimeConfigQuery.isError) {
@@ -180,7 +189,11 @@ export const OnPremProviderEditForm = ({
     );
   }
 
-  const onFormSubmit: SubmitHandler<OnPremProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: OnPremProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -192,7 +205,10 @@ export const OnPremProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -200,6 +216,10 @@ export const OnPremProviderEditForm = ({
       toast.error(error.message ?? error);
     }
   };
+
+  const onFormValidateAndSubmit: SubmitHandler<OnPremProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
 
   const onFormReset = () => {
     formMethods.reset(defaultValues);
@@ -260,7 +280,10 @@ export const OnPremProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="OnPremProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="OnPremProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
@@ -526,7 +549,7 @@ export const OnPremProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}

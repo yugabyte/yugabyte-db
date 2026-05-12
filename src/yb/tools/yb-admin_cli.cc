@@ -438,6 +438,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
 
+  HybridTime::TEST_SetPrettyToString(true);
+
   const string addrs = FLAGS_master_addresses;
   if (!FLAGS_init_master_addrs.empty()) {
     std::vector<HostPort> init_master_addrs;
@@ -839,17 +841,31 @@ Status flush_table_by_id_action(
   return Status::OK();
 }
 
-const auto flush_sys_catalog_args = "";
+const auto flush_sys_catalog_args = "[leader_only]";
 Status flush_sys_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->FlushSysCatalog(), "Unable to flush table sys_catalog");
+  bool all_peers = true;
+  if (args.size() == 1 && args[0] == "leader_only") {
+    all_peers = false;
+  } else if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->FlushSysCatalog(all_peers), "Unable to flush table sys_catalog");
   return Status::OK();
 }
 
-const auto compact_sys_catalog_args = "";
+const auto compact_sys_catalog_args = "[leader_only]";
 Status compact_sys_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->CompactSysCatalog(), "Unable to compact table sys_catalog");
+  bool all_peers = true;
+  if (args.size() == 1 && args[0] == "leader_only") {
+    all_peers = false;
+  } else if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->CompactSysCatalog(all_peers), "Unable to compact table sys_catalog");
   return Status::OK();
 }
 
@@ -1032,7 +1048,7 @@ Status set_load_balancer_enabled_action(
 
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[0])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetLoadBalancerEnabled(is_enabled), "Unable to change load balancer state");
+      client->SetLoadBalancerEnabled(is_enabled), "Unable to change cluster balancer state");
   return Status::OK();
 }
 
@@ -1043,7 +1059,7 @@ Status get_load_balancer_state_action(
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the load balancer state");
+  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the cluster balancer state");
   return Status::OK();
 }
 
@@ -1065,7 +1081,7 @@ Status get_leader_blacklist_completion_action(
 const auto get_is_load_balancer_idle_args = "";
 Status get_is_load_balancer_idle_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is load balancer idle");
+  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is cluster balancer idle");
   return Status::OK();
 }
 
@@ -1117,7 +1133,7 @@ Status change_leader_blacklist_action(
   return ChangeBlacklist(client, args, true, "Unable to change leader blacklist");
 }
 
-const auto master_leader_stepdown_args = "[<dest_uuid>]";
+const auto master_leader_stepdown_args = "[<new_leader_id>]";
 Status master_leader_stepdown_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   return MasterLeaderStepDown(client, args);
@@ -1129,14 +1145,20 @@ Status leader_stepdown_action(
   return LeaderStepDown(client, args);
 }
 
+// Optionally accepts [<split_factor>] as a test param when
+// FLAGS_TEST_enable_multi_way_tablet_split is enabled.
 const auto split_tablet_args = "<tablet_id>";
 Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 2));
   const string tablet_id = args[0];
+  int split_factor = 0;
+  if (args.size() >= 2) {
+    split_factor = VERIFY_RESULT(CheckedStoi(args[1]));
+  }
+
   RETURN_NOT_OK_PREPEND(
-      client->SplitTablet(tablet_id), Format("Unable to start split of tablet $0", tablet_id));
+      client->SplitTablet(tablet_id, split_factor),
+      Format("Unable to start split of tablet $0", tablet_id));
   return Status::OK();
 }
 
@@ -1905,7 +1927,7 @@ Status create_change_data_stream_action(
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
-  std::string consistent_snapshot_option = "USE_SNAPSHOT";
+  std::string consistent_snapshot_option = "EXPORT_SNAPSHOT";
   std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
@@ -2877,6 +2899,33 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
+const auto get_table_hash_args = "<table_id> [read_ht]";
+Status get_table_hash_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 1 || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto table_id = args[0];
+  uint64_t read_ht = 0;
+  if (args.size() == 2) {
+    read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
+  }
+  return client->GetTableXorHash(table_id, read_ht);
+}
+
+const auto xcluster_failover_args = "<replication_group_id>";
+Status xcluster_failover_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(client->XClusterFailover(args[0]));
+  std::cout << "xCluster failover completed successfully for replication group " << args[0]
+            << std::endl;
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2968,6 +3017,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(write_universe_key_to_file);
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
+  REGISTER_COMMAND(get_table_hash);
+
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_change_data_stream);
@@ -3007,6 +3058,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
+  REGISTER_COMMAND(xcluster_failover);
 
   /* Upgrade related commands */
   // AutoFlags

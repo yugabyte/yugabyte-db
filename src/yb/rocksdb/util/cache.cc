@@ -294,12 +294,12 @@ class LRUSubCache {
   }
 
   void DecrementUsage(const size_t charge) {
-    assert(usage_ >= charge);
+    DCHECK_GE(usage_, charge);
     usage_ -= charge;
   }
 
   void IncrementUsage(const size_t charge) {
-    assert(usage_ + charge > 0);
+    DCHECK_GT(usage_ + charge, 0);
     usage_ += charge;
   }
 

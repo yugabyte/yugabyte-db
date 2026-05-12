@@ -136,7 +136,7 @@ const INITIAL_STATE = {
   authToken: getInitialState({}),
   apiToken: getInitialState(null),
   adminNotifications: getInitialState({}),
-  perfAdvisorDetails: getInitialState([]),
+  ybaToPaServiceDetails: getInitialState([]),
   tasks: [],
   status: null,
   error: null,
@@ -206,9 +206,9 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'adminNotifications', action);
 
     case FETCH_PERF_ADVISOR_DETAILS:
-      return setLoadingState(state, 'perfAdvisorDetails', []);
+      return setLoadingState(state, 'ybaToPaServiceDetails', []);
     case FETCH_PERF_ADVISOR_DETAILS_RESPONSE:
-      return setPromiseResponse(state, 'perfAdvisorDetails', action);
+      return setPromiseResponse(state, 'ybaToPaServiceDetails', action);
 
     case LOGIN:
       return setLoadingState(state, 'authToken', {});

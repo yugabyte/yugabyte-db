@@ -1148,7 +1148,7 @@ TEST_F(TestRedisService, BatchedCommandsInline) {
 
 TEST_F(TestRedisService, TestTimedoutInQueue) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_max_batch) = 1;
-  SetAtomicFlag(true, &FLAGS_TEST_enable_backpressure_mode_for_testing);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_backpressure_mode_for_testing) = true;
 
   DoRedisTestOk(__LINE__, {"SET", "foo", "value"});
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, "value");

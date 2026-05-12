@@ -36,10 +36,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/common/common_fwd.h"
+
 namespace yb {
 
-class QLValuePB;
-class QLWriteRequestPB;
 class Random;
 
 namespace client {
@@ -56,12 +56,12 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         size_t col_idx,
                         uint64_t value,
-                        QLValuePB* out);
+                        QLValueMsg* out);
 
 // Generate row data for an arbitrary schema. Initial column value determined
 // by the value of 'record_id'.
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, QLWriteRequestPB* req);
+                        Random* random, QLWriteRequestMsg* req);
 
 } // namespace tools
 } // namespace yb

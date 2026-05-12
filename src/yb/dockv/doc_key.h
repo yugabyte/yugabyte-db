@@ -228,7 +228,8 @@ class DocKey {
 
   // Converts the document key to a human-readable representation.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
-  static std::string DebugSliceToString(Slice slice);
+  static std::string DebugSliceToString(
+      Slice slice, DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey);
 
   // Check if it is an empty key.
   bool empty() const {
@@ -291,8 +292,8 @@ class DocKey {
   }
 
   // Converts a redis string key to a doc key
-  static DocKey FromRedisKey(uint16_t hash, const std::string& key);
-  static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
+  static DocKey FromRedisKey(uint16_t hash, std::string_view key);
+  static KeyBytes EncodedFromRedisKey(uint16_t hash, std::string_view key);
 
  private:
   class DecodeFromCallback;
@@ -692,7 +693,14 @@ class SubDocKey {
 
   Status FullyDecodeFromKeyWithOptionalHybridTime(const Slice& slice);
 
-  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
+  std::string ToString(
+      AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse,
+      IncludeWriteTime include_write_time = IncludeWriteTime::kTrue) const;
+
+  std::string ToString(IncludeWriteTime include_write_time) const {
+    return ToString(AutoDecodeKeys::kFalse, include_write_time);
+  }
+
   static std::string DebugSliceToString(Slice slice);
   static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 

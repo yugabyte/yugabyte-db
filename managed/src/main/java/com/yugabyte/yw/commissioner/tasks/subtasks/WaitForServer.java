@@ -16,7 +16,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -26,7 +26,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
-import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -35,13 +34,9 @@ import org.yb.client.YBClient;
 @Slf4j
 public class WaitForServer extends ServerSubTaskBase {
 
-  private final YsqlQueryExecutor ysqlQueryExecutor;
-
   @Inject
-  protected WaitForServer(
-      BaseTaskDependencies baseTaskDependencies, YsqlQueryExecutor ysqlQueryExecutor) {
+  protected WaitForServer(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -75,14 +70,7 @@ public class WaitForServer extends ServerSubTaskBase {
         ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
         NodeDetails node = universe.getNode(taskParams().nodeName);
-        Provider provider =
-            Provider.getOrBadRequest(
-                UUID.fromString(
-                    universe
-                        .getUniverseDetails()
-                        .getClusterByUuid(node.placementUuid)
-                        .userIntent
-                        .provider));
+        Provider provider = Util.getProviderForNode(node, universe);
         Duration waitTimeout = Duration.ofMillis(taskParams().serverWaitTimeoutMs);
         Stopwatch stopwatch = Stopwatch.createStarted();
         Duration waitDuration =
@@ -131,7 +119,7 @@ public class WaitForServer extends ServerSubTaskBase {
             node,
             userIntent.isYSQLAuthEnabled(),
             userIntent.enableConnectionPooling);
-    return !ysqlResponse.has("error");
+    return ysqlResponse != null && !ysqlResponse.has("error");
   }
 
   private void verifyUniverseUUID(String privateIp, ServerType serverType, Universe universe) {

@@ -11,7 +11,7 @@ import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
-import { fetchIncrementalBackup } from '.././common/BackupAPI';
+import { addIncrementalBackup, fetchIncrementalBackup, getKMSConfigs } from '../common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -22,12 +22,11 @@ import {
   YSQLTableProps
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
+import { YBTooltip } from '../../../redesign/components';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { find, findIndex, isFunction } from 'lodash';
 import { formatBytes } from '@app/utils/Formatters';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
-
 import { YBConfirmModal } from '../../modals';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
@@ -38,6 +37,8 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import './BackupDetails.scss';
+
+import InfoIcon from '../../../redesign/assets/info-message.svg?img';
 
 export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
@@ -150,9 +151,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                (tableName) =>
-                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-              )
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+                )
           };
         });
       }
@@ -203,8 +204,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-    })
+        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+      })
     : undefined;
 
   if (!backupDetails) return null;
@@ -266,7 +267,12 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             </RbacValidator>
             {!hideRestore && (
               <RbacValidator
-                customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
+                customValidateFunction={(userPerm) =>
+                  find(userPerm, {
+                    actions: [Action.BACKUP_RESTORE],
+                    resourceType: Resource.UNIVERSE
+                  }) !== undefined
+                }
                 isControl
                 popOverOverrides={{ zIndex: 10000 }}
               >
@@ -359,7 +365,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>
                   {formatBytes(
                     backupDetails.fullChainSizeInBytes ||
-                    backupDetails.commonBackupInfo.totalBackupSizeInBytes
+                      backupDetails.commonBackupInfo.totalBackupSizeInBytes
                   )}
                 </div>
               </div>
@@ -380,7 +386,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Expiration</div>
-                <div>{backupDetails.expiryTime ? ybFormatDate(backupDetails.expiryTime) : "Won't Expire"}</div>
+                <div>
+                  {backupDetails.expiryTime
+                    ? ybFormatDate(backupDetails.expiryTime)
+                    : "Won't Expire"}
+                </div>
               </div>
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
@@ -402,6 +412,21 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>
                   <div className="header-text">Schedule Name</div>
                   <div>{backupDetails.scheduleName}</div>
+                </div>
+              )}
+              {backupDetails.backupType === TableType.PGSQL_TABLE_TYPE && (
+                <div>
+                  <div className="header-text">
+                    Roles and Grants
+                    <YBTooltip
+                      interactive
+                      title={'Includes roles, memberships, object grants, and credential hashes.'}
+                      PopperProps={{ style: { zIndex: 9999, pointerEvents: 'auto' } }}
+                    >
+                      <img src={InfoIcon} />
+                    </YBTooltip>
+                  </div>
+                  <div>{backupDetails.useRoles ? 'Included' : 'Not Included'}</div>
                 </div>
               )}
             </div>
@@ -435,7 +460,12 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <RbacValidator
-                    customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
+                    customValidateFunction={(userPerm) =>
+                      find(userPerm, {
+                        actions: [Action.BACKUP_RESTORE],
+                        resourceType: Resource.UNIVERSE
+                      }) !== undefined
+                    }
                     overrideStyle={{
                       display: 'unset'
                     }}

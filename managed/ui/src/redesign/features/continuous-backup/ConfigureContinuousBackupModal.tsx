@@ -1,4 +1,4 @@
-import { makeStyles, Typography } from '@material-ui/core';
+import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -7,9 +7,9 @@ import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
 import { YBInputField, YBModal, YBModalProps, YBTooltip } from '../../components';
-import { ReactComponent as CheckmarkIcon } from '../../assets/check.svg';
-import { ReactComponent as UnavailableIcon } from '../../assets/unavailable.svg';
-import { ReactComponent as TipIcon } from '../../assets/tip.svg';
+import CheckmarkIcon from '../../assets/check.svg';
+import UnavailableIcon from '../../assets/unavailable.svg';
+import TipIcon from '../../assets/tip.svg';
 import { I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX } from '../../helpers/constants';
 import { BackupStorageConfigSelectField } from './BackupStorageConfigSelectField';
 import {
@@ -244,11 +244,13 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
     props.operation === ConfigureContinuousBackupOperation.EDIT
       ? {
           backupFrequency:
-            props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE
+            props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE,
+          storageSubfolder: props.continuousBackupConfig.spec?.backup_dir
         }
       : { backupFrequency: DEFAULT_BACKUP_FREQUENCY_MINUTE };
   const formMethods = useForm<ConfigureContinuousBackupFormValues>({
-    defaultValues
+    defaultValues,
+    mode: 'onChange'
   });
 
   const onSubmit: SubmitHandler<ConfigureContinuousBackupFormValues> = async (formValues) => {
@@ -293,7 +295,11 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
               <BackupStorageConfigSelectField
                 reset={formMethods.reset}
                 {...(defaultStorageConfigUuid && { defaultStorageConfigUuid })}
-                useControllerProps={{ control: formMethods.control, name: 'storageConfig' }}
+                useControllerProps={{
+                  control: formMethods.control,
+                  name: 'storageConfig',
+                  rules: { required: t('formFieldRequired', { keyPrefix: 'common' }) }
+                }}
                 autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
               />
             </div>
@@ -310,9 +316,7 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                 name="storageSubfolder"
                 disabled={isFormDisabled}
                 rules={{
-                  validate: {
-                    required: (configName) => !!configName || t('error.requiredField')
-                  }
+                  required: t('formFieldRequired', { keyPrefix: 'common' })
                 }}
               />
             </div>
@@ -327,13 +331,39 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                   control={formMethods.control}
                   name="backupFrequency"
                   type="number"
-                  inputProps={{ min: 1 }}
+                  inputProps={{ min: 2, max: 1440 }}
+                  rules={{
+                    required: t('formFieldRequired', { keyPrefix: 'common' }),
+                    min: {
+                      value: 2,
+                      message: t('error.backupFrequencyMustBeGreaterThanOrEqualTo2')
+                    },
+                    max: {
+                      value: 1440,
+                      message: t('error.backupFrequencyMustBeLessThanOrEqualTo1440')
+                    },
+                    validate: {
+                      pattern: (value) => {
+                        const integerPattern = /^\d+$/;
+                        return (
+                          integerPattern.test(value?.toString() ?? '') ||
+                          t('error.backupFrequencyMustBePositiveInteger')
+                        );
+                      }
+                    }
+                  }}
+                  hideInlineError
                   disabled={isFormDisabled}
                 />
                 <Typography variant="body2">
                   {t('duration.minutes', { keyPrefix: 'common' }).toLocaleLowerCase()}
                 </Typography>
               </div>
+              {formMethods.formState.errors.backupFrequency?.message && (
+                <FormHelperText error={true}>
+                  {formMethods.formState.errors.backupFrequency.message}
+                </FormHelperText>
+              )}
               <div className={classes.tipContainer}>
                 <div>
                   <TipIcon />

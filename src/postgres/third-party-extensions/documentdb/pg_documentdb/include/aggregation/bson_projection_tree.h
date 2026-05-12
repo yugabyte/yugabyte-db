@@ -110,7 +110,7 @@ void MergeBsonPathTree(BsonIntermediatePathNode *root,
 					   bool *hasFields);
 
 /*
- * Helper function to cast a node as an projection leaf node
+ * Helper function to cast node into a specific projection leaf node
  */
 inline static const BsonLeafNodeWithContext *
 CastAsBsonLeafNodeWithContext(const BsonPathNode *toCast)

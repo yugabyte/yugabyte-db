@@ -29,16 +29,18 @@ struct YsqlMetric {
   int64_t time;
   std::string type;
   std::string description;
+  int64_t sum;
 
   YsqlMetric(
       std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time, std::string type = "", std::string description = "")
+      int64_t time, std::string type = "", std::string description = "", int64_t sum = 0)
       : name(std::move(name)),
         labels(std::move(labels)),
         value(value),
         time(time),
         type(type),
-        description(description) {}
+        description(description),
+        sum(sum) {}
 };
 
 class LibPqTestBase : public PgWrapperTestBase {
@@ -51,6 +53,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& user,
       bool simple_query_protocol = false);
   Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
+  Result<PGConn> ConnectToTsForDB(const ExternalTabletServer& pg_ts, const std::string& db_name);
   Result<PGConn> ConnectToTsAsUser(
       const ExternalTabletServer& pg_ts,
       const std::string& user);
@@ -72,6 +75,9 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::vector<YsqlMetric>& metrics,
       const std::string& metric_name);
   static void WaitForCatalogVersionToPropagate();
+  Result<int64_t> GetCatCacheTableMissMetric(const std::string& table_name);
+  Result<int64_t> GetCatCacheListMissMetric(const std::string& table_name);
+  Result<int64_t> GetCatCacheNegMissMetric(const std::string& table_name);
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);

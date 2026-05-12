@@ -7,8 +7,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_manager.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
@@ -39,18 +38,16 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     *affinitized_zones = affinitized_zones_;
   }
 
-  const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
-
-  TableIndex::PrimaryTablesRange GetTables() const override {
-    return tables_.GetPrimaryTables();
+  std::optional<std::reference_wrapper<const TabletInfoPtr>> GetTabletInfo(
+      const TabletId& id) const override {
+    auto it = tablet_map_.find(id);
+    if (it == tablet_map_.end()) {
+      return std::nullopt;
+    }
+    return std::cref(it->second);
   }
 
-  const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const override {
-    return tables_.FindTableOrNull(table_uuid);
-  }
-
-  ReplicationInfoPB GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const override {
+  ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const override {
     return replication_info_;
   }
 
@@ -79,7 +76,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
   Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      bool should_remove_leader, const std::string& reason,
+      bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid) override {
     return Status::OK();
   }
@@ -131,5 +128,4 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   friend class TestLoadBalancerEnterprise;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

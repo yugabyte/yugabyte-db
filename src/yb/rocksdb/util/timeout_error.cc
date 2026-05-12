@@ -34,9 +34,4 @@ const std::string& TimeoutErrorTag::ToMessage(Value value) {
   return kTimeoutMsgs[std::to_underlying(value)];
 }
 
-static const std::string kTimeoutErrorCategoryName = "timeout";
-
-static yb::StatusCategoryRegisterer timeout_error_category_registerer(
-    yb::StatusCategoryDescription::Make<TimeoutErrorTag>(&kTimeoutErrorCategoryName));
-
 } // namespace rocksdb

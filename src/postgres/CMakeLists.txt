@@ -172,7 +172,9 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
     set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
   endif()
 
-  if(IS_CLANG)
+  if(IS_CLANG AND NOT IS_ASAN)
+    # Skip adding -lc++ when ASAN is enabled, as it's already added globally via ADD_LINKER_FLAGS
+    # in YugabyteFunctions.cmake to avoid duplicate library warnings.
     string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lc++")
   endif()
   if(IS_GCC)
@@ -228,4 +230,4 @@ add_dependencies(postgres configure_postgres postgres_genbki)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram yb_pgresult_util)

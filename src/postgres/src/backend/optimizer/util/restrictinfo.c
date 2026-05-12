@@ -490,26 +490,6 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 }
 
 /*
- * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
- */
-void
-add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
-{
-	ListCell   *lc;
-
-	foreach(lc, rinfo->yb_batched_rinfo)
-	{
-		RestrictInfo *current = lfirst(lc);
-
-		/* If we already have a batched clause with this LHS we don't bother. */
-		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
-			return;
-	}
-
-	rinfo->yb_batched_rinfo = lappend(rinfo->yb_batched_rinfo, batched);
-}
-
-/*
  * get_actual_clauses
  *
  * Returns a list containing the bare clauses from 'restrictinfo_list'.

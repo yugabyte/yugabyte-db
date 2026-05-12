@@ -84,6 +84,9 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
   }
 
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Start Node with name {} from universe uuid={}",
         taskParams().nodeName,

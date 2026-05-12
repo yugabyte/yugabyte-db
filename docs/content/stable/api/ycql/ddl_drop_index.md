@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1255
+aliases:
+  - /stable/api/cassandra/ddl_drop_index
+  - /stable/api/ycql/ddl_drop_index
 type: docs
 ---
 

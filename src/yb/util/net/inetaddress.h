@@ -24,7 +24,7 @@
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/system/error_code.hpp>
 
-#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/stl_util.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
@@ -105,6 +105,10 @@ class InetAddress {
   }
 
  private:
+  friend auto operator<=>(const InetAddress& lhs, const InetAddress& rhs) {
+    return NaiveCompare(lhs, rhs);
+  }
+
   boost::asio::ip::address boost_addr_;
 };
 

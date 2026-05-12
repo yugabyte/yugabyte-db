@@ -39,7 +39,7 @@
 #include <thread>
 #include <vector>
 
-#include "yb/common/common_net.pb.h"
+#include "yb/common/common_net.h"
 
 #include "yb/gutil/strings/join.h"
 
@@ -327,11 +327,10 @@ std::string MasterAddressesToString(const MasterAddresses& addresses) {
 }
 
 CloudInfoPB ServerBaseOptions::MakeCloudInfoPB() const {
-  CloudInfoPB result;
-  result.set_placement_cloud(placement_cloud());
-  result.set_placement_region(placement_region());
-  result.set_placement_zone(placement_zone());
-  return result;
+  return yb::MakeCloudInfoPB(
+      std::string(placement_cloud()),
+      std::string(placement_region()),
+      std::string(placement_zone()));
 }
 
 const std::string& ServerBaseOptions::placement_cloud() const {

@@ -42,6 +42,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table.h"
 
@@ -76,6 +77,15 @@
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 DECLARE_uint64(rocksdb_max_sst_write_retries);
+
+DEFINE_test_flag(int64, rocksdb_compact_rate_limit_bytes_per_sec, 0,
+    "Use to control total write rate of compactions across tserver, has priority over "
+    "rocksdb_compact_flush_rate_limit_bytes_per_sec. Positive values have effect on new "
+    "compactions, 0 turns off compaction rate limiter while keeping old limit for existing "
+    "compactions. If negative flag value has been specified, rate limit for existing compactions "
+    "is set to absolute value of the flag. This might temporarily increase disk utilization until "
+    "those compactions are finished. New compactions will use default common compaction/flush rate "
+    "limiter.");
 
 namespace rocksdb {
 
@@ -227,12 +237,64 @@ void CompactionJob::AggregateStatistics() {
   }
 }
 
+namespace {
+
+std::unique_ptr<EnvOptions> MaybeOverrideEnvOptionsForTests(const EnvOptions& env_options) {
+  const auto compact_rate_limit_bytes_per_sec = FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec;
+  if (compact_rate_limit_bytes_per_sec <= 0) {
+    // If negative flag value has been specified, rate limit for already started compactions is
+    // still set in callback below to absolute value of the flag. This might temporarily increase
+    // disk utilization until those compactions are finished. New compactions will use default
+    // common compaction/flush rate limiter.
+    return nullptr;
+  }
+
+  static class TestCompactionRateLimiter {
+  public:
+    TestCompactionRateLimiter(int64_t bytes_per_second) {
+      rate_limiter_ = std::shared_ptr<RateLimiter>(
+          NewGenericRateLimiter(bytes_per_second));
+      flag_callback_ = [this] {
+        const auto rate_limit_bytes_per_sec =
+            abs(FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec);
+        if (rate_limit_bytes_per_sec > 0) {
+          LOG(INFO) << "Setting compaction rate limit to: " << rate_limit_bytes_per_sec;
+          YB_WARN_NOT_OK(
+              rate_limiter_->SetBytesPerSecond(rate_limit_bytes_per_sec),
+              "Error setting compaction rate limit:");
+        }
+      };
+      flag_callback_registration_ = CHECK_RESULT(
+        yb::RegisterFlagUpdateCallback(
+            &FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec,
+            "TEST_rocksdb_compact_rate_limit_bytes_per_sec", flag_callback_));
+    }
+
+    ~TestCompactionRateLimiter() {
+      flag_callback_registration_.Deregister();
+    }
+
+    RateLimiter* rate_limiter() const { return rate_limiter_.get(); }
+
+  private:
+    std::shared_ptr<RateLimiter> rate_limiter_;
+    yb::FlagCallback flag_callback_;
+    yb::FlagCallbackRegistration flag_callback_registration_;
+  } test_compaction_rate_limiter(compact_rate_limit_bytes_per_sec);
+
+  auto env_options_override = std::make_unique<EnvOptions>(env_options);
+  env_options_override->rate_limiter = test_compaction_rate_limiter.rate_limiter();
+  return env_options_override;
+}
+
+} // namespace
+
 CompactionJob::CompactionJob(
     int job_id, Compaction* compaction, const DBOptions& db_options,
     const EnvOptions& env_options, VersionSet* versions,
     std::atomic<bool>* shutting_down, LogBuffer* log_buffer,
     Directory* db_directory, Directory* output_directory, Statistics* stats,
-    InstrumentedMutex* db_mutex, Status* db_bg_error,
+    InstrumentedMutex* db_mutex, BackgroundError* db_bg_error,
     std::vector<SequenceNumber> existing_snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
     FileNumbersProvider* file_numbers_provider,
@@ -245,7 +307,9 @@ CompactionJob::CompactionJob(
       compaction_stats_(1),
       dbname_(dbname),
       db_options_(db_options),
-      env_options_(env_options),
+      TEST_env_options_override_(MaybeOverrideEnvOptionsForTests(env_options)),
+      env_options_(
+          TEST_env_options_override_ ? *TEST_env_options_override_ : env_options),
       env_(db_options.env),
       versions_(versions),
       shutting_down_(shutting_down),
@@ -664,10 +728,16 @@ void CompactionJob::ProcessKeyValueCompaction(
       input->SeekToFirst();
     }
 
+    // Explicitly cleanup resource from previous iteration.
+    if (sub_compact->context) {
+      sub_compact->context->CompactionFinished();
+    }
+
     if (db_options_.compaction_context_factory) {
       auto context = CompactionContextOptions{
           .level0_inputs = *compact_->compaction->inputs(0),
           .boundary_extractor = sub_compact->boundary_extractor,
+          .compaction_reason = sub_compact->compaction->compaction_reason(),
       };
       sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
       sub_compact->feed = sub_compact->context->Feed();
@@ -809,6 +879,11 @@ void CompactionJob::ProcessKeyValueCompaction(
     if (prev_perf_level != PerfLevel::kEnableTime) {
       SetPerfLevel(prev_perf_level);
     }
+  }
+
+  if (sub_compact->context) {
+    // Must be triggered to maybe free the resource, despite the compaction result.
+    sub_compact->context->CompactionFinished();
   }
 
   sub_compact->c_iter = nullptr;
@@ -1007,9 +1082,8 @@ Status CompactionJob::FinishCompactionOutputFile(
       }
       if (sfm->IsMaxAllowedSpaceReached()) {
         InstrumentedMutexLock l(db_mutex_);
-        if (db_bg_error_->ok()) {
-          status = STATUS(IOError, "Max allowed space was reached");
-          *db_bg_error_ = status;
+        if (db_bg_error_->TrySet(STATUS(IOError, "Max allowed space was reached"))) {
+          status = *db_bg_error_;
           DEBUG_ONLY_TEST_SYNC_POINT(
               "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
         }
@@ -1042,7 +1116,7 @@ Status CompactionJob::InstallCompactionResults(
 
   {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacted %s => %" PRIu64 " bytes",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary), compact_->total_bytes);
@@ -1057,7 +1131,8 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(DETAIL) << "Updating flushed frontier to "
+                            << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1302,15 +1377,34 @@ void CompactionJob::LogCompaction() {
   // Let's check if anything will get logged. Don't prepare all the info if
   // we're not logging
   if (db_options_.info_log_level <= InfoLogLevel::INFO_LEVEL) {
+    // For non-manual compaction per-file info has already been logged by CompactionPicker.
+    if (compaction->is_manual_compaction()) {
+      for (size_t lvl_idx = 0; lvl_idx < compaction->num_input_levels(); lvl_idx++) {
+        const auto* input_level = compaction->input_levels(lvl_idx);
+        const auto num_files = input_level->num_files;
+        if (num_files == 0) {
+          continue;
+        }
+        for (size_t i = 0; i < num_files; i++) {
+          const auto& fd = input_level->files[i].fd;
+            RLOG(
+              InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+              "[%s] Manual: Picking file %" PRIu64 " with size %" PRIu64
+              " (metadata size %" PRIu64 ", data size %" PRIu64 ")",
+              cfd->GetName().c_str(), fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
+              fd.GetTotalFileSize() - fd.GetBaseFileSize());
+        }
+      }
+    }
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacting %s, score %.2f", cfd->GetName().c_str(),
         job_id_, compaction->InputLevelSummary(&inputs_summary),
         compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
     RLOG(
-        InfoLogLevel::INFO_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
+        InfoLogLevel::DETAIL_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
         cfd->GetName().c_str(), scratch,
         compaction->skip_corrupt_data_blocks_unsafe()
             ? " WILL DELETE ANY CORRUPT DATA BLOCKS IF FOUND"

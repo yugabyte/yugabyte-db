@@ -190,7 +190,7 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
     return LoggedWait(
         [&]() -> Result<bool> {
-          auto read_op = table.NewReadOp();
+          auto read_op = table.NewReadOp(session->arena());
           auto* read_req = read_op->mutable_request();
           table.AddColumns(
               {stateful_service::kPgCronIdColName, stateful_service::kPgCronDataColName}, read_req);
@@ -210,7 +210,7 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     RETURN_NOT_OK(table.Open(table_name, client_.get()));
     auto session = client_->NewSession(kTimeout);
 
-    auto read_op = table.NewReadOp();
+    auto read_op = table.NewReadOp(session->arena());
     auto* read_req = read_op->mutable_request();
     table.AddColumns(
         {stateful_service::kPgCronIdColName, stateful_service::kPgCronDataColName}, read_req);

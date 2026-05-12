@@ -14,9 +14,15 @@ import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { YBLoading } from '../../common/indicators';
 import { YBCheckBox, YBFormSelect } from '../../common/forms/fields';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
-import InfoIcon from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg?img';
 import { YBInput, YBTooltip } from '../../../redesign/components';
 import { formatDatetime, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
+import {
+  getHaBackupFileTimestamp,
+  getIsHaBackupOld,
+  HA_BACKUP_OLD_THRESHOLD_HOURS
+} from '../utils';
+import WarningIcon from '@app/redesign/assets/alert.svg';
 
 import './PromoteInstanceModal.scss';
 
@@ -41,12 +47,16 @@ const validationSchema = Yup.object().shape({
   backupFile: Yup.object().nullable().required('Backup file is required')
 });
 
-const adaptHaBackupToFormFieldOption = (value: string, currentUserTimezone?: string): PromoteInstanceFormValues['backupFile'] => {
-  // backup_21-02-20-00-40.tgz --> 21-02-20-00-40
-  const timestamp = value.replace('backup_', '').replace('.tgz', '');
-  // we always get the backup list time in UTC
-  const formattedTimestamp = moment.utc(timestamp, 'YY-MM-DD-HH:mm').toDate();
-  const label = formatDatetime(formattedTimestamp, YBTimeFormats.YB_DEFAULT_TIMESTAMP , currentUserTimezone);
+const adaptHaBackupToFormFieldOption = (
+  value: string,
+  currentUserTimezone?: string
+): PromoteInstanceFormValues['backupFile'] => {
+  const formattedTimestamp = moment.utc(getHaBackupFileTimestamp(value), 'YY-MM-DD-HH:mm').toDate();
+  const label = formatDatetime(
+    formattedTimestamp,
+    YBTimeFormats.YB_DEFAULT_TIMESTAMP,
+    currentUserTimezone
+  );
 
   return { value, label };
 };
@@ -60,6 +70,17 @@ const useStyles = makeStyles((theme) => ({
   },
   fieldLabel: {
     marginBottom: theme.spacing(1)
+  },
+  warningBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1),
+
+    backgroundColor: theme.palette.warning[100],
+    borderRadius: theme.shape.borderRadius
   }
 }));
 
@@ -70,11 +91,17 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
   instanceId
 }) => {
   const [confirmationText, setConfirmationText] = useState<string>('');
+  const [
+    isRestoreOldBackupConfirmationModalOpen,
+    setIsRestoreOldBackupConfirmationModalOpen
+  ] = useState(false);
   const formik = useRef({} as FormikProps<PromoteInstanceFormValues>);
   const theme = useTheme();
   const classes = useStyles();
   const queryClient = useQueryClient();
-  const currentUserTimezone = useSelector((state: any) => state?.customer?.currentUser?.data?.timezone);
+  const currentUserTimezone = useSelector(
+    (state: any) => state?.customer?.currentUser?.data?.timezone
+  );
 
   const { isLoading, data } = useQuery(
     [QUERY_KEY.getHABackups, configId],
@@ -84,7 +111,10 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
       onSuccess: (data) => {
         // pre-select first backup file from the list
         if (Array.isArray(data) && data.length) {
-          formik.current.setFieldValue('backupFile', adaptHaBackupToFormFieldOption(data[0], currentUserTimezone));
+          formik.current.setFieldValue(
+            'backupFile',
+            adaptHaBackupToFormFieldOption(data[0], currentUserTimezone)
+          );
         }
       }
     }
@@ -106,7 +136,9 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
     }
   );
 
-  const backupsList = (data ?? []).map(backup => adaptHaBackupToFormFieldOption(backup, currentUserTimezone));
+  const backupsList = (data ?? []).map((backup) =>
+    adaptHaBackupToFormFieldOption(backup, currentUserTimezone)
+  );
 
   const closeModal = () => {
     if (!formik.current.isSubmitting) {
@@ -115,7 +147,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
     }
   };
 
-  const submitForm = async (
+  const handleSubmit = async (
     formValues: PromoteInstanceFormValues,
     actions: FormikActions<PromoteInstanceFormValues>
   ) => {
@@ -137,7 +169,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
         showCancelButton
         title="Make Active"
         onHide={closeModal}
-        onFormSubmit={submitForm}
+        onFormSubmit={handleSubmit}
         isSubmitDisabled={isSubmitDisabled}
         footerAccessory={
           <Box display="flex" gridGap={theme.spacing(1)}>
@@ -164,38 +196,80 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
         render={(formikProps: FormikProps<PromoteInstanceFormValues>) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
-
+          const isHaBackupOld =
+            !!formik.current.values.backupFile?.value &&
+            getIsHaBackupOld(formik.current.values.backupFile.value);
           return (
-            <div data-testid="ha-make-active-modal">
-              {isLoading ? (
-                <YBLoading />
-              ) : (
-                <div className="ha-promote-instance-modal">
-                  <Alert bsStyle="warning">
-                    Note: promotion will replace all existing data on this platform instance with
-                    the data from the selected backup. After promotion succeeds you will need to
-                    re-sign in with the credentials of the previously active platform instance.
-                  </Alert>
-                  <Typography variant="body2" className={classes.fieldLabel}>
-                    <Field
-                      name="backupFile"
-                      component={YBFormSelect}
-                      options={backupsList}
-                      label="Select the backup to restore from"
-                      isSearchable
+            <>
+              <div data-testid="ha-make-active-modal">
+                {isLoading ? (
+                  <YBLoading />
+                ) : (
+                  <div className="ha-promote-instance-modal">
+                    <Box
+                      display="flex"
+                      flexDirection="column"
+                      gridGap={theme.spacing(1)}
+                      marginBottom={2}
+                    >
+                      <div className={classes.warningBanner}>
+                        <Box width={24} height={24}>
+                          <WarningIcon width={24} height={24} color={theme.palette.warning[700]} />
+                        </Box>
+                        <Typography variant="body2">
+                          <b>Note! </b>After promotion, all existing data from this platform
+                          instance will be replaced with the data from teh selected backup. After
+                          promotion succeeds, you will need to log-in again with the credentials of
+                          the previous active platform instance. Contact Yugabyte Support for
+                          assistance.
+                        </Typography>
+                      </div>
+                      {isHaBackupOld && (
+                        <div className={classes.warningBanner}>
+                          <Box width={24} height={24}>
+                            <WarningIcon
+                              width={24}
+                              height={24}
+                              color={theme.palette.warning[700]}
+                            />
+                          </Box>
+                          <Typography variant="body2">
+                            <p>
+                              <b>
+                                {`Note! The selected backup is more than ${HA_BACKUP_OLD_THRESHOLD_HOURS} hours old. Restoring from this backup could cause serious issues, including
+                              data loss.`}
+                              </b>{' '}
+                            </p>
+                            <p>Contact Yugabyte Support for assistance.</p>
+                          </Typography>
+                        </div>
+                      )}
+                    </Box>
+                    <Typography variant="body2" className={classes.fieldLabel}>
+                      <Field
+                        name="backupFile"
+                        component={YBFormSelect}
+                        options={backupsList}
+                        label="Select the backup to restore from"
+                        isSearchable
+                        menuPortalTarget={document.body}
+                        styles={{
+                          menuPortal: (base: any) => ({ ...base, zIndex: 4000 })
+                        }}
+                      />
+                      Please type PROMOTE to confirm.
+                    </Typography>
+                    <YBInput
+                      className={classes.confirmTextInputBox}
+                      inputProps={{ 'data-testid': 'PromoteInstanceModal-ConfirmTextInputField' }}
+                      placeholder="PROMOTE"
+                      value={confirmationText}
+                      onChange={(event) => setConfirmationText(event.target.value)}
                     />
-                    Please type PROMOTE to confirm.
-                  </Typography>
-                  <YBInput
-                    className={classes.confirmTextInputBox}
-                    inputProps={{ 'data-testid': 'PromoteInstanceModal-ConfirmTextInputField' }}
-                    placeholder="PROMOTE"
-                    value={confirmationText}
-                    onChange={(event) => setConfirmationText(event.target.value)}
-                  />
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            </>
           );
         }}
       />

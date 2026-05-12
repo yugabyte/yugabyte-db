@@ -175,7 +175,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
       YBTransactionPtr transaction,
       ConsistentReadPoint* read_point,
       bool force_consistent_read,
-      int64_t leader_term_);
+      int64_t leader_term,
+      ThreadSafeArenaPtr arena);
   ~Batcher();
 
   // Set the timeout for this batcher.
@@ -184,6 +185,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // to when the Flush call is made (eg even if the lookup of the TS takes a long time, it
   // may time out before even sending an op). TODO: implement that
   void SetDeadline(CoarseTimePoint deadline);
+
+  void SetPoolTag(rpc::ThreadPoolTag tag);
 
   // Add a new operation to the batch. Requires that the batch has not yet been flushed.
   // TODO: in other flush modes, this may not be the case -- need to
@@ -363,6 +366,10 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
       CollectOpsErrors();
 
+  void HandleAsyncWriteResponse(
+      const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
+      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
+
   BatcherState state_ = BatcherState::kGatheringOps;
 
   YBClient* const client_;
@@ -386,6 +393,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // The absolute deadline for all in-flight ops.
   CoarseTimePoint deadline_;
+
+  rpc::ThreadPoolTag pool_tag_ = 0;
 
   // Number of outstanding lookups across all in-flight ops.
   std::atomic<size_t> outstanding_lookups_{0};
@@ -422,6 +431,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   MicrosTime rpcs_start_time_micros_ = 0;
 
   const int64_t leader_term_;
+
+  ThreadSafeArenaPtr arena_;
 
   // - For a session advisory lock request: the below points to
   //   the in-progress DocDB transaction, if any.

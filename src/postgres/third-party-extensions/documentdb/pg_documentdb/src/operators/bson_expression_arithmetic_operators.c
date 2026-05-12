@@ -28,8 +28,7 @@ typedef void (*ProcessArithmeticOperatorTwoOperands)(void *state, bson_value_t *
 typedef bool (*ProcessArithmeticOperatorVariableOperands)(const
 														  bson_value_t *currentValue,
 														  void *state,
-														  bson_value_t *result, bool
-														  isFieldPathExpression);
+														  bson_value_t *result);
 
 /* State for $add operator */
 typedef struct DollarAddState
@@ -91,11 +90,9 @@ static void HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *argumen
 													  ProcessArithmeticOperatorVariableOperands
 													  processOperatorFunc);
 static bool ProcessDollarAdd(const bson_value_t *currentElement, void *state,
-							 bson_value_t *result,
-							 bool isFieldPathExpression);
+							 bson_value_t *result);
 static bool ProcessDollarMultiply(const bson_value_t *currentElement, void *state,
-								  bson_value_t *result, bool
-								  isFieldPathExpression);
+								  bson_value_t *result);
 static void ProcessDollarSubtract(void *state, bson_value_t *result);
 static void ProcessDollarLog(void *state, bson_value_t *result);
 static void ProcessDollarPow(void *state, bson_value_t *result);
@@ -112,10 +109,8 @@ static void ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *resu
 static void ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result);
 static bool CheckForDateOverflow(bson_value_t *value);
-static void ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
-							  bool isFieldPathExpression);
-static void ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
-									bool isFieldPathExpression);
+static void ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName);
+static void ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName);
 static void ThrowInvalidTypesForDollarSubtract(bson_value_t minuend,
 											   bson_value_t subtrahend);
 static int CompareBsonDecimal128ToZero(const bson_value_t *value,
@@ -126,7 +121,7 @@ static void RoundOrTruncateValue(bson_value_t *result,
 
 /*
  * Parses an $add expression and sets the parsed data in the data argument.
- * $add is expressed as { "$add": [ <expression1>, <expression2>, ... ] }
+ * $add is expressed as { "$add": [ <>, <>, ... ] }
  */
 void
 ParseDollarAdd(const bson_value_t *argument, AggregationExpressionData *data,
@@ -153,7 +148,7 @@ ParseDollarAdd(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $add expression.
- * Since $add is expressed as { "$add": [ <expression1>, <expression2>, ... ] }
+ * Since $add is expressed as { "$add": [ <>, <>, ... ] }
  * We evaluate the inner expressions and then return the addition of them.
  */
 void
@@ -188,7 +183,7 @@ HandlePreParsedDollarAdd(pgbson *doc, void *arguments,
 
 /*
  * Parses a $multiply expression and sets the parsed data in the data argument.
- * $multiply is expressed as { "$multiply": [ <expression1>, <expression2>, ... ] }
+ * $multiply is expressed as { "$multiply": [ <>, <>, ... ] }
  */
 void
 ParseDollarMultiply(const bson_value_t *argument, AggregationExpressionData *data,
@@ -204,7 +199,7 @@ ParseDollarMultiply(const bson_value_t *argument, AggregationExpressionData *dat
 
 /*
  * Evaluates the output of an $multiply expression.
- * Since $multiply is expressed as { "$multiply": [ <expression1>, <expression2>, ... ] }
+ * Since $multiply is expressed as { "$multiply": [ <>, <>, ... ] }
  * We evaluate the inner expressions and then return the product of them.
  */
 void
@@ -226,7 +221,7 @@ HandlePreParsedDollarMultiply(pgbson *doc, void *arguments,
 
 /*
  * Parses a $subtract expression and sets the parsed data in the data argument.
- * $subtract is expressed as { "$subtract": [ <expression1>, <expression2> ] }
+ * $subtract is expressed as { "$subtract": [ <>, <> ] }
  */
 void
 ParseDollarSubtract(const bson_value_t *argument, AggregationExpressionData *data,
@@ -239,7 +234,7 @@ ParseDollarSubtract(const bson_value_t *argument, AggregationExpressionData *dat
 
 /*
  * Evaluates the output of a $subtract expression.
- * Since $subtract is expressed as { "$subtract": [ <expression1>, <expression2> ] }
+ * Since $subtract is expressed as { "$subtract": [ <>, <> ] }
  * We evaluate the inner expressions and then return the difference of them.
  * $subtract accepts exactly 2 arguments.
  */
@@ -254,7 +249,7 @@ HandlePreParsedDollarSubtract(pgbson *doc, void *arguments,
 
 /*
  * Parses a $divide expression and sets the parsed data in the data argument.
- * $divide is expressed as { "$divide": [ <expression1>, <expression2> ] }
+ * $divide is expressed as { "$divide": [ <>, <> ] }
  */
 void
 ParseDollarDivide(const bson_value_t *argument, AggregationExpressionData *data,
@@ -267,7 +262,7 @@ ParseDollarDivide(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of a $divide expression.
- * Since $divide is expressed as { "$divide": [ <expression1>, <expression2> ] }
+ * Since $divide is expressed as { "$divide": [ <>, <> ] }
  * We evaluate the inner expressions and then return the division of them.
  * $divide accepts exactly 2 arguments.
  */
@@ -282,7 +277,7 @@ HandlePreParsedDollarDivide(pgbson *doc, void *arguments,
 
 /*
  * Evaluates the output of a $mod expression.
- * Since $mod is expressed as { "$mod": [ <expression1>, <expression2> ] }
+ * Since $mod is expressed as { "$mod": [ <>, <> ] }
  * We evaluate the inner expressions and then return the modulo of them.
  * $mod accepts exactly 2 arguments.
  */
@@ -297,7 +292,7 @@ ParseDollarMod(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of a $mod expression.
- * $mod is expressed as { "$mod": [ <expression1>, <expression2> ] }
+ * $mod is expressed as { "$mod": [ <>, <> ] }
  * We evaluate the inner expressions and set their mod value to the result.
  */
 void
@@ -311,7 +306,7 @@ HandlePreParsedDollarMod(pgbson *doc, void *arguments,
 
 /*
  * Parses a $pow expression and sets the parsed data in the data argument.
- * $pow is expressed as { "$pow": [ <expression1>, <expression2> ] }
+ * $pow is expressed as { "$pow": [ <>, <> ] }
  */
 void
 ParseDollarPow(const bson_value_t *argument, AggregationExpressionData *data,
@@ -324,7 +319,7 @@ ParseDollarPow(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of a $pow expression.
- * Since $pow is expressed as { "$pow": [ <number>, <exponent> ] }
+ * Since $pow is expressed as { "$pow": [ <>, <> ] }
  * We evaluate the inner expressions and elevate the number to the requested exponent.
  * $pow accepts exactly two arguments.
  */
@@ -339,7 +334,7 @@ HandlePreParsedDollarPow(pgbson *doc, void *arguments,
 
 /*
  * Parses a $log expression and sets the parsed data in the data argument.
- * $log is expressed as { "$log": [ <expression1>, <expression2> ] }
+ * $log is expressed as { "$log": [ <>, <> ] }
  */
 void
 ParseDollarLog(const bson_value_t *argument, AggregationExpressionData *data,
@@ -877,8 +872,7 @@ ParseArithmeticOperatorVariableOperands(const bson_value_t *argument,
 
 			bool continueEnumerating = processOperatorFunc(&currentData->value,
 														   state,
-														   &data->value,
-														   false);
+														   &data->value);
 			if (!continueEnumerating)
 			{
 				break;
@@ -919,9 +913,7 @@ HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments, void *st
 
 		bson_value_t currentValue = childResult.value;
 
-		bool continueEnumerating = processOperatorFunc(&currentValue, state, result,
-													   childResult.
-													   isFieldPathExpression);
+		bool continueEnumerating = processOperatorFunc(&currentValue, state, result);
 		if (!continueEnumerating)
 		{
 			return;
@@ -934,8 +926,7 @@ HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments, void *st
 
 /* Function that processes a single argument for $add and adds it to the current result. */
 static bool
-ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *result,
-				 bool isFieldPathExpression)
+ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *result)
 {
 	DollarAddState *addState = (DollarAddState *) state;
 
@@ -954,7 +945,7 @@ ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *
 		return true;
 	}
 
-	ThrowIfNotNumericOrDate(currentElement, "$add", isFieldPathExpression);
+	ThrowIfNotNumericOrDate(currentElement, "$add");
 
 	bson_value_t evaluatedValue = *currentElement;
 	if (evaluatedValue.value_type == BSON_TYPE_DATE_TIME)
@@ -962,7 +953,7 @@ ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *
 		if (addState->isDateTimeAdd)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARADDONLYONEDATE), errmsg(
-								"only one date allowed in an $add expression")));
+								"Only a single date value is permitted within an $add operators expression.")));
 		}
 
 		addState->isDateTimeAdd = true;
@@ -1024,7 +1015,7 @@ ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result)
 		if (CheckForDateOverflow(result))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OVERFLOW), errmsg(
-								"date overflow in $add")));
+								"Date value overflow detected in operator $add")));
 		}
 		else if (!addState->foundUndefined &&
 				 result->value_type != BSON_TYPE_DATE_TIME)
@@ -1049,8 +1040,7 @@ ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result)
 /* Function that processes a single element for the $multiply operator. */
 static bool
 ProcessDollarMultiply(const bson_value_t *currentElement, void *state,
-					  bson_value_t *result,
-					  bool isFieldPathExpression)
+					  bson_value_t *result)
 {
 	if (IsExpressionResultNullOrUndefined(currentElement))
 	{
@@ -1059,7 +1049,7 @@ ProcessDollarMultiply(const bson_value_t *currentElement, void *state,
 		return false;
 	}
 
-	ThrowIfNotNumeric(currentElement, "$multiply", isFieldPathExpression);
+	ThrowIfNotNumeric(currentElement, "$multiply");
 
 	bool convertInt64OverflowToDouble = true;
 	MultiplyWithFactorAndUpdate(result, currentElement, convertInt64OverflowToDouble);
@@ -1117,7 +1107,7 @@ ProcessDollarSubtract(void *state, bson_value_t *result)
 
 		SubtractNumberFromBsonValue(result, &subtrahend, &overflowedFromInt64Ignore);
 
-		/* Native mongo doesn't check for date overflow in $subtract. */
+		/* Do not check for date overflow in $subtract. */
 		if (isDateTimeResult)
 		{
 			int64_t dateTime = BsonValueAsInt64(result);
@@ -1169,7 +1159,7 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 		}
 	}
 
-	/* Native mongo returns double for $divide unless one operand is decimal128 */
+	/* Return double for $divide unless one operand is decimal128 */
 	if (result->value_type == BSON_TYPE_DECIMAL128 ||
 		divisorValue.value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -1193,7 +1183,7 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 		if (IsDecimal128Zero(&divisor))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-								"can't $divide by zero")));
+								"$divide by zero is not allowed")));
 		}
 
 		result->value_type = BSON_TYPE_DECIMAL128;
@@ -1208,7 +1198,7 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 		if (divisor == 0.0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-								"can't $divide by zero")));
+								"$divide by zero is not allowed")));
 		}
 
 		result->value_type = BSON_TYPE_DOUBLE;
@@ -1242,7 +1232,7 @@ ProcessDollarMod(void *state, bson_value_t *result)
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARMODONLYNUMERIC), errmsg(
-								"$mod only supports numeric types, not %s and %s",
+								"$mod operator supports only numeric types, not %s and %s",
 								BsonTypeName(dividendValue.value_type),
 								BsonTypeName(divisorValue.value_type))));
 		}
@@ -1253,7 +1243,7 @@ ProcessDollarMod(void *state, bson_value_t *result)
 		(BsonValueAsDouble(&divisorValue) == 0.0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARMODBYZEROPROHIBITED), errmsg(
-							"can't $mod by zero")));
+							"Cannot perform $mod with zero")));
 	}
 
 	bson_value_t remainder;
@@ -1278,7 +1268,7 @@ ProcessDollarCeil(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$ceil only supports numeric types, not %s",
+							"$ceil can only handle numeric data types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1311,7 +1301,7 @@ ProcessDollarFloor(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$floor only supports numeric types, not %s",
+							"Expected numberic type for $floor but found '%s' type",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1344,7 +1334,7 @@ ProcessDollarExp(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$exp only supports numeric types, not %s",
+							"The $exp operator can only be used with numeric data types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1376,7 +1366,7 @@ ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$sqrt only supports numeric types, not %s",
+							"$sqrt can only be applied to numeric types, not to %s.",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1391,7 +1381,7 @@ ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSQRTGREATEROREQUALTOZERO),
 						errmsg(
-							"$sqrt's argument must be greater than or equal to 0")));
+							"The operator sqrt requires its argument to be zero or a positive value")));
 	}
 
 	bson_value_t sqrtResult;
@@ -1423,7 +1413,7 @@ ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$log10 only supports numeric types, not %s",
+							"Expected numeric type for $log10 but found '%s' type",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1438,7 +1428,7 @@ ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOG10MUSTBEPOSITIVENUMBER),
 						errmsg(
-							"$log10's argument must be a positive number, but is %s",
+							"The argument provided to $log10 must be a positive number, but the given value is %s.",
 							BsonValueToJsonForLogging(currentValue))));
 	}
 
@@ -1472,7 +1462,7 @@ ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$ln only supports numeric types, not %s",
+							"$ln works exclusively with numeric data types, but received %s instead",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1486,7 +1476,7 @@ ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result)
 	if (isComparisonValid && cmp != 1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLNMUSTBEPOSITIVENUMBER), errmsg(
-							"$ln's argument must be a positive number, but is %s",
+							"The argument provided to the $ln operator must be a positive numeric value, but received %s instead.",
 							BsonValueToJsonForLogging(currentValue))));
 	}
 
@@ -1526,14 +1516,14 @@ ProcessDollarLog(void *state, bson_value_t *result)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGARGUMENTMUSTBENUMERIC),
 						errmsg(
-							"$log's argument must be numeric, not %s",
+							"$log requires a numeric argument, but received %s instead.",
 							BsonTypeName(numberValue.value_type))));
 	}
 
 	if (!BsonValueIsNumber(&baseValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGBASEMUSTBENUMERIC), errmsg(
-							"$log's base must be numeric, not %s",
+							"The base value for the $log operator must be numeric, not %s",
 							BsonTypeName(baseValue.value_type))));
 	}
 
@@ -1565,7 +1555,7 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGNUMBERMUSTBEPOSITIVE),
 							errmsg(
-								"$log's argument must be a positive number, but is %s",
+								"$log requires its argument to be a positive number, but the provided value is %s",
 								BsonValueToJsonForLogging(&numberValue))));
 		}
 
@@ -1582,7 +1572,7 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGBASEMUSTBEGREATERTHANONE),
 							errmsg(
-								"$log's base must be a positive number not equal to 1, but is %s",
+								"The base value for the $log must be positive and cannot be 1, but it is %s.",
 								BsonValueToJsonForLogging(&baseValue))));
 		}
 
@@ -1604,7 +1594,7 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGNUMBERMUSTBEPOSITIVE),
 							errmsg(
-								"$log's argument must be a positive number, but is %s",
+								"$log requires its argument to be a positive number, but the provided value is %s",
 								BsonValueToJsonForLogging(&numberValue))));
 		}
 
@@ -1612,17 +1602,12 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARLOGBASEMUSTBEGREATERTHANONE),
 							errmsg(
-								"$log's base must be a positive number not equal to 1, but is %s",
+								"The base value for the $log must be positive and cannot be 1, but it is %s.",
 								BsonValueToJsonForLogging(&baseValue))));
 		}
 
-		/* log of a specific base need to go through base conversion which can be calculated
-		 * with log10 or natural logarithm.
-		 * 1. logB(number) = log10(number) / log10(base)
-		 * 2. logB(number) = logn(number) / logn(base)
-		 * However using log10 can be more precise in the decimal digits in some cases
-		 * but in this case we use natural logarithm to match native mongo as JS Test depend
-		 * on that behavior.
+		/* Compute logarithm with arbitrary base using natural logarithms:
+		 * log_base(number) = log(number) / log(base)
 		 */
 		result->value.v_double = log(number) / log(base);
 	}
@@ -1647,7 +1632,7 @@ ProcessDollarPow(void *state, bson_value_t *result)
 	if (!BsonValueIsNumber(&baseValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPOWBASEMUSTBENUMERIC), errmsg(
-							"$pow's base must be numeric, not %s",
+							"$pow requires its base to be numeric, but received %s instead",
 							BsonTypeName(baseValue.value_type))));
 	}
 
@@ -1655,7 +1640,7 @@ ProcessDollarPow(void *state, bson_value_t *result)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPOWEXPONENTMUSTBENUMERIC),
 						errmsg(
-							"$pow's exponent must be numeric, not %s",
+							"The operator $pow requires a numeric exponent rather than %s",
 							BsonTypeName(exponentValue.value_type))));
 	}
 
@@ -1678,7 +1663,7 @@ ProcessDollarPow(void *state, bson_value_t *result)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPOWEXPONENTINVALIDFORZEROBASE),
 						errmsg(
-							"$pow cannot take a base of 0 and a negative exponent")));
+							"A base of 0 and a negative exponent can't be taken by $pow")));
 	}
 
 	bson_value_t decimalPowResult;
@@ -1720,7 +1705,7 @@ ProcessDollarPow(void *state, bson_value_t *result)
 			return;
 		}
 
-		/* We should return long. */
+		/* return long */
 		result->value_type = BSON_TYPE_INT64;
 		result->value.v_int64 = GetBsonDecimal128AsInt64(&decimalPowResult,
 														 ConversionRoundingMode_NearestEven);
@@ -1767,7 +1752,7 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARROUNDFIRSTARGMUSTBENUMERIC),
 						errmsg(
-							"%s only supports numeric types, not %s",
+							"%s works exclusively with numeric data types, not with %s",
 							operatorName, BsonTypeName(number.value_type))));
 	}
 
@@ -1776,7 +1761,7 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 															ConversionRoundingMode_Floor,
 															throwIfFailed);
 
-	/* In native mongo, it validates first if the precision value can be converted to long. */
+	/* Validate first if the precision value can be converted to long. */
 	if (!IsBsonValueFixedInteger(&precision))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARROUNDPRECISIONMUSTBEINTEGRAL),
@@ -1789,7 +1774,7 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARROUNDPRECISIONOUTOFRANGE),
 						errmsg(
-							"cannot apply %s with precision value %ld value must be in [-20, 100]",
+							"Unable to apply %s when using precision value %ld, as the acceptable range is between -20 and 100.",
 							operatorName, precisionAsLong)));
 	}
 
@@ -1840,11 +1825,11 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARROUNDOVERFLOWINT64),
 							errmsg(
-								"invalid conversion from Decimal128 result in %s resulting from arguments: [%s, %s]",
+								"Invalid conversion from Decimal128 leading to %s, caused by provided arguments: [%s, %s]",
 								operatorName, BsonValueToJsonForLogging(&number),
 								BsonValueToJsonForLogging(&precision)),
 							errdetail_log(
-								"invalid conversion from Decimal128 result in %s resulting from argument type: [%s, %s]",
+								"Invalid conversion from Decimal128 leading to %s caused by provided argument type: [%s, %s]",
 								operatorName, BsonTypeName(number.value_type),
 								BsonTypeName(precision.value_type))));
 		}
@@ -1869,7 +1854,7 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765), errmsg(
-							"$abs only supports numeric types, not %s",
+							"$abs operator only accepts numeric data types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -1889,7 +1874,7 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARABSCANTTAKELONGMINVALUE),
 							errmsg(
-								"can't take $abs of long long min")));
+								"Cannot compute $abs for minimum long long value")));
 		}
 
 		int64_t absValue = llabs(BsonValueAsInt64(currentValue));
@@ -1908,7 +1893,7 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 }
 
 
-/* Checks if we overflowed int64 or the value is NaN, which for a date, is an overflow in mongo. */
+/* Checks if we overflowed int64 or the value is NaN, which for a date, is an overflow. */
 static bool
 CheckForDateOverflow(bson_value_t *value)
 {
@@ -1940,56 +1925,29 @@ ThrowInvalidTypesForDollarSubtract(bson_value_t minuend, bson_value_t subtrahend
 
 /* Throws if the value is not numeric value. */
 static void
-ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
-				  bool isFieldPathExpression)
+ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName)
 {
 	if (!BsonValueIsNumber(value))
 	{
-		/* Mongo emits a different error message if the value is a field/operator expression
-		 * or just a constant value. */
-		if (!isFieldPathExpression)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
-								"%s only supports numeric types, not %s",
-								operatorName,
-								BsonTypeName(value->value_type))));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
-								"only numbers are allowed in an %s expression",
-								operatorName)));
-		}
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
+							"%s works exclusively with numeric data types, not with %s",
+							operatorName,
+							BsonTypeName(value->value_type))));
 	}
 }
 
 
-/* Throws if the value is not numeric or a date value. */
+/* This error occurs when the provided value is neither numeric nor a valid date. */
 static void
-ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
-						bool isFieldPathExpression)
+ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName)
 {
 	if (!BsonValueIsNumber(value) && value->value_type != BSON_TYPE_DATE_TIME)
 	{
-		/* Mongo emits a different error message if the value is a field/operator expression
-		 * or just a constant value. */
-		if (!isFieldPathExpression)
-		{
-			/* TODO: when we move to 6.1 the error code is TypeMismatch */
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARADDNUMERICORDATETYPES),
-							errmsg(
-								"%s only supports numeric or date types, not %s",
-								operatorName,
-								BsonTypeName(value->value_type))));
-		}
-		else
-		{
-			/* TODO: when we move to 6.1 the error code is TypeMismatch */
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARADDNUMERICORDATETYPES),
-							errmsg(
-								"only numbers and dates are allowed in %s expression",
-								operatorName)));
-		}
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
+						errmsg(
+							"%s can only process numeric or date types, not %s",
+							operatorName,
+							BsonTypeName(value->value_type))));
 	}
 }
 

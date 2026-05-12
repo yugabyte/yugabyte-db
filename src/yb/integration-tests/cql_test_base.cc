@@ -111,8 +111,7 @@ void CqlTestBase<MiniCluster>::SetUp() {
 
 template <>
 void CqlTestBase<MiniCluster>::DoTearDown() {
-  WARN_NOT_OK(cluster_->mini_tablet_server(0)->server()->heartbeater()->Stop(),
-              "Failed to stop heartbeater");
+  cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
   cql_server_->Shutdown();
   MiniClusterTestWithClient<MiniCluster>::DoTearDown();
 }

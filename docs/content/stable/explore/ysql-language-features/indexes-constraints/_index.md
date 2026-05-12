@@ -9,10 +9,12 @@ menu:
     identifier: explore-indexes-constraints-ysql
     parent: explore-ysql-language-features
     weight: 700
+aliases:
+  - /stable/explore/ysql-language-features/indexes-1/
 type: indexpage
 ---
 
-Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, indexes are treated internally as tables, and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
+Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, indexes are treated internally as tables, and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
 
 {{<note>}}
 The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
@@ -88,7 +90,7 @@ Generalized Search Tree (GiST) indexes in SQL are versatile indexes that support
 
 ## Check indexes
 
-{{<tags/feature/ea idea="2160">}} Use the `yb_index_check()` utility function to check if an index is consistent with its base relation. Use it to detect inconsistencies that can creep in due to faulty storage, faulty RAM, or data files being overwritten or modified by unrelated software.
+Use the `yb_index_check()` utility function to check if an index is consistent with its base relation. Use it to detect inconsistencies that can creep in due to faulty storage, faulty RAM, or data files being overwritten or modified by unrelated software.
 
 {{<lead link="../../../api/ysql/exprs/func_yb_index_check/">}}
 To understand how to use the function, see [yb_index_check()](../../../api/ysql/exprs/func_yb_index_check/)

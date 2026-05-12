@@ -98,8 +98,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       wait_state_(ash::WaitStateInfo::CurrentWaitState()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
-      prepare_state_(NOT_PREPARED),
-      table_type_(table_type) {
+      prepare_state_(NOT_PREPARED) {
   DCHECK(IsAcceptableAtomicImpl(op_id_copy_));
 }
 
@@ -178,7 +177,7 @@ void OperationDriver::ExecuteAsync() {
   ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
   SCOPED_WAIT_STATUS(OnCpu_Active);
 
-  auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
+  auto delay = FLAGS_TEST_delay_execute_async_ms;
   if (delay != 0 && operation_type() == OperationType::kWrite) {
     auto tablet_result = operation_->tablet_safe();
     if (!tablet_result.ok()) {

@@ -53,9 +53,9 @@ import {
   AuthGroupToRolesMapping,
   AuthGroupToRolesMappingType
 } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { ReactComponent as AnnouncementIcon } from '../../../../assets/announcement.svg';
-import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
-import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
+import AnnouncementIcon from '../../../../assets/announcement.svg';
+import ArrowLeft from '../../../../assets/arrow_left.svg';
+import Delete from '../../../../assets/trashbin.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

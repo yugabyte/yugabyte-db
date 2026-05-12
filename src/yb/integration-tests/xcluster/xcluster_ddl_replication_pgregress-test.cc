@@ -24,6 +24,7 @@
 
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_int32(ysql_num_tablets);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 using namespace std::chrono_literals;
 
@@ -90,8 +91,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     ADD_FAILURE()
         << "Expected the ysql_dump's of both sides to be the same ignoring sequence states and "
            "OIDs";
-    LOG(INFO) << "producer side dump: " << producer;
-    LOG(INFO) << "consumer side dump: " << consumer;
+    EXPECT_EQ(producer, consumer); // To get diff; next lines are for external tool comparison.
+    std::cerr << "producer side dump:\n" << producer;
+    std::cerr << "consumer side dump:\n" << consumer;
   }
 
   Result<std::string> ReadEnumLabelInfo(Cluster& cluster) {
@@ -385,6 +387,11 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTableRewrite) {
   ASSERT_OK(TestPgRegress({"table_rewrite.sql", "table_rewrite2.sql"}));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressMultipleInheritance) {
+  // Tests use of multiple levels of inheritance.
+  ASSERT_OK(TestPgRegress({"inheritance.sql"}));
+}
+
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   // Tests create and drops of the extensions supported by YB
   ASSERT_OK(TestPgRegress({"pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"}));
@@ -403,13 +410,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {
 
   // Ensure no DDLs on temporary objects got replicated.  For this test, there should be no DDLs on
   // non-temporary objects so it suffices to check that the count of replicated DDLs is 0.
-  //
-  // TODO(#25885): When triggers are working and uncommented in the test, this will have to be
-  // adjusted to exclude DDLs for creating functions as they are non-temporary objects.
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  auto num_replicated_ddls = ASSERT_RESULT(
-      conn.FetchRowAsString("SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;", ","));
-  ASSERT_EQ(num_replicated_ddls, "0");
+  auto num_replicated_ddls = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;"));
+  ASSERT_EQ(num_replicated_ddls, 0);
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropSequence) {
@@ -432,6 +436,25 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTruncateTable) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableAs) {
   ASSERT_OK(TestPgRegress({"create_table_as.sql"}));
   ASSERT_OK(VerifyDataMatch());
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressMaterializedViews) {
+  ASSERT_OK(TestPgRegress({"matview_create.sql", "matview_drop.sql"}));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressSessionVariables) {
+  // Make sure catalog manager knows about new tablespace quickly.  Otherwise, we can get errors
+  // because the tablespace manager does know about the new tablespace yet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
+
+  // We can only create one tablespace here so let's make its name test the escaping code.
+  auto setup_tablespace =
+      R"(
+          CREATE TABLESPACE "user's tablespace" WITH (
+            replica_placement = '{"num_replicas": 1, "placement_blocks": []}'
+          );
+      )";
+  ASSERT_OK(TestPgRegress({"session_variables.sql"}, setup_tablespace));
 }
 
 }  // namespace yb

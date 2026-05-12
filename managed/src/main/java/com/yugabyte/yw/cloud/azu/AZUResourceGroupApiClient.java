@@ -112,10 +112,11 @@ public class AZUResourceGroupApiClient {
     return loadBalancer;
   }
 
-  public String createCapacityReservationGroup(String groupName, String region, Set<String> zones) {
+  public String createCapacityReservationGroup(
+      String groupName, String region, Set<String> zones, Map<String, String> tags) {
     ComputeManagementClient client = azureResourceManager.computeSkus().manager().serviceClient();
     CapacityReservationGroupInner parameters = new CapacityReservationGroupInner();
-    parameters.withLocation(region).withZones(new ArrayList<>(zones));
+    parameters.withLocation(region).withZones(new ArrayList<>(zones)).withTags(tags);
 
     CapacityReservationGroupInner group =
         client.getCapacityReservationGroups().createOrUpdate(resourceGroup, groupName, parameters);

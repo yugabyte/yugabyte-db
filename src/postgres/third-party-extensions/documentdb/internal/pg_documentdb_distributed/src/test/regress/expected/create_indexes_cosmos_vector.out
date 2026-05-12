@@ -11,15 +11,15 @@ NOTICE:  creating collection
 
 -- now you get different errors
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch"}, "name": "foo_1"  } ] }', true);
-ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1" } :: caused by :: Index type 'CosmosSearch' was requested, but the 'cosmosSearch' options were not provided.
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1" }:Index type 'CosmosSearch' was requested, but the 'cosmosSearch' options were not provided.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": 1 }, "name": "foo_1", "cosmosSearchOptions": { } } ] }', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "foo_1", "cosmosSearchOptions" : {  } } :: caused by :: cosmosSearch index kind must be specified
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "foo_1", "cosmosSearchOptions" : {  } }:cosmosSearch index kind must be specified
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 1 } } ] }', true);
-ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 1 } } :: caused by :: vector index must specify dimensions greater than 1
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 1 } }:vector index must specify dimensions greater than 1
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS" } } ] }', true);
-ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS" } } :: caused by :: vector index must specify dimensions greater than 1
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS" } }:vector index must specify dimensions greater than 1
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "dimensions": 10 } } ] }', true);
-ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "dimensions" : 10 } } :: caused by :: vector index must specify similarity metric
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "dimensions" : 10 } }:vector index must specify similarity metric
 -- create a valid indexes
 SET client_min_messages TO WARNING;
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -42,13 +42,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 
 RESET client_min_messages;
 \d documentdb_data.documents_91000
-                   Table "documentdb_data.documents_91000"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_91000"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_91000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
@@ -126,13 +125,12 @@ SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'create_indexe
 (1 row)
 
 \d documentdb_data.documents_91000;
-                   Table "documentdb_data.documents_91000"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_91000"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
     "documents_rum_index_91002" ivfflat ((bson_extract_vector(document, 'b'::text)::vector(3)) vector_ip_ops) WITH (lists='200') WHERE bson_extract_vector(document, 'b'::text) IS NOT NULL
@@ -382,7 +380,7 @@ EXPLAIN(COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggr
          ->  Subquery Scan on agg_stage_0
                ->  Limit
                      ->  Custom Scan (DocumentDBApiQueryScan)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 2 }
                            ->  Index Scan using foo_2 on documents_91001_91000016 collection
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text), 4, true) <=> '[8,1,9,-1]'::vector)
 (11 rows)
@@ -414,13 +412,12 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 (4 rows)
 
 \d documentdb_data.documents_91001;
-                   Table "documentdb_data.documents_91001"
-     Column      |           Type           | Collation | Nullable | Default 
+                 Table "documentdb_data.documents_91001"
+     Column      |         Type         | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | documentdb_core.bson     |           | not null | 
- document        | documentdb_core.bson     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
 Indexes:
     "documents_rum_index_91008" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector'::text)::vector(3)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector'::text) IS NOT NULL
     "documents_rum_index_91009" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text)::vector(4)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text) IS NOT NULL
@@ -455,7 +452,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorInde
 
 -- Query on a non-existent collection
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorCollNonExistent", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 8.0, 7], "limit": 1, "path": "myvector4", "numCandidates": 10 } }, { "$project": { "myvector4": 1, "_id": 0 }} ]}');
-ERROR:  $vectorSearch must be the first stage in the pipeline
+ERROR:  The $vectorSearch needs to appear as the initial stage in the processing pipeline.
 -- Test vector similarity score projection [COS]
 SET client_min_messages TO WARNING;
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "similarity_score_cos", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -508,7 +505,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity
 (4 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$project": { "rank": { "$meta": "searchScore" } } } ], "cursor": {} }');
-ERROR:  query requires search score metadata, but it is not available
+ERROR:  Search score metadata is required for this query, but it is currently unavailable
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "v": 0 }}, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
                                    document                                    
 ---------------------------------------------------------------------
@@ -542,7 +539,7 @@ EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using foo_1 on documentdb_data.documents_91002_91000037 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector)
@@ -564,7 +561,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using foo_1 on documentdb_data.documents_91002_91000037 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
@@ -646,7 +643,7 @@ EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using sim_l2 on documentdb_data.documents_91003_91000050 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector)
@@ -668,7 +665,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using sim_l2 on documentdb_data.documents_91003_91000050 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector)
@@ -750,7 +747,7 @@ EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using sim_ip on documentdb_data.documents_91004_91000066 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector)
@@ -772,7 +769,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector))
                      ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           CosmosSearch Custom Params: { "nProbes" : 100 }
                            ->  Index Scan using sim_ip on documentdb_data.documents_91004_91000066 collection
                                  Output: collection.document
                                  Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector)
@@ -1099,9 +1096,9 @@ NOTICE:  creating collection
 
 -- same name same options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
-                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+                                                                                                                           create_indexes_non_concurrently                                                                                                                            
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- same name different options
@@ -1133,9 +1130,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 RESET client_min_messages;
 -- same name same options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
-                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+                                                                                                                           create_indexes_non_concurrently                                                                                                                            
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- same name different options

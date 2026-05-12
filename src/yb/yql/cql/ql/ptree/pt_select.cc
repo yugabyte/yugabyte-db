@@ -22,7 +22,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
@@ -138,8 +138,8 @@ class Selectivity {
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < index_info.key_column_count(); i++) {
       // Map the column id if the index expression is just a column-ref.
-      if (index_info.column(i).colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
-          index_info.column(i).colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+      if (index_info.column(i).colexpr->expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
+          index_info.column(i).colexpr->expr_case() == QLExpressionPB::ExprCase::kColumnId) {
         id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
       }
     }
@@ -1063,7 +1063,15 @@ Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
     scan_column_map = &column_map_;
   } else {
     orderby_state.set_selecting_from_index(true);
+    VLOG(3) << "Loading table descriptor for index " << index_id;
     scan_index = sem_context->GetTableDesc(index_id);
+    if (!scan_index || !scan_index->IsIndex() ||
+        // Only looking for CQL Indexes.
+        (scan_index->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
+      return sem_context->Error(table_loc(), ErrorCode::OBJECT_NOT_FOUND);
+    }
+
+    VLOG(3) << "Found index. Name = " << scan_index->name().ToString() << ", id = " << index_id;
     LoadSchema(sem_context, scan_index, scan_column_map, true /* is_index */);
   }
 

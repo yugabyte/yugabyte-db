@@ -15,22 +15,25 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/tablet/metadata.pb.h"
 #include "yb/util/status_ec.h"
 
-namespace yb {
-namespace tablet {
+using namespace std::literals;
+
+namespace yb::tablet {
 
 struct RaftGroupStateErrorTag : IntegralErrorTag<tablet::RaftGroupStatePB> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 10;
+  static constexpr CategoryDescriptor kCategory{10, "raft group state error"sv};
 
   static const std::string& ToMessage(Value code) {
     return tablet::RaftGroupStatePB_Name(code);
   }
 };
 
-typedef StatusErrorCodeImpl<RaftGroupStateErrorTag> RaftGroupStateError;
+using RaftGroupStateError = StatusErrorCodeImpl<RaftGroupStateErrorTag>;
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

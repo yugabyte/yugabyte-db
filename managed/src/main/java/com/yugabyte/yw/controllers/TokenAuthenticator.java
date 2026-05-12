@@ -143,6 +143,8 @@ public class TokenAuthenticator extends Action.Simple {
     String token;
     Users user = null;
     boolean useOAuth = confGetter.getGlobalConf(GlobalConfKeys.useOauth);
+    boolean allowLocalLoginWithSso =
+        confGetter.getGlobalConf(GlobalConfKeys.allowLocalLoginWithSso);
     Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(request);
@@ -164,7 +166,9 @@ public class TokenAuthenticator extends Action.Simple {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(request, false /* isApiToken */);
         user = authWithToken(token, false);
-        if (user != null && !user.getRole().equals(Users.Role.SuperAdmin)) {
+        if (user != null
+            && !user.getRole().equals(Users.Role.SuperAdmin)
+            && !allowLocalLoginWithSso) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
@@ -188,11 +192,11 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
-    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
-    if (useNewAuthz) {
-      return delegate.call(request);
-    }
     try {
+      boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+      if (useNewAuthz) {
+        return delegate.call(request);
+      }
       String endPoint = "";
       String path = request.path();
       String requestType = request.method();

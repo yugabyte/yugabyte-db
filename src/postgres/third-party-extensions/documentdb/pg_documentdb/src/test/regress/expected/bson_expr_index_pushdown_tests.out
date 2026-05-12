@@ -1,0 +1,375 @@
+SET search_path TO documentdb_api,documentdb_api_catalog,documentdb_core;
+SET documentdb.next_collection_id TO 200;
+SET documentdb.next_collection_index_id TO 200;
+SELECT COUNT(documentdb_api.insert_one('exprdb', 'exprcoll', bson_build_document('_id'::text, i, 'a'::text, i, 'b'::text, i))) FROM generate_series(1, 1000) i;
+NOTICE:  creating collection
+ count 
+-------
+  1000
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exprdb', '{ "createIndexes": "exprcoll", "indexes": [ { "key": { "a": 1 }, "name": "a_1", "enableOrderedIndex": true }] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exprdb', '{ "createIndexes": "exprcoll", "indexes": [ { "key": { "b": 1 }, "name": "b_1", "enableOrderedIndex": false }] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- no pushdown for arbitrary operators
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$isArray": "$a" } } }');
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$isArray" : "$a" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+-- pushdown does not work for a non-ordered index
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ "$b", 10 ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ "$b", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ 10, "$b" ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ { "$numberInt" : "10" }, "$b" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ "$b", 10 ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gt" : [ "$b", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ 10, "$b" ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gt" : [ { "$numberInt" : "10" }, "$b" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+-- simple pushdown of operators
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ "$a", 10 ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ 10, "$a" ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ { "$numberInt" : "10" }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ "$a", 10 ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gt" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @> '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ 10, "$a" ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gt" : [ { "$numberInt" : "10" }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @<= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gte": [ "$a", 10 ] } } }');
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gte" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @>= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gte": [ 10, "$a" ] } } }');
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gte" : [ { "$numberInt" : "10" }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @< '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ "$a", 10 ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @< '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ 10, "$a" ] } } }');
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ { "$numberInt" : "10" }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @>= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lte": [ "$a", 10 ] } } }');
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lte" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @<= '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lte": [ 10, "$a" ] } } }');
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lte" : [ { "$numberInt" : "10" }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @> '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+-- partial pushdown if it's conjunction
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$and": [ { "$lt": [ "$a", 10 ] }, { "$isArray": "$c" } ] } } }');
+                                                                                                                 QUERY PLAN                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$and" : [ { "$lt" : [ "$a", { "$numberInt" : "10" } ] }, { "$isArray" : "$c" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @< '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$and": [ { "$lt": [ "$a", 10 ] }, { "$gt": [ "$b", 6 ] } ] } } }');
+                                                                                                                             QUERY PLAN                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$and" : [ { "$lt" : [ "$a", { "$numberInt" : "10" } ] }, { "$gt" : [ "$b", { "$numberInt" : "6" } ] } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @< '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$and": [ { "$lt": [ "$a", 10 ] }, { "$or": [ { "$eq": [ "$a", 5 ] }, { "$lt": [ "$a", 6 ] } ] } ] } } }');
+                                                                                                                                                            QUERY PLAN                                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$and" : [ { "$lt" : [ "$a", { "$numberInt" : "10" } ] }, { "$or" : [ { "$eq" : [ "$a", { "$numberInt" : "5" } ] }, { "$lt" : [ "$a", { "$numberInt" : "6" } ] } ] } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @< '{ "a" : { "$numberInt" : "10" } }'::bson)
+(4 rows)
+
+-- full pushdown of supported conjunction
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$and": [ { "$lt": [ "$a", 10 ] }, { "$gt": [ "$a", 5 ] } ] } } }');
+                                                                                                                             QUERY PLAN                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using a_1 on documents_201 collection
+   Index Cond: ((document @< '{ "a" : { "$numberInt" : "10" } }'::bson) AND (document @> '{ "a" : { "$numberInt" : "5" } }'::bson))
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$and" : [ { "$lt" : [ "$a", { "$numberInt" : "10" } ] }, { "$gt" : [ "$a", { "$numberInt" : "5" } ] } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+(3 rows)
+
+-- pushdown of expressions that evaluate to constants
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ { "$add": [ 2, 3 ] }, "$a" ] } } }');
+                                                                                                                 QUERY PLAN                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ { "$add" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @>= '{ "a" : { "$numberInt" : "5" } }'::bson)
+(4 rows)
+
+-- Support pushdown of expressions that are variables.
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ "$$myvar", "$a" ] } }, "let": { "myvar": 3 } }');
+                                                                                                                      QUERY PLAN                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ "$$myvar", "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "myvar" : { "$literal" : { "$numberInt" : "3" } } } }'::bson)
+   ->  Bitmap Index Scan on a_1
+         Index Cond: (document @>= '{ "a" : { "$numberInt" : "3" } }'::bson)
+(4 rows)
+
+-- TODO: Support pushdown of expressions that evaluate to constants with variables.
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ { "$add": [ 2, "$$myvar" ] }, "$a" ] } }, "let": { "myvar": 3 } }');
+                                                                                                                                          QUERY PLAN                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (shard_key_value = '201'::bigint)
+   Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ { "$add" : [ { "$numberInt" : "2" }, "$$myvar" ] }, "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "myvar" : { "$literal" : { "$numberInt" : "3" } } } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '201'::bigint)
+(5 rows)
+
+set documentdb.enableExtendedExplainPlans to on;
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ "$$myvar", "$a" ] } }, "let": { "myvar": 3 } }') $cmd$);
+                                                                                                                    run_explain_and_trim                                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=997 loops=1)
+   indexName: a_1
+   indexKey: {"a": 1}
+   isMultiKey: false
+   indexBounds: ["a": [3, Infinity]]
+   ->  Bitmap Heap Scan on documents_201 collection (actual rows=997 loops=1)
+         Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$lt" : [ "$$myvar", "$a" ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "myvar" : { "$literal" : { "$numberInt" : "3" } } } }'::bson)
+         Rows Removed by Filter: 1
+         Heap Blocks: exact=11
+         ->  Bitmap Index Scan on a_1 (actual rows=998 loops=1)
+               Index Cond: (document @>= '{ "a" : { "$numberInt" : "3" } }'::bson)
+(11 rows)
+
+-- now try with $lookup
+SELECT COUNT(documentdb_api.insert_one('exprdb', 'exprcollright', bson_build_document('_id'::text, i, 'a'::text, i, 'b'::text, i))) FROM generate_series(1, 1000) i;
+NOTICE:  creating collection
+ count 
+-------
+  1000
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exprdb', '{ "createIndexes": "exprcollright", "indexes": [ { "key": { "a": 1 }, "name": "a_1", "enableOrderedIndex": true }] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- standard lookup
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_pipeline('exprdb',
+        '{ "aggregate": "exprcoll", "pipeline":[ { "$match": { "$expr": { "$gte": [ "$a", 10 ] } } }, { "$lookup": { "from": "exprcollright", "as": "res", "localField": "a", "foreignField": "a" } } ] }') $cmd$);
+                                                                                                   run_explain_and_trim                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop (actual rows=991 loops=1)
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=991 loops=1)
+         indexName: a_1
+         indexKey: {"a": 1}
+         isMultiKey: false
+         indexBounds: ["a": [10, Infinity]]
+         ->  Bitmap Heap Scan on documents_201 collection (actual rows=991 loops=1)
+               Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gte" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+               Heap Blocks: exact=11
+               ->  Bitmap Index Scan on a_1 (actual rows=991 loops=1)
+                     Index Cond: (document @>= '{ "a" : { "$numberInt" : "10" } }'::bson)
+   ->  Aggregate (actual rows=1 loops=991)
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=991)
+               indexName: a_1
+               indexKey: {"a": 1}
+               isMultiKey: false
+               indexBounds: ["a": [1000, 1000]]
+               ->  Bitmap Heap Scan on documents_202 collection_0_1 (actual rows=1 loops=991)
+                     Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "a" : "a" }'::bson), 'a'::text)
+                     Heap Blocks: exact=991
+                     ->  Bitmap Index Scan on a_1 (actual rows=1 loops=991)
+                           Index Cond: (document @*= documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "a" : "a" }'::bson))
+(22 rows)
+
+-- lookup with let
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_pipeline('exprdb',
+        '{ "aggregate": "exprcoll", "pipeline":[ { "$match": { "$expr": { "$gte": [ "$a", 10 ] } } }, { "$lookup": { "from": "exprcollright", "as": "res", "let": { "myvar": "$a" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$a", "$$myvar" ] } } } ] } } ] }') $cmd$);
+                                                                                                                                                           run_explain_and_trim                                                                                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop (actual rows=991 loops=1)
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=991 loops=1)
+         indexName: a_1
+         indexKey: {"a": 1}
+         isMultiKey: false
+         indexBounds: ["a": [10, Infinity]]
+         ->  Bitmap Heap Scan on documents_201 collection (actual rows=991 loops=1)
+               Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$gte" : [ "$a", { "$numberInt" : "10" } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+               Heap Blocks: exact=11
+               ->  Bitmap Index Scan on a_1 (actual rows=991 loops=1)
+                     Index Cond: (document @>= '{ "a" : { "$numberInt" : "10" } }'::bson)
+   ->  Aggregate (actual rows=1 loops=991)
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=991)
+               indexName: a_1
+               indexKey: {"a": 1}
+               isMultiKey: false
+               indexBounds: ["a": [1000, 1000]]
+               ->  Bitmap Heap Scan on documents_202 collection_0_1 (actual rows=1 loops=991)
+                     Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ "$a", "$$myvar" ] } }'::bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "myvar" : "$a" }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+                     Heap Blocks: exact=991
+                     ->  Bitmap Index Scan on a_1 (actual rows=1 loops=991)
+                           Index Cond: (document @= documentdb_api_internal.bson_expression_get('{ }'::bson, '{ "a" : "$$myvar" }'::bson, true, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "myvar" : "$a" }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)))
+(22 rows)
+
+-- composite with partial $expr to the index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('exprdb', '{ "createIndexes": "exprcoll", "indexes": [ { "key": { "a": 1, "b": 1, "c": 1, "d": 1 }, "name": "abcd_1", "enableOrderedIndex": true }] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb',
+    '{ "find": "exprcoll", "filter": { "a": 5, "b": 5, "c": 5, "$expr": { "$and": [ { "$eq": [ "$f", "$g" ] }, { "$gt": [ "$d", 5 ] } ] } } }');
+                                                                                                                          QUERY PLAN                                                                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: abcd_1
+   indexKey: {"a": 1,"b": 1,"c": 1,"d": 1}
+   isMultiKey: false
+   indexBounds: ["a": [5, 5], "b": [5, 5], "c": [5, 5], "d": (5, Infinity]]
+   ->  Index Scan using abcd_1 on documents_201 collection
+         Index Cond: ((document @= '{ "a" : { "$numberInt" : "5" } }'::bson) AND (document @= '{ "b" : { "$numberInt" : "5" } }'::bson) AND (document @= '{ "c" : { "$numberInt" : "5" } }'::bson) AND (document @> '{ "d" : { "$numberInt" : "5" } }'::bson))
+         Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$and" : [ { "$eq" : [ "$f", "$g" ] }, { "$gt" : [ "$d", { "$numberInt" : "5" } ] } ] } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+(8 rows)
+
+-- after adding a row with arrays, can no longer push down (multikey expr not supported)
+SELECT documentdb_api.insert_one('exprdb', 'exprcoll', '{ "_id": "array", "a": [ 1, 2, 3 ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- cannot push down any of these
+set documentdb.forceDisableSeqScan to on;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ "$a", 10 ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$eq": [ 10, "$a" ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ "$a", 10 ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gt": [ 10, "$a" ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gte": [ "$a", 10 ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$gte": [ 10, "$a" ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ "$a", 10 ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lt": [ 10, "$a" ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lte": [ "$a", 10 ] } } }');
+ERROR:  Could not find any valid index to push down for query
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('exprdb', '{ "find": "exprcoll", "filter": { "$expr": { "$lte": [ 10, "$a" ] } } }');
+ERROR:  Could not find any valid index to push down for query

@@ -345,6 +345,10 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Target-Session-Attrs", "", 15, /* sizeof("prefer-standby") = 15 */
 	offsetof(struct pg_conn, target_session_attrs)},
 
+	{"yb_auto_analyze", NULL, NULL, NULL,
+		"YB-Auto-Analyze", "", 6, /* sizeof("false") = 6 */
+	offsetof(struct pg_conn, yb_auto_analyze)},
+
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
 	NULL, NULL, 0}
@@ -4181,6 +4185,8 @@ freePGconn(PGconn *conn)
 		free(conn->rowBuf);
 	if (conn->target_session_attrs)
 		free(conn->target_session_attrs);
+	if (conn->yb_auto_analyze)
+		free(conn->yb_auto_analyze);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 

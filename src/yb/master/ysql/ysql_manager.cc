@@ -19,10 +19,13 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/schema_pbutil.h"
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
@@ -38,22 +41,54 @@
 DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
 
-DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1, "Number of advisory lock tablets");
+DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 3,
+    "Number of advisory lock tablets. Should be set before universe creation");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
+    "Frequency in seconds at which the master leader will re-trigger DDL verification for "
+    "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
+    "background task.");
+
+DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 namespace yb::master {
 
 using namespace std::literals;
+
+namespace {
+
+Status ExecuteStatementsAsync(
+    const std::string& database_name, const std::vector<std::string>& statements,
+    CatalogManagerIf& catalog_manager, const std::string& failure_warn_prefix,
+    std::atomic<bool>* executing, std::atomic<bool>* execution_successful) {
+  auto callback = [failure_warn_prefix, executing, execution_successful](const Status& status) {
+    if (status.ok()) {
+      execution_successful->store(true, std::memory_order_release);
+    } else {
+      WARN_NOT_OK(status, failure_warn_prefix);
+    }
+    executing->store(false, std::memory_order_release);
+  };
+  auto deadline = CoarseMonoClock::now() + MonoDelta::FromSeconds(60);
+  RETURN_NOT_OK(
+      ExecutePgsqlStatements(database_name, statements, catalog_manager, deadline, callback));
+  *executing = true;
+  return Status::OK();
+}
+
+}  // namespace
 
 YsqlManager::YsqlManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
@@ -69,11 +104,13 @@ YsqlManager::YsqlManager(
 void YsqlManager::StartShutdown() {
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
   refresh_ysql_tablespace_info_task_.StartShutdown();
+  refresh_ysql_ddl_post_processing_failed_verification_task_.StartShutdown();
 }
 
 void YsqlManager::CompleteShutdown() {
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
+  refresh_ysql_ddl_post_processing_failed_verification_task_.CompleteShutdown();
 }
 
 void YsqlManager::Clear() { ysql_catalog_config_.Reset(); }
@@ -232,10 +269,13 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
   TableProperties table_properties;
   table_properties.SetTransactional(true);
   client::YBSchemaBuilder schema_builder;
+  // Including all columns in the primary hash allows advisory locks use case to be horizontally
+  // scalable when necessary, given FLAGS_num_advisory_locks_tablets is set to a higher value on
+  // cluster startup accordingly.
   schema_builder.AddColumn("dbid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->HashPrimaryKey();
   schema_builder.SetTableProperties(table_properties);
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -260,7 +300,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 }
 
 Status YsqlManager::ValidateWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   SCHECK(
       ysql_initdb_and_major_upgrade_helper_->IsWriteToCatalogTableAllowed(
           table_id, is_forced_update),
@@ -328,6 +368,12 @@ Result<std::string> YsqlManager::GetPgSchemaName(
   return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
 }
 
+Result<bool> YsqlManager::GetPgIndexStatus(
+    PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+    const ReadHybridTime& read_time) const {
+  return sys_catalog_.ReadPgIndexBoolColumn(database_oid, index_oid, status_col_name, read_time);
+}
+
 void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
   if (!FLAGS_enable_ysql) {
     return;
@@ -340,8 +386,13 @@ void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
 
     if (FLAGS_ysql_enable_auto_analyze_infra)
       WARN_NOT_OK(CreatePgAutoAnalyzeService(epoch), "Failed to create Auto Analyze service");
+
+    if (FLAGS_ysql_yb_enable_listen_notify) {
+      WARN_NOT_OK(ListenNotifyBgTask(), "Failed to complete LISTEN/NOTIFY background task");
+    }
   }
 
+  StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
   StartTablespaceBgTaskIfStopped();
   StartPgCatalogVersionsBgTaskIfStopped();
 }
@@ -443,11 +494,9 @@ void YsqlManager::RefreshTablespaceInfoPeriodically() {
 }
 
 void YsqlManager::StartPgCatalogVersionsBgTaskIfStopped() {
-  // In per-database catalog version mode, if heartbeat PG catalog versions
-  // cache is enabled, start a background task to periodically read the
-  // pg_yb_catalog_version table and cache the result.
-  if (FLAGS_ysql_enable_db_catalog_version_mode &&
-      FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+  // If heartbeat PG catalog versions cache is enabled, start a background task to periodically
+  // read the pg_yb_catalog_version table and cache the result.
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
     const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
     if (is_task_running) {
       // Task already running, nothing to do.
@@ -477,7 +526,6 @@ void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(bool schedule_now) {
 }
 
 void YsqlManager::RefreshPgCatalogVersionInfoPeriodically() {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
 
@@ -496,6 +544,150 @@ void YsqlManager::RefreshPgCatalogVersionInfoPeriodically() {
   catalog_manager_.RefreshPgCatalogVersionInfo();
 
   ScheduleRefreshPgCatalogVersionsTask();
+}
+
+Status YsqlManager::ListenNotifyBgTask() {
+  if (!FLAGS_enable_ysql || created_listen_notify_objects_) {
+    return Status::OK();
+  }
+  auto num_live_tservers = VERIFY_RESULT(catalog_manager_.GetNumLiveTServersForActiveCluster());
+
+  if (num_live_tservers == 0) {
+    LOG(INFO) << "No live tservers found, skipping LISTEN/NOTIFY background task for now";
+  } else {
+    RETURN_NOT_OK(CreateYbSystemDBIfNeeded());
+    RETURN_NOT_OK(CreateListenNotifyObjects());
+  }
+  return Status::OK();
+}
+
+Status YsqlManager::CreateYbSystemDBIfNeeded() {
+  DCHECK(FLAGS_enable_ysql);
+
+  if (yb_system_db_created_.load(std::memory_order_acquire) ||
+      creating_listen_notify_objects_.load(std::memory_order_acquire)) {
+    return Status::OK();
+  }
+
+  // Check if kYbSystemDbName namespace already exists.
+  auto db_oid = VERIFY_RESULT(catalog_manager_.sys_catalog()->GetYsqlDatabaseOid(kYbSystemDbName));
+  if (db_oid != kPgInvalidOid) {
+    yb_system_db_created_ = true;
+    return Status::OK();
+  }
+
+  auto statement = Format("CREATE DATABASE $0", kYbSystemDbName);
+  auto failure_warn_prefix = Format("Failed to create database $0", kYbSystemDbName);
+
+  return ExecuteStatementsAsync(
+      "yugabyte", {statement}, catalog_manager_, failure_warn_prefix,
+      &creating_listen_notify_objects_, &yb_system_db_created_);
+}
+
+Status YsqlManager::CreateListenNotifyObjects() {
+  DCHECK(FLAGS_enable_ysql);
+
+  if (created_listen_notify_objects_.load(std::memory_order_acquire) ||
+      creating_listen_notify_objects_.load(std::memory_order_acquire) ||
+      !yb_system_db_created_.load(std::memory_order_acquire)) {
+    return Status::OK();
+  }
+
+  std::vector<std::string> statements;
+  statements.emplace_back(Format(
+      R"(CREATE TABLE IF NOT EXISTS $0 (
+           notif_uuid uuid NOT NULL,
+           sender_node_uuid uuid NOT NULL,
+           sender_pid int NOT NULL,
+           db_oid oid NOT NULL,
+           is_listen bool NOT NULL,
+           data bytea NOT NULL,
+           extra_options jsonb,
+           CONSTRAINT $0_pkey PRIMARY KEY (notif_uuid HASH)
+         ) SPLIT INTO 1 TABLETS)",
+      kPgYbNotificationsTableName));
+  statements.emplace_back(Format(
+      R"(DO $$$$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_publication
+                WHERE pubname = '$0'
+            ) THEN CREATE PUBLICATION $0 FOR TABLE $1;
+            END IF;
+        END
+        $$$$)",
+      kPgYbNotificationsPublicationName, kPgYbNotificationsTableName));
+
+  auto failure_warn_prefix = Format("Failed to create LISTEN/NOTIFY objects");
+
+  return ExecuteStatementsAsync(
+      kYbSystemDbName, statements, catalog_manager_, failure_warn_prefix,
+      &creating_listen_notify_objects_, &created_listen_notify_objects_);
+}
+
+void YsqlManager::StartDdlPostProcessingFailedVerificationRetriggerIfStopped() {
+  if (FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs <= 0 ||
+      FLAGS_create_initial_sys_catalog_snapshot) {
+    return;
+  }
+
+  const bool is_task_running =
+      ddl_post_processing_failed_verification_retrigger_running_.exchange(true);
+  if (is_task_running) {
+    return;
+  }
+
+  ScheduleDdlPostProcessingFailedVerificationRetriggerTask(true /* schedule_now */);
+}
+
+void YsqlManager::ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now) {
+  int wait_time = 0;
+
+  if (!schedule_now) {
+    wait_time = FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs;
+    if (wait_time <= 0) {
+      ddl_post_processing_failed_verification_retrigger_running_ = false;
+      return;
+    }
+  }
+
+  refresh_ysql_ddl_post_processing_failed_verification_task_.Bind(
+      &master_.messenger()->scheduler());
+  refresh_ysql_ddl_post_processing_failed_verification_task_.Schedule(
+      [this](const Status& status) {
+        Status s = catalog_manager_.SubmitBackgroundTask(
+            [this] { RetriggerDdlPostProcessingFailedVerificationPeriodically(); });
+        if (!s.ok()) {
+          LOG(WARNING)
+              << "Failed to schedule: RetriggerDdlPostProcessingFailedVerificationPeriodically";
+          ddl_post_processing_failed_verification_retrigger_running_ = false;
+        }
+      },
+      wait_time * 1s);
+}
+
+void YsqlManager::RetriggerDdlPostProcessingFailedVerificationPeriodically() {
+  if (FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs <= 0) {
+    ddl_post_processing_failed_verification_retrigger_running_ = false;
+    return;
+  }
+
+  LeaderEpoch epoch;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(INFO) << "No longer the leader, cancelling DDL post-processing failed verification "
+                << "retrigger task";
+      ddl_post_processing_failed_verification_retrigger_running_ = false;
+      return;
+    }
+    epoch = l.epoch();
+  }
+
+  catalog_manager_.TriggerDdlVerificationForPostProcessingFailedTxns(epoch);
+
+  ScheduleDdlPostProcessingFailedVerificationRetriggerTask();
 }
 
 }  // namespace yb::master

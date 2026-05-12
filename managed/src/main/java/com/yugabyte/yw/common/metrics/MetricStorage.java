@@ -11,6 +11,7 @@ package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.common.Util.NULL_UUID;
 
+import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -18,7 +19,7 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +31,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -49,8 +48,9 @@ import org.apache.commons.collections4.CollectionUtils;
 @Singleton
 @Slf4j
 public class MetricStorage {
+  private final MultiKeyLock<String> metricNameLock =
+      new MultiKeyLock<String>(Comparator.naturalOrder());
   private final Map<String, NamedMetricStore> metricsByKey = new ConcurrentHashMap<>();
-  private final Map<String, Lock> metricNameLock = new ConcurrentHashMap<>();
   private final Map<Pair<UUID, UUID>, MetricSourceState> sourceStateMap = new ConcurrentHashMap<>();
 
   public Metric get(MetricKey key) {
@@ -74,11 +74,12 @@ public class MetricStorage {
     if (CollectionUtils.isEmpty(metrics)) {
       return;
     }
-    acquireLocks(metrics);
+    Set<String> metricNames = metrics.stream().map(Metric::getName).collect(Collectors.toSet());
+    metricNameLock.acquireLocks(metricNames);
     try {
       metrics.forEach(this::save);
     } finally {
-      releaseLocks(metrics);
+      metricNameLock.releaseLocks(metricNames);
     }
   }
 
@@ -96,24 +97,6 @@ public class MetricStorage {
         metricSource,
         state.name());
     sourceStateMap.put(new Pair<>(customerUuid, metricSource), state);
-  }
-
-  private void acquireLocks(Collection<Metric> metrics) {
-    metrics.stream()
-        .map(Metric::getName)
-        .distinct()
-        .sorted()
-        .forEach(
-            metricName ->
-                metricNameLock.computeIfAbsent(metricName, n -> new ReentrantLock()).lock());
-  }
-
-  private void releaseLocks(Collection<Metric> metrics) {
-    metrics.stream()
-        .map(Metric::getName)
-        .distinct()
-        .sorted()
-        .forEach(metricName -> metricNameLock.get(metricName).unlock());
   }
 
   private Optional<NamedMetricStore> get(String name) {

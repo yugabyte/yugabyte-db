@@ -181,6 +181,11 @@ public class TestYbBackup extends BasePgSQLTest {
     // Populate the backup db as specified.
     runYsqlsh(backupPopulateSqlPath, "populate db " + testName, "");
 
+    // Gather stats before backup so restored dumps include deterministic stats output.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ANALYZE");
+    }
+
     // Perform the backup.
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1514,8 +1519,7 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1553,8 +1557,7 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     if (disableGeoPartitionedTests()) {
       return;

@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -114,6 +115,54 @@ size_t GetUniqueIdFromFile(int fd, uint8_t* id) {
 }
 #endif // __linux__
 
+#if defined(__APPLE__)
+// On macOS, use raw fd I/O to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+PosixSequentialFile::PosixSequentialFile(const std::string& fname, int fd,
+                                         const FileSystemOptions& options)
+    : filename_(fname),
+      fd_(fd),
+      use_os_buffer_(options.use_os_buffer) {}
+
+PosixSequentialFile::~PosixSequentialFile() { close(fd_); }
+
+Status PosixSequentialFile::Read(size_t n, Slice* result, uint8_t* scratch) {
+  ThreadRestrictions::AssertIOAllowed();
+  Status s;
+  size_t total_read = 0;
+  while (total_read < n) {
+    ssize_t r = read(fd_, scratch + total_read, n - total_read);
+    if (r < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      s = STATUS_IO_ERROR(filename_, errno);
+      break;
+    }
+    if (r == 0) {
+      // EOF
+      break;
+    }
+    TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
+    total_read += r;
+  }
+  *result = Slice(scratch, total_read);
+  if (!use_os_buffer_) {
+    // We need to fadvise away the entire range of pages because we do not want readahead pages to
+    // be cached.
+    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
+  }
+  return s;
+}
+
+Status PosixSequentialFile::Skip(uint64_t n) {
+  TRACE_EVENT1("io", "PosixSequentialFile::Skip", "path", filename_);
+  ThreadRestrictions::AssertIOAllowed();
+  if (lseek(fd_, static_cast<off_t>(n), SEEK_CUR) == static_cast<off_t>(-1)) {
+    return STATUS_IO_ERROR(filename_, errno);
+  }
+  return Status::OK();
+}
+#else
 PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
                                          const FileSystemOptions& options)
     : filename_(fname),
@@ -159,6 +208,7 @@ Status PosixSequentialFile::Skip(uint64_t n) {
   }
   return Status::OK();
 }
+#endif // defined(__APPLE__)
 
 Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
 #ifndef __linux__

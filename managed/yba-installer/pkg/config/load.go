@@ -51,6 +51,17 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 	viper.SetDefault("as_root", common.HasSudoAccess())
 
+	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.port", 8443)
+	viper.SetDefault("perfAdvisor.restartSeconds", 10)
+	viper.SetDefault("perfAdvisor.callhome.enabled", true)
+	viper.SetDefault("perfAdvisor.callhome.environment", "dev")
+	viper.SetDefault("perfAdvisor.paSecret", "")
+	viper.SetDefault("perfAdvisor.tls.enabled", true)
+	viper.SetDefault("perfAdvisor.tls.sslProtocols", "")
+	viper.SetDefault("perfAdvisor.tls.hsts", true)
+	viper.SetDefault("perfAdvisor.tls.keystorePassword", "")
+
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
@@ -73,6 +84,9 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 	services := []Service{ServicePlatform, ServicePrometheus}
 	if legacy.GetBool("postgres.install.enabled") {
 		services = append(services, ServicePostgres)
+	}
+	if legacy.GetBool("perfAdvisor.enabled") {
+		services = append(services, ServicePerformanceAdvisor)
 	}
 	var pgConfig postgresConfig
 	if legacy.GetBool("postgres.install.enabled") {
@@ -179,6 +193,21 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 				Yugabyte: scrapeJobConfig{
 					Scheme: legacy.GetString("prometheus.scrapeConfig.yugabyte.scheme"),
 				},
+			},
+		},
+		PerfAdvisor: perfAdvisorConfig{
+			Enabled:        legacy.GetBool("perfAdvisor.enabled"),
+			Port:           legacy.GetInt("perfAdvisor.port"),
+			RestartSeconds: legacy.GetInt("perfAdvisor.restartSeconds"),
+			PaSecret:       legacy.GetString("perfAdvisor.paSecret"),
+			Callhome: callhomeConfig{
+				Enabled:     legacy.GetBool("perfAdvisor.callhome.enabled"),
+				Environment: legacy.GetString("perfAdvisor.callhome.environment"),
+			},
+			Tls: tlsConfig{
+				Enabled:      legacy.GetBool("perfAdvisor.tls.enabled"),
+				SSLProtocols: legacy.GetString("perfAdvisor.tls.sslProtocols"),
+				Hsts:         legacy.GetBool("perfAdvisor.tls.hsts"),
 			},
 		},
 	}

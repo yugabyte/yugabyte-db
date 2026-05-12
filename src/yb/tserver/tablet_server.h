@@ -66,12 +66,14 @@
 
 #include "yb/server/webserver_options.h"
 
+#include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/ysql_lease_manager.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
@@ -88,6 +90,7 @@ class Env;
 
 namespace yb {
 
+class Cgroup;
 class Env;
 class MaintenanceManager;
 class ObjectLockTracker;
@@ -116,13 +119,14 @@ class PgCronLeaderService;
 
 namespace tserver {
 
+class GetYSQLLeaseInfoResponsePB;
+class PgClientServiceImpl;
+class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
 class TserverXClusterContextIf;
-class PgClientServiceImpl;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
-class GetYSQLLeaseInfoResponsePB;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -133,6 +137,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Default tserver and consensus RPC queue length per service.
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;
+
+  static constexpr int32_t kUnknownClusterConfigVersion = -1;
 
   explicit TabletServer(const TabletServerOptions& opts);
   ~TabletServer();
@@ -162,6 +168,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
+  std::map<std::string, std::string> ExtendedFlagValidation(
+      const std::map<std::string, std::string>& flags_to_validate,
+      CoarseTimePoint deadline) override;
   void HandleMasterHeartbeatResponse(
       HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
 
@@ -169,12 +178,20 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
-  TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
+  TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
+
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
-    std::lock_guard l(lock_);
-    return ts_local_lock_manager_;
+    return ysql_lease_manager_->ts_local_lock_manager();
   }
+
+#ifdef __linux__
+  TServerCgroupManager* cgroup_manager() const override {
+    return cgroup_manager_.get();
+  }
+
+  Cgroup* PerDbCgroupProvider(rpc::ThreadPoolTag tag);
+#endif
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -215,14 +232,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
   Status KillPg() const override;
-
-  static bool IsYsqlLeaseEnabled();
-  tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
-  bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -251,7 +263,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const TabletServerOptions& options() const { return opts_; }
 
-  void set_cluster_uuid(const std::string& cluster_uuid);
+  void set_cluster_uuid(const std::string& cluster_uuid) EXCLUDES(lock_);
 
   std::string cluster_uuid() const;
 
@@ -299,7 +311,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
-    std::lock_guard l(lock_);
+    SharedLock l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
     }
@@ -312,7 +324,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint32_t db_oid,
       uint64_t* current_version,
       uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
-    std::lock_guard l(lock_);
+    SharedLock l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
     // If db_oid represents a newly created database, it may not yet exist in
@@ -326,11 +338,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     if (last_breaking_version) {
       *last_breaking_version = not_found ? 0UL : it->second.last_breaking_version;
     }
-  }
-
-  std::optional<bool> catalog_version_table_in_perdb_mode() const EXCLUDES(lock_) {
-    std::lock_guard l(lock_);
-    return catalog_version_table_in_perdb_mode_;
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
@@ -354,7 +361,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) override;
+      server::YCQLServerExternalInterface* cql_server_if) override;
 
   virtual Env* GetEnv();
 
@@ -368,8 +375,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
-  // Currently only used by cdc.
-  virtual int32_t cluster_config_version() const;
+  virtual int32_t cluster_config_version() const override;
 
   Result<uint32_t> XClusterConfigVersion() const;
 
@@ -390,10 +396,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
-
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
-
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+  void RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator generator) override;
+  void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
 
@@ -408,6 +414,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status XClusterPopulateMasterHeartbeatRequest(
       master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report);
+
+  Status ClusterConfigHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
+
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
@@ -450,6 +459,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  Status ClearYCQLMetaDataCache() override;
+
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
   Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
@@ -460,12 +471,23 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
+  std::shared_ptr<ObjectLockTracker> object_lock_tracker() { return object_lock_tracker_; }
+
+  docdb::ObjectLockSharedStateManager* object_lock_shared_state_manager() {
+    return object_lock_shared_state_manager_.get();
+  }
+
+  ConnectivityStateResponsePB ConnectivityState() override;
+
+  ReplicationInfoPB GetClusterReplicationInfo() const override;
+
  protected:
   virtual Status RegisterServices();
 
   friend class TabletServerTestBase;
 
   Status DisplayRpcIcons(std::stringstream* output) override;
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
   Status ValidateMasterAddressResolution() const;
 
@@ -481,11 +503,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
-
-  void StartTSLocalLockManager() EXCLUDES (lock_);
-
-  void StartTSLocalLockManagerUnlocked() REQUIRES (lock_);
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
 
   std::atomic<bool> initted_{false};
 
@@ -505,8 +524,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
-
-  std::unique_ptr<YsqlLeaseClient> ysql_lease_poller_;
 
   std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
@@ -575,9 +592,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesInfo>;
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
 
-  // See same variable comments in CatalogManager.
-  std::optional<bool> catalog_version_table_in_perdb_mode_ GUARDED_BY(lock_) {std::nullopt};
-
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
 
@@ -608,6 +622,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
+  struct ClusterConfig {
+    std::atomic<int32_t> version{kUnknownClusterConfigVersion};
+    mutable std::mutex mutex;
+    ReplicationInfoPB replication_info GUARDED_BY(mutex);
+  };
+
+  ClusterConfig cluster_config_;
+
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
@@ -642,6 +664,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint64_t debug_id) REQUIRES(lock_);
 
   void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
+  void RelcacheInitConnectionDone(std::promise<Status>* p, const std::string& dbname,
+                                  const Status& status);
+  void DoUpdateMasterAddresses();
+
+  std::map<std::string, std::string> ValidateConfCsvViaPg(
+      const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
   std::string log_prefix_;
 
@@ -660,6 +688,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
   std::function<Status(void)> pg_killer_;
+  pgwrapper::PgConfigGenerator pg_config_generator_;
+
+  std::function<Status(void)> conn_manager_restarter_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;
@@ -672,17 +703,21 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
-  std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+  std::atomic<yb::server::YCQLServerExternalInterface*> cql_server_external_{nullptr};
 
   std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
-  // Lock Manager to maintain table/object locking activity in memory.
-  tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
+  std::optional<YSQLLeaseManager> ysql_lease_manager_;
+  std::optional<ConnectivityPoller> connectivity_poller_;
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;
 
   std::map<std::string, std::shared_future<Status>> in_flight_superuser_connections_;
+
+#ifdef __linux__
+  std::unique_ptr<TServerCgroupManager> cgroup_manager_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

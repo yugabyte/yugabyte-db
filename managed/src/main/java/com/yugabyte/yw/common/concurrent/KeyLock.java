@@ -94,6 +94,16 @@ public class KeyLock<T> {
     return lockEntry.usages;
   }
 
+  @VisibleForTesting
+  public boolean hasQueuedThreads() {
+    globalLock.lock();
+    try {
+      return metricKeyLocks.size() > 0;
+    } finally {
+      globalLock.unlock();
+    }
+  }
+
   private static class LockEntry {
     private final Lock lock = new ReentrantLock();
     private int usages = 0;

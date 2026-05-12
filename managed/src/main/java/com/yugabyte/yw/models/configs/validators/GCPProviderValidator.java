@@ -12,6 +12,7 @@ import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -41,14 +42,19 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
 
   private final GCPCloudImpl gcpCloudImpl;
   private final RuntimeConfGetter runtimeConfGetter;
+  private final GCPProjectApiClientFactory gcpClientFactory;
   private final String INSTANCE_TEMPLATE_REGEX = "[a-z]([-a-z0-9]*[a-z0-9])?";
 
   @Inject
   public GCPProviderValidator(
-      BeanValidator beanValidator, RuntimeConfGetter runtimeConfGetter, GCPCloudImpl gcpCloudImpl) {
+      BeanValidator beanValidator,
+      RuntimeConfGetter runtimeConfGetter,
+      GCPCloudImpl gcpCloudImpl,
+      GCPProjectApiClientFactory gcpClientFactory) {
     super(beanValidator, runtimeConfGetter);
     this.gcpCloudImpl = gcpCloudImpl;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.gcpClientFactory = gcpClientFactory;
   }
 
   @Override
@@ -61,35 +67,39 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     // add the jsonpath in the provider object
     JsonNode processedProvider = Util.addJsonPathToLeafNodes(Json.toJson(provider));
     JsonNode detailsJson = processedProvider.get("details");
-    JsonNode cloudInfoJson = detailsJson.get("cloudInfo").get("gcp");
-
+    if (detailsJson == null || !detailsJson.isObject()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Invalid GCP provider details: details field is required and should be an object");
+    }
+    JsonNode cInfoJson = detailsJson.get("cloudInfo");
+    if (cInfoJson == null || !cInfoJson.isObject()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Invalid GCP provider details: cloudInfo field is required and should be an object");
+    }
+    JsonNode gcpInfoJson = cInfoJson.get("gcp");
+    if (gcpInfoJson == null || !gcpInfoJson.isObject()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Invalid GCP provider details: cloudInfo.gcp field is required and should be an object");
+    }
+    if (!gcpCloudImpl.isValidCreds(provider)) {
+      // Further validation is not done since SA validation has failed
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Invalid GCP-SA Credentials [check logs for more info]");
+    }
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
-    String errorMsg = "";
-    try {
-      if (!gcpCloudImpl.isValidCreds(provider)) {
-        // Further validation is not done since SA validation has failed
-        errorMsg = "Invalid GCP-SA Credentials [check logs for more info]";
-      }
-    } catch (PlatformServiceException e) {
-      errorMsg = e.getMessage();
-    }
-    if (StringUtils.isNotEmpty(errorMsg)) {
-      throwBeanProviderValidatorError(
-          cloudInfoJson.get("useHostCredentials").get("jsonPath").asText(),
-          errorMsg,
-          Json.toJson(provider));
-    }
-
-    GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+    GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
     ArrayNode regionArrayJson = (ArrayNode) processedProvider.get("regions");
     ArrayNode imageBundleArrayJson = (ArrayNode) processedProvider.get("imageBundles");
     boolean enableVMOSPatching = runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
 
     // Verify role bindings [if the SA has req permissions to manage instances]
     boolean validateNewVpcPerms = getVpcType(provider) == VPCType.NEW;
-    validateSAPermissions(apiClient, validateNewVpcPerms, validationErrorsMap, cloudInfoJson);
+    validateSAPermissions(apiClient, validateNewVpcPerms, validationErrorsMap, gcpInfoJson);
 
-    validateVPC(provider, apiClient, validationErrorsMap, cloudInfoJson);
+    validateVPC(provider, apiClient, validationErrorsMap, gcpInfoJson);
 
     // validate Region and its details
     validateRegions(provider, apiClient, validationErrorsMap, regionArrayJson);
@@ -109,7 +119,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
         validateSshPort(provider, apiClient, validationErrorsMap, sshPort, jsonPath);
       }
       // Verify the existence of the tag to any of the firewall rules.
-      validateFirewallTags(provider, apiClient, validationErrorsMap, cloudInfoJson);
+      validateFirewallTags(provider, apiClient, validationErrorsMap, gcpInfoJson);
 
       // Verify NTP server is valid IP/hostname
       validateNtpServers(provider, detailsJson, validationErrorsMap);
@@ -152,6 +162,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
         validationErrorsMap.put(jsonPath, errorMsg);
       }
     } catch (PlatformServiceException e) {
+      log.error("Failed to validate GCP SA permissions", e);
       validationErrorsMap.put(jsonPath, e.getMessage());
     }
   }
@@ -174,6 +185,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
         validationErrorsMap.put(jsonPath, errorMsg);
       }
     } catch (PlatformServiceException e) {
+      log.error("Failed to validate GCP VPC", e);
       validationErrorsMap.put(jsonPath, e.getMessage());
     }
   }
@@ -209,6 +221,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
         apiClient.validateSubnet(
             region.getCode(), region.getZones().get(0).getSubnet(), vpcNetwork, vpcProject);
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP Subnet", e);
         validationErrorsMap.put(
             regionJson.get("zones").get(0).get("subnet").get("jsonPath").asText(), e.getMessage());
       }
@@ -246,6 +259,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           validationErrorsMap.put(jsonPath, errorMsg);
         }
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP Instance Template", e);
         validationErrorsMap.put(jsonPath, e.getMessage());
       }
     }
@@ -270,6 +284,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       try {
         apiClient.checkImageExistence(imageSelflink);
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP Image Bundle", e);
         validationErrorsMap.put(jsonPath, e.getMessage());
       }
       try {
@@ -283,6 +298,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           validateSshPort(provider, apiClient, validationErrorsMap, sshPort, jsonPath);
         }
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP Image Bundle", e);
         validationErrorsMap.put(jsonPath, e.getMessage());
       }
     }
@@ -364,6 +380,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           }
         }
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP SSH port", e);
         validationErrorsMap.put(jsonPath, e.getMessage());
       }
     }
@@ -391,6 +408,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
             validationErrorsMap.put(jsonPath, missingTagsMessage);
           }
         } catch (PlatformServiceException e) {
+          log.error("Failed to validate GCP Firewall Tags", e);
           validationErrorsMap.put(jsonPath, e.getMessage());
         }
       }
@@ -403,6 +421,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       try {
         validateNTPServers(provider.getDetails().ntpServers);
       } catch (PlatformServiceException e) {
+        log.error("Failed to validate GCP NTP Servers", e);
         validationErrorsMap.put(
             detailsJson.get("ntpServers").get(0).get("jsonPath").asText(), e.getMessage());
       }

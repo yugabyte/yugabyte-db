@@ -19,9 +19,12 @@
 #include "nodes/makefuncs.h"
 
 #include "utils/documentdb_errors.h"
+#include "infrastructure/job_management.h"
 #include "metadata/collection.h"
+#include "metadata/index.h"
 #include "metadata/metadata_cache.h"
 #include "utils/guc_utils.h"
+#include "utils/lsyscache.h"
 #include "utils/query_utils.h"
 #include "utils/version_utils.h"
 #include "utils/error_utils.h"
@@ -29,16 +32,14 @@
 #include "utils/data_table_utils.h"
 #include "api_hooks.h"
 
-extern int MaxNumActiveUsersIndexBuilds;
-extern int IndexBuildScheduleInSec;
 extern char *ApiExtensionName;
 extern char *ApiGucPrefix;
 extern char *ClusterAdminRole;
 
 char *ApiDistributedSchemaName = "documentdb_api_distributed";
+char *ApiDistributedSchemaNameV2 = "documentdb_api_distributed";
 char *DistributedExtensionName = "documentdb_distributed";
 bool CreateDistributedFunctions = false;
-bool CreateIndexBuildQueueTable = false;
 
 typedef struct ClusterOperationVersions
 {
@@ -50,9 +51,7 @@ extern char * GetIndexQueueName(void);
 
 static char * GetClusterInitializedVersion(void);
 static void DistributeCrudFunctions(void);
-static void ScheduleIndexBuildTasks(char *extensionPrefix);
-static void UnscheduleIndexBuildTasks(char *extensionPrefix);
-static void CreateIndexBuildsTable(void);
+static void CreateIndexBuildsTable(bool includeOptions, bool includeDropCommandType);
 static void CreateValidateDbNameTrigger(void);
 static void AlterDefaultDatabaseObjects(void);
 static char * UpdateClusterMetadata(bool isInitialize);
@@ -62,7 +61,6 @@ static void CreateDistributedFunction(const char *functionName, const
 									  const char *colocateWith, const
 									  char *forceDelegation);
 static void DropLegacyChangeStream(void);
-static void AddUserColumnsToIndexQueue(void);
 static void TriggerInvalidateClusterMetadata(void);
 static void AddCollectionsTableViewDefinition(void);
 static void AddCollectionsTableValidationColumns(void);
@@ -73,6 +71,7 @@ static void ParseVersionString(ExtensionVersion *extensionVersion, char *version
 static bool SetupCluster(bool isInitialize);
 static void SetPermissionsForReadOnlyRole(void);
 static void CheckAndReplicateReferenceTable(const char *schema, const char *tableName);
+static void UpdateChangesTableOwnerToAdminRole(void);
 
 
 PG_FUNCTION_INFO_V1(command_initialize_cluster);
@@ -241,9 +240,12 @@ SetupCluster(bool isInitialize)
 		AddCollectionsTableValidationColumns();
 	}
 
-	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0) &&
+		!ShouldRunSetupForVersion(&versions, DocDB_V0, 109, 0))
 	{
-		CreateIndexBuildsTable();
+		bool includeOptions = false;
+		bool includeDropCommandType = false;
+		CreateIndexBuildsTable(includeOptions, includeDropCommandType);
 	}
 
 	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0) &&
@@ -260,7 +262,6 @@ SetupCluster(bool isInitialize)
 	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 14, 0))
 	{
 		DropLegacyChangeStream();
-		AddUserColumnsToIndexQueue();
 	}
 
 	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 15, 0))
@@ -322,9 +323,16 @@ SetupCluster(bool isInitialize)
 		CheckAndReplicateReferenceTable(ApiDistributedSchemaName, relationName->data);
 	}
 
-	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 101, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 102, 0))
 	{
-		AlterCreationTime();
+		UpdateChangesTableOwnerToAdminRole();
+	}
+
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 109, 0))
+	{
+		bool includeOptions = true;
+		bool includeDropCommandType = true;
+		CreateIndexBuildsTable(includeOptions, includeDropCommandType);
 	}
 
 	/* we call the post setup cluster hook to allow the extension to do any additional setup */
@@ -373,12 +381,16 @@ DistributeCrudFunctions()
 
 	char changesRelation[50];
 	sprintf(changesRelation, "%s.changes", ApiDataSchemaName);
-	const char *distributionColumn = "shard_key_value";
-	const char *colocateWith = "none";
-	int shardCount = 0;
-	DistributePostgresTable(changesRelation, distributionColumn, colocateWith,
-							shardCount);
+	Oid changesRelationOid = get_relname_relid("changes", ApiDataNamespaceOid());
 
+	if (changesRelationOid != InvalidOid)
+	{
+		const char *distributionColumn = "shard_key_value";
+		const char *colocateWith = "none";
+		int shardCount = 0;
+		DistributePostgresTable(changesRelation, distributionColumn, colocateWith,
+								shardCount);
+	}
 
 	if (!CreateDistributedFunctions)
 	{
@@ -425,155 +437,27 @@ DistributeCrudFunctions()
 
 
 /*
- * Schedule background jobs that will later be used to create indexes in the cluster.
- */
-static void
-ScheduleIndexBuildTasks(char *extensionPrefix)
-{
-	char scheduleInterval[50];
-	if (IndexBuildScheduleInSec < 60)
-	{
-		sprintf(scheduleInterval, "%d seconds", IndexBuildScheduleInSec);
-	}
-	else
-	{
-		sprintf(scheduleInterval, "* * * * *");
-	}
-
-	bool isNull = false;
-	bool readOnly = false;
-
-	const int maxActiveIndexBuilds = MaxNumActiveUsersIndexBuilds;
-	for (int i = 1; i <= maxActiveIndexBuilds; i++)
-	{
-		StringInfo scheduleStr = makeStringInfo();
-		appendStringInfo(scheduleStr,
-						 "SELECT cron.schedule('%s_index_build_task_'"
-						 " || %d, '%s',"
-						 "'CALL %s.build_index_concurrently(%d);');",
-						 extensionPrefix, i, scheduleInterval,
-						 ApiInternalSchemaName, i);
-		ExtensionExecuteQueryViaSPI(scheduleStr->data, readOnly, SPI_OK_SELECT,
-									&isNull);
-	}
-}
-
-
-/*
- * Unschedule background jobs for index creation.
- */
-static void
-UnscheduleIndexBuildTasks(char *extensionPrefix)
-{
-	bool isNull = false;
-	bool readOnly = false;
-
-	/*
-	 * These schedule the index build tasks at the coordinator.
-	 * Since we leave behind the jobs when dropping the extension (during development), it would be nice to unschedule
-	 * existing ones first in case something changed.
-	 * PS: We need to run this with array_agg because otherwise the SPI API would only execute unschedule for the first job.
-	 */
-	StringInfo unscheduleStr = makeStringInfo();
-	appendStringInfo(unscheduleStr,
-					 "SELECT array_agg(cron.unschedule(jobid)) FROM cron.job WHERE jobname LIKE"
-					 "'%s_index_build_task%%';", extensionPrefix);
-	ExtensionExecuteQueryViaSPI(unscheduleStr->data, readOnly, SPI_OK_SELECT,
-								&isNull);
-}
-
-
-static void
-CreateIndexBuildQueueCore()
-{
-	bool readOnly = false;
-	bool isNull = false;
-
-	StringInfo dropStr = makeStringInfo();
-	appendStringInfo(dropStr,
-					 "DROP TABLE IF EXISTS %s;", GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(dropStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	StringInfo createStr = makeStringInfo();
-	appendStringInfo(createStr,
-					 "CREATE TABLE IF NOT EXISTS %s ("
-					 "index_cmd text not null,"
-
-	                 /* 'C' for CREATE INDEX and 'R' for REINDEX */
-					 "cmd_type char CHECK (cmd_type IN ('C', 'R')),"
-					 "index_id integer not null,"
-
-	                 /* index_cmd_status gets represented as enum IndexCmdStatus in index.h */
-					 "index_cmd_status integer default 1,"
-					 "global_pid bigint,"
-					 "start_time timestamp WITH TIME ZONE,"
-					 "collection_id bigint not null,"
-
-	                 /* Used to enter the error encounter during execution of index_cmd */
-					 "comment %s.bson,"
-
-	                 /* current attempt counter for retrying the failed request */
-					 "attempt smallint,"
-
-	                 /* update_time shows the time when request was updated in the table */
-					 "update_time timestamp with time zone DEFAULT now()"
-
-					 ")", GetIndexQueueName(), CoreSchemaName);
-
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	resetStringInfo(createStr);
-	appendStringInfo(createStr,
-					 "CREATE INDEX IF NOT EXISTS %s_index_queue_indexid_cmdtype on %s (index_id, cmd_type)",
-					 ExtensionObjectPrefixV2, GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	resetStringInfo(createStr);
-	appendStringInfo(createStr,
-					 "CREATE INDEX IF NOT EXISTS %s_index_queue_cmdtype_collectionid_cmdstatus on %s (cmd_type, collection_id, index_cmd_status)",
-					 ExtensionObjectPrefixV2, GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	resetStringInfo(createStr);
-	appendStringInfo(createStr,
-					 "GRANT SELECT ON TABLE %s TO public", GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	resetStringInfo(createStr);
-	appendStringInfo(createStr,
-					 "GRANT ALL ON TABLE %s TO %s, %s",
-					 GetIndexQueueName(),
-					 ApiAdminRoleV2,
-					 ApiAdminRole);
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-}
-
-
-/*
  * Create index queue table, its indexes and grant permissions.
  */
 static void
-CreateIndexBuildsTable()
+CreateIndexBuildsTable(bool includeOptions, bool includeDropCommandType)
 {
-	/* Create index builds table if legacy compat */
-	if (CreateIndexBuildQueueTable)
-	{
-		CreateIndexBuildQueueCore();
-	}
-
 	bool readOnly = false;
 	bool isNull = false;
-	StringInfo createStr = makeStringInfo();
-	appendStringInfo(createStr,
+	StringInfo queryStr = makeStringInfo();
+	const char *indexQueueTableName = GetIndexQueueName();
+	appendStringInfo(queryStr,
+					 "DROP TABLE IF EXISTS %s;", indexQueueTableName);
+	ExtensionExecuteQueryViaSPI(queryStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	CreateIndexQueueIfNotExists(includeOptions, includeDropCommandType);
+
+	resetStringInfo(queryStr);
+	appendStringInfo(queryStr,
 					 "SELECT citus_add_local_table_to_metadata('%s')",
-					 GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_SELECT,
+					 indexQueueTableName);
+	ExtensionExecuteQueryViaSPI(queryStr->data, readOnly, SPI_OK_SELECT,
 								&isNull);
 }
 
@@ -631,7 +515,7 @@ AddAttributeHandleIfExists(const char *addAttributeQuery)
 		MemoryContextSwitchTo(oldContext);
 		ErrorData *errorData = CopyErrorDataAndFlush();
 
-		/* Abort the inner transaction */
+		/* Abort inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 
 		/* Rollback changes MemoryContext */
@@ -841,39 +725,6 @@ DropLegacyChangeStream()
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
 	}
-}
-
-
-/*
- * Add user_oid colum and its constraints to the index queue table.
- */
-void
-AddUserColumnsToIndexQueue()
-{
-	bool isNull = false;
-	bool readOnly = false;
-
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s ADD COLUMN IF NOT EXISTS user_oid Oid;",
-					 GetIndexQueueName());
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	/* We first drop the check constraint if it already exists. Some upgrade paths can create it before this function is executed. */
-	resetStringInfo(cmdStr);
-	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s_index_queue_user_oid_check;",
-					 GetIndexQueueName(), ExtensionObjectPrefixV2);
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
-
-	resetStringInfo(cmdStr);
-	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s ADD CONSTRAINT %s_index_queue_user_oid_check CHECK (user_oid IS NULL OR user_oid != '0'::oid);",
-					 GetIndexQueueName(), ExtensionObjectPrefixV2);
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
 }
 
 
@@ -1094,11 +945,48 @@ UpdateClusterMetadata(bool isInitialize)
 	Datum updateArgs[1] = { PointerGetDatum(PgbsonWriterGetPgbson(&writer)) };
 	Oid updateTypes[1] = { BsonTypeId() };
 
-	/*  Update the row */
+	/* Modify the existing row data */
 	const char *updateQuery = FormatSqlQuery(
 		"UPDATE %s.%s_cluster_data SET metadata = %s.bson_dollar_set(metadata, $1)",
 		ApiDistributedSchemaName, ExtensionObjectPrefix, ApiCatalogSchemaName);
 	ExtensionExecuteQueryWithArgsViaSPI(updateQuery, 1, updateTypes, updateArgs, NULL,
 										false, SPI_OK_UPDATE, &isNull);
 	return clusterVersion;
+}
+
+
+/* If the changes table exists, then update the owner to the cluster admin role */
+static void
+UpdateChangesTableOwnerToAdminRole(void)
+{
+	/* First query if the changes table exists */
+	const char *query = FormatSqlQuery(
+		"SELECT relowner::regrole::text FROM pg_class WHERE relname = 'changes' AND relnamespace = %d",
+		ApiDataNamespaceOid());
+	bool isNull = false;
+	Datum resultDatum = ExtensionExecuteQueryViaSPI(query, true, SPI_OK_SELECT, &isNull);
+
+	if (isNull)
+	{
+		/* Changes table does not exist, can bail */
+		return;
+	}
+
+	/* Get the current owner of the changes table */
+	char *currentOwner = TextDatumGetCString(resultDatum);
+
+	/* If the current owner is already the cluster admin role, no need to change */
+	if (strcmp(currentOwner, ApiAdminRole) == 0 ||
+		strcmp(currentOwner, ApiAdminRoleV2) == 0)
+	{
+		return;
+	}
+
+	/* Otherwise update the owner to the ApiAdminRole */
+	const char *alterQuery = FormatSqlQuery(
+		"ALTER TABLE %s.changes OWNER TO %s;",
+		ApiDataSchemaName, ApiAdminRole);
+
+	/* Execute the query to change the owner */
+	ExtensionExecuteQueryViaSPI(alterQuery, false, SPI_OK_UTILITY, &isNull);
 }

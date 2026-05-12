@@ -54,6 +54,8 @@ func CreatePITRUtil(cmd *cobra.Command, universeName string, keyspaceName string
 		logrus.Fatal(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 
+	util.CheckTaskAfterCreation(task)
+
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf(
 		"Creating PITR configuration for keyspace %s on universe %s (%s).",
@@ -84,7 +86,7 @@ func CreatePITRUtil(cmd *cobra.Command, universeName string, keyspaceName string
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 	}
 }
 
@@ -102,6 +104,7 @@ func DeletePITRUtil(cmd *cobra.Command, universeName string, pitrUUID string) {
 			response, err, "PITR", "Delete")
 		logrus.Fatal(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
+	util.CheckTaskAfterCreation(task)
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf(
 		"Deleting PITR configuration %s for universe %s (%s)...",
@@ -132,7 +135,7 @@ func DeletePITRUtil(cmd *cobra.Command, universeName string, pitrUUID string) {
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 	}
 }
 
@@ -160,6 +163,7 @@ func EditPITRUtil(
 			response, err, "PITR", "Edit")
 		logrus.Fatal(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
+	util.CheckTaskAfterCreation(task)
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf("Editing PITR configuration %s for universe %s (%s)...",
 		pitrUUID, universeName, universeUUID)
@@ -188,7 +192,7 @@ func EditPITRUtil(
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 	}
 }
 
@@ -216,7 +220,7 @@ func RecoverToPointInTimeUtil(
 			response, err, "PITR", "Recover")
 		logrus.Fatal(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
-
+	util.CheckTaskAfterCreation(task)
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf("PITR recovery in progress for universe %s (%s).",
 		universeName, universeUUID)
@@ -239,7 +243,7 @@ func RecoverToPointInTimeUtil(
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 	}
 }
 

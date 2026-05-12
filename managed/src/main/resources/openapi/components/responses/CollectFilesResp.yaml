@@ -1,0 +1,6 @@
+x-yba-api-visibility: internal
+description: File collection results from all targeted nodes
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/CollectFilesResponse.yaml"

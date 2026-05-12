@@ -88,6 +88,8 @@ DEFINE_RUNTIME_bool(auto_promote_nonlocal_transactions_to_global, true,
 DEFINE_RUNTIME_bool(log_failed_txn_metadata, false, "Log metadata about failed transactions.");
 TAG_FLAG(log_failed_txn_metadata, advanced);
 
+// (DEPRECATE_EOL 2026.1) This was only needed for sending the now-deleted
+// UpdateTransactionStatusLocation RPC during an upgrade to 2024.2.0+.
 DEFINE_RUNTIME_AUTO_bool(replicate_transaction_promotion, kLocalPersisted, false, true,
     "Use UpdateTransaction(PROMOTING) rpc that is replicated across participant peers to announce "
     "transaction status location move to participant tablets.");
@@ -99,7 +101,7 @@ DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
 DEFINE_test_flag(int32, txn_status_moved_rpc_send_delay_ms, 0,
-                 "Inject delay before sending UpdateTransactionStatusLocation RPCs to participant "
+                 "Inject delay before sending UpdateTransaction(PROMOTING) RPCs to participant "
                  "tablets.");
 
 DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
@@ -158,16 +160,30 @@ struct AsyncWriteQuery {
   std::vector<StdStatusCallback> waiters_ = {};
 };
 
-}  // namespace
-
-Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
+template <class PB>
+Result<ChildTransactionData> ChildTransactionDataFromPB(const PB& data) {
   ChildTransactionData result;
   auto metadata = TransactionMetadata::FromPB(data.metadata());
   RETURN_NOT_OK(metadata);
   result.metadata = std::move(*metadata);
   result.read_time = ReadHybridTime::FromReadTimePB(data);
+  return result;
+}
+
+}  // namespace
+
+Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
+  auto result = VERIFY_RESULT(ChildTransactionDataFromPB(data));
   for (const auto& entry : data.local_limits()) {
     result.local_limits.emplace(entry.first, HybridTime(entry.second));
+  }
+  return result;
+}
+
+Result<ChildTransactionData> ChildTransactionData::FromPB(const LWChildTransactionDataPB& data) {
+  auto result = VERIFY_RESULT(ChildTransactionDataFromPB(data));
+  for (const auto& entry : data.local_limits()) {
+    result.local_limits.emplace(entry.key(), HybridTime(entry.value()));
   }
   return result;
 }
@@ -570,7 +586,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     if (schedule_status_moved) {
-      SendUpdateTransactionStatusLocationRpcs();
+      SendUpdateTransactionPromotingRpcs();
     }
 
     if (notify_commit_status) {
@@ -613,8 +629,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       UniqueLock lock(mutex_);
       auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
+        auto should_abort = state_.load(std::memory_order_acquire) == TransactionState::kRunning;
         lock.unlock();
         callback(status);
+        // Since the backend cannot recover from this commit failure, abort explicitly so the
+        // status tablet is notified immediately; otherwise the transaction could remain alive until
+        // all strong references drop and the status tablet expires it due to missed heartbeats.
+        if (should_abort) {
+          Abort(TransactionRpcDeadline());
+        }
         return;
       }
       state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
@@ -926,7 +949,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return result;
   }
 
-  Status ApplyChildResult(const ChildTransactionResultPB& result) EXCLUDES(mutex_) {
+  template <class PB>
+  Status ApplyChildResult(const PB& result) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     std::vector<std::string> cleanup_tablet_ids;
     auto se = ScopeExit([this, &cleanup_tablet_ids] {
@@ -941,7 +965,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
       cleanup_tablet_ids.reserve(result.tablets().size());
       for (const auto& tablet : result.tablets()) {
-        cleanup_tablet_ids.push_back(tablet.tablet_id());
+        cleanup_tablet_ids.emplace_back(std::string_view(tablet.tablet_id()));
       }
     }
 
@@ -951,7 +975,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     for (const auto& tablet : result.tablets()) {
-      auto& tablet_state = tablets_[tablet.tablet_id()];
+      auto& tablet_state = MappedValue(tablets_, std::string_view(tablet.tablet_id()));
       tablet_state.num_batches += tablet.num_batches();
       tablet_state.has_metadata =
           tablet_state.has_metadata ||
@@ -1020,7 +1044,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
-  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+  Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
         !metadata_.pg_txn_start_us,
@@ -1028,6 +1052,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));
     metadata_.pg_txn_start_us = pg_txn_start_us;
+    metadata_.using_table_locks = using_table_locks;
     return Status::OK();
   }
 
@@ -1051,7 +1076,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool HasSubTransaction(SubTransactionId id) {
-    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
+    return subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
@@ -1196,6 +1221,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    std::lock_guard l(mutex_);
     background_transaction_ = background_transaction;
   }
 
@@ -1210,7 +1236,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id);
 
     std::lock_guard l(async_write_query_mutex_);
-    return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
+    auto& write_query = inflight_async_writes_[tablet_id];
+    DCHECK(write_query.op_ids.empty() || write_query.op_ids.begin()->term == op_id.term)
+        << "Received async write op_id with different term. OpId: " << op_id
+        << ", expected term: " << write_query.op_ids.begin()->term;
+    return InsertIfNotPresent(&write_query.op_ids, op_id);
   }
 
   void RecordAsyncWriteCompletion(
@@ -1221,30 +1251,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     std::vector<StdStatusCallback> waiters;
     {
       std::lock_guard l(async_write_query_mutex_);
-      auto table_it = inflight_async_writes_.find(tablet_id);
-      if (table_it == inflight_async_writes_.end()) {
+      auto write_query = inflight_async_writes_.find(tablet_id);
+      if (write_query == inflight_async_writes_.end()) {
         // Maybe we got stale responses from multiple retries on the rpc. We dont care about the
         // status in such cases.
         return;
       }
 
-      auto& tablet_data = table_it->second;
+      auto& tablet_data = write_query->second;
 
       if (status.ok()) {
         // Partition key is not needed for searching.
         tablet_data.op_ids.erase(op_id);
         if (tablet_data.op_ids.empty()) {
           waiters = std::move(tablet_data.waiters_);
-          inflight_async_writes_.erase(table_it);
+          inflight_async_writes_.erase(write_query);
         }
       } else if (async_write_status_.ok()) {
         async_write_status_ = status;
       }
 
       if (!async_write_status_.ok() || inflight_async_writes_.empty()) {
-        for (auto& [_, tablet_data] : inflight_async_writes_) {
-          MoveCollection(&tablet_data.waiters_, &waiters);
-          tablet_data.waiters_.clear();
+        for (auto& [_, write_query] : inflight_async_writes_) {
+          MoveCollection(&write_query.waiters_, &waiters);
+          write_query.waiters_.clear();
         }
 
         if (async_write_commit_waiter_) {
@@ -1259,9 +1289,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  bool HasPendingAsyncWrites(const TabletId& tablet_id) const EXCLUDES(async_write_query_mutex_) {
+  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const
+      EXCLUDES(async_write_query_mutex_) {
     std::lock_guard l(async_write_query_mutex_);
-    return inflight_async_writes_.contains(tablet_id);
+    auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+    return write_query ? std::optional<int64_t>(write_query->op_ids.begin()->term) : std::nullopt;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -1272,9 +1304,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         // If the tablet has a pending write then we are guaranteed that its parent tablets do not
         // have pending writes, since new writes wait for the parent tablets writes to complete.
-        auto tablet_it = FindOrNull(inflight_async_writes_, tablet_id);
-        if (tablet_it) {
-          tablet_it->waiters_.emplace_back(std::move(callback));
+        auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+        if (write_query) {
+          write_query->waiters_.emplace_back(std::move(callback));
           VLOG_WITH_PREFIX_AND_FUNC(4)
               << "Waiting for async writes: " << YB_STRUCT_TO_STRING(tablet_id, status);
           return;
@@ -1283,6 +1315,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     callback(status);
+  }
+
+  void SetOriginId(uint32_t origin_id) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    origin_id_ = origin_id;
   }
 
  private:
@@ -1338,7 +1375,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // If the last heartbeats to the old status tablet failed, it's possible that we have lost
     // connection to it. We can't commit until a PENDING heartbeat succeeds, because it's possible
     // that the transaction timed out on the old statuts tablet and a participant already cleaned
-    // up intents before receiving the UpdateTransactionStatusLocation RPC, so we send one last
+    // up intents before receiving the UpdateTransaction(PROMOTING) RPC, so we send one last
     // UpdateTransaction(PENDING) first, and abort instead if it fails.
     VLOG_WITH_PREFIX(1) << "Last heartbeat to old status tablet failed, resending before COMMIT";
     return PrepareHeartbeatRPC(
@@ -1452,6 +1489,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(narrow_cast<int>(tablets_.size()));
+    if (origin_id_) {
+      state.set_xrepl_origin_id(origin_id_);
+    }
     for (const auto& tablet : tablets_) {
       // If tablet does not have metadata it should not participate in commit.
       if (!seal_only && !tablet.second.has_metadata) {
@@ -1987,7 +2027,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     MonoDelta timeout;
     if (status != TransactionStatus::CREATED && status != TransactionStatus::PROMOTED) {
-      if (GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
+      if (FLAGS_transaction_disable_heartbeat_in_tests) {
         HeartbeatDone(Status::OK(), /* request= */ {}, /* response= */ {}, status, transaction,
                       send_to_new_tablet);
         return;
@@ -2105,7 +2145,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         << send_to_new_tablet << ")";
 
     if (!ShouldContinueHeartbeats(send_to_new_tablet)) {
-      // It could have happended that all UpdateTransactionStatusLocation requests went through
+      // It could have happended that all UpdateTransaction(PROMOTING) requests went through
       // and we issued an abort to the old status tablet. We should ignore any heartbeat response
       // we receive after that. Since the promotion went through, the involved txn participants
       // would check against the latest status tablet for any course of action. So we need not
@@ -2133,7 +2173,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
-            SendUpdateTransactionStatusLocationRpcs();
+            SendUpdateTransactionPromotingRpcs();
           }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::CREATED:
@@ -2197,12 +2237,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         return;
       }
-      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
-        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+      if (const auto new_pg_session_req_version =
+          status.IsTryAgain() ? AdvisoryLocksError::ValueFromStatus(status) : std::nullopt;
+        new_pg_session_req_version) {
         LOG_WITH_PREFIX(INFO)
             << "PgSessionRequestVersion changed from " << pg_session_req_version_
-            << " to " << new_pg_session_req_version;
-        pg_session_req_version_ = new_pg_session_req_version;
+            << " to " << *new_pg_session_req_version;
+        pg_session_req_version_ = *new_pg_session_req_version;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2210,32 +2251,33 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  void SendUpdateTransactionStatusLocationRpcs() EXCLUDES(mutex_) {
+  void SendUpdateTransactionPromotingRpcs() EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
-    VLOG_WITH_PREFIX(2) << "SendUpdateTransactionStatusLocationRpcs()";
+    VLOG_WITH_PREFIX(2) << "SendUpdateTransactionPromotingRpcs()";
 
     std::shared_ptr<YBTransaction> transaction = transaction_->shared_from_this();
     manager_->client()->messenger()->scheduler().Schedule(
         [this, transaction = std::move(transaction), id = metadata_.transaction_id](const Status&) {
-          DoSendUpdateTransactionStatusLocationRpcs(std::move(transaction), id);
+          DoSendUpdateTransactionPromotingRpcs(std::move(transaction), id);
         },
         std::chrono::milliseconds(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms));
   }
 
-  void DoSendUpdateTransactionStatusLocationRpcs(
+  void DoSendUpdateTransactionPromotingRpcs(
       std::shared_ptr<YBTransaction> transaction, const TransactionId& id)
       EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
-    VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionStatusLocationRpcs()";
+    VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionPromotingRpcs()";
 
     std::vector<TabletId> participant_tablets;
     std::function<void(const TabletId&)> start_location_update;
+    tserver::UpdateTransactionRequestPB req;
     {
       UniqueLock lock(mutex_);
 
       if (state_.load(std::memory_order_acquire) == TransactionState::kPromoting) {
         VLOG_WITH_PREFIX(1) << "Initial heartbeat to new status tablet has not completed yet, "
-                            << "skipping UpdateTransactionStatusLocation rpcs for now";
+                            << "skipping UpdateTransaction(PROMOTING) rpcs for now";
         return;
       }
 
@@ -2254,7 +2296,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         if (tablet_state->second.num_completed_batches == 0) {
           VLOG_WITH_PREFIX(1) << "Tablet " << tablet_id
                               << " has no completed batches, skipping"
-                              << " UpdateTransactionStatusLocation rpc for now";
+                              << " UpdateTransaction(PROMOTING) rpc for now";
           continue;
         }
         participant_tablets.push_back(tablet_id);
@@ -2269,41 +2311,24 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         transaction_status_move_tablets_.erase(tablet_id);
       }
 
-      if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_replicate_transaction_promotion))) {
-        tserver::UpdateTransactionRequestPB req;
-
-        auto& state = *req.mutable_state();
-        state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
-        state.set_status(TransactionStatus::PROMOTING);
-        state.add_tablets(status_tablet_->tablet_id());
-        state.set_start_time(start_.load(std::memory_order_acquire));
-
-        start_location_update = [&, req](const TabletId& tablet) {
-          LookupTabletForTransactionStatusLocationUpdate(transaction, id, req, tablet);
-        };
-      } else {
-        tserver::UpdateTransactionStatusLocationRequestPB req;
-        req.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
-        req.set_new_status_tablet_id(status_tablet_->tablet_id());
-
-        start_location_update = [&, req](const TabletId& tablet) {
-          LookupTabletForTransactionStatusLocationUpdate(transaction, id, req, tablet);
-        };
-      }
+      auto& state = *req.mutable_state();
+      state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
+      state.set_status(TransactionStatus::PROMOTING);
+      state.add_tablets(status_tablet_->tablet_id());
+      state.set_start_time(start_.load(std::memory_order_acquire));
     }
 
     for (const auto& participant_tablet : participant_tablets) {
-      VLOG_WITH_PREFIX(2) << "SendUpdateTransactionStatusLocationRpcs() to tablet "
+      VLOG_WITH_PREFIX(2) << "SendUpdateTransactionPromotingRpcs() to tablet "
                           << participant_tablet;
-      start_location_update(participant_tablet);
+      LookupTabletForTransactionStatusLocationUpdate(transaction, id, req, participant_tablet);
     }
   }
 
-  template<typename RequestPB>
   void LookupTabletForTransactionStatusLocationUpdate(
       std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
-      const RequestPB& request_template,
+      const tserver::UpdateTransactionRequestPB& request_template,
       const TabletId& tablet_id) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     manager_->client()->LookupTabletById(
@@ -2314,7 +2339,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         TransactionRpcDeadline(),
         [this, transaction = std::move(transaction), id, request_template, tablet_id](
             const Result<internal::RemoteTabletPtr>& result) mutable {
-          LookupTabletForTransactionStatusLocationUpdateDone<RequestPB>(
+          LookupTabletForTransactionStatusLocationUpdateDone(
               result, std::move(transaction), id, request_template, tablet_id);
         },
         client::UseCache::kTrue);
@@ -2326,58 +2351,33 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return &handle->second;
   }
 
-  template<typename RequestPB, typename Rpc>
-  rpc::RpcCommandPtr DoPrepareUpdateTransactionStatusLocationRpc(
+  rpc::RpcCommandPtr PrepareUpdateTransactionPromotingRpc(
       std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const TabletId &tablet_id,
       internal::RemoteTabletPtr participant_tablet,
-      const RequestPB& request_template,
-      Rpc rpc) {
-    RequestPB request = request_template;
+      const tserver::UpdateTransactionRequestPB& request_template) {
+    auto request = request_template;
     request.set_propagated_hybrid_time(manager_->Now().ToUint64());
     request.set_tablet_id(tablet_id);
 
-    return rpc(
+    return UpdateTransaction(
         TransactionRpcDeadline(),
         participant_tablet.get(),
         manager_->client(),
         &request,
         [this, transaction = std::move(transaction), id, tablet_id, participant_tablet,
          request_template](const Status& status, auto&&...) mutable {
-          UpdateTransactionStatusLocationDone(
+          UpdateTransactionPromotingDone(
               std::move(transaction), id, tablet_id, participant_tablet, status);
         });
   }
 
-  rpc::RpcCommandPtr PrepareUpdateTransactionStatusLocationRpc(
-      std::shared_ptr<YBTransaction> transaction,
-      const TransactionId& id,
-      const TabletId &tablet_id,
-      internal::RemoteTabletPtr participant_tablet,
-      const tserver::UpdateTransactionStatusLocationRequestPB& request_template) {
-    return DoPrepareUpdateTransactionStatusLocationRpc(
-        std::move(transaction), id, tablet_id, std::move(participant_tablet), request_template,
-        UpdateTransactionStatusLocation);
-  }
-
-  rpc::RpcCommandPtr PrepareUpdateTransactionStatusLocationRpc(
-      std::shared_ptr<YBTransaction> transaction,
-      const TransactionId& id,
-      const TabletId &tablet_id,
-      internal::RemoteTabletPtr participant_tablet,
-      const tserver::UpdateTransactionRequestPB& request_template) {
-    return DoPrepareUpdateTransactionStatusLocationRpc(
-        std::move(transaction), id, tablet_id, std::move(participant_tablet), request_template,
-        UpdateTransaction);
-  }
-
-  template<typename RequestPB>
   void LookupTabletForTransactionStatusLocationUpdateDone(
       const Result<internal::RemoteTabletPtr>& result,
       std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
-      const RequestPB& request_template,
+      const tserver::UpdateTransactionRequestPB& request_template,
       const TabletId& tablet_id) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
@@ -2390,14 +2390,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     UniqueLock lock(mutex_);
 
     auto handle = GetTransactionStatusMoveHandle(tablet_id);
-    auto rpc = PrepareUpdateTransactionStatusLocationRpc(
+    auto rpc = PrepareUpdateTransactionPromotingRpc(
         std::move(transaction), id, tablet_id, *result, request_template);
 
     lock.unlock();
     manager_->rpcs().RegisterAndStart(rpc, handle);
   }
 
-  void UpdateTransactionStatusLocationDone(
+  void UpdateTransactionPromotingDone(
       std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const TabletId &tablet_id,
@@ -2440,13 +2440,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
-          auto transaction = transaction_->shared_from_this();
+          auto transaction_ptr = transaction_->shared_from_this();
           SendAbortToOldStatusTabletIfNeeded(
-              TransactionRpcDeadline(), transaction, old_status_tablet);
+              TransactionRpcDeadline(), transaction_ptr, old_status_tablet);
         }
       }
     }
-    // Early abort the transaction if any UpdateTransactionStatusLocation rpc(s) failed.
+    // Early abort the transaction if any UpdateTransaction(PROMOTING) rpc(s) failed.
     if (trigger_abort) {
       DoAbort(TransactionRpcDeadline(), transaction, status_tablet);
     }
@@ -2615,13 +2615,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // that transaction and is passed on to the session level txn's status tablet, which creates a
   // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
   // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
-  std::weak_ptr<YBTransaction> background_transaction_;
+  std::weak_ptr<YBTransaction> background_transaction_ GUARDED_BY(mutex_);
 
   mutable std::mutex async_write_query_mutex_;
   std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_
       GUARDED_BY(async_write_query_mutex_);
   StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
+
+  uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2766,6 +2768,10 @@ Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
   return impl_->ApplyChildResult(result);
 }
 
+Status YBTransaction::ApplyChildResult(const LWChildTransactionResultPB& result) {
+  return impl_->ApplyChildResult(result);
+}
+
 std::string YBTransaction::ToString() const {
   return impl_->ToString();
 }
@@ -2798,8 +2804,8 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
 }
 
-Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
-  return impl_->SetPgTxnStart(pg_txn_start_us);
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
+  return impl_->SetPgTxnStart(pg_txn_start_us, using_table_locks);
 }
 
 void YBTransaction::IncreaseMutationCounts(
@@ -2840,13 +2846,15 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-bool YBTransaction::HasPendingAsyncWrites(const TabletId& tablet_id) const {
-  return impl_->HasPendingAsyncWrites(tablet_id);
+std::optional<int64_t> YBTransaction::GetPendingAsyncWriteTerm(const TabletId& tablet_id) const {
+  return impl_->GetPendingAsyncWriteTerm(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
   return impl_->WaitForAsyncWrites(tablet_id, std::move(callback));
 }
+
+void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_id); }
 
 } // namespace client
 } // namespace yb

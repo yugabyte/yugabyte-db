@@ -60,8 +60,8 @@ DEBUG:  Precomputed bson $cmp operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $cmp operator for constant comparison.
           bson_dollar_project          
 ---------------------------------------------------------------------
@@ -69,7 +69,7 @@ DEBUG:  Precomputed bson $cmp operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$cmp": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
           bson_dollar_project          
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "0" } }
@@ -144,28 +144,28 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$cmp": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project          
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project          
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project          
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$cmp": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
           bson_dollar_project          
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "1" } }
@@ -247,28 +247,28 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$cmp": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project           
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "-1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project           
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "-1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [3, 2, 3, 4]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
           bson_dollar_project           
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "-1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$cmp": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
           bson_dollar_project           
 ---------------------------------------------------------------------
  { "result" : { "$numberInt" : "-1" } }
@@ -338,8 +338,8 @@ DEBUG:  Precomputed bson $eq operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $eq operator for constant comparison.
  bson_dollar_project 
 ---------------------------------------------------------------------
@@ -347,7 +347,7 @@ DEBUG:  Precomputed bson $eq operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$eq": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -450,14 +450,14 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$eq": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -470,28 +470,28 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$eq": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$eq": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -595,14 +595,14 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$ne": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -615,28 +615,28 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$ne": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$ne": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -711,8 +711,8 @@ DEBUG:  Precomputed bson $ne operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $ne operator for constant comparison.
  bson_dollar_project  
 ---------------------------------------------------------------------
@@ -720,7 +720,7 @@ DEBUG:  Precomputed bson $ne operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$ne": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -796,28 +796,28 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$gt": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$gt": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -872,8 +872,8 @@ DEBUG:  Precomputed bson $gt operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $gt operator for constant comparison.
  bson_dollar_project  
 ---------------------------------------------------------------------
@@ -929,21 +929,21 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$gt": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$gt": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -1061,8 +1061,8 @@ DEBUG:  Precomputed bson $gte operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $gte operator for constant comparison.
  bson_dollar_project 
 ---------------------------------------------------------------------
@@ -1076,35 +1076,35 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$gte": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$gte": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$gte": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -1160,14 +1160,14 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$gte": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -1244,28 +1244,28 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$lt": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [3, 2, 3, 4]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lt": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -1368,8 +1368,8 @@ DEBUG:  Precomputed bson $lt operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $lt operator for constant comparison.
  bson_dollar_project  
 ---------------------------------------------------------------------
@@ -1390,35 +1390,35 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$lt": [{"$add": [2,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lt": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$lt": ["$a", {}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -1529,8 +1529,8 @@ DEBUG:  Precomputed bson $lte operator for constant comparison.
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
 DEBUG:  Precomputed bson $lte operator for constant comparison.
  bson_dollar_project 
 ---------------------------------------------------------------------
@@ -1551,28 +1551,28 @@ SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$lte": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 4, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [3, 2, 3, 4]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lte": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : true }
@@ -1641,28 +1641,28 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$lte": [{"$add": [2
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 3, 5]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3]]}}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lte": ["$a", {"b": 1, "c": 1}]}}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
  bson_dollar_project  
 ---------------------------------------------------------------------
  { "result" : false }
@@ -1670,33 +1670,33 @@ DEBUG:  Optimizing document expression into constant.
 
 -- should error for wrong number of args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [2, 3, 2]}}');
-ERROR:  Expression $cmp takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $cmp requires exactly 2 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [2]}}');
-ERROR:  Expression $eq takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $eq requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": []}}');
-ERROR:  Expression $ne takes exactly 2 arguments. 0 were passed in.
+ERROR:  The expression $ne requires exactly 2 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": 2}}');
-ERROR:  Expression $gt takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $gt requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [1, 2, 3, 4, 5]}}');
-ERROR:  Expression $gte takes exactly 2 arguments. 5 were passed in.
+ERROR:  The expression $gte requires exactly 2 arguments, but 5 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [2, 1, 0]}}');
-ERROR:  Expression $lt takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $lt requires exactly 2 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [1]}}');
-ERROR:  Expression $lte takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $lte requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [{"$divide": [1, 0]}]}}');
-ERROR:  Expression $lte takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $lte requires exactly 2 arguments, but 1 arguments were actually provided.
 -- should error if there is an error in nested expressions
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [2, {"$subtract": [1, {"$date": { "$numberLong": "1" }}]}]}}');
 ERROR:  can't $subtract date from int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [{"$divide": [1, 0]}, 2]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [{"$not": []}, 3]}}');
-ERROR:  Expression $not takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $not requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [{"$in": [1, 2]}, 2]}}');
-ERROR:  $in requires an array as a second argument, found: int
+ERROR:  Expected 'array' type for $in operator but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [{"$divide": [1, 0, 3]}, 2]}}');
-ERROR:  Expression $divide takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $divide requires exactly 2 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [{"$divide": [1, 0, {"$not": []}]}, 2]}}');
-ERROR:  Expression $divide takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $divide requires exactly 2 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [{"$add": [{"$date": { "$numberLong": "1" }}, {"$date": { "$numberLong": "1" }}]}, 3]}}');
-ERROR:  only one date allowed in an $add expression
+ERROR:  Only a single date value is permitted within an $add operators expression.

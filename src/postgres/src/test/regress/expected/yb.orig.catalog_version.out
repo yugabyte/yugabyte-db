@@ -32,7 +32,7 @@ CREATE ROLE cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10000 |                 10000
+           10001 |                 10000
 (1 row)
 
 -- The next CREATE ROLE fails and should not cause any catalog version change.
@@ -41,7 +41,7 @@ ERROR:  role "cv_test_role" already exists
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10000 |                 10000
+           10001 |                 10000
 (1 row)
 
 -- The next CREATE ROLE will increment current_version.
@@ -49,7 +49,7 @@ CREATE ROLE cv_test_role2 IN ROLE cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10001 |                 10000
+           10002 |                 10000
 (1 row)
 
 -- The next CREATE ROLE will increment current_version.
@@ -57,7 +57,7 @@ CREATE ROLE cv_test_role3 ADMIN cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10002 |                 10000
+           10003 |                 10000
 (1 row)
 
 -- The next CREATE ROLE will increment current_version.
@@ -65,7 +65,7 @@ CREATE ROLE cv_test_role4 ROLE cv_test_role2, cv_test_role3;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10003 |                 10000
+           10004 |                 10000
 (1 row)
 
 -- The next CREATE DATABASE will not increment current_version.
@@ -73,7 +73,7 @@ CREATE DATABASE cv_test_database;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10003 |                 10000
+           10005 |                 10000
 (1 row)
 
 -- The next GRANT CONNECT will increment current_version.
@@ -81,7 +81,7 @@ GRANT CONNECT ON DATABASE cv_test_database TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10004 |                 10000
+           10006 |                 10000
 (1 row)
 
 -- The next GRANT CONNECT should not cause any catalog version change.
@@ -89,7 +89,7 @@ GRANT CONNECT ON DATABASE cv_test_database TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10004 |                 10000
+           10006 |                 10000
 (1 row)
 
 -- The next REVOKE CONNECT is a "breaking" catalog change. It will increment
@@ -98,7 +98,7 @@ REVOKE CONNECT ON DATABASE cv_test_database from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10005 |                 10005
+           10007 |                 10007
 (1 row)
 
 -- The next REVOKE CONNECT should not cause any catalog version change.
@@ -106,15 +106,15 @@ REVOKE CONNECT ON DATABASE cv_test_database from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10005 |                 10005
+           10007 |                 10007
 (1 row)
 
--- The next CREATE TABLE should not cause any catalog version change.
+-- The next CREATE TABLE should increment current_version.
 CREATE TABLE cv_test_table(id int);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10005 |                 10005
+           10008 |                 10007
 (1 row)
 
 -- The next GRANT SELECT will increment current_version.
@@ -122,7 +122,7 @@ GRANT SELECT ON cv_test_table TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10006 |                 10005
+           10009 |                 10007
 (1 row)
 
 -- The next GRANT SELECT should not cause any catalog version change.
@@ -130,7 +130,7 @@ GRANT SELECT ON cv_test_table TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10006 |                 10005
+           10009 |                 10007
 (1 row)
 
 -- The next REVOKE SELECT is a "breaking" catalog change. It will increment
@@ -139,7 +139,7 @@ REVOKE SELECT ON cv_test_table FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10007 |                 10007
+           10010 |                 10010
 (1 row)
 
 -- The next REVOKE SELECT should not cause any catalog version change.
@@ -147,7 +147,7 @@ REVOKE SELECT ON cv_test_table FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10007 |                 10007
+           10010 |                 10010
 (1 row)
 
 -- The next CREATE FOREIGN DATA WRAPPER will increment current_version.
@@ -157,7 +157,7 @@ GRANT USAGE ON FOREIGN DATA WRAPPER cv_test_fdw_wrapper TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10009 |                 10007
+           10012 |                 10010
 (1 row)
 
 -- The next GRANT USAGE should not cause any catalog version change.
@@ -165,7 +165,7 @@ GRANT USAGE ON FOREIGN DATA WRAPPER cv_test_fdw_wrapper TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10009 |                 10007
+           10012 |                 10010
 (1 row)
 
 -- The next REVOKE USAGE is a "breaking" catalog change. It will increment
@@ -174,7 +174,7 @@ REVOKE USAGE ON FOREIGN DATA WRAPPER cv_test_fdw_wrapper FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10010 |                 10010
+           10013 |                 10013
 (1 row)
 
 -- The next REVOKE USAGE should not cause any catalog version change.
@@ -182,7 +182,7 @@ REVOKE USAGE ON FOREIGN DATA WRAPPER cv_test_fdw_wrapper FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10010 |                 10010
+           10013 |                 10013
 (1 row)
 
 -- The next CREATE SERVER will increment current_version.
@@ -192,7 +192,7 @@ GRANT USAGE ON FOREIGN SERVER cv_test_fdw_server TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10012 |                 10010
+           10015 |                 10013
 (1 row)
 
 -- The next GRANT USAGE should not cause any catalog version change.
@@ -200,7 +200,7 @@ GRANT USAGE ON FOREIGN SERVER cv_test_fdw_server TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10012 |                 10010
+           10015 |                 10013
 (1 row)
 
 -- The next REVOKE USAGE is a "breaking" catalog change. It will increment
@@ -209,7 +209,7 @@ REVOKE USAGE ON FOREIGN SERVER cv_test_fdw_server FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10013 |                 10013
+           10016 |                 10016
 (1 row)
 
 -- The next REVOKE USAGE should not cause any catalog version change.
@@ -217,7 +217,7 @@ REVOKE USAGE ON FOREIGN SERVER cv_test_fdw_server FROM cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10013 |                 10013
+           10016 |                 10016
 (1 row)
 
 -- The next CREATE FUNCTION will increment current_version.
@@ -227,7 +227,7 @@ GRANT EXECUTE ON FUNCTION cv_test_function TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10015 |                 10013
+           10018 |                 10016
 (1 row)
 
 -- The next GRANT EXECUTE should not cause any catalog version change.
@@ -235,7 +235,7 @@ GRANT EXECUTE ON FUNCTION cv_test_function TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10015 |                 10013
+           10018 |                 10016
 (1 row)
 
 -- The next REVOKE EXECUTE is a "breaking" catalog change. It will increment
@@ -244,7 +244,7 @@ REVOKE EXECUTE ON FUNCTION cv_test_function from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10016 |                 10016
+           10019 |                 10019
 (1 row)
 
 -- The next REVOKE EXECUTE should not cause any catalog version change.
@@ -252,7 +252,7 @@ REVOKE EXECUTE ON FUNCTION cv_test_function from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10016 |                 10016
+           10019 |                 10019
 (1 row)
 
 -- The next GRANT USAGE will increment current_version.
@@ -260,7 +260,7 @@ GRANT USAGE ON LANGUAGE sql TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10017 |                 10016
+           10020 |                 10019
 (1 row)
 
 -- The next GRANT USAGE should not cause any catalog version change.
@@ -268,7 +268,7 @@ GRANT USAGE ON LANGUAGE sql TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10017 |                 10016
+           10020 |                 10019
 (1 row)
 
 -- The next REVOKE USAGE is a "breaking" catalog change. It will increment
@@ -277,7 +277,7 @@ REVOKE USAGE ON LANGUAGE sql from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10018 |                 10018
+           10021 |                 10021
 (1 row)
 
 -- The next REVOKE USAGE should not cause any catalog version change.
@@ -285,7 +285,7 @@ REVOKE USAGE ON LANGUAGE sql from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10018 |                 10018
+           10021 |                 10021
 (1 row)
 
 SET yb_non_ddl_txn_for_sys_tables_allowed=1;
@@ -301,7 +301,7 @@ GRANT SELECT ON LARGE OBJECT 1001 TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10019 |                 10018
+           10022 |                 10021
 (1 row)
 
 -- The next GRANT SELECT should not cause any catalog version change.
@@ -309,7 +309,7 @@ GRANT SELECT ON LARGE OBJECT 1001 TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10019 |                 10018
+           10022 |                 10021
 (1 row)
 
 -- The next REVOKE SELECT is a "breaking" catalog change. It will increment
@@ -318,7 +318,7 @@ REVOKE SELECT ON LARGE OBJECT 1001 from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10020 |                 10020
+           10023 |                 10023
 (1 row)
 
 -- The next REVOKE SELECT should not cause any catalog version change.
@@ -326,7 +326,7 @@ REVOKE SELECT ON LARGE OBJECT 1001 from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10020 |                 10020
+           10023 |                 10023
 (1 row)
 
 -- The next GRANT USAGE will increment current_version.
@@ -334,7 +334,7 @@ GRANT USAGE ON SCHEMA public TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10021 |                 10020
+           10024 |                 10023
 (1 row)
 
 -- The next GRANT USAGE should not cause any catalog version change.
@@ -342,7 +342,7 @@ GRANT USAGE ON SCHEMA public TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10021 |                 10020
+           10024 |                 10023
 (1 row)
 
 -- The next REVOKE USAGE is a "breaking" catalog change. It will increment
@@ -351,7 +351,7 @@ REVOKE USAGE ON SCHEMA public from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10022 |                 10022
+           10025 |                 10025
 (1 row)
 
 -- The next REVOKE USAGE should not cause any catalog version change.
@@ -359,7 +359,7 @@ REVOKE USAGE ON SCHEMA public from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10022 |                 10022
+           10025 |                 10025
 (1 row)
 
 -- The next CREATE TABLEGROUP will increment current_version.
@@ -369,7 +369,7 @@ GRANT CREATE ON TABLEGROUP cv_test_tablegroup TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10023 |                 10022
+           10027 |                 10025
 (1 row)
 
 -- The next GRANT CREATE should not cause any catalog version change.
@@ -377,7 +377,7 @@ GRANT CREATE ON TABLEGROUP cv_test_tablegroup TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10023 |                 10022
+           10027 |                 10025
 (1 row)
 
 -- The next REVOKE CREATE is a "breaking" catalog change. It will increment
@@ -386,7 +386,7 @@ REVOKE CREATE ON TABLEGROUP cv_test_tablegroup from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10024 |                 10024
+           10028 |                 10028
 (1 row)
 
 -- The next REVOKE CREATE should not cause any catalog version change.
@@ -394,7 +394,7 @@ REVOKE CREATE ON TABLEGROUP cv_test_tablegroup from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10024 |                 10024
+           10028 |                 10028
 (1 row)
 
 -- The next CREATE TABLESPACE will increment current_version.
@@ -405,7 +405,7 @@ GRANT CREATE ON TABLESPACE cv_test_tablespace TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10025 |                 10024
+           10030 |                 10028
 (1 row)
 
 -- The next GRANT CREATE should not cause any catalog version change.
@@ -413,7 +413,7 @@ GRANT CREATE ON TABLESPACE cv_test_tablespace TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10025 |                 10024
+           10030 |                 10028
 (1 row)
 
 -- The next REVOKE CREATE is a "breaking" catalog change. It will increment
@@ -422,7 +422,7 @@ REVOKE CREATE ON TABLESPACE cv_test_tablespace from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10026 |                 10026
+           10031 |                 10031
 (1 row)
 
 -- The next REVOKE CREATE should not cause any catalog version change.
@@ -430,7 +430,7 @@ REVOKE CREATE ON TABLESPACE cv_test_tablespace from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10026 |                 10026
+           10031 |                 10031
 (1 row)
 
 -- The next CREATE TYPE will increment current_version.
@@ -440,7 +440,7 @@ GRANT USAGE ON TYPE cv_test_type TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10028 |                 10026
+           10033 |                 10031
 (1 row)
 
 -- The next GRANT USAGE should not cause any catalog version change.
@@ -448,7 +448,7 @@ GRANT USAGE ON TYPE cv_test_type TO cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10028 |                 10026
+           10033 |                 10031
 (1 row)
 
 -- The next REVOKE USAGE is a "breaking" catalog change. It will increment
@@ -457,7 +457,7 @@ REVOKE USAGE ON TYPE cv_test_type from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10034 |                 10034
 (1 row)
 
 -- The next REVOKE USAGE should not cause any catalog version change.
@@ -465,57 +465,57 @@ REVOKE USAGE ON TYPE cv_test_type from cv_test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10034 |                 10034
 (1 row)
 
--- Tables with various constraint types should not increment catalog version.
+-- CREATE TABLE should increment current_version.
 CREATE TABLE t_check (col INT CHECK (col > 0));
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10035 |                 10034
 (1 row)
 
 CREATE TABLE t_not_null (col INT NOT NULL);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10036 |                 10034
 (1 row)
 
 CREATE TABLE t_primary_key (col INT PRIMARY KEY);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10037 |                 10034
 (1 row)
 
 CREATE TABLE t_sequence (col SERIAL, value TEXT);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10038 |                 10034
 (1 row)
 
 CREATE TABLE t_unique (col INT UNIQUE);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10039 |                 10034
 (1 row)
 
 CREATE TABLE t_identity (col INT GENERATED ALWAYS AS IDENTITY);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10040 |                 10034
 (1 row)
 
 CREATE TABLE t_primary_key_sequence_identity (c1 INT PRIMARY KEY, c2 SERIAL, c3 INT GENERATED ALWAYS AS IDENTITY);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10029 |                 10029
+           10041 |                 10034
 (1 row)
 
 -- The CREATE TABLE with FOREIGN KEY will increment current_version.
@@ -524,7 +524,7 @@ CREATE TABLE t2 (col INT REFERENCES t1(col));
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10030 |                 10029
+           10043 |                 10034
 (1 row)
 
 -- The ALTER TABLE will increment current_version.
@@ -532,7 +532,7 @@ ALTER TABLE t1 ADD COLUMN val INT;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10031 |                 10029
+           10044 |                 10034
 (1 row)
 
 -- The CREATE PROCEDURE will not increment current_version.
@@ -540,7 +540,7 @@ CREATE PROCEDURE test() AS $$ BEGIN INSERT INTO t1 VALUES(1); END; $$ LANGUAGE '
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10032 |                 10029
+           10045 |                 10034
 (1 row)
 
 -- The CALL to PROCEDURE will not increment current_version.
@@ -548,7 +548,7 @@ CALL test();
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10032 |                 10029
+           10045 |                 10034
 (1 row)
 
 -- The CREATE FUNCTION will increment current_version.
@@ -557,7 +557,7 @@ CREATE OR REPLACE FUNCTION evt_trig_fn() RETURNS event_trigger AS $$ BEGIN INSER
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10033 |                 10029
+           10047 |                 10034
 (1 row)
 
 -- The CREATE EVENT TRIGGER will increment current_version.
@@ -565,7 +565,7 @@ CREATE EVENT TRIGGER evt_ddl_start ON ddl_command_start EXECUTE PROCEDURE evt_tr
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10034 |                 10029
+           10048 |                 10034
 (1 row)
 
 -- The DDLs proceeding the trigger will increment current_version based on the command's individual behaviour.
@@ -574,7 +574,7 @@ ALTER TABLE evt_trig_table ADD COLUMN val INT;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10035 |                 10029
+           10049 |                 10034
 (1 row)
 
 -- The CREATE TABLE will not increment current_version.
@@ -582,7 +582,7 @@ CREATE TABLE post_trigger_table (id INT);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10035 |                 10029
+           10050 |                 10034
 (1 row)
 
 -- The execution on atomic SPI context function will not increment current_version.
@@ -606,7 +606,7 @@ SELECT atomic_spi(1);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10036 |                 10029
+           10051 |                 10034
 (1 row)
 
 SELECT atomic_spi(2);
@@ -618,7 +618,7 @@ SELECT atomic_spi(2);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10036 |                 10029
+           10051 |                 10034
 (1 row)
 
 -- The execution on non-atomic SPI context will not increment current_version.
@@ -636,7 +636,7 @@ CALL p1();
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10039 |                 10029
+           10055 |                 10034
 (1 row)
 
 -- Verify that variants of CREATE TABLE AS SELECT do not increment catalog version.
@@ -645,21 +645,21 @@ SELECT id INTO TEMPORARY TABLE temp FROM t;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10039 |                 10029
+           10057 |                 10034
 (1 row)
 
 CREATE TEMPORARY TABLE temp2 AS SELECT id FROM t;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10039 |                 10029
+           10058 |                 10034
 (1 row)
 
 CREATE TABLE t_1 AS SELECT id FROM t;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10039 |                 10029
+           10059 |                 10034
 (1 row)
 
 -- Verify that catalog version gets incremented if CREATE TABLE AS invokes other
@@ -675,14 +675,14 @@ END$$ LANGUAGE plpgsql;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10041 |                 10029
+           10062 |                 10034
 (1 row)
 
 CREATE TABLE t_3 AS SELECT c FROM (SELECT 1 AS c, f1()) AS s;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10042 |                 10042
+           10063 |                 10063
 (1 row)
 
 -- The next GRANT SELECT will increment current_version.
@@ -690,7 +690,7 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10043 |                 10042
+           10064 |                 10063
 (1 row)
 
 -- The next GRANT SELECT used to increment current_version due to evt_ddl_start
@@ -709,14 +709,14 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10043 |                 10042
+           10064 |                 10063
 (1 row)
 
 DROP EVENT TRIGGER evt_ddl_start;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10044 |                 10042
+           10065 |                 10063
 (1 row)
 
 -- The next GRANT SELECT should not cause any catalog version change.
@@ -724,7 +724,7 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10044 |                 10042
+           10065 |                 10063
 (1 row)
 
 -- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
@@ -734,7 +734,7 @@ CREATE UNIQUE INDEX ON mv(t);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10047 |                 10042
+           10070 |                 10063
 (1 row)
 
 -- nonconcurrent refreshes should bump catalog version.
@@ -742,16 +742,16 @@ REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10048 |                 10042
+           10071 |                 10063
 (1 row)
 
--- concurrent refreshes should not bump catalog version.
+-- concurrent refreshes should increment current_version.
 INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10048 |                 10042
+           10071 |                 10063
 (1 row)
 
 -- Verify ANALYZE increments catalog version once for every involved table
@@ -764,7 +764,7 @@ ANALYZE analyze_table, analyze_table2;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10050 |                 10042
+           10075 |                 10063
 (1 row)
 
 SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
@@ -786,21 +786,12 @@ SELECT min(t), max(t) FROM analyze_table2;
    1 | 100
 (1 row)
 
--- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version bumps once for every table.
-ANALYZE;
-:display_catalog_version;
- current_version | last_breaking_version 
------------------+-----------------------
-           10123 |                 10042
-(1 row)
-
 -- Verify no-op ALTER ROLE
 CREATE ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10123 |                 10042
+           10076 |                 10063
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -808,7 +799,7 @@ ALTER ROLE test_role CONNECTION LIMIT 1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10124 |                 10124
+           10077 |                 10077
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -816,7 +807,7 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10125 |                 10125
+           10078 |                 10078
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -824,25 +815,23 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10125 |                 10125
+           10078 |                 10078
 (1 row)
 
--- The next ALTER ROLE should not increment current_version.
--- Note that password change does not increment current_version because a new
--- password only affects new connections, not existing ones.
+-- The next ALTER ROLE should increment current_version.
 ALTER ROLE test_role PASSWORD '123';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10125 |                 10125
+           10079 |                 10078
 (1 row)
 
--- The next ALTER ROLE should not increment current_version.
+-- The next ALTER ROLE should increment current_version.
 ALTER ROLE test_role PASSWORD NULL;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10125 |                 10125
+           10080 |                 10078
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -850,7 +839,7 @@ ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10126 |                 10126
+           10081 |                 10081
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -858,7 +847,7 @@ ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10126 |                 10126
+           10081 |                 10081
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -866,7 +855,7 @@ ALTER ROLE test_role VALID UNTIL 'infinity';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10127 |                 10127
+           10082 |                 10082
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -874,7 +863,7 @@ ALTER ROLE test_role VALID UNTIL 'infinity';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10127 |                 10127
+           10082 |                 10082
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -882,7 +871,7 @@ ALTER ROLE test_role CREATEROLE;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10128 |                 10128
+           10083 |                 10083
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -890,7 +879,7 @@ ALTER ROLE test_role CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10129 |                 10129
+           10084 |                 10084
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -898,7 +887,7 @@ ALTER ROLE test_role CREATEROLE CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10129 |                 10129
+           10084 |                 10084
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -906,7 +895,7 @@ ALTER ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10129 |                 10129
+           10084 |                 10084
 (1 row)
 
 -- Sanity test yb_increment_db_catalog_version_with_inval_messages
@@ -921,95 +910,95 @@ SET yb_disable_catalog_version_check TO on;
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10130
+                                               10085
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10130 |                 10129
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10085 |                 10084
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10130 | \x
+ yugabyte |           10085 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null, 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10131
+                                               10086
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10131 |                 10129
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10086 |                 10084
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10130 | \x
- yugabyte |           10131 | 
+ yugabyte |           10085 | \x
+ yugabyte |           10086 | 
 (2 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10132
+                                               10087
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10132 |                 10132
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10087 |                 10087
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10130 | \x
- yugabyte |           10131 | 
- yugabyte |           10132 | \x
+ yugabyte |           10085 | \x
+ yugabyte |           10086 | 
+ yugabyte |           10087 | \x
 (3 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10133
+                                               10088
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10133 |                 10133
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10088 |                 10088
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10130 | \x
- yugabyte |           10131 | 
- yugabyte |           10132 | \x
- yugabyte |           10133 | 
+ yugabyte |           10085 | \x
+ yugabyte |           10086 | 
+ yugabyte |           10087 | \x
+ yugabyte |           10088 | 
 (4 rows)
 
 -- Wait for the old message row to expire.
@@ -1022,46 +1011,46 @@ SELECT pg_sleep(15);
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10134
+                                               10089
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10134 |                 10133
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10089 |                 10088
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10134 | \x
+ yugabyte |           10089 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10135
+                                               10090
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              11 |                    11
- postgres         |              14 |                    14
- system_platform  |              14 |                    14
- template0        |              14 |                    14
- template1        |              14 |                    14
- yugabyte         |           10135 |                 10135
+ cv_test_database |              16 |                    16
+ postgres         |              21 |                    21
+ system_platform  |              21 |                    21
+ template0        |              21 |                    21
+ template1        |              21 |                    21
+ yugabyte         |           10090 |                 10090
 (6 rows)
 
  datname  | current_version | messages 
 ----------+-----------------+----------
- yugabyte |           10134 | \x
- yugabyte |           10135 | \x
+ yugabyte |           10089 | \x
+ yugabyte |           10090 | \x
 (2 rows)
 
 -- Wait for the old message row to expire.
@@ -1075,145 +1064,145 @@ SELECT pg_sleep(15);
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10136
+                                                    10091
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              12 |                    11
- postgres         |              15 |                    14
- system_platform  |              15 |                    14
- template0        |              15 |                    14
- template1        |              15 |                    14
- yugabyte         |           10136 |                 10135
+ cv_test_database |              17 |                    16
+ postgres         |              22 |                    21
+ system_platform  |              22 |                    21
+ template0        |              22 |                    21
+ template1        |              22 |                    21
+ yugabyte         |           10091 |                 10090
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              12 | \x
- postgres         |              15 | \x
- system_platform  |              15 | \x
- template0        |              15 | \x
- template1        |              15 | \x
- yugabyte         |           10136 | \x
+ cv_test_database |              17 | \x
+ postgres         |              22 | \x
+ system_platform  |              22 | \x
+ template0        |              22 | \x
+ template1        |              22 | \x
+ yugabyte         |           10091 | \x
 (6 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, null, 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10137
+                                                    10092
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              13 |                    11
- postgres         |              16 |                    14
- system_platform  |              16 |                    14
- template0        |              16 |                    14
- template1        |              16 |                    14
- yugabyte         |           10137 |                 10135
+ cv_test_database |              18 |                    16
+ postgres         |              23 |                    21
+ system_platform  |              23 |                    21
+ template0        |              23 |                    21
+ template1        |              23 |                    21
+ yugabyte         |           10092 |                 10090
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              13 | 
- cv_test_database |              12 | \x
- postgres         |              15 | \x
- postgres         |              16 | 
- system_platform  |              15 | \x
- system_platform  |              16 | 
- template0        |              15 | \x
- template0        |              16 | 
- template1        |              15 | \x
- template1        |              16 | 
- yugabyte         |           10137 | 
- yugabyte         |           10136 | \x
+ cv_test_database |              18 | 
+ cv_test_database |              17 | \x
+ postgres         |              22 | \x
+ postgres         |              23 | 
+ system_platform  |              22 | \x
+ system_platform  |              23 | 
+ template0        |              22 | \x
+ template0        |              23 | 
+ template1        |              22 | \x
+ template1        |              23 | 
+ yugabyte         |           10092 | 
+ yugabyte         |           10091 | \x
 (12 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10138
+                                                    10093
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              14 |                    14
- postgres         |              17 |                    17
- system_platform  |              17 |                    17
- template0        |              17 |                    17
- template1        |              17 |                    17
- yugabyte         |           10138 |                 10138
+ cv_test_database |              19 |                    19
+ postgres         |              24 |                    24
+ system_platform  |              24 |                    24
+ template0        |              24 |                    24
+ template1        |              24 |                    24
+ yugabyte         |           10093 |                 10093
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              14 | \x
- cv_test_database |              12 | \x
- cv_test_database |              13 | 
- postgres         |              15 | \x
- postgres         |              16 | 
- postgres         |              17 | \x
- system_platform  |              15 | \x
- system_platform  |              17 | \x
- system_platform  |              16 | 
- template0        |              15 | \x
- template0        |              16 | 
- template0        |              17 | \x
- template1        |              15 | \x
- template1        |              16 | 
- template1        |              17 | \x
- yugabyte         |           10138 | \x
- yugabyte         |           10137 | 
- yugabyte         |           10136 | \x
+ cv_test_database |              19 | \x
+ cv_test_database |              17 | \x
+ cv_test_database |              18 | 
+ postgres         |              22 | \x
+ postgres         |              23 | 
+ postgres         |              24 | \x
+ system_platform  |              22 | \x
+ system_platform  |              24 | \x
+ system_platform  |              23 | 
+ template0        |              22 | \x
+ template0        |              23 | 
+ template0        |              24 | \x
+ template1        |              22 | \x
+ template1        |              23 | 
+ template1        |              24 | \x
+ yugabyte         |           10093 | \x
+ yugabyte         |           10092 | 
+ yugabyte         |           10091 | \x
 (18 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, null, 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10139
+                                                    10094
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              15 |                    15
- postgres         |              18 |                    18
- system_platform  |              18 |                    18
- template0        |              18 |                    18
- template1        |              18 |                    18
- yugabyte         |           10139 |                 10139
+ cv_test_database |              20 |                    20
+ postgres         |              25 |                    25
+ system_platform  |              25 |                    25
+ template0        |              25 |                    25
+ template1        |              25 |                    25
+ yugabyte         |           10094 |                 10094
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              15 | 
- cv_test_database |              12 | \x
- cv_test_database |              13 | 
- cv_test_database |              14 | \x
- postgres         |              15 | \x
- postgres         |              16 | 
- postgres         |              17 | \x
- postgres         |              18 | 
- system_platform  |              15 | \x
- system_platform  |              18 | 
- system_platform  |              17 | \x
- system_platform  |              16 | 
- template0        |              15 | \x
- template0        |              16 | 
- template0        |              17 | \x
- template0        |              18 | 
- template1        |              15 | \x
- template1        |              16 | 
- template1        |              17 | \x
- template1        |              18 | 
- yugabyte         |           10139 | 
- yugabyte         |           10138 | \x
- yugabyte         |           10137 | 
- yugabyte         |           10136 | \x
+ cv_test_database |              20 | 
+ cv_test_database |              17 | \x
+ cv_test_database |              18 | 
+ cv_test_database |              19 | \x
+ postgres         |              22 | \x
+ postgres         |              23 | 
+ postgres         |              24 | \x
+ postgres         |              25 | 
+ system_platform  |              22 | \x
+ system_platform  |              25 | 
+ system_platform  |              24 | \x
+ system_platform  |              23 | 
+ template0        |              22 | \x
+ template0        |              23 | 
+ template0        |              24 | \x
+ template0        |              25 | 
+ template1        |              22 | \x
+ template1        |              23 | 
+ template1        |              24 | \x
+ template1        |              25 | 
+ yugabyte         |           10094 | 
+ yugabyte         |           10093 | \x
+ yugabyte         |           10092 | 
+ yugabyte         |           10091 | \x
 (24 rows)
 
 -- Wait for the old message row to expire.
@@ -1226,60 +1215,71 @@ SELECT pg_sleep(15);
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10140
+                                                    10095
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              16 |                    15
- postgres         |              19 |                    18
- system_platform  |              19 |                    18
- template0        |              19 |                    18
- template1        |              19 |                    18
- yugabyte         |           10140 |                 10139
+ cv_test_database |              21 |                    20
+ postgres         |              26 |                    25
+ system_platform  |              26 |                    25
+ template0        |              26 |                    25
+ template1        |              26 |                    25
+ yugabyte         |           10095 |                 10094
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              16 | \x
- postgres         |              19 | \x
- system_platform  |              19 | \x
- template0        |              19 | \x
- template1        |              19 | \x
- yugabyte         |           10140 | \x
+ cv_test_database |              21 | \x
+ postgres         |              26 | \x
+ system_platform  |              26 | \x
+ template0        |              26 | \x
+ template1        |              26 | \x
+ yugabyte         |           10095 | \x
 (6 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10141
+                                                    10096
 (1 row)
 
 :display_all;
      datname      | current_version | last_breaking_version 
 ------------------+-----------------+-----------------------
- cv_test_database |              17 |                    17
- postgres         |              20 |                    20
- system_platform  |              20 |                    20
- template0        |              20 |                    20
- template1        |              20 |                    20
- yugabyte         |           10141 |                 10141
+ cv_test_database |              22 |                    22
+ postgres         |              27 |                    27
+ system_platform  |              27 |                    27
+ template0        |              27 |                    27
+ template1        |              27 |                    27
+ yugabyte         |           10096 |                 10096
 (6 rows)
 
      datname      | current_version | messages 
 ------------------+-----------------+----------
- cv_test_database |              17 | \x
- cv_test_database |              16 | \x
- postgres         |              19 | \x
- postgres         |              20 | \x
- system_platform  |              19 | \x
- system_platform  |              20 | \x
- template0        |              19 | \x
- template0        |              20 | \x
- template1        |              19 | \x
- template1        |              20 | \x
- yugabyte         |           10141 | \x
- yugabyte         |           10140 | \x
+ cv_test_database |              22 | \x
+ cv_test_database |              21 | \x
+ postgres         |              26 | \x
+ postgres         |              27 | \x
+ system_platform  |              26 | \x
+ system_platform  |              27 | \x
+ template0        |              26 | \x
+ template0        |              27 | \x
+ template1        |              26 | \x
+ template1        |              27 | \x
+ yugabyte         |           10096 | \x
+ yugabyte         |           10095 | \x
 (12 rows)
 
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version bumps once for every table.
+ANALYZE;
+:display_catalog_version;
+ current_version | last_breaking_version 
+-----------------+-----------------------
+           10169 |                 10096
+(1 row)
+
+-- It is best to add any new test before this block ('ANALYZE;'). This minimizes the
+-- changes required to the expected output when introducing a new catalog table.

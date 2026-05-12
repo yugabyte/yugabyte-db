@@ -65,7 +65,13 @@ public class EditUniverse extends EditUniverseTaskBase {
     addBasicPrecheckTasks();
     prevState = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
     if (isFirstTry()) {
-      configureTaskParams(universe);
+      configureTaskParams(universe, false /* moveMastersFirst */);
+    }
+    createComprehensivePrecheckTasks(universe);
+    if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      createTablespaceValidationOnRemoveTask(primaryCluster.uuid);
     }
   }
 
@@ -130,7 +136,8 @@ public class EditUniverse extends EditUniverseTaskBase {
         // Updating cluster in memory
         universe
             .getUniverseDetails()
-            .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+            .upsertCluster(
+                cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
@@ -140,7 +147,8 @@ public class EditUniverse extends EditUniverseTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */);
+            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */,
+            false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
       }

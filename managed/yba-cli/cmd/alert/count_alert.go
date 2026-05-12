@@ -30,7 +30,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUUIDs)) > 0 {
+		if !util.IsEmptyString(sourceUUIDs) {
 			alertAPIFilter.SetSourceUUIDs(strings.Split(sourceUUIDs, ","))
 		}
 
@@ -38,7 +38,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceName)) > 0 {
+		if !util.IsEmptyString(sourceName) {
 			alertAPIFilter.SetSourceName(sourceName)
 		}
 
@@ -46,7 +46,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configurationUUID)) > 0 {
+		if !util.IsEmptyString(configurationUUID) {
 			alertAPIFilter.SetConfigurationUuid(configurationUUID)
 		}
 
@@ -54,7 +54,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configurationTypes)) > 0 {
+		if !util.IsEmptyString(configurationTypes) {
 			alertAPIFilter.SetConfigurationTypes(strings.Split(configurationTypes, ","))
 		}
 
@@ -62,7 +62,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(severities)) > 0 {
+		if !util.IsEmptyString(severities) {
 			severitiesList := strings.Split(severities, ",")
 			if len(severitiesList) > 0 {
 				for i, severity := range severitiesList {
@@ -76,7 +76,7 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(states)) > 0 {
+		if !util.IsEmptyString(states) {
 			statesList := strings.Split(states, ",")
 			if len(statesList) > 0 {
 				for i, state := range statesList {
@@ -90,15 +90,14 @@ var countAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuids)) > 0 {
+		if !util.IsEmptyString(uuids) {
 			alertAPIFilter.SetUuids(strings.Split(uuids, ","))
 		}
 
 		alertCountRequest := authAPI.CountAlerts().CountAlertsRequest(alertAPIFilter)
 		r, response, err := alertCountRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert", "Count")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Count")
 		}
 
 		if util.IsOutputType(formatter.TableFormatKey) {

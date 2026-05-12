@@ -4,6 +4,11 @@ headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
 headcontent: Distribute data synchronously across regions
+aliases:
+  - /stable/explore/global-distribution-linux/
+  - /stable/explore/global-distribution/macos
+  - /stable/explore/global-distribution/linux
+  - /stable/explore/multi-region-deployments/synchronous-replication-ycql/
 menu:
   stable:
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
@@ -44,7 +49,7 @@ This deployment provides the following advantages:
 
 ## Create a synchronized multi-region universe
 
-This example simulates AWS regions on a local machine. To run it, first [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
+This example simulates AWS regions on a local machine. To run it, first [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-universe) any running local universes.
 
 You can also use these steps to deploy universes in a public cloud, private data center, or in separate virtual machines. Simply replace the IP addresses in the commands with the corresponding IP addresses of your nodes/VMs.
 
@@ -71,7 +76,7 @@ Follow the [setup instructions](../../cluster-setup-local/#set-up-yb-workload-si
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the universe. However, in a multi-region universe, it is more efficient to target regions closest to your application.
 
-You can configure the smart driver with [topology load balancing](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
+You can configure the smart driver with [topology load balancing](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 

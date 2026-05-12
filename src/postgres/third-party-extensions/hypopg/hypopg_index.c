@@ -1056,6 +1056,12 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	index->relam = entry->relam;
 
+	if (IsYugaByteEnabled())
+	{
+		Assert(entry->indexname != NULL);
+		index->ybIndexName = entry->indexname;
+	}
+
 	/* General stuff */
 	index->indexoid = entry->oid;
 	index->reltablespace = rel->reltablespace;	/* same tablespace as

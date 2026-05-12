@@ -118,3 +118,19 @@ EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count'
 SELECT documentdb_api.create_collection('db', '');
 SELECT documentdb_api.find_and_modify('', '{"findAndModify": "", "query": {"a": 1000}, "remove": 0.1, "sort": {"b": -1}}');
 
+-- test documentdb_api.collection()
+-- create/ insert into new collection
+SELECT documentdb_api.insert_one('db','new_coll',' { "_id" :  1, "b" : 2 }', NULL);
+\d+ documentdb_data.documents_1909;
+SELECT * FROM documentdb_api.collection('db','new_coll');
+SELECT document, shard_key_value FROM documentdb_api.collection('db','new_coll');
+
+-- create/ insert into Lagacy collection
+BEGIN;
+SET LOCAL documentdb.enabledatatablewithoutcreationtime = off;
+SELECT documentdb_api.insert_one('db','lagacy_coll',' { "_id" :  1, "b" : 2 }', NULL);
+\d+ documentdb_data.documents_1910;
+SELECT * FROM documentdb_api.collection('db','lagacy_coll');
+SELECT document, shard_key_value FROM documentdb_api.collection('db','lagacy_coll');
+ROLLBACK;
+

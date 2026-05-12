@@ -11,6 +11,9 @@ menu:
     weight: 90
 type: indexpage
 showRightNav: true
+cascade:
+  tags:
+    other: ysql
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
@@ -48,6 +51,9 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
     href="disaster-recovery-setup/"
     icon="fa-thin fa-umbrella">}}
 
+{{</index/block>}}
+{{<index/block>}}
+
   {{<index/item
     title="Unplanned failover"
     body="Fail over to the DR replica in case of an unplanned outage."
@@ -60,35 +66,29 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
     href="disaster-recovery-switchover/"
     icon="fa-thin fa-toggle-on">}}
 
-  {{<index/item
-    title="Add and remove tables and indexes"
-    body="Perform DDL changes to databases in replication."
-    href="disaster-recovery-tables/"
-    icon="fa-thin fa-plus-minus">}}
-
 {{</index/block>}}
 
 ## Schema change modes
 
 xCluster DR can be set up to perform schema changes in the following ways:
 
-- [Automatic mode](#automatic-mode) {{<tags/feature/ea idea="2089">}} handles all aspects of replication for both data and schema changes.
-- [Semi-automatic mode](#semi-automatic-mode), providing simpler steps for performing DDL changes.
-- [Manual mode](#manual-mode). Deprecated.
+| Mode | Description | GA | Deprecated |
+| :--- | :--- | :--- | :--- |
+| [Automatic](#automatic-mode) | Handles all aspects of replication for both data and schema changes. | v2025.2.1 | |
+| [Semi-automatic](#semi-automatic-mode) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | v2025.2.1 |
+| [Manual](#manual-mode) | Deprecated. Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2024.2 | v2025.1 |
+
+For information on how each mode behaves at the database layer, refer to [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ### Automatic mode
 
-{{<tags/feature/ea idea="2089">}}In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
+In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
 
 You don't need to make any changes to the DR configuration.
 
 Automatic mode is recommended for all new DR configurations. When possible, you should delete existing DR configurations and re-create them using automatic mode to reduce the operational burden of DDL changes.
 
-Automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
-
-- Both DR primary and replica are running YugabyteDB {{<release "2025.1.0">}} or later.
-- Automatic mode is enabled. While in {{<tags/feature/ea idea="2089">}}, the feature is not enabled by default. To enable it, set the **Automatic mode for xCluster** Global runtime configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
-- Semi-automatic mode is enabled. Semi-automatic mode is enabled by default, and set using the **DB scoped xCluster replication creation** Global Runtime Configuration option (config key `yb.xcluster.db_scoped.creationEnabled`).
+By default, automatic mode is used for new DR configurations when both DR primary and replica are running YugabyteDB v2025.2.1 or later. If automatic mode is not used when you create a DR configuration, check the [runtime parameters](#schema-change-mode-runtime-configuration) are set correctly on DR primary.
 
 ### Semi-automatic mode
 
@@ -98,6 +98,8 @@ In this mode, table and index-level schema changes must be performed in the same
 2. The DR replica universe.
 
 You don't need to make any changes to the DR configuration.
+
+By default, semi-automatic mode is used for new DR configurations when both DR primary and replica are running YugabyteDB {{<release "2024.1.3">}} to {{<release "2025.2.0">}}. If semi-automatic mode is not used when you create a DR configuration, check the [runtime parameters](#schema-change-mode-runtime-configuration) are set correctly on DR primary.
 
 {{<lead link="https://www.youtube.com/watch?v=vYyn2OUSZFE">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
@@ -113,6 +115,31 @@ In manual mode, table and index-level schema changes must be performed on the DR
 
 The exact sequence of these operations for each type of schema change (DDL) is described in [Manage tables and indexes](./disaster-recovery-tables/).
 
+By default, Manual mode is used for DR configurations when both DR primary and replica are running YugabyteDB {{<release "2024.1.2">}} or earlier.
+
+### Upgrading schema change mode
+
+If you are running manual mode and you are running a compatible version of YugabyteDB, it is recommended that you upgrade to semi-automatic or automatic mode. Likewise, if you are running semi-automatic mode, it is recommended that you upgrade to automatic mode.
+
+To upgrade schema change mode for an existing DR configuration:
+
+1. [Remove disaster recovery](./disaster-recovery-setup/#remove-disaster-recovery).
+1. [Set up a new DR configuration](./disaster-recovery-setup/#set-up-disaster-recovery).
+
+### Schema change mode runtime configuration
+
+When you create a new DR configuration, YugabyteDB Anywhere selects semi-automatic or automatic mode based on the YugabyteDB version _and_ the following universe runtime parameters:
+
+- **Enable xCluster DR Semi-automatic Mode** (config key `yb.xcluster.db_scoped.creationEnabled`)
+
+- **Enable xCluster DR Automatic Mode** (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`)
+
+For new DR configurations, YugabyteDB Anywhere uses automatic mode when both universes are running YugabyteDB {{<release "2025.2.1">}} or later and _both parameters_ are true (the default in {{<release "2025.2.1">}} and later) on the DR primary.
+
+If **Enable xCluster DR Automatic Mode** is `false` while **Enable xCluster DR Semi-automatic Mode** remains `true`, new configurations use semi-automatic mode for supported versions.
+
+To set these options and their default behavior, refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
 ## Upgrading universes in DR
 
 Use the same version of YugabyteDB on both the DR primary and DR replica.
@@ -121,6 +148,8 @@ When [upgrading universes](../../manage-deployments/upgrade-software-install/) i
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
+Refer to [Upgrades with xCluster and xCluster DR](../../manage-deployments/upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
+
 ## xCluster DR vs xCluster Replication
 
 xCluster refers to all YugabyteDB deployments with two or more universes, and has two major flavors:
@@ -128,7 +157,7 @@ xCluster refers to all YugabyteDB deployments with two or more universes, and ha
 - _xCluster DR_. Provides turnkey workflow orchestration for applications using transactional SQL in an active-active single-master manner, with only unidirectional replication configured at any moment in time. xCluster DR uses xCluster Replication under the hood, and adds workflow automation and orchestration, including switchover, failover, resynchronization to make another full copy, and so on.
 - _xCluster Replication_. Moves the data from one universe to another. Can be used for CQL, non-transactional SQL, bi-directional replication, and other deployment models not supported by xCluster DR.
 
-xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/preview/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/stable/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
 - Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
 
@@ -167,10 +196,10 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 
 ## Limitations
 
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes). This is tracked by [GitHub issue #11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+- DR is only available for YSQL databases.
+
+- Replication is managed at the database level. All tables in the database are added to replication; you cannot replicate only a subset of tables in a database.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
-
-- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 
 For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).

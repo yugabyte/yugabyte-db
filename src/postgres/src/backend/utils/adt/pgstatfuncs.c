@@ -653,9 +653,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
 
-	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t		yb_numreplicationslots = 0;
-
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -672,9 +669,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
-
-	if (IsYugaByteEnabled())
-		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -747,23 +741,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		else
 			nulls[16] = true;
 
-		if (IsYugaByteEnabled())
-		{
-			int			slotno;
-
-			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
-			{
-				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
-
-				if (slot->active_pid == beentry->st_procpid)
-				{
-					values[16] = slot->xmin;
-					nulls[16] = false;
-					break;
-				}
-			}
-		}
-
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		{
@@ -805,6 +782,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			proc = BackendPidGetProc(beentry->st_procpid);
 
 			if (proc == NULL && (beentry->st_backendType != B_BACKEND &&
+								 beentry->st_backendType != YB_AUTO_ANALYZE_BACKEND &&
 								 beentry->st_backendType != YB_YSQL_CONN_MGR))
 			{
 				/*
@@ -2730,7 +2708,7 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	int			num_indexes = 0;
 	Oid			database_oids[num_backends];
 	Oid			index_oids[num_backends];
-	uint64_t   *progress = NULL;
+	uint64_t   *num_rows_read_from_table = NULL;
 
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
 	{
@@ -2764,10 +2742,12 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 
 	if (num_indexes > 0)
 	{
-		progress = palloc(sizeof(uint64_t) * num_indexes);
+		num_rows_read_from_table = palloc(sizeof(uint64_t) * num_indexes);
 		HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
-												   &progress, num_indexes));
+												   num_rows_read_from_table,
+												   NULL,
+												   num_indexes));
 	}
 
-	return progress;
+	return num_rows_read_from_table;
 }

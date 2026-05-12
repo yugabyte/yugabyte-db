@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-exprs-lastval
     parent: sequence-functions
+aliases:
+  - /stable/api/ysql/exprs/func_lastval
 type: docs
 ---
 

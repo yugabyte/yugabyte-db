@@ -185,23 +185,23 @@ SELECT bson_dollar_add_fields(document, '{ "_id" : "someString"}') FROM document
 
 -- path collision tests
 SELECT bson_dollar_add_fields(document, '{ "a.b.c.d.e" : "_c", "a.b.c" : "_d"}') FROM documentdb_api.collection('db', 'addFieldOps');
-ERROR:  Path collision at a.b.c
+ERROR:  Collision detected in specified path a.b.c
 SELECT bson_dollar_add_fields(document, '{ "a.b.c" : "_c", "a.b" : "_d"}') FROM documentdb_api.collection('db', 'addFieldOps');
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT  bson_dollar_add_fields(document, '{"a.b": 1, "a.b.c": 1}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at a.b.c remaining portion b.c
+ERROR:  Collision detected in specified path a.b.c remaining portion b.c
 SELECT  bson_dollar_add_fields(document, '{"a.b": 1, "a" : { "b" : { "c": "1"}}}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at b
+ERROR:  Collision detected in specified path b
 SELECT  bson_dollar_add_fields(document, '{"a.b": 1, "a" : { "b" : { "c": "$_id"}}}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at b
+ERROR:  Collision detected in specified path b
 SELECT  bson_dollar_add_fields(document, '{"a.b": {"c" : 1.0}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 SELECT  bson_dollar_add_fields(document, '{"a.b": {"c" : "$a.b"}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 SELECT  bson_dollar_add_fields(document, '{"a.b.c": "$_id", "a.b": "1.0"}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT  bson_dollar_add_fields(document, '{"a" : { "b" : { "c": { "d": "$_id"}}}, "a.b": {"c" : 1.0}}')  FROM documentdb_api.collection('db', 'addFieldOps') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 -- Array Expression and Nested Expression evaluation tests
 SELECT bson_dollar_add_fields(document, '{ "new" : ["$_id"]}') FROM documentdb_api.collection('db', 'addFieldOps');
                                                                 bson_dollar_add_fields                                                                 

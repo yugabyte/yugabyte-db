@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "yb/tserver/backup.fwd.h"
+#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
 
@@ -50,6 +51,7 @@ class PgSharedMemoryPool;
 class SharedExchange;
 class SharedMemoryManager;
 class SharedMemorySegmentHandle;
+class TServerCgroupManager;
 class TSLocalLockManager;
 class TSTabletManager;
 class TableMutationCountSender;
@@ -63,6 +65,7 @@ class TabletServerServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
 class TserverXClusterContextIf;
+class YSQLLeaseManager;
 class YsqlAdvisoryLocksTable;
 
 enum class TabletServerServiceRpcMethodIndexes;
@@ -91,6 +94,32 @@ struct HasRaftConfigOpidIndex<
 
 struct PgTxnSnapshot;
 YB_STRONGLY_TYPED_UUID_DECL(PgTxnSnapshotLocalId);
+
+// Temporary typedef for lightweight protobuf migration
+using TabletConsensusInfoMsg = LWTabletConsensusInfoPB;
+using ReadRequestMsg = LWReadRequestPB;
+using ReadResponseMsg = LWReadResponsePB;
+using WriteRequestMsg = LWWriteRequestPB;
+using WriteResponseMsg = LWWriteResponsePB;
+using PgPerformRequestMsg = LWPgPerformRequestPB;
+using PgPerformResponseMsg = LWPgPerformResponsePB;
+using PgAcquireObjectLockRequestMsg = LWPgAcquireObjectLockRequestPB;
+using PgAcquireObjectLockResponseMsg = LWPgAcquireObjectLockResponsePB;
+using PgInsertSequenceTupleRequestMsg = LWPgInsertSequenceTupleRequestPB;
+using PgInsertSequenceTupleResponseMsg = LWPgInsertSequenceTupleResponsePB;
+using PgUpdateSequenceTupleRequestMsg = LWPgUpdateSequenceTupleRequestPB;
+using PgUpdateSequenceTupleResponseMsg = LWPgUpdateSequenceTupleResponsePB;
+using PgFetchSequenceTupleRequestMsg = LWPgFetchSequenceTupleRequestPB;
+using PgFetchSequenceTupleResponseMsg = LWPgFetchSequenceTupleResponsePB;
+using PgReadSequenceTupleRequestMsg = LWPgReadSequenceTupleRequestPB;
+using PgReadSequenceTupleResponseMsg = LWPgReadSequenceTupleResponsePB;
+using PgDeleteSequenceTupleRequestMsg = LWPgDeleteSequenceTupleRequestPB;
+using PgDeleteSequenceTupleResponseMsg = LWPgDeleteSequenceTupleResponsePB;
+using PgDeleteDBSequencesRequestMsg = LWPgDeleteDBSequencesRequestPB;
+using PgDeleteDBSequencesResponseMsg = LWPgDeleteDBSequencesResponsePB;
+using PgGetTableKeyRangesRequestMsg = LWPgGetTableKeyRangesRequestPB;
+using PgGetTableKeyRangesResponseMsg = LWPgGetTableKeyRangesResponsePB;
+using TabletServerErrorMsg = LWTabletServerErrorPB;
 
 } // namespace tserver
 } // namespace yb

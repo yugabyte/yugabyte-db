@@ -340,6 +340,11 @@ static void binary_upgrade_set_type_oids_by_rel(Archive *fout,
 static void binary_upgrade_set_pg_class_oids(Archive *fout,
 											 PQExpBuffer upgrade_buffer,
 											 Oid pg_class_oid, bool is_index);
+static void yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
+														 PQExpBuffer buffer,
+														 const IndxInfo *indxinfo,
+														 const TableInfo *tbinfo,
+														 bool emit_colocation_id);
 static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 											const DumpableObject *dobj,
 											const char *objtype,
@@ -358,10 +363,6 @@ static bool forcePartitionRootLoad(const TableInfo *tbinfo);
 
 /* YB functions */
 static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
-static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-								const char *reloptions1, const char *reloptions1_prefix,
-								const char *reloptions2, const char *reloptions2_prefix,
-								Archive *fout);
 static void YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 								const char *reloptions1, const char *reloptions1_prefix,
 								const char *reloptions2, const char *reloptions2_prefix,
@@ -374,7 +375,10 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 											  YbcTableProperties properties,
 											  PQExpBuffer reloptions_buf, Oid reloid, const char *relname,
 											  char relkind);
+static void freeYbcTablePropertiesIfRequired(YbcTableProperties yb_properties);
 static void isDatabaseColocated(Archive *fout);
+static char *extractYbPresplitFromReloptions(const char *reloptions);
+static char *removeYbPresplitFromReloptions(const char *reloptions);
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 
@@ -917,10 +921,6 @@ main(int argc, char **argv)
 	fout->maxRemoteVersion = (PG_VERSION_NUM / 100) * 100 + 99;
 
 	fout->numWorkers = numWorkers;
-
-	/* YB */
-	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
-		dopt.cparams.pghost = DefaultHost;
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -5343,6 +5343,65 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 	appendPQExpBufferChar(upgrade_buffer, '\n');
 
 	destroyPQExpBuffer(upgrade_query);
+}
+
+/*
+ * For YB colocated databases with tablespaces, preserve the tablegroup OID
+ * for an index's implicit tablegroup during binary upgrade. This ensures that
+ * the index and its data are correctly restored to the same tablegroup.
+ */
+static void
+yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
+											 PQExpBuffer buffer,
+											 const IndxInfo *indxinfo,
+											 const TableInfo *tbinfo,
+											 bool emit_colocation_id)
+{
+	YbcTableProperties yb_properties;
+	PQExpBuffer yb_reloptions;
+
+	/* Only applies to colocated databases (non-legacy) */
+	if (!is_colocated_database || is_legacy_colocated_database)
+		return;
+
+	yb_properties = (YbcTableProperties) pg_malloc0(sizeof(YbcTablePropertiesData));
+	yb_reloptions = createPQExpBuffer();
+
+	getYbTablePropertiesAndReloptions(fout, yb_properties,
+									  yb_reloptions,
+									  indxinfo->dobj.catId.oid,
+									  indxinfo->dobj.name,
+									  tbinfo->relkind);
+
+	if (yb_properties && yb_properties->is_colocated)
+	{
+		if (emit_colocation_id)
+		{
+			appendPQExpBufferStr(buffer,
+								 "\n-- For YB colocation backup, must preserve implicit colocation id\n");
+			appendPQExpBuffer(buffer,
+							  "SELECT pg_catalog.yb_binary_upgrade_set_next_colocation_id('%u'::pg_catalog.oid);\n",
+							  yb_properties->colocation_id);
+		}
+		else if (yb_properties->tablegroup_oid != 0)
+		{
+			appendPQExpBufferStr(buffer,
+								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
+			appendPQExpBuffer(buffer,
+							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+							  yb_properties->tablegroup_oid);
+			if (strcmp(yb_properties->tablegroup_name, "default") == 0)
+			{
+				appendPQExpBufferStr(buffer,
+									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+				appendPQExpBuffer(buffer,
+								  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+			}
+		}
+	}
+
+	destroyPQExpBuffer(yb_reloptions);
+	freeYbcTablePropertiesIfRequired(yb_properties);
 }
 
 /*
@@ -10682,7 +10741,8 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 		if (!PQgetisnull(res, rownum, i_elem_count_histogram))
 			appendNamedArgument(out, fout, "elem_count_histogram", "real[]",
 								PQgetvalue(res, rownum, i_elem_count_histogram));
-		if (fout->remoteVersion >= 170000)
+		if (fout->remoteVersion >= 170000 ||
+			(IsYugabyteEnabled && fout->remoteVersion >= 110000))
 		{
 			if (!PQgetisnull(res, rownum, i_range_length_histogram))
 				appendNamedArgument(out, fout, "range_length_histogram", "text",
@@ -16910,30 +16970,78 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
+		/*
+		 * When dumping YB metadata, strip yb_presplit from the table's
+		 * reloptions before emitting the WITH clause.  yb_presplit must
+		 * not appear in the WITH clause because:
+		 * 1. The split configuration is emitted as a SPLIT INTO / SPLIT AT
+		 *    VALUES clause on the CREATE TABLE; leaving yb_presplit in the
+		 *    WITH clause would conflict with that SPLIT clause on restore.
+		 * 2. yb_presplit is re-emitted as a separate ALTER TABLE SET
+		 *    (yb_presplit=...) statement so that TRUNCATE can later
+		 *    re-apply the original user-specified split options.
+		 */
+		char	   *yb_presplit_value = NULL;
+		const char *filtered_reloptions = tbinfo->reloptions;
+		char	   *filtered_reloptions_alloc = NULL;
+
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
+		{
+			yb_presplit_value = extractYbPresplitFromReloptions(tbinfo->reloptions);
+			if (yb_presplit_value)
+			{
+				filtered_reloptions_alloc = removeYbPresplitFromReloptions(tbinfo->reloptions);
+				filtered_reloptions = filtered_reloptions_alloc;
+			}
+		}
+
 		YbAppendReloptions3(q, true /* newline_before */ ,
-							tbinfo->reloptions, "",
+							filtered_reloptions, "",
 							tbinfo->toast_reloptions, "toast.",
 							yb_reloptions->data, "",
 							fout);
 
+		if (filtered_reloptions_alloc)
+			free(filtered_reloptions_alloc);
+
 		destroyPQExpBuffer(yb_reloptions);
 
-		/* Additional properties for YB table or index. */
-		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
+		/*
+		 * Emit split clause based on the table's current configuration.
+		 * - Hash tables: always SPLIT INTO N TABLETS.
+		 * - Range tables with yb_presplit: use the stored split points
+		 *   directly to preserve the original user-specified values.
+		 * - Range tables without yb_presplit: query the server via
+		 *   yb_get_range_split_clause (fallback for pre-existing tables).
+		 *
+		 * Materialized views and partitioned tables are excluded:
+		 * matviews need the SPLIT clause after the AS query, and
+		 * partitioned tables have no storage of their own.
+		 */
+		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW
+			&& tbinfo->relkind != RELKIND_PARTITIONED_TABLE)
 		{
 			if (yb_properties->num_hash_key_columns > 0)
-				/* For hash-table. */
-				appendPQExpBuffer(q, "\nSPLIT INTO %" PRIu64 " TABLETS", yb_properties->num_tablets);
+			{
+				appendPQExpBuffer(q, "\nSPLIT INTO %" PRIu64 " TABLETS",
+								  yb_properties->num_tablets);
+			}
+			else if (yb_presplit_value && yb_presplit_value[0] == '(')
+			{
+				appendPQExpBuffer(q, "\nSPLIT AT VALUES %s",
+								  yb_presplit_value);
+			}
 			else if (yb_properties->num_tablets > 1)
 			{
-				/* For range-table. */
 				char	   *range_split_clause = getYbSplitClause(fout, tbinfo);
 
 				appendPQExpBuffer(q, "\n%s", range_split_clause);
 				free(range_split_clause);
 			}
-			/* else - single shard table - supported, no need to add anything */
+		}
 
+		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
+		{
 			if (!is_colocated_database && !dopt->no_tablegroups &&
 				(dopt->include_yb_metadata || dopt->binary_upgrade) &&
 				OidIsValid(yb_properties->tablegroup_oid))
@@ -16974,6 +17082,20 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		}
 		else
 			appendPQExpBufferStr(q, ";\n");
+
+		/*
+		 * If the table had yb_presplit in its reloptions (indicating
+		 * user-specified create-time split options), dump it as a
+		 * separate ALTER TABLE SET statement.
+		 */
+		if (yb_presplit_value)
+		{
+			appendPQExpBuffer(q, "ALTER TABLE %s SET (yb_presplit=",
+							  qualrelname);
+			appendStringLiteralAH(q, yb_presplit_value, fout);
+			appendPQExpBufferStr(q, ");\n");
+			free(yb_presplit_value);
+		}
 
 		/* Materialized views can depend on extensions */
 		if (tbinfo->relkind == RELKIND_MATVIEW)
@@ -17634,40 +17756,28 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		if (is_colocated_database && !is_legacy_colocated_database)
-		{
-			YbcTableProperties yb_properties;
+		yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+														false /* emit_colocation_id */ );
 
-			yb_properties = (YbcTableProperties) pg_malloc0(sizeof(YbcTablePropertiesData));
-			PQExpBuffer yb_reloptions = createPQExpBuffer();
-
-			getYbTablePropertiesAndReloptions(fout, yb_properties,
-											  yb_reloptions,
-											  indxinfo->dobj.catId.oid,
-											  indxinfo->dobj.name,
-											  tbinfo->relkind);
-
-			if (yb_properties && yb_properties->is_colocated)
-			{
-				appendPQExpBufferStr(q,
-									 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
-				appendPQExpBuffer(q,
-								  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
-								  yb_properties->tablegroup_oid);
-				if (strcmp(yb_properties->tablegroup_name, "default") == 0)
-				{
-					appendPQExpBufferStr(q,
-										 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
-					appendPQExpBuffer(q,
-									  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
-				}
-			}
-			destroyPQExpBuffer(yb_reloptions);
-
-			freeYbcTablePropertiesIfRequired(yb_properties);
-		}
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
+
+		/*
+		 * If dumping YB metadata and the index had yb_presplit in its
+		 * reloptions, dump it as a separate ALTER INDEX SET statement.
+		 */
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
+		{
+			char	   *idx_presplit = extractYbPresplitFromReloptions(indxinfo->indreloptions);
+			if (idx_presplit)
+			{
+				appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
+								  qqindxname);
+				appendStringLiteralAH(q, idx_presplit, fout);
+				appendPQExpBufferStr(q, ");\n");
+				free(idx_presplit);
+			}
+		}
 
 		/*
 		 * Append ALTER TABLE commands as needed to set properties that we
@@ -17932,7 +18042,8 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 * To preserve this in a dump, YB emits the CREATE INDEX separately.
 		 * However, this causes an issue for partitioned tables, because
 		 * they do not support ALTER TABLE / ADD CONSTRAINT / USING INDEX,
-		 * so we do not emit this in that case.
+		 * so we do not emit this in that case. Instead we emit colocation_id
+		 * that the implicitly created unique index will preserve.
 		 *
 		 * If the constraint type is unique and index definition (indexdef)
 		 * exists, it means a constraint exists for this table which is
@@ -17941,19 +18052,27 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 * unique or non-unique index exists for a table. The indexdef
 		 * contains the full YSQL command to create the index.
 		 */
-		const bool	dump_index_for_constraint = (coninfo->contype == 'u' &&
-												 indxinfo->indexdef &&
-												 indxinfo->parentidx == 0 &&
-												 tbinfo->relkind != RELKIND_PARTITIONED_TABLE);
-
+		const bool	is_unique_index = (coninfo->contype == 'u' &&
+									   indxinfo->indexdef);
+		const bool	is_partitioned = (OidIsValid(indxinfo->parentidx) ||
+									  tbinfo->relkind == RELKIND_PARTITIONED_TABLE);
+		const bool	dump_index_for_constraint = (is_unique_index && !is_partitioned);
 		if (dump_index_for_constraint)
 		{
+			/*
+			 * YB: For colocated databases, we need to preserve the tablegroup OID
+			 * for the index's implicit tablegroup during binary upgrade.
+			 * This is similar to what's done in dumpIndex for non-constraint indexes.
+			 */
+			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+															false /* emit_colocation_id */ );
+
 			if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 			{
 				/*
 				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
 				 */
-				appendPQExpBuffer(q, "%s;\n\n", indxinfo->indexdef);
+				appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
 			}
 			else
 			{
@@ -17961,10 +18080,33 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 				Assert(strncmp(indxinfo->indexdef, index_def_prefix,
 							   strlen(index_def_prefix)) == 0);
-				appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n\n",
+				appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n",
 								  index_def_prefix, &indxinfo->indexdef[20]);
 			}
+
+			/*
+			 * If dumping YB metadata and the index had yb_presplit in
+			 * its reloptions, dump it as a separate ALTER INDEX SET
+			 * statement.
+			 */
+			if (dopt->include_yb_metadata || dopt->binary_upgrade)
+			{
+				char	   *idx_presplit =
+					extractYbPresplitFromReloptions(indxinfo->indreloptions);
+				if (idx_presplit)
+				{
+					appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
+									  fmtQualifiedDumpable(indxinfo));
+					appendStringLiteralAH(q, idx_presplit, fout);
+					appendPQExpBufferStr(q, ");\n");
+					free(idx_presplit);
+				}
+			}
+			appendPQExpBufferChar(q, '\n');
 		}
+		else if (is_unique_index && is_partitioned)
+			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+																true /* emit_colocation_id */ );
 
 		appendPQExpBuffer(q, "ALTER %sTABLE ONLY %s\n", foreign,
 						  fmtQualifiedDumpable(tbinfo));
@@ -17986,7 +18128,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			if (dump_index_for_constraint)
 			{
 				appendPQExpBuffer(q, "USING INDEX %s",
-								  indxinfo->dobj.name);
+								  fmtId(indxinfo->dobj.name));
 			}
 			/*
 			 * YB: If a table has a non-unique constraint or does not have an
@@ -19820,19 +19962,6 @@ nonemptyReloptions(const char *reloptions)
 }
 
 static void
-YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-					const char *reloptions1, const char *reloptions1_prefix,
-					const char *reloptions2, const char *reloptions2_prefix,
-					Archive *fout)
-{
-	YbAppendReloptions3(buffer, newline_before,
-						reloptions1, reloptions1_prefix,
-						reloptions2, reloptions2_prefix,
-						NULL, NULL,
-						fout);
-}
-
-static void
 YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 					const char *reloptions1, const char *reloptions1_prefix,
 					const char *reloptions2, const char *reloptions2_prefix,
@@ -19987,7 +20116,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 			pg_fatal("colocation ID is not defined for a colocated table \"%s\"\n",
 					 relname);
 
-		if (is_colocated_database && !is_legacy_colocated_database && properties->is_colocated)
+		if (is_colocated_database && !is_legacy_colocated_database &&
+			properties->is_colocated &&
+			/*
+			 * Also check that tablegroup_oid is not 0, as vector indexes
+			 * are always "colocated" but they are not always in a tablegroup.
+			 * This additional check is required for vector indexes of
+			 * non-colocated tables in colocated databases.
+			 */
+			properties->tablegroup_oid != 0)
 		{
 			query = createPQExpBuffer();
 			/* Get name of the tablegroup. */
@@ -20071,6 +20208,101 @@ getYbSplitClause(Archive *fout, const TableInfo *tbinfo)
 	PQclear(res);
 	destroyPQExpBuffer(query);
 	return range_split_clause;
+}
+
+/*
+ * Extract the yb_presplit value from a reloptions array string.
+ *
+ * The reloptions string is in PostgreSQL text array format, e.g.:
+ *   {yb_presplit=5}
+ *   {yb_presplit="((-100, 'bar'), (250, 'foo'))",fillfactor=70}
+ *
+ * Returns a newly allocated string containing the yb_presplit value,
+ * or NULL if yb_presplit is not present.
+ */
+static char *
+extractYbPresplitFromReloptions(const char *reloptions)
+{
+	char	  **options;
+	int			noptions;
+	char	   *result = NULL;
+
+	if (!reloptions || reloptions[0] == '\0')
+		return NULL;
+
+	if (!parsePGArray(reloptions, &options, &noptions))
+	{
+		if (options)
+			free(options);
+		return NULL;
+	}
+
+	for (int i = 0; i < noptions; i++)
+	{
+		if (strncmp(options[i], "yb_presplit=", 12) == 0)
+		{
+			result = pg_strdup(options[i] + 12);
+			break;
+		}
+	}
+
+	free(options);
+	return result;
+}
+
+/*
+ * Return a copy of the reloptions array string with yb_presplit removed.
+ *
+ * If yb_presplit is not present, returns a copy of the original string.
+ * If removing yb_presplit leaves no options, returns NULL.
+ */
+static char *
+removeYbPresplitFromReloptions(const char *reloptions)
+{
+	char	  **options;
+	int			noptions;
+	PQExpBuffer buf;
+	bool		first = true;
+	char	   *result;
+
+	if (!reloptions || reloptions[0] == '\0')
+		return NULL;
+
+	if (!parsePGArray(reloptions, &options, &noptions))
+	{
+		if (options)
+			free(options);
+		return pg_strdup(reloptions);
+	}
+
+	buf = createPQExpBuffer();
+	appendPQExpBufferChar(buf, '{');
+
+	for (int i = 0; i < noptions; i++)
+	{
+		if (strncmp(options[i], "yb_presplit=", 12) == 0)
+			continue;
+
+		if (!first)
+			appendPQExpBufferChar(buf, ',');
+		appendPQExpBufferStr(buf, options[i]);
+		first = false;
+	}
+
+	appendPQExpBufferChar(buf, '}');
+
+	free(options);
+
+	/* If only "{}" remains (no options left), return NULL */
+	if (strcmp(buf->data, "{}") == 0)
+	{
+		destroyPQExpBuffer(buf);
+		return NULL;
+	}
+
+	result = pg_strdup(buf->data);
+	destroyPQExpBuffer(buf);
+	return result;
 }
 
 /*

@@ -65,6 +65,8 @@ class XClusterInboundReplicationGroupSetupTaskIf {
   // Returns true if the setup was cancelled or it already failed, and false if the setup
   // already completed successfully.
   virtual bool TryCancel() = 0;
+
+  virtual bool IsAlterReplication() const = 0;
 };
 
 Result<std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf>>

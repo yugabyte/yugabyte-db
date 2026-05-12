@@ -19,9 +19,8 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-
+import java.util.Properties;
 import javax.net.SocketFactory;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,35 +41,51 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
 
   private final SocketFactory defaultFactory = SocketFactory.getDefault();
 
+  // Controls how long to wait before proceeding after receiving the auth request packet.
+  private final int delay_ms;
+  // Control if the auth attempt should be abandoned (and the socket closed) after receiving the
+  // auth request packet.
+  private final boolean should_close;
+
   public CloseAfterAuthRequestSocketFactory() {
     super();
+    this.delay_ms = 0;
+    this.should_close = true;
+  }
+
+  public CloseAfterAuthRequestSocketFactory(Properties props) {
+    super();
+    String delayStr = props.getProperty("socketFactoryDelayMs");
+    this.delay_ms = (delayStr != null) ? Integer.parseInt(delayStr) : 0;
+    String closeStr = props.getProperty("socketFactoryCloseAfterAuth");
+    this.should_close = (closeStr != null) ? Boolean.parseBoolean(closeStr) : true;
   }
 
   @Override
   public Socket createSocket() throws IOException {
-    return new InterceptingSocket();
+    return new InterceptingSocket(delay_ms, should_close);
   }
 
   @Override
   public Socket createSocket(String host, int port) throws IOException {
-    return new InterceptingSocket(host, port);
+    return new InterceptingSocket(host, port, delay_ms, should_close);
   }
 
   @Override
   public Socket createSocket(String host, int port, InetAddress localHost, int localPort)
       throws IOException {
-    return new InterceptingSocket(host, port, localHost, localPort);
+    return new InterceptingSocket(host, port, localHost, localPort, delay_ms, should_close);
   }
 
   @Override
   public Socket createSocket(InetAddress host, int port) throws IOException {
-    return new InterceptingSocket(host, port);
+    return new InterceptingSocket(host, port, delay_ms, should_close);
   }
 
   @Override
   public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort)
       throws IOException {
-    return new InterceptingSocket(address, port, localAddress, localPort);
+    return new InterceptingSocket(address, port, localAddress, localPort, delay_ms, should_close);
   }
 
   /**
@@ -78,34 +93,48 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
    * request is detected.
    */
   private static class InterceptingSocket extends Socket {
+    private final int delay_ms;
+    private final boolean should_close;
     private InterceptingInputStream inputStream = null;
 
-    public InterceptingSocket() throws IOException {
+    public InterceptingSocket(int delay_ms, boolean should_close) throws IOException {
       super();
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
     }
 
-    public InterceptingSocket(String host, int port) throws IOException {
-      super(host, port);
-    }
-
-    public InterceptingSocket(String host, int port, InetAddress localHost, int localPort)
+    public InterceptingSocket(String host, int port, int delay_ms, boolean should_close)
         throws IOException {
-      super(host, port, localHost, localPort);
-    }
-
-    public InterceptingSocket(InetAddress host, int port) throws IOException {
       super(host, port);
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
     }
 
-    public InterceptingSocket(
-        InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+    public InterceptingSocket(String host, int port, InetAddress localHost, int localPort,
+        int delay_ms, boolean should_close) throws IOException {
+      super(host, port, localHost, localPort);
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
+    }
+
+    public InterceptingSocket(InetAddress host, int port, int delay_ms, boolean should_close)
+        throws IOException {
+      super(host, port);
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
+    }
+
+    public InterceptingSocket(InetAddress address, int port, InetAddress localAddress,
+        int localPort, int delay_ms, boolean should_close) throws IOException {
       super(address, port, localAddress, localPort);
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
     }
 
     @Override
     public InputStream getInputStream() throws IOException {
       if (inputStream == null) {
-        inputStream = new InterceptingInputStream(super.getInputStream());
+        inputStream = new InterceptingInputStream(super.getInputStream(), delay_ms, should_close);
       }
       return inputStream;
     }
@@ -121,12 +150,16 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
    */
   private static class InterceptingInputStream extends InputStream {
     private final InputStream delegate;
+    private final int delay_ms;
+    private final boolean should_close;
     private final ByteBuffer buffer = ByteBuffer.allocate(8192);
     private int bufferPosition = 0;
     private boolean closed = false;
 
-    public InterceptingInputStream(InputStream delegate) {
+    public InterceptingInputStream(InputStream delegate, int delay_ms, boolean should_close) {
       this.delegate = delegate;
+      this.delay_ms = delay_ms;
+      this.should_close = should_close;
     }
 
     @Override
@@ -215,13 +248,21 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
       // Look for authentication request messages in the buffer
       for (int i = 0; i < bufferPosition; i++) {
         if (buffer.get(i) == AUTHENTICATION_REQUEST) {
-          LOG.info("Found authentication request at position " + i + ", closing socket.");
+          LOG.info("Found authentication request at position " + i);
           try {
-            delegate.close();
-          } catch (IOException e) {
+            if (delay_ms > 0) {
+              LOG.info("Delaying auth request handling by " + delay_ms + "ms");
+              Thread.sleep(delay_ms);
+            }
+            if (should_close) {
+              LOG.info("Closing socket");
+              delegate.close();
+              closed = true;
+            }
+          } catch (IOException | InterruptedException e) {
             LOG.warn("Error closing socket after password request detection", e);
           }
-          closed = true;
+          return;
         }
       }
 

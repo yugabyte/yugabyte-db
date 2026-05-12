@@ -78,12 +78,12 @@ var deleteConfigurationAlertCmd = &cobra.Command{
 			// Execute alert list request
 			r, response, err := alertListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
+				util.FatalHTTPError(
 					response,
 					err,
 					"Alert Policy",
-					"Delete - List Alert Configurations")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+					"Delete - List Alert Configurations",
+				)
 			}
 
 			if len(r.GetEntities()) < 1 {
@@ -121,8 +121,7 @@ var deleteConfigurationAlertCmd = &cobra.Command{
 
 		rDelete, response, err := alertRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Policy", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

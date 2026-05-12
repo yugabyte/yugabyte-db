@@ -4,20 +4,20 @@ SET documentdb.next_collection_id TO 7700;
 SET documentdb.next_collection_index_id TO 7700;
 
 
-SELECT documentdb_api.insert_one('db', 'colJsonSchQry', '{ 
-    "_id": 0, "vehicle": "car", "seats" : 4, "ac" : true, 
+SELECT documentdb_api.insert_one('db', 'col_bson_dollar_ops_json_schema_query', '{ 
+    "_id": 0, "itemType": "alpha", "count" : 4, "flag" : true, 
     "height" : 5.8, "width" : { "$numberDecimal": "4.2" }, 
-    "model" : { "year" : 2020, "color" : "black" }, 
-    "options": ["sunroof", {"drive": "FWD"}, {"drl": true, "free": true} ], 
+    "details" : { "year" : 2020, "shade" : "black" }, 
+    "features": ["optionA", {"drive": "front"}, {"extra": true, "free": true} ], 
     "engine": { "cc": 1500, "fuel": "petrol" }
 }');
 
 
-SELECT documentdb_api.insert_one('db', 'colJsonSchQry', '{ 
-    "_id": 1, "vehicle": 20, "seats" : "many", "ac" : "1 ton", 
+SELECT documentdb_api.insert_one('db', 'col_bson_dollar_ops_json_schema_query', '{ 
+    "_id": 1, "itemType": 20, "count" : "many", "flag" : "1 ton", 
     "height" : "very high", "width" : { "upper" : 10, "lower" : 20 }, 
-    "model" : 2010, 
-    "options": null, 
+    "details" : 2010, 
+    "features": null, 
     "engine": 1500
 }');
 
@@ -29,76 +29,77 @@ SELECT documentdb_api.insert_one('db', 'colJsonSchQry', '{
 ---------------------------- "type" -------------------------------------------
 
 -- All docs Match
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { } } }');
 
 -- All docs Match, as none of docs have given field
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "type" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "type" : "string" } } } }');
 
 -- No Match
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "type" : "boolean" } } } }');
 
--- Matches where "vehicle" is "string"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }');
+-- Matches where "itemType" is "string"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "type" : "string" } } } }');
 
--- Matches where "seats" is "number"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "number" } } } }');
+-- Matches where "count" is "number"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "count" : { "type" : "number" } } } }');
 
 -- Matches where "height" is "number"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "type" : "number" } } } }');
 
 -- Matches where "width" is "number"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "type" : "number" } } } }');
 
--- Matches where "model" is "object"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "type" : "object" } } } }');
+-- Matches where "details" is "object"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "details" : { "type" : "object" } } } }');
 
--- Matches where "options" is "array"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "type" : "array" } } } }');
+-- Matches where "features" is "array"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "features" : { "type" : "array" } } } }');
 
--- Matches where "ac" is "boolean"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "type" : "boolean" } } } }');
+-- Matches where "flag" is "boolean"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "flag" : { "type" : "boolean" } } } }');
 
--- Matches where "vehicle" is "string" and "seats" is "number"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" }, "seats" : { "type" : "number" } } } }');
+-- Matches where "itemType" is "string" and "count" is "number"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "type" : "string" }, "count" : { "type" : "number" } } } }');
 
 -- Unsupported: "integer" type
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "count" : { "type" : "integer" } } } }');
 
 
 ---------------------------- "bsonType" -------------------------------------------
 
 -- All docs Match, as none of docs have given field
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "bsonType" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "bsonType" : "string" } } } }');
 
 -- No Match
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "bool" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "bsonType" : "bool" } } } }');
 
--- Matches where "vehicle" is "string"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" } } } }');
+-- Matches where "itemType" is "string"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "bsonType" : "string" } } } }');
 
--- Matches where "seats" is "int"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "bsonType" : "int" } } } }');
+-- Matches where "count" is "int"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "count" : { "bsonType" : "int" } } } }');
 
 -- Matches where "height" is "double"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "bsonType" : "double" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "bsonType" : "double" } } } }');
 
 -- Matches where "width" is "decimal"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "bsonType" : "decimal" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "bsonType" : "decimal" } } } }');
 
--- Matches where "model" is "object"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "bsonType" : "object" } } } }');
+-- Matches where "details" is "object"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "details" : { "bsonType" : "object" } } } }');
 
--- Matches where "options" is "array"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "bsonType" : "array" } } } }');
+-- Matches where "features" is "array"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "features" : { "bsonType" : "array" } } } }');
 
--- Matches where "ac" is "boolean"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "bsonType" : "bool" } } } }');
+-- Matches where "flag" is "boolean"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "flag" : { "bsonType" : "bool" } } } }');
 
--- Matches where "vehicle" is "string" and "seats" is "int"
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" }, "seats" : { "bsonType" : "int" } } } }');
+-- Matches where "itemType" is "string" and "count" is "int"
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "itemType" : { "bsonType" : "string" }, "count" : { "bsonType" : "int" } } } }');
 
 -- Unsupported: "integer" type
-SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'col_bson_dollar_ops_json_schema_query') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "count" : { "type" : "integer" } } } }');
+
 
 -------------------------------------------------------------------------------
 --                         Numeric Validations                               --
@@ -410,16 +411,44 @@ SELECT bson_dollar_json_schema('{"data" : [ 1, {"a": {"x":5, "y": 6}, "b":2}, {"
 -- Doc is valid when "uniqueItems" is given for Non-Array fields
 SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
 
+-------------------------------------------------------------------------------
+--                         Binary Validations                                --
+-------------------------------------------------------------------------------
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+SELECT bson_dollar_json_schema('{"data" : 1}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {"keyId": ["9e4cfa3e-2b56-4e20-9fd3-3c3708056a18"], "algorithm":"AEAD_AES_256_CBC_HMAC_SHA_512-Random", "bsonType":"string"} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema":  {"encryptMetadata": {"keyId": ["9e4cfa3e-2b56-4e20-9fd3-3c3708056a18"], "algorithm":"AEAD_AES_256_CBC_HMAC_SHA_512-Random"} } }');
+-- negative test cases
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema":  {"encryptMetadata": "test"} }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema":  {"encryptMetadata": {}} }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema":  {"encryptMetadata": {"unknown":"hello"}} }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema":  {"encryptMetadata": {"keyId":1}} }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema":  {"encryptMetadata": {"algorithm":[]}} }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {"a":1} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {"keyId":1} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {"algorithm":[]} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {"bsonType": 123} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : "" } } } }'); 
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {}, "type":"string" } } } }'); 
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {}, "bsonType":"string" } } } }'); 
+
+-- guc test cases
+set documentdb.enableSchemaEnforcementForCSFLE = false;
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "06" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+SELECT bson_dollar_json_schema('{"data" : 1}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+SELECT bson_dollar_json_schema('{"data" : { "$binary" : { "base64" : "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" }}}','{ "$jsonSchema": { "properties": { "data" : { "encrypt" : {} } } } }');
+
 -- $jsonSchema will be supported in query condition later
 -------------------------------------------------------------------------------
 --                         $jsonSchema in query condition                    --
 -------------------------------------------------------------------------------
 
 -- All docs Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "col_bson_dollar_ops_json_schema_query", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
 
 -- -- No Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "col_bson_dollar_ops_json_schema_query", "filter" : { "$jsonSchema": { "properties": { "itemType" : { "type" : "boolean" } } } }, "$db" : "db" }');
 
 -- -- Matches where "vehicle" is "string"
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "col_bson_dollar_ops_json_schema_query", "filter" : { "$jsonSchema": { "properties": { "itemType" : { "type" : "string" } } } }, "$db" : "db" }');

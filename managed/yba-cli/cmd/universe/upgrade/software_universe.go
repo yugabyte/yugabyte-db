@@ -156,8 +156,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		rUpgrade, response, err := authAPI.UpgradeSoftware(universeUUID).
 			SoftwareUpgradeParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade Software")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade Software")
 		}
 
 		logrus.Info(

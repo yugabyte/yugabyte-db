@@ -24,7 +24,7 @@ import { createErrorMessage } from '../../../utils/helpers';
 import { useFormMainStyles } from '../../../universeMainStyle';
 //Icons
 import { AZ_OVERRIDES_FIELD, UNIVERSE_OVERRIDES_FIELD } from '../../../utils/constants';
-import { ReactComponent as CloseIcon } from '../../../../../../assets/close.svg';
+import CloseIcon from '../../../../../../assets/close.svg';
 
 interface HelmOverridesModalProps {
   open: boolean;

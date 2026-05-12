@@ -32,9 +32,17 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
+#include "yb/storage/storage_test_util.h"
+
 using std::unique_ptr;
 
 namespace rocksdb {
+
+const yb::MemTrackerPtr& test_mem_tracker() {
+  static yb::MemTrackerPtr mem_tracker = yb::MemTracker::CreateTracker("test");
+  return mem_tracker;
+}
+
 namespace test {
 
 extern std::string RandomHumanReadableString(Random* rnd, int len) {
@@ -341,8 +349,8 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
     return Status::OK();
   }
 
-  UserFrontierPtr CreateFrontier() override {
-    return new TestUserFrontier(0);
+  yb::storage::UserFrontierPtr CreateFrontier() override {
+    return new yb::storage::TestUserFrontier(0);
   }
 
   virtual ~TestBoundaryValuesExtractor() {}
@@ -350,10 +358,6 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
 };
 
 } // namespace
-
-std::string TestUserFrontier::ToString() const {
-  return YB_CLASS_TO_STRING(value);
-}
 
 Slice GetBoundaryLeft(const UserBoundaryValues& values) {
   auto value = TEST_UserValueWithTag(values, TAG_LEFT_VALUE);

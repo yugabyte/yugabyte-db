@@ -1,15 +1,23 @@
 {
   "exclude": [
-     "([.]l$)",
-     "(Makefile$)",
-     "(src/yb/common/ql_type[.]cc$)",
-     "(src/yb/gutil/valgrind[.]h$)",
+     "([.]clang-tidy)",
+     "([.]csv$)",
+     "([.]dump$)",
+     "([.]gitignore$)",
      "([.]ipynb$)",
+     "([.]l$)",
+     "([.]out$)",
+     "([.]patch$)",
+     "([.]svg$)",
      "([.]txt$)",
-     "(^src/odyssey/.*$)",
-     "(^src/inline-thirdparty/.*$)",
-     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
+     "(Makefile$)",
+     "(^src/inline-thirdparty/)",
+     "(^src/lint/cpplint[.]py$)",
+     "(^src/odyssey/)",
+     "(^src/yb/common/ql_type[.]cc$)",
+     "(^src/yb/gutil/valgrind[.]h$)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
      "(^managed/src/main/resources/v1[.]routes$)",
@@ -23,35 +31,37 @@
      "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
      "(^managed/src/test/resources/logback.*[.]xml$)",
      "(^managed/build[.]sbt$)",
-     "(^managed/src/main/resources/aws_pricing/.*$)",
+     "(^managed/src/main/resources/aws_pricing/)",
      "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
      "(^managed/src/main/resources/metric/Dashboard[.]json$)",
      "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
      "(^managed/devops/replicated[.]yml$)",
-     "(^managed/devops/roles/.*$)",
+     "(^managed/devops/roles/)",
      "(^python/yb/py[.]typed$)",
      "(^managed/RUNTIME-FLAGS[.]md$)",
-     "(^managed/yba-cli/docs/.*)",
+     "(^managed/yba-cli/docs/)",
      "(^managed/yba-cli/.*/LICENSE$)",
      "(^managed/yba-cli/NOTICE$)",
      "(^managed/yba-cli/internal/formatter/tabwriter/*)",
      "(^managed/yba-cli/internal/formatter/templates/*)",
      "(^managed/yba-cli/templates/*)",
-     "(^[.]clang-tidy)",
-     "(.*/py.typed)",
+     "(/py.typed)",
      "(^troubleshoot/backend/gradlew)",
      "(^troubleshoot/backend/gradlew[.]bat)",
      "(^troubleshoot/backend/build.gradle.kts)",
      "(^troubleshoot/backend/.*/application[.]properties)",
-     "(^troubleshoot/backend/src/main/resources/.*)",
-     "(^troubleshoot/backend/src/test/resources/.*)",
+     "(^troubleshoot/backend/src/main/resources/)",
+     "(^troubleshoot/backend/src/test/resources/)",
      "(^managed/src/main/resources/gflag_groups/)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
+     "(^managed/client/go/templates/)",
      "(^yb_release_manifest.json$)",
-     "(^managed/client/java/.*/pom.xml)",
      "(^src/yb/tools/.*pl$)",
-     "(^yugabyted-ui/ui/package-lock.json)"
+     "(^yugabyted-ui/ui/package-lock.json)",
+     "(^managed/node-agent/resources/.*\\.ini$)",
+     "(^managed/node-agent/resources/.*\\.j2$)",
+     "(^managed/src/main/java/com/yugabyte/yw/common/operator/resources/.*\\.yaml$)"
   ],
   "linters": {
     "go-files": {
@@ -78,7 +88,8 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
-        "([.]csv$)",
+        "(/pom[.]xml$)",
+        "([.]md$)",
         "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
@@ -97,16 +108,16 @@
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
-        "(^java/pom[.]xml$)",
-        "(^.*[.]patch$)",
-        "(java/yb-cdc/pom.xml)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
         "(^src/postgres/)",
+        "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",
         "(^.*[.]svg$)",
         "(^.*[.]md$)",
-        "(^java/yb-pgsql/src/test/resources/expected/)"
+        "(^java/yb-pgsql/src/test/resources/expected/)",
+        "(^java/yb-pgsql/src/test/resources/TestYbBackup/)",
+        "(^java/yb-pgsql/src/test/resources/TestYsqlDump/)"
       ]
     },
     "pycodestyle": {
@@ -129,7 +140,8 @@
         "(^src/yb/gutil/cycleclock-inl[.]h$)",
         "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
         "(^src/yb/gutil/port[.]h$)",
-        "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)",
+        "(_pch[.]h$)"
       ],
       "include": [
         "([.]cpp$)",
@@ -138,6 +150,7 @@
         "([.]hpp$)",
         "([.]h$)"
       ],
+      "bin": "src/lint/cpplint.py",
       "cpplint.header_guard_root_dir": "src",
       "cpplint.max_line_length": 100,
       "severity.rules": {
@@ -180,6 +193,7 @@
         "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
       ],
       "exclude": [
+        "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
@@ -225,6 +239,16 @@
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "client-version-check": {
+      "type": "script-and-regex",
+      "include": [
+        "(^managed/src/main/resources/swagger[.]json$)",
+        "(^managed/src/main/resources/openapi/.*[.]yaml$)"
+      ],
+      "script-and-regex.script": "managed/lint/check-client-version.sh",
+      "script-and-regex.regex":
+        "/^ERROR: (?P<message>.*)$/m"
     }
   }
 }

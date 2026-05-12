@@ -100,7 +100,9 @@ public class CertsRotate extends UpgradeTaskBase {
           // For rootCA root certificate rotation, we would need to do it in three rounds
           // so that node to node communications are not disturbed during the upgrade.
           // For other cases we can do it in one round by updating respective certs.
-          if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
+          // This 3-round process works for both ROLLING_UPGRADE and NON_RESTART_UPGRADE.
+          if ((taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
+                  || taskParams().upgradeOption == UpgradeOption.NON_RESTART_UPGRADE)
               && taskParams().rootCARotationType == CertRotationType.RootCert) {
             // Update the rootCA in platform to generate a multi-cert containing both old cert and
             // new cert. If it is already a multi-cert or the root CA of the universe is already
@@ -111,14 +113,14 @@ public class CertsRotate extends UpgradeTaskBase {
             createCertUpdateTasks(allNodes, CertRotateAction.APPEND_NEW_ROOT_CERT);
 
             // Add task to use the updated certs
-            createActivateCertsTask(universe, nodes, UpgradeOption.ROLLING_UPGRADE, false);
+            createActivateCertsTask(universe, nodes, taskParams().upgradeOption, false);
 
             // Copy new server certs to all nodes. This deletes the old certs and uploads the new
             // files to the same location.
             createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
 
             // Add task to use the updated certs.
-            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
+            createActivateCertsTask(getUniverse(), nodes, taskParams().upgradeOption, false);
 
             // Remove old root cert from the ca.crt by replacing (moving) the old cert with the new
             // one.
@@ -137,7 +139,7 @@ public class CertsRotate extends UpgradeTaskBase {
 
             // Add task to use the updated certs.
             createActivateCertsTask(
-                getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().isYbcInstalled());
+                getUniverse(), nodes, taskParams().upgradeOption, taskParams().isYbcInstalled());
 
           } else {
             // Update the rootCA in platform to have both old cert and new cert.
@@ -243,12 +245,16 @@ public class CertsRotate extends UpgradeTaskBase {
       UpgradeOption upgradeOption,
       boolean ybcInstalled) {
 
-    boolean n2nCertExpired = CertificateHelper.checkNode2NodeCertsExpiry(universe);
-    if (isCertReloadable(universe) && !n2nCertExpired) {
+    boolean canReloadCert =
+        isCertReloadable(universe) && !CertificateHelper.checkNode2NodeCertsExpiry(universe);
+    if (taskParams().upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
+      if (!canReloadCert) {
+        throw new RuntimeException(
+            "Node-to-node certificates are expired, only non-rolling upgrade is supported");
+      }
       // cert reload can be performed.
       log.info("adding cert rotate via reload task ...");
       createCertReloadTask(nodes, universe.getUniverseUUID(), getUserTaskUUID());
-
     } else {
       // Do a restart to rotate certificate.
       log.info("adding a cert rotate via restart task ...");
@@ -270,10 +276,18 @@ public class CertsRotate extends UpgradeTaskBase {
           universeConfigured);
       return false;
     }
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (!CertsRotateParams.isHotCertReloadSupportedForUniverse(
+        userIntent.ybSoftwareVersion,
+        userIntent.enableClientToNodeEncrypt,
+        userIntent.enableNodeToNodeEncrypt)) {
+      log.info(
+          "hot cert reload cannot be performed for client-to-node-only universe with DB < {}",
+          CertsRotateParams.HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION);
+      return false;
+    }
     return Util.compareYbVersions(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            "2.14.0.0-b1",
-            true /* suppressFormatError */)
+            userIntent.ybSoftwareVersion, "2.14.0.0-b1", true /* suppressFormatError */)
         >= 0;
   }
 

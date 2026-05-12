@@ -12,9 +12,9 @@ fi
 
 clockbound_check="/usr/local/bin/clockbound-check 2>/dev/null"
 
-# Attempt with 10 retries sleeping 2s each
+# Attempt with 50 retries sleeping 2s each
 
-retries=10
+retries=50
 synchronized=0
 
 while (( retries > 0 )); do

@@ -1,8 +1,9 @@
 ---
-title: Architecture for Change data capture (CDC) in YugabyteDB
-headerTitle: Change data capture (CDC)
-linkTitle: Change data capture (CDC)
+title: Architecture for CDC using gRPC protocol
+headerTitle: CDC using gRPC protocol
+linkTitle: CDC using gRPC protocol
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
+headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 tags:
   feature: early-access
 menu:

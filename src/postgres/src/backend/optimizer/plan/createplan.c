@@ -46,11 +46,14 @@
 /* YB includes */
 #include "access/htup_details.h"
 #include "access/yb_scan.h"
+#include "catalog/partition.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -131,6 +134,7 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 									  int flags);
+static bool yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs);
 static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
 												ModifyTablePath *path,
 												List **modify_tlist,
@@ -629,6 +633,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	List	   *tlist;
 	Plan	   *plan;
 
+	/* YB */
+	char	   *ybScannedObjectName = NULL;
+
 	/*
 	 * Extract the relevant restriction clauses from the parent relation. The
 	 * executor must apply all these restrictions during the scan, except for
@@ -646,8 +653,14 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 			scan_clauses = castNode(IndexPath, best_path)->indexinfo->indrestrictinfo;
+
+			if (IsYugaByteEnabled())
+				ybScannedObjectName = castNode(IndexPath, best_path)->indexinfo->ybIndexName;
 			break;
 		default:
+			if (IsYugaByteEnabled())
+				if (rel != NULL && rel->ybRelationName != NULL)
+					ybScannedObjectName = rel->ybRelationName;
 			scan_clauses = rel->baserestrictinfo;
 			break;
 	}
@@ -857,6 +870,15 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 				 (int) best_path->pathtype);
 			plan = NULL;		/* keep compiler quiet */
 			break;
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		if (ybScannedObjectName != NULL)
+		{
+			Scan *scan = (Scan *) plan;
+			scan->ybScannedObjectName = pstrdup(ybScannedObjectName);
+		}
 	}
 
 	/*
@@ -3215,6 +3237,46 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * yb_leaf_update_modifies_partition_key
+ *
+ * Returns true if any column in the input bitmapset is a partition key column
+ * of any ancestor partitioned table.
+ * Note that ancestor partitioned tables may have non-overlapping partition keys
+ * as well as different column orderings. An update that modifies the partition
+ * key at any level counts as a cross-partition update and must be handled as a
+ * distributed transaction.
+ * For example:
+ * Root table: (k1 INT, k2 INT, v INT) PARTITION BY RANGE (k1)
+ * Mid-level table: (k2 INT, k1 INT, v INT) PARTITION BY RANGE (k2)
+ * Leaf table: (v INT, k1 INT, k2 INT)
+ * UPDATE leaf SET k1 = 10 WHERE k2 = 1;
+ */
+static bool
+yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs)
+{
+	List	   *ancestors = get_partition_ancestors(RelationGetRelid(leaf_rel));
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, ancestors)
+	{
+		Oid			ancestor_relid = lfirst_oid(lc);
+		Relation	ancestor_rel = RelationIdGetRelation(ancestor_relid);
+
+		result = yb_has_ancestor_partition_attrs(leaf_rel, ancestor_rel,
+												 update_attrs);
+
+		RelationClose(ancestor_rel);
+
+		if (result)
+			break;
+	}
+
+	list_free(ancestors);
+	return result;
+}
+
+/*
  * yb_fetch_subpaths
  *
  * Helper function for yb_single_row_update_or_delete_path to fetch the
@@ -3604,6 +3666,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
 	bms_free(generated_cols_source_attrs);
 	bms_free(affected_generated_attrs);
+
+	/*
+	 * In most cases, the primary key of a leaf partition is a superset of the
+	 * partition key. However, it is possible that the two are non-overlapping
+	 * and in such cases, the primary key functions purely as a clustering key.
+	 * An example of this is when the root partition has no primary key while
+	 * leaf partition declare a partition level primary key:
+	 * CREATE TABLE root (part_key INT, cluster_key INT, v INT) PARTITION BY RANGE (part_key);
+	 * CREATE TABLE leaf PARTITION OF root (PRIMARY KEY (cluster_key)) FOR VALUES ...;
+	 *
+	 * In such cases, an update that modifies a partitioning key column could
+	 * result in the row being moved to a different partition. Disallow single
+	 * shard updates in such scenarios.
+	 */
+	if (path->operation == CMD_UPDATE && relation->rd_rel->relispartition &&
+		yb_update_modifies_partition_key(relation, update_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
@@ -4181,7 +4263,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 									false,	/* is_bitmap_index_scan */
 									&local_quals, &remote_quals, &colrefs, NULL,
 									NULL,
-									planner_rt_fetch(scan_relid, root)->relid);
+									planner_rt_fetch(scan_relid, root)->relid,
+									NULL);
 	else
 		local_quals = extract_actual_clauses(scan_clauses, false);
 
@@ -4385,6 +4468,7 @@ create_indexscan_plan(PlannerInfo *root,
 		 * should still push down index clauses.
 		 */
 		bool		need_idx_remote;
+		Bitmapset  *decoded_pk_attnums = NULL;
 
 		if (bitmapindex)
 			need_idx_remote = true;
@@ -4404,6 +4488,18 @@ create_indexscan_plan(PlannerInfo *root,
 			need_idx_remote = !indexonly;
 
 		/*
+		 * YB: For index-only scans with decoded PK columns, build a set of
+		 * base-table attnums that DocDB cannot evaluate.
+		 */
+		if (indexonly && best_path->indexinfo->yb_num_decoded_pk_cols > 0)
+		{
+			IndexOptInfo *idxinfo = best_path->indexinfo;
+			int			phys_natts = idxinfo->ncolumns - idxinfo->yb_num_decoded_pk_cols;
+			for (int i = phys_natts; i < idxinfo->ncolumns; i++)
+				decoded_pk_attnums = bms_add_member(decoded_pk_attnums, idxinfo->indexkeys[i]);
+		}
+
+		/*
 		 * First, include other clauses from the bitmap branch (if any) as index
 		 * pushdowns. See the comment in build_paths_for_OR for more details.
 		 */
@@ -4414,7 +4510,8 @@ create_indexscan_plan(PlannerInfo *root,
 										NULL,	/* rel_remote_quals */
 										NULL,	/* rel_colrefs */
 										&idx_remote_quals, &idx_colrefs,
-										planner_rt_fetch(baserelid, root)->relid);
+										planner_rt_fetch(baserelid, root)->relid,
+										NULL);
 
 		/* Then, look at all remaining clauses for pushdown-able filters */
 		yb_extract_pushdown_clauses(qpqual,
@@ -4425,7 +4522,11 @@ create_indexscan_plan(PlannerInfo *root,
 									&rel_colrefs,
 									&idx_remote_quals,
 									&idx_colrefs,
-									planner_rt_fetch(baserelid, root)->relid);
+									planner_rt_fetch(baserelid, root)->relid,
+									decoded_pk_attnums);
+
+		if (decoded_pk_attnums)
+			bms_free(decoded_pk_attnums);
 	}
 	else
 		local_quals = extract_actual_clauses(qpqual, false);
@@ -4482,6 +4583,15 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+	if (best_path->yb_index_path_info.merge_scan_saop_cols)
+	{
+		yb_merge_scan_info = makeNode(YbMergeScanInfo);
+		yb_merge_scan_info->saop_cols =
+			best_path->yb_index_path_info.merge_scan_saop_cols;
+	}
+
 	/* Finally ready to build the plan node */
 	if (indexonly)
 	{
@@ -4500,6 +4610,10 @@ create_indexscan_plan(PlannerInfo *root,
 
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		index_only_scan_plan->yb_num_decoded_pk_cols =
+			best_path->indexinfo->yb_num_decoded_pk_cols;
+		if (yb_merge_scan_info)
+			index_only_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_only_scan_plan;
 	}
@@ -4526,10 +4640,47 @@ create_indexscan_plan(PlannerInfo *root,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		if (yb_merge_scan_info)
+			index_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
+
 		scan_plan = (Scan *) index_scan_plan;
 	}
 
+	if (yb_merge_scan_info)
+	{
+		Bitmapset  *yb_saop_col_idxs = NULL;
+		ListCell   *yb_lc;
+		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
+			makeNode(YbSortInfo);
+
+		foreach(yb_lc, yb_merge_scan_info->saop_cols)
+		{
+			YbMergeScanSaopColInfo *yb_saop_col_info =
+				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
+
+			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
+											  yb_saop_col_info->indexcol);
+		}
+
+		yb_sort_info->type = T_YbSortInfo;
+		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
+									   best_path->path.pathkeys,
+									   best_path->path.parent->relids,
+									   yb_saop_col_idxs,
+									   &yb_sort_info->numCols,
+									   &yb_sort_info->sortColIdx,
+									   &yb_sort_info->sortOperators,
+									   &yb_sort_info->collations,
+									   &yb_sort_info->nullsFirst);
+	}
+
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
+
+	if (IsYugaByteEnabled())
+	{
+		Assert(indexinfo->ybIndexName != NULL);
+		scan_plan->ybScannedObjectName = pstrdup(indexinfo->ybIndexName);
+	}
 
 	return scan_plan;
 }
@@ -4645,6 +4796,11 @@ create_bitmap_scan_plan(PlannerInfo *root,
 									 baserelid);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+	if (IsYugaByteEnabled())
+	{
+		Assert(best_path->path.parent->ybRelationName != NULL);
+		scan_plan->scan.ybScannedObjectName = pstrdup(best_path->path.parent->ybRelationName);
+	}
 
 	return scan_plan;
 }
@@ -4755,7 +4911,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 								&rel_remote_quals, &rel_colrefs,
 								NULL,	/* idx_remote_quals */
 								NULL,	/* idx_colrefs */
-								planner_rt_fetch(baserelid, root)->relid);
+								planner_rt_fetch(baserelid, root)->relid,
+								NULL);
 
 	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
 
@@ -4808,7 +4965,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 								&fallback_remote_quals, &fallback_colrefs,
 								NULL,	/* idx_remote_quals */
 								NULL,	/* idx_colrefs */
-								planner_rt_fetch(baserelid, root)->relid);
+								planner_rt_fetch(baserelid, root)->relid,
+								NULL);
 
 	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
 
@@ -4825,6 +4983,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 										 ((Path *) best_path)->yb_plan_info);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+	if (IsYugaByteEnabled())
+	{
+		Assert(best_path->path.parent->ybRelationName != NULL);
+		scan_plan->scan.ybScannedObjectName = pstrdup(best_path->path.parent->ybRelationName);
+	}
 
 	return scan_plan;
 }
@@ -5000,9 +5163,9 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		/* then convert to a bitmap indexscan */
 		if (ipath->indexinfo->rel->is_yb_relation)
 		{
-			YbPlanInfo	bitmap_idx_info = iscan->yb_plan_info;
-
-			bitmap_idx_info.estimated_docdb_result_width = ipath->ybctid_width;
+			Assert(!iscan->yb_merge_scan_info);
+			iscan->yb_plan_info.estimated_docdb_result_width =
+				ipath->ybctid_width;
 
 			plan = (Plan *) make_yb_bitmap_indexscan(iscan->scan.scanrelid,
 													 iscan->indexid,
@@ -5010,7 +5173,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 													 iscan->indexqualorig,
 													 iscan->indextlist,
 													 iscan->yb_idx_pushdown,
-													 bitmap_idx_info);
+													 iscan->yb_plan_info);
 		}
 		else
 			plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
@@ -5062,6 +5225,13 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		*qual = subquals;
 		*indexqual = subindexquals;
 		*indexECs = subindexECs;
+
+		if (IsYugaByteEnabled())
+		{
+			Assert(ipath->indexinfo->ybIndexName != NULL);
+			Scan *scan = (Scan *) plan;
+			scan->ybScannedObjectName = pstrdup(ipath->indexinfo->ybIndexName);
+		}
 	}
 	else
 	{
@@ -5141,7 +5311,8 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 									false,	/* is_bitmap_index_scan */
 									&yb_local_quals, &yb_remote_quals,
 									&yb_colrefs, NULL, NULL,
-									planner_rt_fetch(scan_relid, root)->relid);
+									planner_rt_fetch(scan_relid, root)->relid,
+									NULL);
 	else
 		yb_local_quals = extract_actual_clauses(scan_clauses, false);
 
@@ -6488,6 +6659,9 @@ create_hashjoin_plan(PlannerInfo *root,
 	hashclauses = get_switched_clauses(best_path->path_hashclauses,
 									   best_path->jpath.outerjoinpath->parent->relids);
 
+	/* YB */
+	char *ybSkewTableName = NULL;
+
 	/*
 	 * If there is a single join clause and we can identify the outer variable
 	 * as a simple column reference, supply its identity for possible use in
@@ -6516,6 +6690,9 @@ create_hashjoin_plan(PlannerInfo *root,
 				skewTable = rte->relid;
 				skewColumn = var->varattno;
 				skewInherit = rte->inh;
+
+				if (IsYugaByteEnabled())
+					ybSkewTableName = rte->ybScannedObjectName;
 			}
 		}
 	}
@@ -6546,6 +6723,12 @@ create_hashjoin_plan(PlannerInfo *root,
 						  skewTable,
 						  skewColumn,
 						  skewInherit);
+
+	if (IsYugaByteEnabled())
+	{
+		if (ybSkewTableName != NULL)
+			hash_plan->ybSkewTableName = pstrdup(ybSkewTableName);
+	}
 
 	yb_assign_unique_plan_node_id(root, (Plan *) hash_plan);
 
@@ -6889,6 +7072,28 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 			stripped_indexquals = lappend(stripped_indexquals, clause);
 			clause = fix_indexqual_clause(root, index, iclause->indexcol,
 										  clause, iclause->indexcols);
+			fixed_indexquals = lappend(fixed_indexquals, clause);
+		}
+	}
+
+	/*
+	 * YB: Besides indexclauses, there could be derived clauses in
+	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
+	 * well.
+	 */
+	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
+	{
+		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+
+		if (info->derived)
+		{
+			Node	   *clause;
+
+			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			/* For now, row-array-compare merge scan is not supported. */
+			clause = fix_indexqual_clause(root, index, info->indexcol,
+										  (Node *) info->saop,
+										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
 	}

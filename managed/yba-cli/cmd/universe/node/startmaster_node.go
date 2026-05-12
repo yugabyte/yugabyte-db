@@ -5,8 +5,6 @@
 package node
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -24,7 +22,7 @@ var startMasterNodeCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to start master node"+
@@ -35,7 +33,7 @@ var startMasterNodeCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(nodeName)) == 0 {
+		if util.IsEmptyString(nodeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No node name found to start master"+

@@ -3,6 +3,13 @@ title: YugabyteDB gRPC Connector (Debezium)
 headerTitle: YugabyteDB gRPC Connector
 linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
+aliases:
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb-ysql
+  - /stable/explore/change-data-capture/debezium-connector
+  - /stable/explore/change-data-capture/debezium
+  - /stable/explore/change-data-capture/debezium-connector-postgresql
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
   stable:
     parent: explore-change-data-capture-grpc-replication
@@ -26,7 +33,9 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.4 |
 | 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
-| 2024.2 | dz.1.9.5.yb.grpc.2024.2.2 |
+| 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
+| 2025.1 | dz.1.9.5.yb.grpc.2025.1 |
+| 2025.2 | dz.1.9.5.yb.grpc.2025.2 |
 
 Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
@@ -559,7 +568,7 @@ The following example shows the value portion of a change event that the connect
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8898156066356,
+      "ts_ms": 1775704405230,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:4::0:0\"]",
@@ -570,7 +579,7 @@ The following example shows the value portion of a change event that the connect
       "xmin": null
     },
     "op": "c", --> 7
-    "ts_ms": 1646145062480, --> 8
+    "ts_ms": 1775704405236, --> 8
     "transaction": null
   }
 }
@@ -627,7 +636,7 @@ The update event is as follows:
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8881476960074,
+      "ts_ms": 1775704408457,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:5::0:0\"]",
@@ -638,7 +647,7 @@ The update event is as follows:
       "xmin": null
     },
     "op": "u", --> 4
-    "ts_ms": 1646149134341,
+    "ts_ms": 1775704408463,
     "transaction": null
   }
 }
@@ -685,7 +694,7 @@ DELETE FROM customers WHERE id = 1;
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8876894517738,
+      "ts_ms": 1775704411532,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:6::0:0\"]",
@@ -696,7 +705,7 @@ DELETE FROM customers WHERE id = 1;
       "xmin": null
     },
     "op": "d", --> 3
-    "ts_ms": 1646150253203,
+    "ts_ms": 1775704411538,
     "transaction": null
   }
 }
@@ -951,7 +960,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/preview/integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/stable/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
@@ -1069,7 +1078,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
-* [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 
@@ -1079,7 +1088,9 @@ Advanced connector configuration properties:
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/> `initial` - Take a snapshot when the connector is first started <br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
 | snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
-| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
+| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. <br/><br/> **Note:** This flag is only valid for `dz.1.9.5.yb.grpc.2025.1` and earlier. For `dz.1.9.5.yb.grpc.2025.2` and later, use `cdc.poll.interval.active.ms` and `cdc.poll.interval.idle.ms`. |
+| cdc.poll.interval.active.ms | 10 | Poll interval when actively receiving data. <br/><br/> **Note:** This flag is only available in `dz.1.9.5.yb.grpc.2025.2` and later. |
+| cdc.poll.interval.idle.ms | 500 | Poll interval when no data is being received. <br/><br/> **Note:** This flag is only available in `dz.1.9.5.yb.grpc.2025.2` and later. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |

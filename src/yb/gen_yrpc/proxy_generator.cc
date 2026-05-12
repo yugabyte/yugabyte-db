@@ -42,6 +42,48 @@ std::vector<MetricDescriptor> outbound_metrics = {
   },
 };
 
+void DeclareMethod(YBPrinter printer, const std::string& type_prefix) {
+  ScopedIndent indent(printer);
+  printer(
+      "\n"
+      "::yb::Status $rpc_name$(\n"
+      "    const $" + type_prefix + "request$ &req,\n"
+      "    $" + type_prefix + "response$ *resp,\n"
+      "    ::yb::rpc::RpcController *controller) const;\n"
+      "void $rpc_name$Async(\n"
+      "    const $" + type_prefix + "request$ &req,\n"
+      "    $" + type_prefix + "response$ *response,\n"
+      "    ::yb::rpc::RpcController *controller,\n"
+      "    ::yb::rpc::ResponseCallback callback) const;\n"
+  );
+}
+
+void DefineMethod(YBPrinter printer, const std::string& type_prefix) {
+  printer(
+      "::yb::Status $service_name$Proxy::$rpc_name$(\n"
+      "    const $" + type_prefix + "request$ &req, $" + type_prefix +
+          "response$ *resp, ::yb::rpc::RpcController *controller) const {\n"
+      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+      "  return proxy().SyncRequest(\n"
+      "      &method, metrics<$service_method_count$>(static_cast<size_t>("
+          "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
+          "$send_metadata$);\n"
+      "}\n"
+      "\n"
+      "void $service_name$Proxy::$rpc_name$Async(\n"
+      "    const $" + type_prefix + "request$ &req, $" + type_prefix +
+          "response$ *resp, ::yb::rpc::RpcController *controller,\n"
+      "    ::yb::rpc::ResponseCallback callback) const {\n"
+      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+      "  proxy().AsyncRequest(\n"
+      "      &method, metrics<$service_method_count$>(static_cast<size_t>("
+          "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
+          "std::move(callback), $send_metadata$);\n"
+      "}\n"
+      "\n"
+  );
+}
+
 } // namespace
 
 void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescriptor *file) {
@@ -88,17 +130,13 @@ void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescr
     );
 
     for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
-      ScopedSubstituter method_subs(printer, service->method(method_idx), rpc::RpcSides::PROXY);
+      const auto* method = service->method(method_idx);
+      ScopedSubstituter method_subs(printer, method, rpc::RpcSides::PROXY);
 
-      printer(
-          "\n"
-          "  ::yb::Status $rpc_name$(const $request$ &req, $response$ *resp,\n"
-          "                          ::yb::rpc::RpcController *controller) const;\n"
-          "  void $rpc_name$Async(const $request$ &req,\n"
-          "                       $response$ *response,\n"
-          "                       ::yb::rpc::RpcController *controller,\n"
-          "                       ::yb::rpc::ResponseCallback callback) const;\n"
-      );
+      DeclareMethod(printer, "pb_");
+      if (IsLightweightMethod(method, rpc::RpcSides::PROXY)) {
+        DeclareMethod(printer, "lw_");
+      }
     }
 
     printer("};\n\n");
@@ -170,30 +208,13 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
     );
 
     for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
-      ScopedSubstituter method_subs(printer, service->method(method_idx), rpc::RpcSides::PROXY);
+      const auto* method = service->method(method_idx);
+      ScopedSubstituter method_subs(printer, method, rpc::RpcSides::PROXY);
 
-      printer(
-          "::yb::Status $service_name$Proxy::$rpc_name$(\n"
-          "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller) "
-              "const {\n"
-          "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
-          "  return proxy().SyncRequest(\n"
-          "      &method, metrics<$service_method_count$>(static_cast<size_t>("
-              "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
-              "$send_metadata$);\n"
-          "}\n"
-          "\n"
-          "void $service_name$Proxy::$rpc_name$Async(\n"
-          "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller,\n"
-          "    ::yb::rpc::ResponseCallback callback) const {\n"
-          "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
-          "  proxy().AsyncRequest(\n"
-          "      &method, metrics<$service_method_count$>(static_cast<size_t>("
-              "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
-              "std::move(callback), $send_metadata$);\n"
-          "}\n"
-          "\n"
-      );
+      DefineMethod(printer, "pb_");
+      if (IsLightweightMethod(method, rpc::RpcSides::PROXY)) {
+        DefineMethod(printer, "lw_");
+      }
     }
   }
 

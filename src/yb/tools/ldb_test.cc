@@ -104,7 +104,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
   Status WriteData() {
     auto session = client_->NewSession(5s);
 
-    std::shared_ptr<client::YBqlWriteOp> insert(table_->NewQLWrite());
+    std::shared_ptr<client::YBqlWriteOp> insert(table_->NewQLWrite(SharedThreadSafeArena()));
     auto req = insert->mutable_request();
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 

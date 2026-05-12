@@ -24,10 +24,10 @@ import { UniverseState, getUniverseStatus } from '../universes/helpers/universeH
 import { YBSelect } from '../../redesign/components';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
-import dbSettingsIcon from './images/db-settings.svg';
-import documentationIcon from '../../redesign/assets/documentation.svg';
-import EmptyTrayIcon from './images/empty-tray.svg';
-import WarningIcon from './images/warning.svg';
+import DbSettingsIcon from './images/db-settings.svg?img';
+import DocumentationIcon from '../../redesign/assets/documentation.svg?img';
+import EmptyTrayIcon from './images/empty-tray.svg?img';
+import WarningIcon from './images/warning.svg?img';
 
 import './PerfAdvisor.scss';
 
@@ -346,7 +346,7 @@ export const PerfAdvisor: FC = () => {
               <div className="perfAdvisor">
                 <div className="perfAdvisor__containerTitleGrid">
                   <div className="contentContainer">
-                    <img src={dbSettingsIcon} alt="more" className="dbImage" />
+                    <img src={DbSettingsIcon} alt="more" className="dbImage" />
                     <h4 className="primaryDescription">
                       {t('clusterDetail.performance.advisor.ScanCluster')}
                     </h4>
@@ -377,7 +377,7 @@ export const PerfAdvisor: FC = () => {
                       rel="noopener noreferrer"
                     >
                       <div className="learnMoreContent">
-                        <img src={documentationIcon} alt="more" className="learnMoreImage" />
+                        <img src={DocumentationIcon} alt="more" className="learnMoreImage" />
                         {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
                       </div>
                     </a>

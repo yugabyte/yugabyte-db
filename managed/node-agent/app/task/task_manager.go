@@ -13,6 +13,9 @@ import (
 	"node-agent/util"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -156,7 +159,7 @@ func (m *TaskManager) Submit(
 	}
 	util.FileLogger().
 		Infof(ctx, "Submitted task %s with timeout in %.2f secs", taskID, time.Until(deadline).Seconds())
-	parentCtx := util.InheritTracingIDs(ctx, context.Background())
+	parentCtx := util.InheritContextKeys(ctx, context.Background())
 	tInfoCtx, tInfoCancel := context.WithCancel(parentCtx)
 	deadlineCtx, deadlineCancel := context.WithDeadline(tInfoCtx, deadline)
 	cancelFnc := func() {
@@ -216,7 +219,11 @@ func (m *TaskManager) Subscribe(
 		case <-ctx.Done():
 			m.updateTime(taskID)
 			// Client is cancelled or deadline exceeded.
-			return nil
+			// Return the right error code for the client to retry.
+			if ctx.Err() == context.DeadlineExceeded {
+				return status.New(codes.DeadlineExceeded, "Client deadline exceeded").Err()
+			}
+			return status.New(codes.Canceled, "Client cancelled request").Err()
 		case <-tInfo.future.Done():
 			// Task is completed.
 			size := 0

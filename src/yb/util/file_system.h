@@ -89,10 +89,10 @@ class SequentialFile {
   virtual const std::string& filename() const = 0;
 };
 
-class FileWithUniqueId {
+class FileWithNameAndUniqueId {
  public:
   static constexpr const auto kPosixFileUniqueIdMaxSize = kMaxVarint64Length * 3;
-  virtual ~FileWithUniqueId() {}
+  virtual ~FileWithNameAndUniqueId() {}
 
   // Tries to get an unique ID for this file that will be the same each time
   // the file is opened (and will stay the same while the file is open).
@@ -107,6 +107,9 @@ class FileWithUniqueId {
   //
   // Note: these IDs are only valid for the duration of the process.
   virtual size_t GetUniqueId(char* id) const = 0;
+
+  // Returns the filename provided when the file object was constructed.
+  virtual const std::string& filename() const = 0;
 };
 
 // An interface for a function that validates a sequence of bytes we've just read. Could be used
@@ -119,7 +122,7 @@ class ReadValidator {
 };
 
 // A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile : public FileWithUniqueId {
+class RandomAccessFile : public FileWithNameAndUniqueId {
  public:
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
@@ -148,9 +151,6 @@ class RandomAccessFile : public FileWithUniqueId {
 
   virtual Result<uint64_t> INode() const = 0;
 
-  // Returns the filename provided when the RandomAccessFile was constructed.
-  virtual const std::string& filename() const = 0;
-
   // Returns the approximate memory usage of this RandomAccessFile including
   // the object itself.
   virtual size_t memory_footprint() const = 0;
@@ -172,7 +172,7 @@ class RandomAccessFile : public FileWithUniqueId {
   // For cases when read-ahead is implemented in the platform dependent layer.
   virtual void EnableReadAhead() {}
 
-  // For documentation, refer to FileWithUniqueId::GetUniqueId()
+  // For documentation, refer to FileWithNameAndUniqueId::GetUniqueId()
   virtual size_t GetUniqueId(char* id) const override {
     return 0; // Default implementation to prevent issues with backwards compatibility.
   }
@@ -195,14 +195,14 @@ namespace rocksdb {
 
 // TODO(unify_env): remove `using` statement once filesystem classes are fully merged into yb
 // namespace:
-using yb::FileWithUniqueId;
+using yb::FileWithNameAndUniqueId;
 using yb::Status;
 using yb::IOPriority;
 
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class WritableFile : public FileWithUniqueId {
+class WritableFile : public FileWithNameAndUniqueId {
  public:
   WritableFile()
       : last_preallocated_block_(0),
@@ -315,9 +315,6 @@ class WritableFile : public FileWithUniqueId {
   // fragmentation and/or less waste from over-zealous filesystem
   // pre-allocation.
   void PrepareWrite(size_t offset, size_t len);
-
-  // Returns the filename provided when the WritableFile was constructed.
-  virtual const std::string& filename() const = 0;
 
  protected:
   /*

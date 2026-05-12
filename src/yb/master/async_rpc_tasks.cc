@@ -467,6 +467,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   bool should_abort_active_txns = !table() ||
                                   table()->LockForRead()->started_deleting();
   req.set_should_abort_active_txns(should_abort_active_txns);
+  if (should_abort_active_txns && exclude_aborting_transaction_id_.has_value()) {
+    req.set_transaction_id(exclude_aborting_transaction_id_->ToString());
+  }
 
   ts_admin_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send delete tablet request to " << permanent_uuid_
@@ -497,6 +500,7 @@ bool AsyncDeleteReplica::RetryTaskAfterRPCFailure(const Status& status) {
 //  Class AsyncAlterTable.
 // ============================================================================
 void AsyncAlterTable::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
     VLOG_WITH_PREFIX(1) << "Sleeping for " << tablet_->tablet_id()
                         << FLAGS_TEST_slowdown_alter_table_rpcs_ms
@@ -573,6 +577,7 @@ TableType AsyncAlterTable::table_type() const {
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
 
@@ -612,6 +617,11 @@ bool AsyncAlterTable::SendRequest(int attempt) {
       }
     }
     req.set_first_provisional_column_id(first_provisional_column_id);
+
+    if (l->pb.has_transaction() && l->pb.transaction().has_using_table_locks() &&
+        l->pb.transaction().using_table_locks()) {
+      req.set_only_abort_txns_not_using_table_locks(true);
+    }
 
     if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
       VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
@@ -676,10 +686,41 @@ bool AsyncInsertPackedSchemaForXClusterTarget::SendRequest(int attempt) {
                             << tablet_id()
                             << " due to FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id";
       TransitionToCompleteState();
+      // Need to unregister the task here since we don't follow the regular RetryingTSRpcTask flow.
+      UnregisterAsyncTask();
       return true;
     }
   }
   return AsyncAlterTable::SendRequest(attempt);
+}
+
+void AsyncGetLatestCompatibleSchemaVersion::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    callback_(StatusFromPB(resp_.error().status()), 0);
+    TransitionToFailedState(
+        server::MonitoredTaskState::kRunning, StatusFromPB(resp_.error().status()));
+    return;
+  }
+
+  if (resp_.has_compatible_schema_version()) {
+    callback_(Status::OK(), resp_.compatible_schema_version());
+    TransitionToCompleteState();
+  } else {
+    auto status = STATUS(IllegalState, "Missing compatible_schema_version in response");
+    callback_(status, 0);
+    TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
+  }
+}
+
+bool AsyncGetLatestCompatibleSchemaVersion::SendRequest(int attempt) {
+  req_.set_tablet_id(tablet_id());
+  req_.mutable_schema()->CopyFrom(schema_);
+
+  ts_proxy_->GetCompatibleSchemaVersionAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent get compatible schema version request to " << permanent_uuid()
+                      << " (attempt " << attempt << "):\n"
+                      << req_.DebugString();
+  return true;
 }
 
 // ============================================================================
@@ -802,6 +843,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::CAS_FAILED:
     case TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT:
     case TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT:
+    case TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN:
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();
@@ -962,9 +1004,9 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                stepdown_resp_.error().status().code() != AppStatusPB::OK;
   LOG_WITH_PREFIX(INFO) << Format(
       "Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
-      "error=$3, failed=$4, should_remove=$5 for tablet $6.",
+      "error=$3, failed=$4, also_remove_replica=$5 for tablet $6.",
       attempt, permanent_uuid(), change_config_ts_uuid_, stepdown_resp_.error(),
-      stepdown_failed, should_remove_, tablet_->tablet_id());
+      stepdown_failed, also_remove_replica_, tablet_->tablet_id());
 
   if (stepdown_failed) {
     tablet_->RegisterLeaderStepDownFailure(change_config_ts_uuid_,
@@ -972,7 +1014,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                     stepdown_resp_.time_since_election_failure_ms() : 0));
   }
 
-  if (should_remove_) {
+  if (also_remove_replica_) {
     auto task = std::make_shared<AsyncRemoveServerTask>(
         master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_, epoch(),
         Format("Done stepping down leader. Now removing replica as requested: $0", reason_));
@@ -1148,10 +1190,12 @@ bool ShouldRetrySplitTabletRPC(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const ManualSplit is_manual_split, LeaderEpoch epoch, DataCallbackType result_cb)
+    const ManualSplit is_manual_split, int split_factor, LeaderEpoch epoch,
+    DataCallbackType result_cb)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
   req_.set_is_manual_split(is_manual_split);
+  req_.set_split_factor(split_factor);
 }
 
 void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
@@ -1198,9 +1242,20 @@ bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
 void AsyncGetTabletSplitKey::Finished(const Status& status) {
   if (result_cb_) {
     if (status.ok()) {
-      result_cb_(Data{
-          .split_encoded_key = resp_.split_encoded_key(),
-          .split_partition_key = resp_.split_partition_key()});
+      Data data;
+      if (resp_.split_partition_keys_size() > 0) {
+        DCHECK_EQ(resp_.split_partition_keys_size(), req_.split_factor() - 1);
+        DCHECK_EQ(resp_.split_encoded_keys_size(), req_.split_factor() - 1);
+        data.split_encoded_keys.assign(
+            resp_.split_encoded_keys().begin(), resp_.split_encoded_keys().end());
+        data.split_partition_keys.assign(
+            resp_.split_partition_keys().begin(), resp_.split_partition_keys().end());
+      } else {
+        data.split_encoded_keys.push_back(resp_.deprecated_split_encoded_key());
+        data.split_partition_keys.push_back(resp_.deprecated_split_partition_key());
+      }
+
+      result_cb_(data);
     } else {
       result_cb_(status);
     }
@@ -1212,15 +1267,21 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-                                   LeaderEpoch epoch)
+    const std::vector<TabletId>& new_tablet_ids,
+    const std::vector<std::string>& split_encoded_keys,
+    const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {
   req_.set_tablet_id(tablet_id());
-  req_.set_new_tablet1_id(new_tablet_ids[0]);
-  req_.set_new_tablet2_id(new_tablet_ids[1]);
-  req_.set_split_encoded_key(split_encoded_key);
-  req_.set_split_partition_key(split_partition_key);
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_encoded_keys.size());
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_partition_keys.size());
+  req_.set_deprecated_new_tablet1_id(new_tablet_ids[0]);
+  req_.set_deprecated_new_tablet2_id(new_tablet_ids[1]);
+  req_.set_deprecated_split_encoded_key(split_encoded_keys.front());
+  req_.set_deprecated_split_partition_key(split_partition_keys.front());
+  req_.mutable_new_tablet_ids()->Add(new_tablet_ids.begin(), new_tablet_ids.end());
+  req_.mutable_split_encoded_keys()->Add(split_encoded_keys.begin(), split_encoded_keys.end());
+  req_.mutable_split_partition_keys()->Add(
+      split_partition_keys.begin(), split_partition_keys.end());
 }
 
 void AsyncSplitTablet::HandleResponse(int attempt) {

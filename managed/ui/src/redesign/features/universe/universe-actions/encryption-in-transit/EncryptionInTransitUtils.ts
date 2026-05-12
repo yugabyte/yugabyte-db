@@ -5,6 +5,7 @@ import { getPrimaryCluster } from '../../../../../utils/universeUtilsTyped';
 
 import { Certificate } from '../../universe-form/utils/dto';
 import { UniverseDetails } from '../../../../helpers/dtos';
+import { EncryptionInTransitSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 //styles
 export const useEITStyles = makeStyles((theme: Theme) => ({
@@ -49,6 +50,11 @@ export const useEITStyles = makeStyles((theme: Theme) => ({
   },
   tab: {
     borderBottom: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+  },
+  updateOptions: {
+    '& .MuiFormControlLabel-root': {
+      alignItems: 'flex-start'
+    }
   }
 }));
 
@@ -63,21 +69,34 @@ export const CLIENT_NODE_CERT_FIELD_NAME = 'clientRootCA';
 //toggles
 export const ENABLE_NODE_NODE_ENCRYPTION_NAME = 'enableNodeToNodeEncrypt';
 export const ENABLE_CLIENT_NODE_ENCRYPTION_NAME = 'enableClientToNodeEncrypt';
+export const K8S_ENCRYPTION_TYPE_FIELD = 'k8sEncryptionType';
 //other
 export const USE_SAME_CERTS_FIELD_NAME = 'rootAndClientRootCASame';
 export const USE_ROLLING_UPGRADE_FIELD_NAME = 'rollingUpgrade';
 export const ROLLING_UPGRADE_DELAY_FIELD_NAME = 'upgradeDelay';
+export const ROLLING_UPGRADE_OPTION_FIELD_NAME = 'upgradeOption';
 //rotatecerts
 export const ROTATE_NODE_NODE_CERT_FIELD_NAME = 'selfSignedServerCertRotate';
 export const ROTATE_CLIENT_NODE_CERT_FIELD_NAME = 'selfSignedClientCertRotate';
 
 // dtos
+
+export enum UpgradeOptions {
+  Rolling = 'Rolling',
+  NonRolling = 'Non-Rolling',
+  NonRestart = 'Non-Restart'
+}
+
+export enum K8sEncryptionOption {
+  ClienToNode = 'enableClientToNodeEncrypt',
+  NodeToNode = 'enableNodeToNodeEncrypt',
+  EnableBoth = 'EnableBoth'
+}
+
 export interface EncryptionInTransitFormValues {
   enableUniverseEncryption: boolean;
   rootCA?: string | null;
-  createNewRootCA?: boolean;
   clientRootCA?: string | null;
-  createNewClientRootCA?: boolean;
   enableNodeToNodeEncrypt: boolean;
   enableClientToNodeEncrypt: boolean;
   rootAndClientRootCASame: boolean;
@@ -88,6 +107,7 @@ export interface EncryptionInTransitFormValues {
   upgradeOption?: string;
   sleepAfterMasterRestartMillis?: number;
   sleepAfterTServerRestartMillis?: number;
+  k8sEncryptionType?: K8sEncryptionOption;
 }
 
 export enum CertTypes {
@@ -96,12 +116,11 @@ export enum CertTypes {
 }
 
 export const FORM_RESET_VALUES = {
+  enableUniverseEncryption: false,
   enableClientToNodeEncrypt: false,
   enableNodeToNodeEncrypt: false,
   rootCA: null,
-  createNewRootCA: false,
   clientRootCA: null,
-  createNewClientRootCA: false,
   rootAndClientRootCASame: false
 };
 
@@ -110,6 +129,12 @@ export const getInitialFormValues = (
   isItKubernetesUniverse: boolean
 ) => {
   const cluster = getPrimaryCluster(universeDetails.clusters);
+  const isRootClientCASameforK8s =
+    cluster?.userIntent?.enableNodeToNodeEncrypt &&
+    cluster?.userIntent.enableClientToNodeEncrypt &&
+    universeDetails.rootCA === universeDetails.clientRootCA
+      ? true
+      : false;
   return {
     enableUniverseEncryption: !!(
       cluster?.userIntent?.enableNodeToNodeEncrypt || cluster?.userIntent.enableClientToNodeEncrypt
@@ -122,13 +147,61 @@ export const getInitialFormValues = (
       : universeDetails?.rootAndClientRootCASame
       ? universeDetails.rootCA
       : null,
-    createNewRootCA: false,
-    createNewClientRootCA: false,
     rootAndClientRootCASame: isItKubernetesUniverse
-      ? true
+      ? isRootClientCASameforK8s
       : !!universeDetails?.rootAndClientRootCASame,
     rollingUpgrade: true,
-    upgradeDelay: 240
+    upgradeDelay: 240,
+    upgradeOption: UpgradeOptions.NonRestart,
+    ...(isItKubernetesUniverse &&
+      (cluster?.userIntent?.enableNodeToNodeEncrypt ||
+        cluster?.userIntent.enableClientToNodeEncrypt) && {
+        k8sEncryptionType:
+          !!cluster?.userIntent.enableNodeToNodeEncrypt &&
+          !!cluster?.userIntent.enableClientToNodeEncrypt
+            ? K8sEncryptionOption.EnableBoth
+            : cluster?.userIntent.enableClientToNodeEncrypt
+            ? K8sEncryptionOption.ClienToNode
+            : K8sEncryptionOption.NodeToNode
+      })
+  };
+};
+
+export const getV2InitialFormValues = (
+  eitSpec: EncryptionInTransitSpec,
+  isItKubernetesUniverse: boolean
+) => {
+  const isRootClientCASame =
+    eitSpec?.enable_node_to_node_encrypt &&
+    eitSpec?.enable_client_to_node_encrypt &&
+    eitSpec?.client_root_ca === eitSpec?.root_ca
+      ? true
+      : false;
+  return {
+    enableUniverseEncryption: !!(
+      eitSpec?.enable_node_to_node_encrypt || eitSpec?.enable_client_to_node_encrypt
+    ),
+    enableNodeToNodeEncrypt: eitSpec?.enable_node_to_node_encrypt,
+    enableClientToNodeEncrypt: eitSpec?.enable_client_to_node_encrypt,
+    rootCA: eitSpec?.root_ca ?? null,
+    clientRootCA: eitSpec?.client_root_ca
+      ? eitSpec?.client_root_ca
+      : isRootClientCASame
+      ? eitSpec?.root_ca
+      : null,
+    rootAndClientRootCASame: isRootClientCASame,
+    rollingUpgrade: true,
+    upgradeDelay: 240,
+    upgradeOption: UpgradeOptions.NonRestart,
+    ...(isItKubernetesUniverse &&
+      (eitSpec?.enable_node_to_node_encrypt || eitSpec?.enable_client_to_node_encrypt) && {
+        k8sEncryptionType:
+          !!eitSpec?.enable_node_to_node_encrypt && !!eitSpec?.enable_client_to_node_encrypt
+            ? K8sEncryptionOption.EnableBoth
+            : eitSpec?.enable_client_to_node_encrypt
+            ? K8sEncryptionOption.ClienToNode
+            : K8sEncryptionOption.NodeToNode
+      })
   };
 };
 
@@ -136,3 +209,6 @@ const getCertificateType = (certificate: Certificate) => certificate.certType;
 
 export const isSelfSignedCert = (certificate: Certificate) =>
   getCertificateType(certificate) === 'SelfSigned';
+
+export const isCertManagerCert = (certificate: Certificate) =>
+  getCertificateType(certificate) === 'K8SCertManager';

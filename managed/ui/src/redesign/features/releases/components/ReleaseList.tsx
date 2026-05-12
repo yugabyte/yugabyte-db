@@ -37,9 +37,9 @@ import {
 import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
-import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
-import Checked from '../../../../redesign/assets/checkbox/Checked.svg';
-import AddIcon from '../../../../redesign/assets/cross.svg';
+import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg?img';
+import Checked from '../../../../redesign/assets/checkbox/Checked.svg?img';
+import AddIcon from '../../../../redesign/assets/cross.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   releaseListBox: {

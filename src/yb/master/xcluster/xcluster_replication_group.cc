@@ -365,7 +365,7 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
 Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
-  if (!IsTableEligibleForXClusterReplication(table_info)) {
+  if (!IsTableEligibleForXClusterReplication(table_info, universe.IsAutomaticDdlMode())) {
     return false;
   }
 
@@ -575,7 +575,7 @@ Status RemoveNamespaceFromReplicationGroup(
   }
 
   auto consumer_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
-      catalog_manager, consumer_namespace_id, /*include_sequences_data=*/true));
+      catalog_manager, consumer_namespace_id, is_automatic_ddl_mode));
   std::unordered_set<TableId> consumer_table_ids;
   for (const auto& table_designator : consumer_designators) {
     consumer_table_ids.insert(table_designator.id);

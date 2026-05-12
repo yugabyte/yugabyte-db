@@ -13,7 +13,7 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -23,6 +23,7 @@
 
 #include "yb/qlexpr/doc_scanspec_util.h"
 
+#include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -52,8 +53,8 @@ bool AreColumnsContinous(qlexpr::ColumnListVector col_idxs) {
 
 DocQLScanSpec::DocQLScanSpec(const Schema& schema, const QLConditionPB* cond)
     : DocQLScanSpec(schema, /* hash_code= */ std::nullopt, /* max_hash_code= */ std::nullopt,
-                    /* arena= */ nullptr, /* hashed_components= */ {}, cond, nullptr /* if_req */,
-                    rocksdb::kDefaultQueryId) {
+                    /* arena= */ nullptr, /* hashed_components= */ {}, QLConditionPBPtr(cond),
+                    nullptr /* if_req */, rocksdb::kDefaultQueryId) {
 }
 
 DocQLScanSpec::DocQLScanSpec(
@@ -85,12 +86,12 @@ DocQLScanSpec::DocQLScanSpec(
     const std::optional<int32_t> max_hash_code,
     const ArenaPtr& arena,
     const std::vector<Slice>& hashed_components,
-    const QLConditionPB* condition, const QLConditionPB* if_condition,
+    QLConditionPBPtr condition, QLConditionPBPtr if_condition,
     const rocksdb::QueryId query_id, const bool is_forward_scan, const bool include_static_columns,
     const dockv::DocKey& start_doc_key, const size_t prefix_length)
     : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id,
-          condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
+          qlexpr::QLScanRange::Create(schema, condition),
           prefix_length, condition, if_condition, std::make_shared<DocExprExecutor>(), arena),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
@@ -121,17 +122,22 @@ DocQLScanSpec::DocQLScanSpec(
   const auto rangebounds = range_bounds();
   if (!hashed_components.empty() && schema.num_range_key_columns() > 0 && rangebounds &&
       rangebounds->has_in_range_options()) {
-    DCHECK(condition);
     if (!options_) {
       options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     }
-    InitOptions(*condition);
+    DCHECK(condition);
+    if (condition.is_lightweight()) {
+      InitOptions(*condition.lightweight());
+    } else {
+      InitOptions(*condition.protobuf());
+    }
   }
 
   CompleteBounds();
 }
 
-void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
+template <class ConditionPB>
+void DocQLScanSpec::InitOptions(const ConditionPB& condition) {
   switch (condition.op()) {
     case QLOperator::QL_OP_AND:
       for (const auto& operand : condition.operands()) {
@@ -146,8 +152,9 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
       // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
       // operands(0) always contains the column id.
       // operands(1) contains the corresponding value or a list values.
-      const auto& lhs = condition.operands(0);
-      const auto& rhs = condition.operands(1);
+      auto it = condition.operands().begin();
+      const auto& lhs = *it;
+      const auto& rhs = *++it;
       if (lhs.expr_case() != QLExpressionPB::kColumnId &&
           lhs.expr_case() != QLExpressionPB::kTuple) {
         return;
@@ -186,15 +193,20 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
           DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
           const auto& options = rhs.value().list_value();
-          int opt_size = options.elems_size();
+          auto opt_size = options.elems().size();
           (*options_)[key_idx].reserve(opt_size);
 
           // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
           auto is_reverse_order = get_scan_direction(col_idx);
-          for (int i = 0; i < opt_size; i++) {
-            int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
+          auto elem_it = is_reverse_order ? --options.elems().end() : options.elems().begin();
+          for ([[maybe_unused]] auto _ : Range(opt_size)) {
             (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
-                arena(), options.elems(elem_idx), sorting_type));
+                arena(), *elem_it, sorting_type));
+            if (is_reverse_order) {
+              --elem_it;
+            } else {
+              ++elem_it;
+            }
           }
         }
       } else if (lhs.has_tuple()) {
@@ -221,11 +233,12 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
           DCHECK(rhs.value().has_list_value());
           const auto& value = rhs.value().list_value();
           DCHECK_EQ(total_cols, value.elems_size());
-          for (size_t i = 0; i < total_cols; i++) {
+          auto elem_it = value.elems().begin();
+          for (size_t i = 0; i < total_cols; ++i, ++elem_it) {
             auto sorting_type = get_sorting_type(col_idxs[i]);
             auto options_idx = schema().get_dockey_component_idx(col_idxs[i]);
             (*options_)[options_idx].push_back(dockv::EncodedKeyEntryValue(
-                arena(), value.elems(static_cast<int>(i)), sorting_type));
+                arena(), *elem_it, sorting_type));
           }
         } else if (condition.op() == QL_OP_IN) {
           DCHECK(rhs.value().has_list_value());
@@ -243,22 +256,21 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
           const auto sorted_options = qlexpr::GetTuplesSortedByOrdering(
               options, schema(), is_forward_scan(), col_idxs);
 
-          int num_options = options.elems_size();
-          for (int i = 0; i < num_options; i++) {
+          for (auto i : Range(options.elems().size())) {
             const auto& elem = sorted_options[i];
             DCHECK(elem->has_tuple_value());
             const auto& value = elem->tuple_value();
             DCHECK_EQ(total_cols, value.elems_size());
 
-            for (size_t j = 0; j < total_cols; j++) {
+            auto elem_it = value.elems().begin();
+            for (size_t j = 0; j < total_cols; ++j, ++elem_it) {
               const auto sorting_type = get_sorting_type(col_idxs[j]);
               // For hash tuples, the first element always contains the yb_hash_code
               DCHECK(col_idxs[j] != kYbHashCodeColId || j == 0);
               auto options_idx = schema().get_dockey_component_idx(col_idxs[j]);
-              const auto& value_elem = value.elems(static_cast<int>(j));
               auto value_slice = col_idxs[j] == kYbHashCodeColId
-                  ? dockv::EncodedHashCode(arena(), value_elem.int32_value())
-                  : dockv::EncodedKeyEntryValue(arena(), value_elem, sorting_type);
+                  ? dockv::EncodedHashCode(arena(), elem_it->int32_value())
+                  : dockv::EncodedKeyEntryValue(arena(), *elem_it, sorting_type);
               (*options_)[options_idx].push_back(value_slice);
             }
           }

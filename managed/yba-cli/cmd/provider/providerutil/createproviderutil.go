@@ -22,11 +22,13 @@ import (
 // WaitForCreateProviderTask is a util task for create provider
 func WaitForCreateProviderTask(
 	authAPI *ybaAuthClient.AuthAPIClient,
-	providerName string, rTask ybaclient.YBPTask, providerCode string) {
+	providerName string, rTask *ybaclient.YBPTask, providerCode string) {
 
 	var providerData []ybaclient.Provider
 	var response *http.Response
 	var err error
+
+	util.CheckTaskAfterCreation(rTask)
 
 	providerUUID := rTask.GetResourceUUID()
 	taskUUID := rTask.GetTaskUUID()
@@ -49,13 +51,7 @@ func WaitForCreateProviderTask(
 		providerData, response, err = authAPI.GetListOfProviders().
 			Name(providerName).ProviderCode(providerCode).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Provider",
-				"Create - Fetch Provider",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider", "Create - Fetch Provider")
 		}
 		providersCtx := formatter.Context{
 			Command: "create",
@@ -72,7 +68,7 @@ func WaitForCreateProviderTask(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }
 

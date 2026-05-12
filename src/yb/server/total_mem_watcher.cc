@@ -84,7 +84,7 @@ void TotalMemWatcher::MemoryMonitoringLoop(std::function<void()> trigger_termina
 
   while (true) {
     {
-      const auto timeout = GetAtomicFlag(&FLAGS_total_mem_watcher_interval_millis) * 1ms;
+      const auto timeout = FLAGS_total_mem_watcher_interval_millis * 1ms;
       std::unique_lock lock(exit_loop_mutex_);
       if (exit_loop_cv_.wait_for(
               lock, timeout, [this]() REQUIRES(exit_loop_mutex_) { return exit_loop_; })) {

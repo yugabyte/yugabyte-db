@@ -295,8 +295,8 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                             <YBLabel dataTestId={`EditConnectionPoolModal-${item.id}`}>
                               {t(`universeForm.advancedConfig.${item.id}`)} &nbsp;{' '}
                               <YBTooltip title={item.tooltip}>
-                                <img alt="Info" src={InfoMessageIcon} />
-                              </YBTooltip>{' '}
+                                <InfoMessageIcon />
+                              </YBTooltip>
                             </YBLabel>
                           </Box>
 
@@ -333,7 +333,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                 mt={2}
                 className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}
               >
-                <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+                {currentRF >= 3 ? <InfoBlue /> : <InfoError />}
                 <Typography variant="body2">
                   <Trans
                     i18nKey={
@@ -352,7 +352,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                 mt={2}
                 className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}
               >
-                <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+                {currentRF >= 3 ? <InfoBlue /> : <InfoError />}
                 {currentRF >= 3 ? (
                   <Typography variant="body2">
                     <Trans i18nKey={'universeActions.connectionPooling.disableWarning1RF3'} />{' '}
@@ -387,7 +387,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                 mt={2}
                 className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}
               >
-                <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+                {currentRF >= 3 ? <InfoBlue /> : <InfoError />}
                 <Typography variant="body2">
                   <Trans
                     i18nKey={

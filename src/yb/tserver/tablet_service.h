@@ -75,13 +75,14 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
 
   explicit TabletServiceImpl(TabletServerIf* server);
 
-  void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
+  void Write(
+      const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext context) override;
 
   void WaitForAsyncWrite(
       const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
       rpc::RpcContext context) override;
 
-  void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
+  void Read(const ReadRequestMsg* req, ReadResponseMsg* resp, rpc::RpcContext context) override;
 
   void VerifyTableRowRange(
       const VerifyTableRowRangeRequestPB* req, VerifyTableRowRangeResponsePB* resp,
@@ -140,10 +141,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void AbortTransaction(const AbortTransactionRequestPB* req,
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
-
-  void UpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
-                                       UpdateTransactionStatusLocationResponsePB* resp,
-                                       rpc::RpcContext context) override;
 
   void UpdateTransactionWaitingForStatus(
       const UpdateTransactionWaitingForStatusRequestPB* req,
@@ -208,6 +205,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                   GetMetricsResponsePB* resp,
                   rpc::RpcContext context) override;
 
+  void PgRemoteExec(const PgRemoteExecRequestPB* req,
+                    PgRemoteExecResponsePB* resp,
+                    rpc::RpcContext context) override;
+
   // Method to cancel a given transaction. If the passed in request has a status tablet id, a cancel
   // transaction request is sent to that status tablet alone. Else, the request is broadcast to all
   // status tablets hosted at this server.
@@ -235,6 +236,11 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearYCQLMetaDataCacheOnServer(
+      const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+      ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void AcquireObjectLocks(
       const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
@@ -257,21 +263,30 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   Result<VerifyVectorIndexesResponsePB> VerifyVectorIndexes(
       const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) override;
 
+  Result<DumpTabletDataResponsePB> DumpTabletData(
+      const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) override;
+
+  Result<ConnectivityStateResponsePB> ConnectivityState(
+      const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) override;
+
+  void CollectYsqlCallHomeStats(
+      const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
-  Status PerformWrite(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext* context);
+  Status PerformWrite(
+      const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext* context);
 
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
-    const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+    TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
     YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-    tserver::ReadResponsePB* resp) override;
+    tserver::ReadResponseMsg* resp) override;
 
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
-  Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
-                                               UpdateTransactionStatusLocationResponsePB* resp,
-                                               std::shared_ptr<rpc::RpcContext> context);
+  Status CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch);
 
   TabletServerIf *const server_;
 };
@@ -468,6 +483,7 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
  private:
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
                                        consensus::LWConsensusResponsePB* resp);
+
   TabletPeerLookupIf* tablet_manager_;
 };
 

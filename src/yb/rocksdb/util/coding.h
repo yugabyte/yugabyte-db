@@ -42,15 +42,6 @@
 
 namespace rocksdb {
 
-// Standard Put... routines append to a string
-extern void PutFixed32(std::string* dst, uint32_t value);
-extern void PutFixed64(std::string* dst, uint64_t value);
-extern void PutVarint32(std::string* dst, uint32_t value);
-extern void PutVarint64(std::string* dst, uint64_t value);
-extern void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
-extern void PutLengthPrefixedSliceParts(std::string* dst,
-                                        const SliceParts& slice_parts);
-
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
 extern bool GetFixed64(Slice* input, uint64_t* value);
@@ -195,11 +186,15 @@ inline void EncodeFixed64(char* buf, uint64_t value) {
 #endif
 }
 
-inline void PutFixed8(std::string* dst, uint8_t value) {
+// Standard Put... routines append to a string/buffer
+
+template <typename T>
+inline void PutFixed8(T* dst, uint8_t value) {
   dst->push_back(value);
 }
 
-inline void PutFixed32(std::string* dst, uint32_t value) {
+template <typename T>
+inline void PutFixed32(T* dst, uint32_t value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
   dst->append(buf, sizeof(buf));
@@ -211,13 +206,15 @@ inline void PutFixed64(std::string* dst, uint64_t value) {
   dst->append(buf, sizeof(buf));
 }
 
-inline void PutVarint32(std::string* dst, uint32_t v) {
+template <typename T>
+inline void PutVarint32(T* dst, uint32_t v) {
   char buf[5];
   char* ptr = EncodeVarint32(buf, v);
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 
-inline void PutSignedVarint(std::string* dst, int64_t v) {
+template <typename T>
+inline void PutSignedVarint(T* dst, int64_t v) {
   char buf[yb::kMaxVarIntBufferSize];
   size_t encoded_size;
   yb::FastEncodeSignedVarInt(v, pointer_cast<uint8_t*>(buf), &encoded_size);
@@ -248,7 +245,8 @@ inline void PutVarint64(std::string* dst, uint64_t v) {
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 
-inline void FastPutVarint64(std::string* dst, uint64_t v) {
+template <typename T>
+inline void FastPutVarint64(T* dst, uint64_t v) {
   char buf[yb::kMaxVarIntBufferSize];
   char* ptr = FastEncodeVarint64(buf, v);
   dst->append(buf, static_cast<size_t>(ptr - buf));

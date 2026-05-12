@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
@@ -41,6 +42,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -149,16 +151,14 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Set all the in-memory node names first.
       setNodeNames(universe);
 
-      PlacementInfo pi = primaryCluster.placementInfo;
+      PlacementInfo pi = primaryCluster.getOverallPlacement();
 
       selectNumMastersAZ(pi);
 
       // Update the user intent.
       writeUserIntentToUniverse();
 
-      Provider provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+      Provider provider = Util.getSingleProvider(taskParams().getPrimaryCluster());
 
       KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ false);
 
@@ -192,7 +192,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       installThirdPartyPackagesTaskK8s(
           universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
       Set<NodeDetails> tserversAdded =
-          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
+          getPodsToAdd(placement, null, ServerType.TSERVER, isMultiAz, false).values().stream()
+              .flatMap(nDSet -> nDSet.stream())
+              .collect(Collectors.toSet());
 
       // Check if we need to create read cluster pods also.
       List<Cluster> readClusters = taskParams().getReadOnlyClusters();
@@ -203,10 +205,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         throw new RuntimeException(msg);
       } else if (readClusters.size() == 1) {
         Cluster readCluster = readClusters.get(0);
-        PlacementInfo readClusterPI = readCluster.placementInfo;
-        Provider readClusterProvider =
-            Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
-        CloudType readClusterProviderType = readCluster.userIntent.providerType;
+        PlacementInfo readClusterPI = readCluster.getOverallPlacement();
+        Provider readClusterProvider = Util.getSingleProvider(readCluster);
+        CloudType readClusterProviderType = readClusterProvider.getCloudCode();
         if (readClusterProviderType != CloudType.kubernetes) {
           String msg =
               String.format(
@@ -232,12 +233,11 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             readClusterPI,
             true);
         readOnlyTserversAdded =
-            getPodsToAdd(
-                readClusterPlacement.tservers,
-                null,
-                ServerType.TSERVER,
-                isReadClusterMultiAz,
-                true);
+            getPodsToAdd(readClusterPlacement, null, ServerType.TSERVER, isReadClusterMultiAz, true)
+                .values()
+                .stream()
+                .flatMap(nDSet -> nDSet.stream())
+                .collect(Collectors.toSet());
       }
 
       // Wait for new tablet servers to be responsive.

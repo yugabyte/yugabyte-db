@@ -87,11 +87,12 @@ public class AnsibleCreateServer extends NodeTaskBase {
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getCluster(taskParams().placementUuid);
+      NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       taskParams().capacityReservation =
           CapacityReservationUtil.getReservationIfPresent(
-              getTaskCache(), cluster.userIntent.providerType, taskParams().nodeName);
+              getTaskCache(), provider, taskParams().nodeName);
       // Execute the ansible command to create the node.
       // It waits for SSH connection to work.
       ShellResponse response =

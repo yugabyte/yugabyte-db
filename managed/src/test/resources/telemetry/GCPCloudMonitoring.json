@@ -10,6 +10,10 @@
       "credentials": {
         "key1": "value1",
         "key2": "value2"
+      },
+      "gcmCredentials": {
+        "key1": "value1",
+        "key2": "value2"
       }
     },
     "tags": {

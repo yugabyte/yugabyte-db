@@ -25,7 +25,7 @@ import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { IRestore, Restore_States } from '../common/IRestore';
 import { RestoreContextMethods, RestoreDetailsContext } from './RestoreContext';
 import { TableType } from '../../../redesign/helpers/dtos';
-import ArrowRight from '../components/restore/icons/RightArrowCircled.svg';
+import ArrowRight from '../components/restore/icons/RightArrowCircled.svg?img';
 import { useToggle } from 'react-use';
 import clsx from 'clsx';
 

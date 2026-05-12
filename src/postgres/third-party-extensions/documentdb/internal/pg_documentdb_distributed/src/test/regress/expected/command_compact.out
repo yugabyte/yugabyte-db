@@ -1,0 +1,233 @@
+SET citus.next_shard_id TO 2432000;
+SET documentdb.next_collection_id TO 24320;
+SET documentdb.next_collection_index_id TO 24320;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SELECT documentdb_api.compact(NULL);
+ compact 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.compact('{}');
+ERROR:  Invalid command compact specification, missing database or collection name
+SELECT documentdb_api.compact('{"noIdea": "collection1"}');
+ERROR:  The BSON field compact.noIdea is not recognized as a known field
+SELECT documentdb_api.compact('{"compact": "non_existing_collection"}');
+ERROR:  Invalid command compact specification, missing database or collection name
+SELECT documentdb_api.compact('{"compact": 1 }');
+ERROR:  The BSON field 'compact' has an incorrect type 'int'; it should be of type 'string'.
+SELECT documentdb_api.compact('{"compact": true }');
+ERROR:  The BSON field 'compact' has an incorrect type 'bool'; it should be of type 'string'.
+SELECT documentdb_api.compact('{"compact": ["coll"]}');
+ERROR:  The BSON field 'compact' has an incorrect type 'array'; it should be of type 'string'.
+SELECT documentdb_api.create_collection('commands_compact_db','compact_test');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.compact('{"compact": "compact_test", "dryRun": "invalid"}');
+ERROR:  The BSON field 'dryRun' has an incorrect type 'string'; it should be of type 'bool'.
+SELECT documentdb_api.compact('{"compact": "compact_test", "comment": "test comment"}');
+ERROR:  Invalid command compact specification, missing database or collection name
+SELECT documentdb_api.compact('{"compact": "compact_test", "force": false}');
+ERROR:  command compact option force:false is not supported
+-- Insert a single document
+SELECT documentdb_api.insert_one('commands_compact_db', 'compact_test', FORMAT('{ "_id": 1, "a": "%s", "c": [ %s "d" ] }', repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Bloat the table
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..45 LOOP
+UPDATE documentdb_data.documents_24321 SET document = document::bytea::bson WHERE document @@ '{ "_id": 1 }';
+COMMIT;
+END LOOP;
+END;
+$$;
+-- VALID, first need to analyze the table so that stats are up to date
+ANALYZE VERBOSE documentdb_data.documents_24321;
+INFO:  analyzing "documentdb_data.documents_24321"
+INFO:  "documents_24321": scanned 0 of 0 pages, containing 0 live rows and 0 dead rows; 0 rows in sample, 0 estimated total rows
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 4243456
+(1 row)
+
+-- TODO: even after analyze it seems like pg_class stats for toast tables are not updated for test run.
+-- Need to investigate this further for test, for live servers this should be okay because the analyze thereshold is set to 0.
+SELECT documentdb_api.compact('{"compact": "compact_test", "$db": "commands_compact_db", "dryRun": true}');
+                                         compact                                         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "estimatedBytesFreed" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT documentdb_api.compact('{"compact": "compact_test", "$db": "commands_compact_db", "dryRun": false}');
+                                    compact                                     
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "bytesFreed" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 114688
+(1 row)
+
+SELECT documentdb_api.drop_collection('commands_compact_db','compact_test');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- sharded test
+SELECT documentdb_api.create_collection('commands_compact_db', 'compact_test_sharded');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.shard_collection('commands_compact_db', 'compact_test_sharded', '{"_id": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..51 LOOP
+PERFORM documentdb_api.insert_one('commands_compact_db', 'compact_test_sharded', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',i, repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+COMMIT;
+END LOOP;
+END;
+$$;
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..45 LOOP
+UPDATE documentdb_data.documents_24322 SET document = document::bytea::bson WHERE document @@ '{ "_id": 1 }';
+COMMIT;
+END LOOP;
+END;
+$$;
+-- VALID, first need to analyze the table so that stats are up to date
+ANALYZE VERBOSE documentdb_data.documents_24322;
+INFO:  analyzing "documentdb_data.documents_24322"
+INFO:  "documents_24322": scanned 0 of 0 pages, containing 0 live rows and 0 dead rows; 0 rows in sample, 0 estimated total rows
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test_sharded')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 9117696
+(1 row)
+
+-- TODO: even after analyze it seems like pg_class stats for toast tables are not updated for test run.
+-- Need to investigate this further for test, for live servers this should be okay because the analyze thereshold is set to 0.
+SELECT documentdb_api.compact('{"compact": "compact_test_sharded", "$db": "commands_compact_db", "dryRun": true}');
+                                         compact                                         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "estimatedBytesFreed" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT documentdb_api.compact('{"compact": "compact_test_sharded", "$db": "commands_compact_db", "dryRun": false}');
+                                    compact                                     
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "bytesFreed" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test_sharded')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 4808704
+(1 row)
+
+SELECT documentdb_api.drop_collection('commands_compact_db','compact_test_sharded');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- sharded test
+SELECT documentdb_api.create_collection('commands_compact_db', 'compact_test_sharded');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.shard_collection('commands_compact_db', 'compact_test_sharded', '{"_id": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..51 LOOP
+PERFORM documentdb_api.insert_one('commands_compact_db', 'compact_test_sharded', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',i, repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+COMMIT;
+END LOOP;
+END;
+$$;
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..45 LOOP
+UPDATE documentdb_data.documents_24323 SET document = document::bytea::bson WHERE document @@ '{ "_id": 1 }';
+COMMIT;
+END LOOP;
+END;
+$$;
+SET citus.show_shards_for_app_name_prefixes to '*';
+-- VALID, first need to analyze the table so that stats are up to date
+ANALYZE VERBOSE documentdb_data.documents_24323;
+INFO:  analyzing "documentdb_data.documents_24323"
+INFO:  "documents_24323": scanned 0 of 0 pages, containing 0 live rows and 0 dead rows; 0 rows in sample, 0 estimated total rows
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test_sharded')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 9117696
+(1 row)
+
+-- set relpages to INT32_MAX - 1
+UPDATE pg_class
+SET relpages = 2147483646
+WHERE oid = 'documentdb_data.documents_24323_2432023'::regclass;
+SELECT documentdb_api.compact('{"compact": "compact_test_sharded", "$db": "commands_compact_db", "dryRun": true}');
+                                               compact                                                
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "estimatedBytesFreed" : { "$numberLong" : "17592186019840" } }
+(1 row)
+
+SELECT documentdb_api.compact('{"compact": "compact_test_sharded", "$db": "commands_compact_db", "dryRun": false}');
+                                           compact                                           
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "bytesFreed" : { "$numberLong" : "17592186019840" } }
+(1 row)
+
+SELECT documentdb_api.coll_stats('commands_compact_db','compact_test_sharded')->>'storageSize';
+ ?column? 
+---------------------------------------------------------------------
+ 4808704
+(1 row)
+
+RESET citus.show_shards_for_app_name_prefixes;
+SELECT documentdb_api.drop_collection('commands_compact_db','compact_test_sharded');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+

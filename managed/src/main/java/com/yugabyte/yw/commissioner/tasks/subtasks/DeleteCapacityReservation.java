@@ -6,10 +6,14 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.metrics.CapacityReservationMetrics;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -24,18 +28,28 @@ import play.libs.Json;
 public class DeleteCapacityReservation extends ServerSubTaskBase {
   private AZUClientFactory azuClientFactory;
   private CloudAPI.Factory cloudAPIFactory;
+  private GCPProjectApiClientFactory gcpClientFactory;
+  private CapacityReservationMetrics reservationMetrics;
 
   @Inject
   protected DeleteCapacityReservation(
       BaseTaskDependencies baseTaskDependencies,
       AZUClientFactory azuClientFactory,
-      CloudAPI.Factory cloudAPIFactory) {
+      CloudAPI.Factory cloudAPIFactory,
+      GCPProjectApiClientFactory gcpClientFactory,
+      CapacityReservationMetrics reservationMetrics) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
     this.cloudAPIFactory = cloudAPIFactory;
+    this.gcpClientFactory = gcpClientFactory;
+    this.reservationMetrics = reservationMetrics;
   }
 
-  public static class Params extends ServerSubTaskParams {}
+  public static class Params extends ServerSubTaskParams {
+    // If true, GCP reservations are deleted only when inUseCount == count.
+    // Set to false on error-path cleanup to force-delete orphaned reservations.
+    public boolean deleteOnlyIfFullyUtilized = true;
+  }
 
   @Override
   protected DeleteCapacityReservation.Params taskParams() {
@@ -53,15 +67,14 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
     }
     Set<UUID> providers =
         universe.getUniverseDetails().clusters.stream()
-            .map(c -> UUID.fromString(c.userIntent.provider))
+            .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
             .collect(Collectors.toSet());
     boolean succeeded = false;
     try {
       for (UUID providerUUID : providers) {
         Provider provider = Provider.getOrBadRequest(providerUUID);
         UniverseDefinitionTaskParams.ReservationInfo reservationForProviderType =
-            CapacityReservationUtil.getReservationForProviderType(
-                capacityReservationState, provider.getCloudCode());
+            CapacityReservationUtil.getReservationForProvider(capacityReservationState, provider);
         if (reservationForProviderType == null) {
           log.debug("No reservation for cloud {}", provider.getCloudCode());
           continue;
@@ -85,10 +98,22 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                             .forEach(
                                 (zoneId, reservation) -> {
                                   if (reservations.remove(reservation.getReservationName())) {
-                                    apiClient.deleteCapacityReservation(
-                                        regionReservation.getGroupName(),
+                                    log.debug(
+                                        "Deleting reservation {} with {} vms",
                                         reservation.getReservationName(),
                                         reservation.getVmNames());
+                                    reservationMetrics.wrapWithMetrics(
+                                        universe.getUniverseUUID(),
+                                        reservation.getVmNames().size(),
+                                        Common.CloudType.azu,
+                                        CapacityReservationUtil.ReservationAction.RELEASE,
+                                        () -> {
+                                          apiClient.deleteCapacityReservation(
+                                              regionReservation.getGroupName(),
+                                              reservation.getReservationName(),
+                                              reservation.getVmNames());
+                                          return null;
+                                        });
                                   } else {
                                     log.debug(
                                         "Reservation {} is not found",
@@ -96,18 +121,27 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                                   }
                                 });
                       });
+              // This should not happen but just for the sake of safety.
               reservations.forEach(
                   r ->
                       apiClient.deleteCapacityReservation(
                           regionReservation.getGroupName(), r, Collections.emptySet()));
               log.debug("Deleting region reservation {}", regionReservation.getGroupName());
-              apiClient.deleteCapacityReservationGroup(regionReservation.getGroupName());
+              reservationMetrics.wrapWithMetrics(
+                  universe.getUniverseUUID(),
+                  1,
+                  Common.CloudType.azu,
+                  CapacityReservationUtil.ReservationAction.DELETE_GROUP,
+                  () -> {
+                    apiClient.deleteCapacityReservationGroup(regionReservation.getGroupName());
+                    return null;
+                  });
             } else {
               log.debug("Group not found: {}", regionReservation.getGroupName());
             }
             azureReservationInfo.getReservationsByRegionMap().remove(regionReservation.getRegion());
           }
-          capacityReservationState.setAzureReservationInfo(null);
+          capacityReservationState.getAzureReservationInfos().remove(providerUUID);
         } else if (reservationForProviderType
             instanceof UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo) {
           CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCloudCode().name());
@@ -122,16 +156,61 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                           .forEach(
                               (zoneId, reservation) -> {
                                 if (zoneReservation.getReservationName() != null) {
-                                  cloudAPI.deleteCapacityReservation(
-                                      provider,
-                                      zoneReservation.getRegion(),
-                                      reservation.getReservationName());
+                                  log.debug(
+                                      "Deleting reservation {} with {} vms",
+                                      reservation.getReservationName(),
+                                      reservation.getVmNames());
+                                  reservationMetrics.wrapWithMetrics(
+                                      universe.getUniverseUUID(),
+                                      reservation.getVmNames().size(),
+                                      Common.CloudType.aws,
+                                      CapacityReservationUtil.ReservationAction.RELEASE,
+                                      () -> {
+                                        cloudAPI.deleteCapacityReservation(
+                                            provider,
+                                            zoneReservation.getRegion(),
+                                            reservation.getReservationName());
+                                        return null;
+                                      });
                                 }
                               });
                     });
             awsReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
           }
-          capacityReservationState.setAwsReservationInfo(null);
+          capacityReservationState.getAwsReservationInfos().remove(providerUUID);
+        } else if (reservationForProviderType
+            instanceof UniverseDefinitionTaskParams.GcpReservationInfo gcpReservationInfo) {
+          GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
+          for (UniverseDefinitionTaskParams.GcpZoneReservation zoneReservation :
+              new ArrayList<>(gcpReservationInfo.getReservationsByZoneMap().values())) {
+            zoneReservation
+                .getReservationsByType()
+                .forEach(
+                    (instanceType, perInstanceType) -> {
+                      perInstanceType
+                          .getZonedReservation()
+                          .forEach(
+                              (zoneId, reservation) -> {
+                                if (reservation.getReservationName() != null) {
+                                  try {
+                                    apiClient.deleteCapacityReservation(
+                                        reservation.getReservationName(),
+                                        zoneReservation.getZone(),
+                                        taskParams().deleteOnlyIfFullyUtilized);
+                                  } catch (java.io.IOException e) {
+                                    log.error(
+                                        "Failed to delete capacity reservation: "
+                                            + zoneReservation.getReservationName()
+                                            + " in zone: "
+                                            + zoneReservation.getZone(),
+                                        e);
+                                  }
+                                }
+                              });
+                    });
+            gcpReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
+          }
+          capacityReservationState.getGcpReservationInfos().remove(providerUUID);
         }
       }
       succeeded = true;

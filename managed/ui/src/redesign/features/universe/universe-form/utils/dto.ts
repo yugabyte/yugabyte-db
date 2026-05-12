@@ -1,6 +1,10 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
 import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
+import {
+  MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
+} from '../../universe-actions/edit-multi-tenancy/multiTenancyQosDbCount';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -38,6 +42,12 @@ export enum MasterPlacementMode {
   DEDICATED = 'DEDICATED'
 }
 
+export enum K8sEncryptionOption {
+  ClienToNode = 'enableClientToNodeEncrypt',
+  NodeToNode = 'enableNodeToNodeEncrypt',
+  EnableBoth = 'EnableBoth'
+}
+
 export interface CommunicationPorts {
   masterHttpPort: number;
   masterRpcPort: number;
@@ -55,6 +65,7 @@ export interface CommunicationPorts {
 
 export enum StorageType {
   IO1 = 'IO1',
+  IO2 = 'IO2',
   GP2 = 'GP2',
   GP3 = 'GP3',
   Scratch = 'Scratch',
@@ -72,8 +83,24 @@ export interface DeviceInfo {
   diskIops: number | null;
   throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
+  mountPoints?: string | null;
   storageType: StorageType | null;
+}
+
+/** Per-AZ override for K8s: perProcess.TSERVER/MASTER each have deviceInfo (volume size/count/storage class). */
+export interface AZOverridePerProcess {
+  deviceInfo?: {
+    volumeSize?: number;
+    numVolumes?: number;
+    storageClass?: string;
+  };
+}
+
+export interface AZOverridePerAZ {
+  perProcess?: {
+    TSERVER?: AZOverridePerProcess;
+    MASTER?: AZOverridePerProcess;
+  };
 }
 
 export enum ExposingServiceTypes {
@@ -128,6 +155,7 @@ export interface UserIntent {
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
   enableConnectionPooling?: boolean;
+  multiTenancy?: { enableQos: boolean; qosMaxDbCpuPercent?: number; qosMaxDbCount?: number };
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -157,7 +185,7 @@ export interface UserIntent {
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
   userIntentOverrides?: {
-    azOverrides?: Record<string, string>;
+    azOverrides?: Record<string, AZOverridePerAZ>;
   };
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
@@ -330,12 +358,12 @@ export interface DeviceInfo {
   diskIops: number | null;
   throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
+  mountPoints?: string | null;
   storageType: StorageType | null;
-  cloudVolumeEncryption? : {
+  cloudVolumeEncryption?: {
     enableVolumeEncryption: boolean;
     kmsConfigUUID: string;
-  }
+  };
 }
 
 export interface K8NodeSpec {
@@ -401,7 +429,7 @@ export interface UserIntent {
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
-  azOverrides?: Record<string, string>;
+  azOverrides?: Record<string, AZOverridePerAZ>;
 }
 
 export interface Cluster {
@@ -552,6 +580,8 @@ export interface InstanceConfigFormValue {
   kmsConfig: string | null;
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
+  k8sEncryptionType?: K8sEncryptionOption;
+  enableTLS?: boolean;
 }
 
 export interface AdvancedConfigFormValue {
@@ -566,6 +596,9 @@ export interface AdvancedConfigFormValue {
   communicationPorts: CommunicationPorts;
   enablePGCompatibitilty: boolean;
   enableConnectionPooling?: boolean;
+  enableMultiTenancyQos?: boolean;
+  multiTenancyQosMaxDbCpuPercent?: number;
+  multiTenancyQosMaxDbCount?: number;
 }
 
 export interface InstanceTag {
@@ -590,7 +623,10 @@ export interface UniverseFormData {
   gFlags: Gflag[];
   inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
+  /** Helm: userIntent.azOverrides (YAML strings per AZ) */
   azOverrides?: Record<string, string>;
+  /** K8s: userIntent.userIntentOverrides.azOverrides (per-AZ volume/config) */
+  k8sAzOverrides?: Record<string, AZOverridePerAZ>;
   proxyConfig?: {};
   specificGFlagsAzOverrides?: {};
 }
@@ -655,7 +691,9 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableYEDIS: false,
   kmsConfig: null,
   arch: null,
-  imageBundleUUID: ''
+  imageBundleUUID: '',
+  k8sEncryptionType: K8sEncryptionOption.EnableBoth,
+  enableTLS: true
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
@@ -669,13 +707,17 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   ybSoftwareVersion: null,
   communicationPorts: DEFAULT_COMMUNICATION_PORTS,
   enablePGCompatibitilty: false,
-  enableConnectionPooling: false
+  enableConnectionPooling: false,
+  enableMultiTenancyQos: false,
+  multiTenancyQosMaxDbCpuPercent: MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  multiTenancyQosMaxDbCount: MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];
 export const DEFAULT_GFLAGS = [];
 export const DEFAULT_UNIVERSE_OVERRIDES = '';
-export const DEFAULT_AZ_OVERRIDES = {};
+export const DEFAULT_AZ_OVERRIDES: Record<string, string> = {};
+export const DEFAULT_K8S_AZ_OVERRIDES: Record<string, AZOverridePerAZ> = {};
 
 export const DEFAULT_FORM_DATA: UniverseFormData = {
   cloudConfig: DEFAULT_CLOUD_CONFIG,
@@ -685,7 +727,8 @@ export const DEFAULT_FORM_DATA: UniverseFormData = {
   gFlags: DEFAULT_GFLAGS,
   inheritFlagsFromPrimary: true,
   universeOverrides: DEFAULT_UNIVERSE_OVERRIDES,
-  azOverrides: DEFAULT_AZ_OVERRIDES
+  azOverrides: DEFAULT_AZ_OVERRIDES,
+  k8sAzOverrides: DEFAULT_K8S_AZ_OVERRIDES
 };
 //-------------------------------------------------------- Form Data related Types - Ends -------------------------------------------------------------------
 
@@ -728,7 +771,7 @@ export interface Certificate {
   expiryDate: string;
   privateKey: string;
   certificate: string;
-  certType: 'SelfSigned' | 'CustomCertHostPath';
+  certType: 'SelfSigned' | 'CustomCertHostPath' | 'K8SCertManager';
 }
 
 export interface AccessKey {

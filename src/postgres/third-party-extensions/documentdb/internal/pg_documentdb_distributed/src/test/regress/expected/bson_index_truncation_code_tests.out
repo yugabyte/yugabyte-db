@@ -12,13 +12,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_11600
-                     Table "documentdb_data.documents_11600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_11600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_11600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11601" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='20'))
@@ -191,7 +190,7 @@ SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_test
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+                                                                                                                                                        QUERY PLAN                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -208,7 +207,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item": "G" }';
-                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                             
+                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -226,7 +225,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiYSI6IDEsICJiIjogMyB9" } }';
-                                                                                                                                   QUERY PLAN                                                                                                                                   
+                                                                                                                                          QUERY PLAN                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -243,7 +242,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }';
-                                                                                                                                     QUERY PLAN                                                                                                                                     
+                                                                                                                                            QUERY PLAN                                                                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -260,7 +259,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "YWJvYm9yYQ==" } }';
-                                                                                                                             QUERY PLAN                                                                                                                             
+                                                                                                                                    QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -340,7 +339,7 @@ SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_test
 (10 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+                                                                                                                                                        QUERY PLAN                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -357,7 +356,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+                                                                                                                                                         QUERY PLAN                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -374,7 +373,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$minKey" : 1 } } }';
-                                                                                                                       QUERY PLAN                                                                                                                        
+                                                                                                                               QUERY PLAN                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -391,7 +390,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "YWJvYm9yYQ==" } } }';
-                                                                                                                             QUERY PLAN                                                                                                                             
+                                                                                                                                    QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -408,7 +407,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "YWJvYm9yYQ==" } } }';
-                                                                                                                             QUERY PLAN                                                                                                                              
+                                                                                                                                     QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -475,7 +474,7 @@ SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_test
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+                                                                                                                                                        QUERY PLAN                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -492,7 +491,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+                                                                                                                                                         QUERY PLAN                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -509,7 +508,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$maxKey" : 1 } } }';
-                                                                                                                       QUERY PLAN                                                                                                                        
+                                                                                                                               QUERY PLAN                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -526,7 +525,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "YWJvYm9yYQ==" } } }';
-                                                                                                                             QUERY PLAN                                                                                                                             
+                                                                                                                                    QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -543,7 +542,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "YWJvYm9yYQ==" } } }';
-                                                                                                                             QUERY PLAN                                                                                                                              
+                                                                                                                                     QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -576,7 +575,6 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 -- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$ne": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
 -- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
 -- insert $code BSON data in nested documents/arrays with different leaf types
-SET documentdb.enableIndexTermTruncationOnNestedObjects to ON;
 SET documentdb.indexTermLimitOverride to 100;
 /* create index on key 'ikey2' */
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_code_tests_2", "indexes": [ { "key": { "ikey2" : 1 }, "name": "ikey_2", "enableLargeIndexKeys": true } ] }');
@@ -587,13 +585,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_11601
-                     Table "documentdb_data.documents_11601"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_11601"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_11601" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11603" documentdb_rum (document bson_rum_single_path_ops (path=ikey2, tl='100'))
@@ -715,7 +712,7 @@ SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_test
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } }, "item": "A" }';
-                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -733,7 +730,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]]]]], "item": "A" }';
-                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
+                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -751,7 +748,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [["a"]], "item": "A" }';
-                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
+                                                                                                                                                                             QUERY PLAN                                                                                                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -769,7 +766,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "f": { "d": "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } }, "item": "A" }';
-                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -787,7 +784,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "csssss": 2 } } } } } }, "item": "A" }';
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -805,7 +802,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "c": [[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]] } } } } } }, "item": "A" }';
-                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -823,7 +820,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (13 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "b": { "c": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ]]]]]], "item": "A" }';
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document

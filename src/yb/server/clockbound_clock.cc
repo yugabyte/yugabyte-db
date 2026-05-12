@@ -25,6 +25,7 @@ extern "C" {
 #include "yb/gutil/port.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -68,9 +69,7 @@ static constexpr auto kAutoConfigNumClockboundCtxs = 0;
 // 1. Old hardware: ~500us
 // 2. New hardware, PHC, with NTP: ~100us
 // 3. New hardware, PHC, with PTP: ~40us
-//
-// Picking a conservative default of 1ms.
-DEFINE_NON_RUNTIME_uint64(clockbound_clock_error_estimate_usec, 1000,
+DEFINE_NON_RUNTIME_uint64(clockbound_clock_error_estimate_usec, 2500,
     "An estimate of the clock error in microseconds."
     " When the estimate is too low and the reported clock error exceeds the estimate,"
     " the database timestamps fall behind real time."
@@ -87,6 +86,10 @@ DEFINE_NON_RUNTIME_uint32(clockbound_num_ctxs, kAutoConfigNumClockboundCtxs,
     " When set to 0, the number of contexts is automatically determined."
     " This is a performance optimization to reduce contention on the clockbound context.");
 
+DEFINE_RUNTIME_uint64(max_wait_for_clock_sync_at_startup_ms, 120000,
+    "Timeout in milliseconds of waiting for clock synchronization at startup."
+    " When set to 0, waiting is disabled.");
+
 // Use this bound for global limit in mixed clock mode.
 DECLARE_uint64(max_clock_skew_usec);
 
@@ -95,6 +98,79 @@ namespace yb::server {
 namespace {
 
 const std::string kClockboundClockName = "clockbound";
+
+Status ClockboundErrorToStatus(const clockbound_err& err) {
+  switch (err.kind) {
+    case CLOCKBOUND_ERR_NONE:
+      return STATUS_FORMAT(IllegalState, "This state is not reachable");
+    case CLOCKBOUND_ERR_SYSCALL:
+      return STATUS_FORMAT(
+          IOError, "clockbound API failed with error: $0, and detail: $1",
+          strerror(err.sys_errno), err.detail);
+    case CLOCKBOUND_ERR_SEGMENT_NOT_INITIALIZED:
+      return STATUS_FORMAT(IOError, "Segment not initialized");
+    case CLOCKBOUND_ERR_SEGMENT_MALFORMED:
+      return STATUS_FORMAT(IOError, "Segment malformed");
+    case CLOCKBOUND_ERR_CAUSALITY_BREACH:
+      return STATUS_FORMAT(IOError, "Segment and clock reads out of order");
+  }
+  return STATUS_FORMAT(NotSupported, "Unknown error code: $0", err.kind);
+}
+
+PhysicalTime BuildPhysicalTime(const clockbound_now_result& result) {
+  auto earliest = MonoTime::TimespecToMicros(result.earliest);
+  auto latest = MonoTime::TimespecToMicros(result.latest);
+
+  // Handle the case where earliest > latest (clock anomaly)
+  // Observed in real-life AWS QA cluster.
+  if (earliest > latest) {
+    LOG(WARNING)
+        << "Clock anomaly detected, earliest: " << earliest << " > latest: " << latest
+        << ". Clamping clock error to estimate: " << FLAGS_clockbound_clock_error_estimate_usec;
+    auto real_time = latest + ceil_div(earliest - latest, MicrosTime(2));
+    return PhysicalTime{real_time, FLAGS_clockbound_clock_error_estimate_usec};
+  }
+
+  auto error = ceil_div(latest - earliest, MicrosTime(2));
+  auto real_time = earliest + error;
+  return PhysicalTime{real_time, error};
+}
+
+// Padded to avoid false sharing.
+struct alignas(CACHELINE_SIZE) PaddedClockboundCtx {
+  Result<PhysicalTime> CheckClockSync() {
+    auto estimate = FLAGS_clockbound_clock_error_estimate_usec;
+    clockbound_now_result result;
+    std::unique_lock<std::mutex> lock(mutex);
+
+    auto err = clockbound_now(ctx, &result);
+    if (err != nullptr) {
+      auto status = ClockboundErrorToStatus(*err);
+      LOG(INFO) << "Failed. Reason: " << status.ToString();
+      return status;  // Fail immediately
+    }
+
+    // Retry if clock status is not yet synchronized.
+    if (result.clock_status != CLOCKBOUND_STA_SYNCHRONIZED) {
+      LOG(INFO) << "Retrying. Reason: Clock status is " << result.clock_status;
+      return STATUS_FORMAT(TryAgain, "Clock status is $0", result.clock_status);
+    }
+
+    auto physical_time = BuildPhysicalTime(result);
+    auto error = physical_time.max_error;
+    // Retry if clock error exceeds estimate.
+    if (error > estimate) {
+      LOG(INFO) << "Retrying. Reason: Clock error " << error
+                << " is greater than estimate " << estimate;
+      return STATUS_FORMAT(TryAgain, "Clock error $0 exceeds estimate $1", error, estimate);
+    }
+    return physical_time;
+  }
+
+  std::mutex mutex;
+  clockbound_ctx *ctx;
+};
+static_assert(sizeof(PaddedClockboundCtx) % CACHELINE_SIZE == 0);
 
 // ClockboundClock
 //
@@ -122,6 +198,15 @@ class ClockboundClock : public PhysicalClock {
             << ClockboundErrorToStatus(open_err);
       }
       ctxs_[i].ctx = ctx;
+    }
+
+    // Wait for clock sync
+    auto sync_result = WaitForClockSync();
+    if (sync_result.ok()) {
+      LOG(INFO) << "Clockbound clock in synchronized state. " << sync_result->ToString();
+    } else {
+      LOG(FATAL) << "Failed to synchronize clockbound clock. Reason: "
+                 << sync_result.status();
     }
   }
 
@@ -162,30 +247,32 @@ class ClockboundClock : public PhysicalClock {
       break;
     }
 
-    // Always check whether the clock went out of sync.
-    SCHECK_NE(result.clock_status, CLOCKBOUND_STA_UNKNOWN,
-              ServiceUnavailable,
-              "Clock status is unknown, time cannot be trusted.");
+    if (result.clock_status == CLOCKBOUND_STA_FREE_RUNNING) {
+      // Clock in free running state is a potential infra problem. Report it.
+      YB_LOG_EVERY_N_SECS(WARNING, 1)
+          << "Clock status is free running, check clock infrastructure.";
+    } else {
+      SCHECK(result.clock_status == CLOCKBOUND_STA_SYNCHRONIZED,
+             ServiceUnavailable,
+             Format("Clock status is $0, time cannot be trusted.", result.clock_status));
+    }
 
-    auto earliest = MonoTime::TimespecToMicros(result.earliest);
-    auto latest = MonoTime::TimespecToMicros(result.latest);
+    auto physical_time = BuildPhysicalTime(result);
+    auto error = physical_time.max_error;
 
-    auto error = ceil_div(latest - earliest, MicrosTime(2));
     // This check is not mandatory. However, when the clock error
     // is unreasonably high such as 250ms, it indicates a serious
     // infrastructure failure and we report that scenario.
     //
     // Use half of max_clock_skew_usec as the maximum allowed clock error.
-    MicrosTime max_clock_error =
-        ANNOTATE_UNPROTECTED_READ(FLAGS_max_clock_skew_usec) / 2;
+    MicrosTime max_clock_error = ANNOTATE_UNPROTECTED_READ(FLAGS_max_clock_skew_usec) / 2;
     SCHECK_LE(error, max_clock_error, ServiceUnavailable,
               Format("Clock error: $0 exceeds maximum allowed clock error: $1."
-                     " This indicates a serious infrastructure failure."
+                     " This indicates a node restart or an infrastructure failure."
                      " Ensure that the clocks are synchronized properly.",
                      error, max_clock_error));
 
-    auto real_time = earliest + error;
-    return PhysicalTime{ real_time, error };
+    return physical_time;
   }
 
   ~ClockboundClock() {
@@ -198,22 +285,39 @@ class ClockboundClock : public PhysicalClock {
   }
 
  private:
-  static Status ClockboundErrorToStatus(const clockbound_err &err) {
-    switch (err.kind) {
-      case CLOCKBOUND_ERR_NONE:
-        return STATUS_FORMAT(IllegalState, "This state is not reachable");
-      case CLOCKBOUND_ERR_SYSCALL:
-        return STATUS_FORMAT(
-          IOError, "clockbound API failed with error: $0, and detail: $1",
-          strerror(err.sys_errno), err.detail);
-      case CLOCKBOUND_ERR_SEGMENT_NOT_INITIALIZED:
-        return STATUS_FORMAT(IOError, "Segment not initialized");
-      case CLOCKBOUND_ERR_SEGMENT_MALFORMED:
-        return STATUS_FORMAT(IOError, "Segment malformed");
-      case CLOCKBOUND_ERR_CAUSALITY_BREACH:
-        return STATUS_FORMAT(IOError, "Segment and clock reads out of order");
+  // Waits for all clockbound contexts to be stable.
+  // Returns synchronized physical time captured inside this function, or error status on failure.
+  Result<PhysicalTime> WaitForClockSync() {
+    auto timeout_ms = FLAGS_max_wait_for_clock_sync_at_startup_ms;
+    if (timeout_ms == 0) {
+      return Now();
     }
-    return STATUS_FORMAT(NotSupported, "Unknown error code: $0", err.kind);
+
+    auto condition = [this]() -> Result<bool> {
+      // Check all clockbound contexts
+      for (size_t i = 0; i < ctxs_.size(); i++) {
+        auto ctx_sync_time = CheckClockContextSync(i);
+        if (!ctx_sync_time.ok()) {
+          if (ctx_sync_time.status().IsTryAgain()) {
+            return false; // Retry
+          }
+          return ctx_sync_time.status(); // Fail immediately
+        }
+      }
+      // All contexts synchronized
+      return true;
+    };
+
+    RETURN_NOT_OK(WaitFor(condition, MonoDelta::FromMilliseconds(timeout_ms),
+                          "Wait for all clockbound contexts to sync",
+                          MonoDelta::FromSeconds(1)));
+    return CheckClockContextSync(0);
+  }
+
+  // Checks if a single clockbound context is synchronized.
+  // Returns physical time if synchronized, TryAgain to retry, or error status on failure.
+  Result<PhysicalTime> CheckClockContextSync(size_t ctx_index) {
+    return ctxs_[ctx_index].CheckClockSync();
   }
 
   MicrosTime MaxGlobalTime(PhysicalTime time) override {
@@ -221,13 +325,6 @@ class ClockboundClock : public PhysicalClock {
         << "Internal Error: MaxGlobalTime must not be called"
         << " for ClockboundClock";
   }
-
-  // Padded to avoid false sharing.
-  struct alignas(CACHELINE_SIZE) PaddedClockboundCtx {
-    std::mutex mutex;
-    clockbound_ctx *ctx;
-  };
-  static_assert(sizeof(PaddedClockboundCtx) % CACHELINE_SIZE == 0);
 
   std::vector<PaddedClockboundCtx> ctxs_;
 };
@@ -374,18 +471,26 @@ class ClockboundClock : public PhysicalClock {
 class RealTimeAlignedClock : public PhysicalClock {
  public:
   explicit RealTimeAlignedClock(PhysicalClockPtr time_source)
-      : time_source_(time_source) {}
+      : time_source_(time_source) {
+  }
 
   // Returns earliest + min(clock_error, EST_ERROR).
-  // Returns an error in Unsynchronized state.
   // Also returns clock_error for metrics.
   //
   // See class comment for the correctness argument.
   Result<PhysicalTime> Now() override {
-    auto [real_time, error] = VERIFY_RESULT(time_source_->Now());
+    auto result = VERIFY_RESULT(time_source_->Now());
+
+    // Log warning if clock error exceeds estimate
+    if (result.max_error > FLAGS_clockbound_clock_error_estimate_usec) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1)
+          << "Clock error: " << result.max_error
+          << " exceeds estimate: " << FLAGS_clockbound_clock_error_estimate_usec;
+    }
+
+    auto [real_time, error] = std::move(result);
     auto earliest = real_time - error;
-    auto timepoint = earliest + std::min(
-        error, FLAGS_clockbound_clock_error_estimate_usec);
+    auto timepoint = earliest + std::min(error, FLAGS_clockbound_clock_error_estimate_usec);
     return PhysicalTime{timepoint, error};
   }
 

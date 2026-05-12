@@ -3,11 +3,10 @@ title: Deploy on Amazon Web Services using Terraform
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy YugabyteDB clusters on Amazon Web Services using Terraform.
-menu:
-  stable:
-    identifier: deploy-in-aws-2-terraform
-    parent: public-clouds
-    weight: 630
+private: true
+_build:
+  render: false
+  list: false
 type: docs
 ---
 
@@ -69,7 +68,7 @@ provider "aws" {
 
 module "yugabyte-db-cluster" {
   # The source module used for creating AWS clusters.
-  source = "github.com/Yugabyte/terraform-aws-yugabyte"
+  source = "github.com/yugabyte/terraform-aws-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"
@@ -92,7 +91,7 @@ module "yugabyte-db-cluster" {
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   num_instances = "3"
-  
+
   # The AWS region for the cluster to be created
   region_name = "REGION_NAME_HERE"
 

@@ -11,8 +11,9 @@
 
 [
 
-# db_oid = 1 means the Oid of the template1 database which is bootstrapped during initdb.
+# db_oid = 0 corresponds to InvalidOid and is used to store the coarse-grained
+# logical client version
 
-{ db_oid => '1', current_version => '1' },
+{ db_oid => '0', current_version => '0' },
 
 ]

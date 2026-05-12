@@ -72,7 +72,6 @@ typedef enum MongoQueryOperatorType
 
 	/*
 	 * This is different from geonear agg stage.
-	 * This operator only appears in mongo jstests
 	 * Behaviour is same as nearsphere
 	 */
 	QUERY_OPERATOR_GEONEAR,

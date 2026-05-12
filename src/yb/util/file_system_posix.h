@@ -23,7 +23,12 @@ size_t GetUniqueIdFromFile(int fd, uint8_t* id);
 
 class PosixSequentialFile : public SequentialFile {
  public:
+#if defined(__APPLE__)
+  // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+  PosixSequentialFile(const std::string& fname, int fd, const FileSystemOptions& options);
+#else
   PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
+#endif
   virtual ~PosixSequentialFile();
 
   Status Read(size_t n, Slice* result, uint8_t* scratch) override;
@@ -34,7 +39,9 @@ class PosixSequentialFile : public SequentialFile {
 
  private:
   std::string filename_;
+#if !defined(__APPLE__)
   FILE* file_;
+#endif
   int fd_;
   bool use_os_buffer_;
 };

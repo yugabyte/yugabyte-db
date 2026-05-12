@@ -46,6 +46,9 @@
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#define HEAP_STATS_ARG_NUM 7
+#define GETRUSAGE_ARG_NUM 16
+
 /*
  * Dump the current connection heap stats, including TCMalloc, PG, and PgGate.
  * The exact definition for the output columns are as followed:
@@ -63,11 +66,9 @@
 Datum
 yb_heap_stats(PG_FUNCTION_ARGS)
 {
-	const static size_t kRetArgNum = 7;
-
-	Datum		values[kRetArgNum];
-	bool		isnull[kRetArgNum];
-	TupleDesc	tupdesc = CreateTemplateTupleDesc(kRetArgNum);
+	Datum		values[HEAP_STATS_ARG_NUM];
+	bool		isnull[HEAP_STATS_ARG_NUM];
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(HEAP_STATS_ARG_NUM);
 
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "TCMalloc heap_size_bytes",
 					   INT8OID, -1, 0);
@@ -116,18 +117,16 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 Datum
 yb_getrusage(PG_FUNCTION_ARGS)
 {
-	const int	arg_count = 16;
-
 	TupleDesc	tupdesc;
-	Datum		values[arg_count];
-	bool		isnull[arg_count];
+	Datum		values[GETRUSAGE_ARG_NUM];
+	bool		isnull[GETRUSAGE_ARG_NUM];
 	struct rusage r;
 
 	/* Get usage. */
 	getrusage(RUSAGE_SELF, &r);
 
 	/* Create tuple descriptor. */
-	tupdesc = CreateTemplateTupleDesc(arg_count);
+	tupdesc = CreateTemplateTupleDesc(GETRUSAGE_ARG_NUM);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "user cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "system cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "maxrss", INT8OID, -1, 0);

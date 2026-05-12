@@ -37,7 +37,7 @@ The following table describes key differences between PgBouncer and YugabyteDB C
 
 ### Migrate
 
-After reviewing the differences bewtween PgBouncer and Connection Manager, migrate from PgBouncer as follows:
+After reviewing the differences between PgBouncer and Connection Manager, migrate from PgBouncer as follows:
 
 1. Make sure your application works with session-level pooling.
 

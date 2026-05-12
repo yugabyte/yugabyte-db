@@ -24,13 +24,18 @@
 #include <string>
 
 #include "yb/rocksdb/env.h"
+#include "yb/util/strongly_typed_bool.h"
+
+YB_STRONGLY_TYPED_BOOL(CopyFileSync);
 
 namespace rocksdb {
 
 // Copy a file up to a specified size. If passed size is 0 - copy the whole file.
 // Will return "file too small" error status if `size` is larger than size of the source file.
+// If sync is true, the destination file will be synced to disk before returning.
 Status CopyFile(
-    Env* env, const std::string& source, const std::string& destination, uint64_t size = 0);
+    Env* env, const std::string& source, const std::string& destination, uint64_t size = 0,
+    CopyFileSync sync = CopyFileSync::kFalse);
 
 // Recursively delete the specified directory.
 Status DeleteRecursively(Env* env, const std::string& dirname);

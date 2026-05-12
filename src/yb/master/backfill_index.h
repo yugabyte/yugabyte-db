@@ -24,10 +24,9 @@
 #include <vector>
 
 #include <boost/mpl/and.hpp>
-#include "yb/util/flags.h"
 
+#include "yb/ash/wait_state.h"
 #include "yb/common/entity_ids.h"
-#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
@@ -36,13 +35,16 @@
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 
+#include "yb/qlexpr/index.h"
+
 #include "yb/server/monitored_task.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
 
@@ -153,11 +155,15 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   scoped_refptr<TableInfo> table() { return indexed_table_; }
 
-  Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
-
-  const uint64_t number_rows_processed() const { return number_rows_processed_; }
+  Status UpdateRowsProcessedForIndexTable(
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   const LeaderEpoch& epoch() const { return epoch_; }
+
+  bool using_table_locks() const { return using_table_locks_.load(std::memory_order_acquire); }
+
+  const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
 
   static bool GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table);
 
@@ -209,12 +215,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
-  std::atomic<uint64> number_rows_processed_;
 
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
+  std::atomic_bool using_table_locks_{false};
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
@@ -223,6 +229,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const scoped_refptr<NamespaceInfo> ns_info_;
   LeaderEpoch epoch_;
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 class BackfillTableJob : public server::MonitoredTask {
@@ -262,8 +269,11 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   Status LaunchNextChunkOrDone();
   Status Done(
-      const Status& status, const std::optional<std::string>& backfilled_until,
-      const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes);
+      const Status& status,
+      const std::optional<std::string>& backfilled_until,
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+      const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
 
@@ -293,9 +303,14 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
+  const ash::WaitStateInfoPtr& wait_state() const {
+    return backfill_table_->wait_state();
+  }
+
  private:
   Status UpdateBackfilledUntil(
-      const std::string& backfilled_until, const uint64_t number_rows_processed);
+      const std::string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
@@ -393,6 +408,7 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
   }
 
   const std::unordered_set<TableId> indexes_being_backfilled_;
+  std::unordered_map<TableId, double> num_rows_backfilled_in_index_;
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;

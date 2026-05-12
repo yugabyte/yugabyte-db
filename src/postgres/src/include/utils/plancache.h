@@ -146,7 +146,7 @@ typedef struct CachedPlanSource
 	int64		num_generic_plans;	/* # of generic plans */
 
 	/* YB */
-	bool		usesPostgresRel;	/* Does this plan use pg relations */
+	bool		yb_plan_references_pg_rel;	/* Does this plan use pg relations */
 	int			yb_generic_num_referenced_rels; /* Num rels referenced by
 												 * generic plan */
 	int			yb_custom_max_num_referenced_rels;	/* Max number of relations
@@ -215,6 +215,7 @@ extern CachedPlanSource *CreateCachedPlan(struct RawStmt *raw_parse_tree,
 extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 												 const char *query_string,
 												 CommandTag commandTag);
+extern bool YbIsCachedQueryValid(CachedPlanSource *plansource);
 extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,

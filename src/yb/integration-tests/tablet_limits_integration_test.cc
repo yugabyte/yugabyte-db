@@ -83,8 +83,9 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.enable_ysql = true;
     options.num_tablet_servers = 1;
     options.num_masters = 1;
+    options.replication_factor = 1;
     options.extra_master_flags = {
-        "--replication_factor=1", "--enable_load_balancing=false",
+        "--enable_load_balancing=false",
         "--initial_tserver_registration_duration_secs=0",
         "--enforce_tablet_replica_limits=true"};
     return options;
@@ -348,6 +349,7 @@ Result<pgwrapper::PGConn> CreateTableLimitTestBase::PgConnect(const std::string&
 Status CreateTableLimitTestBase::SplitTablet(const TabletId& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController controller;
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();

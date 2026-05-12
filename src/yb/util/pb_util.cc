@@ -102,7 +102,7 @@ using std::ostream;
 using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 DEFINE_test_flag(bool, fail_write_pb_container, false,
                  "Simulate a failure during WritePBContainer.");

@@ -93,6 +93,7 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       row_cache(options.row_cache),
       mem_tracker(options.mem_tracker),
       block_based_table_mem_tracker(options.block_based_table_mem_tracker),
+      block_based_table_builder_mem_tracker(options.block_based_table_builder_mem_tracker),
       iterator_replacer(options.iterator_replacer),
       compaction_file_filter_factory(options.compaction_file_filter_factory.get()),
       priority_thread_pool_metrics(options.priority_thread_pool_metrics) {}

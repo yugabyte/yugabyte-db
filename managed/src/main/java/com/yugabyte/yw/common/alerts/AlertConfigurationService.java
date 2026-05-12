@@ -759,4 +759,8 @@ public class AlertConfigurationService {
   private String maintenanceWindowUuidsString(Collection<UUID> uuids) {
     return uuids.stream().map(UUID::toString).sorted().collect(Collectors.joining(","));
   }
+
+  public List<AlertConfiguration> listByCustomerUuid(UUID customerUuid) {
+    return list(AlertConfigurationFilter.builder().customerUuid(customerUuid).build());
+  }
 }

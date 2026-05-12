@@ -36,7 +36,7 @@
 #include "yb/util/varint.h"
 #include "yb/util/flags.h"
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 // Maximumum value size is 64MB
 DEFINE_UNKNOWN_int32(yql_max_value_size, 64_MB,
@@ -51,15 +51,13 @@ using std::vector;
 using util::Decimal;
 using common::Jsonb;
 
-template<typename T>
-static int GenericCompare(const T& lhs, const T& rhs) {
-  if (lhs < rhs) return -1;
-  if (lhs > rhs) return 1;
-  return 0;
+template <class T1, class T2>
+static int GenericCompare(const T1& lhs, const T2& rhs) {
+  return OrderingToInt(lhs <=> rhs);
 }
 
-template <class PB>
-int TupleCompare(const PB& lhs, const PB& rhs);
+template <class PB1, class PB2>
+int TupleCompare(const PB1& lhs, const PB2& rhs);
 
 //------------------------- instance methods for abstract QLValue class -----------------------
 
@@ -889,33 +887,29 @@ bool EitherIsNull(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
   return IsNull(lhs) || IsNull(rhs);
 }
 
-bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs) {
+template <class PB1, class PB2>
+bool BothNotNull(const PB1& lhs, const PB2& rhs) {
   return !IsNull(lhs) && !IsNull(rhs);
 }
 
-bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs) {
+template <class PB1, class PB2>
+bool BothNull(const PB1& lhs, const PB2& rhs) {
   return IsNull(lhs) && IsNull(rhs);
 }
 
-bool BothNull(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
-  return IsNull(lhs) && IsNull(rhs);
+bool IsVirtual(const QLValuePB& lhs) {
+  return lhs.value_case() == QLValuePB::kVirtualValue;
 }
 
-bool EitherIsVirtual(const QLValuePB& lhs, const QLValuePB& rhs) {
-  return lhs.value_case() == QLValuePB::kVirtualValue ||
-         rhs.value_case() == QLValuePB::kVirtualValue;
+bool IsVirtual(const LWQLValuePB& lhs) {
+  return lhs.value_case() == QLValuePB::kVirtualValue;
 }
 
-bool EitherIsVirtual(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
-  return lhs.value_case() == QLValuePB::kVirtualValue ||
-         rhs.value_case() == QLValuePB::kVirtualValue;
-}
-
-template <class PB>
-bool DoComparable(const PB& lhs, const PB& rhs) {
-  return (lhs.value_case() == rhs.value_case() ||
-          EitherIsNull(lhs, rhs) ||
-          EitherIsVirtual(lhs, rhs));
+template <class PB1, class PB2>
+bool DoComparable(const PB1& lhs, const PB2& rhs) {
+  return lhs.value_case() == rhs.value_case() ||
+         IsNull(lhs) || IsNull(rhs) ||
+         IsVirtual(lhs) || IsVirtual(rhs);
 }
 
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs) {
@@ -940,45 +934,10 @@ bool Comparable(const QLValuePB& lhs, const QLValue& rhs) {
           EitherIsVirtual(lhs, rhs));
 }
 
-bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs) {
-  return !IsNull(lhs) && !rhs.IsNull();
-}
-
-bool BothNotNull(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
-  return !IsNull(lhs) && !IsNull(rhs);
-}
-
-bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
-  return IsNull(lhs) && rhs.IsNull();
-}
-
-template <class PB>
-int TupleCompare(const PB& lhs_tuple, const PB& rhs_tuple) {
-  DCHECK(lhs_tuple.elems().size() == rhs_tuple.elems().size());
-  auto li = lhs_tuple.elems().begin();
-  auto ri = rhs_tuple.elems().begin();
-  for (auto i = lhs_tuple.elems().size(); i > 0; --i, ++li, ++ri) {
-    if (IsNull(*li)) {
-      if (!IsNull(*ri)) {
-        return -1;
-      }
-    } else {
-      if (IsNull(*ri)) {
-        return 1;
-      }
-      int result = Compare(*li, *ri);
-      if (result != 0) {
-        return result;
-      }
-    }
-  }
-  return 0;
-}
-
-template <class Seq>
-int SeqCompare(const Seq& lhs, const Seq& rhs) {
+template <class Seq1, class Seq2>
+int SeqCompare(const Seq1& lhs, const Seq2& rhs) {
   // Compare elements one by one.
-  auto min_size = std::min(lhs.elems().size(), rhs.elems().size());
+  auto min_size = std::min<size_t>(lhs.elems().size(), rhs.elems().size());
   auto li = lhs.elems().begin();
   auto ri = rhs.elems().begin();
   for (auto i = min_size; i > 0; --i, ++li, ++ri) {
@@ -998,11 +957,18 @@ int SeqCompare(const Seq& lhs, const Seq& rhs) {
   }
 
   // If elements are equal, compare lengths.
-  return GenericCompare(lhs.elems().size(), rhs.elems().size());
+  return GenericCompare(
+      static_cast<size_t>(lhs.elems().size()), static_cast<size_t>(rhs.elems().size()));
 }
 
-template <class PB>
-int DoCompare(const PB& lhs, const PB& rhs) {
+template <class PB1, class PB2>
+int TupleCompare(const PB1& lhs_tuple, const PB2& rhs_tuple) {
+  DCHECK_EQ(lhs_tuple.elems().size(), rhs_tuple.elems().size());
+  return SeqCompare(lhs_tuple, rhs_tuple);
+}
+
+template <class PB1, class PB2>
+int DoCompare(const PB1& lhs, const PB2& rhs) {
   if (rhs.value_case() == QLValuePB::kVirtualValue &&
       lhs.value_case() != QLValuePB::kVirtualValue) {
     return -DoCompare(rhs, lhs);
@@ -1248,6 +1214,17 @@ bool operator ==(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
   return !IsNull(rhs) && DoCompare(lhs, rhs) == 0;
 }
 
+bool operator ==(const QLValuePB& lhs, const LWQLValuePB& rhs) {
+  if (IsNull(lhs)) {
+    return IsNull(rhs);
+  }
+  return !IsNull(rhs) && DoCompare(lhs, rhs) == 0;
+}
+
+bool operator ==(const LWQLValuePB& lhs, const QLValuePB& rhs) {
+  return rhs == lhs;
+}
+
 bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
   return !(lhs == rhs);
 }
@@ -1265,6 +1242,14 @@ void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result) {
   memcpy(data, lhs.cdata(), lhs.size());
   memcpy(data + lhs.size(), rhs.cdata(), rhs.size());
   result->ref_string_value(Slice(data, lhs.size() + rhs.size()));
+}
+
+void SetStringValue(QLValuePB& key, std::string_view value) {
+  key.set_string_value(value.data(), value.size());
+}
+
+void SetStringValue(LWQLValuePB& key, std::string_view value) {
+  key.dup_string_value(value);
 }
 
 } // namespace yb

@@ -30,14 +30,14 @@ CREATE TABLE accounts (
 CREATE TABLE investment_accounts (
     investment_type TEXT NOT NULL CHECK (investment_type IN ('stocks', 'bonds', 'funds')),
     CHECK (balance >= 5000),
-    PRIMARY KEY (account_id, investment_type) 
+    PRIMARY KEY (account_id, investment_type)
 ) INHERITS (accounts);
 
 -- Child table for savings accounts
 CREATE TABLE savings_accounts (
     interest_rate NUMERIC NOT NULL CHECK (interest_rate >= 0 AND interest_rate <= 0.1),
     CHECK (balance >= 100),
-    PRIMARY KEY (account_id) 
+    PRIMARY KEY (account_id)
 ) INHERITS (accounts);
 ```
 
@@ -73,7 +73,7 @@ Any columns added to or dropped from the parent `accounts` table are propagated 
 However, there are certain caveats to keep in mind:
 
 1. The parent table `accounts` may have its own rows that are not part of any child tables.
-1. The primary key for `account_id` on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constaints. You need to take special care to maintain such constraints across parent-child hierarchies.
+1. The primary key for `account_id` on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constraints. You need to take special care to maintain such constraints across parent-child hierarchies.
 
 Table inheritance can lead to complex hierarchies similar to class inheritance in object-oriented programming because a specific table can inherit from multiple parent tables and can itself be a parent table for other child tables.
 

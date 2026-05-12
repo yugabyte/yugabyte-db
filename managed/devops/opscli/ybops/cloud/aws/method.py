@@ -70,7 +70,8 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="AWS Key Pair name")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="AWS comma delimited security group IDs.")
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
@@ -119,7 +120,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
 
         super(AwsCreateInstancesMethod, self).callback(args)
 
-    def run_ansible_create(self, args):
+    def run_create_instance(self, args):
         self.cloud.create_instance(args)
 
 
@@ -136,8 +137,8 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
         self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
                                  help="AWS Key Pair name")
 
-    def update_ansible_vars_with_args(self, args):
-        super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(AwsProvisionInstancesMethod, self).update_extra_vars_with_args(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
 
@@ -156,7 +157,7 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
         args.auto_delete_boot_disk = False
         args.num_volumes = 0
 
-        self.create_method.run_ansible_create(args)
+        self.create_method.run_create_instance(args)
         host_info = self.cloud.get_host_info(args)
 
         self.delete_instance(args, host_info["id"])
@@ -283,7 +284,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if host_info["instance_state"] != "stopped":
             logging.warning(f"Expected instance {args.search_pattern} to be stopped, "
                             f"got {host_info['instance_state']}")
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
@@ -560,7 +561,11 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
                                  help="Capacity reservation to use.")
 
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation)
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _start_instance(self, args, host_info):
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
@@ -585,7 +590,8 @@ class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
 
     def add_extra_args(self):
         super(AwsUpdateMountedDisksMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
 
     def get_device_names(self, args, host_info=None):
@@ -598,7 +604,8 @@ class AwsQueryDeviceNames(AbstractMethod):
 
     def add_extra_args(self):
         super(AwsQueryDeviceNames, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--region", required=False, help="Region associated with the node")
         self.parser.add_argument("--instance_type",

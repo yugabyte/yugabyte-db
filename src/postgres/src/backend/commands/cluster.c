@@ -676,7 +676,9 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 					 swap_toast_by_content, false, true,
 					 frozenXid, cutoffMulti,
 					 relpersistence,
-					 true /* yb_copy_split_options */ );
+					 true /* yb_copy_split_options */ ,
+					 NIL /* changedIndexNames */ ,
+					 NIL /* changedIndexSplitOpts */ );
 }
 
 
@@ -1481,6 +1483,13 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 /*
  * Remove the transient table that was built by make_new_heap, and finish
  * cleaning up (including rebuilding all indexes on the old heap).
+ *
+ * changedIndexNames and changedIndexSplitOpts:
+ * During ALTER TYPE on columns with dependent indexes, indexes are rebuilt by
+ * dropping and recreating them. We skip DocDB index table creation during the rebuild
+ * phase and defer it to the reindex phase. Since DocDB tables don't exist during the
+ * reindex phase, split options must be retrieved beforehand and passed via these
+ * parallel lists to restore correct split options.
  */
 void
 finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
@@ -1491,7 +1500,9 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 				 TransactionId frozenXid,
 				 MultiXactId cutoffMulti,
 				 char newrelpersistence,
-				 bool yb_copy_split_options)
+				 bool yb_copy_split_options,
+				 List *changedIndexNames,
+				 List *changedIndexSplitOpts)
 {
 	ObjectAddress object;
 	Oid			mapped_tables[4];
@@ -1556,7 +1567,9 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 
 	reindex_relation(OIDOldHeap, reindex_flags, &reindex_params,
 					 true /* is_yb_table_rewrite */ ,
-					 yb_copy_split_options);
+					 yb_copy_split_options,
+					 changedIndexNames,
+					 changedIndexSplitOpts);
 
 	/* Report that we are now doing clean up */
 	pgstat_progress_update_param(PROGRESS_CLUSTER_PHASE,

@@ -30,7 +30,6 @@ import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -523,15 +522,11 @@ public class TablesController extends AuthenticatedController {
 
     // TODO: undo hardcode to AWS (required right now due to using EMR).
     Common.CloudType cloudType =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+        Util.getSingleProviderType(universe.getUniverseDetails().getPrimaryCluster().userIntent);
     if (cloudType != aws) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Bulk Import is currently only supported for AWS.");
     }
-
-    Provider.getOrBadRequest(
-        customerUUID,
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
 
     // Get form data and validate it.
     Form<BulkImportParams> formData =

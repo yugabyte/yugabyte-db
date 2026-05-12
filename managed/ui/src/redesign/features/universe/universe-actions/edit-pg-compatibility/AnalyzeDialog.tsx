@@ -4,7 +4,7 @@ import { Box, makeStyles, Typography, Chip, Link } from '@material-ui/core';
 import { YBModal } from '../../../../components';
 
 //icons
-import { ReactComponent as ReminderIcon } from '../../../../assets/reminder.svg';
+import ReminderIcon from '../../../../assets/reminder.svg';
 
 interface AnalyzeDialogProps {
   open: boolean;

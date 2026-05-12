@@ -76,6 +76,25 @@ public class CustomerConfigService {
     customerConfig.delete();
   }
 
+  public Set<UUID> getAssociatedUniverseUUIDS(CustomerConfig storageConfig) {
+    List<Backup> backups =
+        Backup.getInProgressAndCompleted(storageConfig.getCustomerUUID()).stream()
+            .filter(
+                backup ->
+                    backup.getBackupInfo().storageConfigUUID.equals(storageConfig.getConfigUUID()))
+            .collect(Collectors.toList());
+    List<Schedule> schedules =
+        Schedule.getActiveBackupSchedules(storageConfig.getCustomerUUID()).stream()
+            .filter(
+                schedule -> storageConfig.getConfigUUID().equals(getStorageConfigUuid(schedule)))
+            .collect(Collectors.toList());
+
+    return Stream.concat(
+            backups.stream().map(this::getUniverseUuid),
+            schedules.stream().map(this::getUniverseUuid))
+        .collect(Collectors.toSet());
+  }
+
   private List<CustomerConfigUI> enrichConfigsForUI(
       UUID customerUUID, List<CustomerConfig> rawConfigs) {
     List<CustomerConfigUI> configs =

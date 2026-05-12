@@ -45,9 +45,7 @@ func DescribeInstanceTypeUtil(
 
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response,
-			err, callSite, "Describe - Get Provider")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Describe - Get Provider")
 	}
 
 	if len(r) < 1 {
@@ -72,14 +70,19 @@ func DescribeInstanceTypeUtil(
 		providerUUID,
 		instanceTypeName).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Describe")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Instance Type", "Describe")
 	}
 
-	instanceTypeList := make([]ybaclient.InstanceTypeResp, 0)
-	instanceTypeList = append(instanceTypeList, rDescribe)
+	instanceType := util.CheckAndDereference(
+		rDescribe,
+		fmt.Sprintf("Instance Type: %s not found in provider: %s",
+			instanceTypeName, providerName),
+	)
 
-	if rDescribe.GetActive() {
+	instanceTypeList := make([]ybaclient.InstanceTypeResp, 0)
+	instanceTypeList = append(instanceTypeList, instanceType)
+
+	if instanceType.GetActive() {
 		if len(instanceTypeList) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullInstanceTypesContext := *instancetype.NewFullInstanceTypesContext()
 			fullInstanceTypesContext.Output = os.Stdout

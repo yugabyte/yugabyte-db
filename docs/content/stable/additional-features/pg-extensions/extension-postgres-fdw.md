@@ -9,11 +9,9 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgres-fdw
 ---
-
-{{< warning title="Not currently compatible with v2.25" >}}
-The postgres_fdw extension (supported in v2024.2 and earlier) is not yet available in v2.25.
-{{< /warning >}}
 
 The [postgres_fdw](https://www.postgresql.org/docs/15/postgres-fdw.html) module provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers.
 

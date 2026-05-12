@@ -34,12 +34,12 @@ class TserverXClusterContext : public TserverXClusterContextIf {
  public:
   TserverXClusterContext() {}
 
-  Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const override;
+  Result<std::optional<HybridTime>> GetSafeTime(NamespaceIdView namespace_id) const override;
 
   XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
-      const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
+      NamespaceIdView namespace_id) const override EXCLUDES(mutex_);
 
-  bool IsReadOnlyMode(const NamespaceId& namespace_id) const override;
+  bool IsReadOnlyMode(NamespaceIdView namespace_id) const override;
   bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
 
   bool SafeTimeComputationRequired() const override;
@@ -74,7 +74,7 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   // replication.
   std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_ GUARDED_BY(mutex_);
 
-  std::unordered_map<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
+  UnorderedStringMap<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
       GUARDED_BY(mutex_);
 
   struct CreateTableInfo {

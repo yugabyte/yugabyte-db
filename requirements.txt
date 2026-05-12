@@ -20,5 +20,6 @@ six
 sys-detection
 types-psutil
 types-requests
+watchdog
 wheel
 yugabyte_pycommon

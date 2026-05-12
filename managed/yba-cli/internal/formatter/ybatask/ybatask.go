@@ -38,7 +38,7 @@ func NewTaskFormat(source string) formatter.Format {
 }
 
 // Write renders the context for a list of Tasks
-func Write(ctx formatter.Context, tasks []ybaclient.YBPTask) error {
+func Write(ctx formatter.Context, tasks [](ybaclient.YBPTask)) error {
 	// Check if the format is JSON or Pretty JSON
 	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of tasks into JSON

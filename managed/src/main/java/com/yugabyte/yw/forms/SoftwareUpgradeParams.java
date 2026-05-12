@@ -9,17 +9,23 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 
@@ -36,6 +42,14 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
       hidden = true)
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.2.0")
   public boolean rollbackSupport = true;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Canary upgrade configuration. If"
+              + " null, canary upgrade is disabled. Available from 2026.1.0.0-b0.",
+      required = false)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+  public CanaryUpgradeConfig canaryUpgradeConfig = null;
 
   public SoftwareUpgradeParams() {}
 
@@ -88,8 +102,28 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
 
-    if (!ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(
-        universe.getUniverseDetails().softwareUpgradeState)) {
+    SoftwareUpgradeState softwareUpgradeState = universe.getUniverseDetails().softwareUpgradeState;
+    Set<SoftwareUpgradeState> allowedStates = ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET;
+    if (canaryUpgradeConfig != null) {
+      if (softwareUpgradeState == SoftwareUpgradeState.Paused) {
+        UUID previousTaskUUID = getPreviousTaskUUID();
+        UUID placementTaskUUID = universe.getUniverseDetails().placementModificationTaskUuid;
+        boolean matchesPaused =
+            previousTaskUUID != null && Objects.equals(previousTaskUUID, placementTaskUUID);
+        if (!matchesPaused) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Universe has a paused canary software upgrade. Submit a resume or rollback instead"
+                  + " of a new upgrade.");
+        }
+      }
+      allowedStates =
+          ImmutableSet.of(
+              SoftwareUpgradeState.Ready,
+              SoftwareUpgradeState.UpgradeFailed,
+              SoftwareUpgradeState.Paused);
+    }
+    if (!allowedStates.contains(softwareUpgradeState)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Software upgrade cannot be preformed on universe in state "
@@ -144,6 +178,92 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
     }
+
+    if (canaryUpgradeConfig != null) {
+      validateCanaryUpgradeConfig(universe, runtimeConfigFactory);
+    }
+  }
+
+  /**
+   * Validates canary upgrade config when present. primaryClusterAZSteps and
+   * readReplicaClusterAZSteps are optional: when null, the executor uses default AZ order (sortAZs)
+   * and no AZ-level pause points (see CanaryUpgradeConfig API docs). Only non-null step lists are
+   * validated for AZ membership.
+   */
+  private void validateCanaryUpgradeConfig(
+      Universe universe, RuntimeConfigFactory runtimeConfigFactory) {
+    Config universeConfig = runtimeConfigFactory.forUniverse(universe);
+    long masterStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey());
+    long tserverStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey());
+    if (masterStagePause != 0 || tserverStagePause != 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Canary upgrade cannot be used when per-AZ stage pause durations are non-zero."
+              + " Set yb.upgrade.upgrade_master_stage_pause_duration_ms and"
+              + " yb.upgrade.upgrade_tserver_stage_pause_duration_ms to 0 before using canary"
+              + " upgrade.");
+    }
+
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UUID primaryClusterUuid = details.getPrimaryCluster().uuid;
+
+    if (canaryUpgradeConfig.primaryClusterAZSteps != null) {
+      Set<UUID> primaryAzUuids = getAzUuidsForCluster(details, primaryClusterUuid);
+      for (AZUpgradeStep step : canaryUpgradeConfig.primaryClusterAZSteps) {
+        if (step.azUUID == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "azUUID is required for canary upgrade AZ step.");
+        }
+        if (!primaryAzUuids.contains(step.azUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Canary upgrade: AZ %s is not in the primary cluster placement.", step.azUUID));
+        }
+      }
+    }
+
+    if (canaryUpgradeConfig.readReplicaClusterAZSteps != null) {
+      List<UniverseDefinitionTaskParams.Cluster> readReplicas =
+          details.clusters.stream()
+              .filter(c -> c != null)
+              .filter(c -> !c.uuid.equals(primaryClusterUuid))
+              .collect(Collectors.toList());
+      if (readReplicas.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Canary upgrade: readReplicaClusterAZSteps is set but universe has no read replica"
+                + " cluster.");
+      }
+      Set<UUID> allRrAzUuids =
+          readReplicas.stream()
+              .flatMap(rr -> getAzUuidsForCluster(details, rr.uuid).stream())
+              .collect(Collectors.toSet());
+      for (AZUpgradeStep step : canaryUpgradeConfig.readReplicaClusterAZSteps) {
+        if (step.azUUID == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "azUUID is required for canary upgrade AZ step.");
+        }
+        if (!allRrAzUuids.contains(step.azUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Canary upgrade: AZ %s is not in a read replica cluster placement.",
+                  step.azUUID));
+        }
+      }
+    }
+  }
+
+  private Set<UUID> getAzUuidsForCluster(UniverseDefinitionTaskParams details, UUID clusterUuid) {
+    return details.clusters.stream()
+        .filter(c -> c != null)
+        .filter(c -> c.uuid.equals(clusterUuid))
+        .filter(c -> c.placementInfo != null)
+        .flatMap(c -> c.placementInfo.getAllAZUUIDs().stream())
+        .collect(Collectors.toSet());
   }
 
   public static class Converter extends BaseConverter<SoftwareUpgradeParams> {}

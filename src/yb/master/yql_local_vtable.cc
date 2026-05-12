@@ -13,7 +13,7 @@
 
 #include "yb/master/yql_local_vtable.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -62,7 +62,7 @@ LocalVTable::LocalVTable(const TableName& table_name,
 }
 
 Result<VTableDataPtr> LocalVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());

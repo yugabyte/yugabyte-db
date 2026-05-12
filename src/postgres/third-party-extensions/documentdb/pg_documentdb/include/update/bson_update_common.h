@@ -16,6 +16,7 @@
 
 #include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
+#include "utils/feature_counter.h"
 #include "aggregation/bson_positional_query.h"
 
 struct AggregationPipelineUpdateState;
@@ -32,7 +33,7 @@ struct BsonIntermediatePathNode;
 typedef struct PositionalUpdateSpec
 {
 	/* The input query spec - used when evaluating $ positional operators */
-	pgbson *querySpec;
+	const bson_value_t *querySpec;
 
 	/* hashmap of char* to bson_value_t* */
 	HTAB *arrayFilters;
@@ -96,12 +97,21 @@ typedef struct MongoUpdateOperatorSpec
 	/* An optional function for retreiving state pertinent to the
 	 * update node value */
 	UpdateOperatorGetFuncState updateWriterGetState;
+
+	/*
+	 * Feature identifier of this operator for feature usage tracking
+	 */
+	FeatureType featureId;
 } MongoUpdateOperatorSpec;
 
 /* aggregation */
 
-struct AggregationPipelineUpdateState * GetAggregationPipelineUpdateState(
-	pgbson *updateSpec);
+struct AggregationPipelineUpdateState * GetAggregationPipelineUpdateState(const
+																		  bson_value_t *
+																		  updateSpec,
+																		  const
+																		  bson_value_t *
+																		  variableSpec);
 
 pgbson * ProcessAggregationPipelineUpdate(pgbson *sourceDoc,
 										  const struct AggregationPipelineUpdateState *
@@ -112,9 +122,12 @@ pgbson * ProcessAggregationPipelineUpdate(pgbson *sourceDoc,
 /* Update workflows */
 void RegisterUpdateOperatorExtension(const MongoUpdateOperatorSpec *extensibleDefinition);
 
-const struct BsonIntermediatePathNode * GetOperatorUpdateState(pgbson *updateSpec,
-															   pgbson *querySpec,
-															   pgbson *arrayFilters,
+const struct BsonIntermediatePathNode * GetOperatorUpdateState(const
+															   bson_value_t *updateSpec,
+															   const bson_value_t *
+															   querySpec,
+															   const bson_value_t *
+															   arrayFilters,
 															   bool isUpsert);
 pgbson * ProcessUpdateOperatorWithState(pgbson *sourceDoc,
 										const struct BsonIntermediatePathNode *
@@ -133,7 +146,7 @@ ThrowIdPathModifiedErrorForOperatorUpdate()
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_IMMUTABLEFIELD),
 					errmsg(
-						"Performing an update on the path '_id' would modify the immutable field '_id'")));
+						"Updating the path '_id' is not allowed because it would change the immutable field '_id'")));
 }
 
 
@@ -146,8 +159,9 @@ pg_attribute_noreturn()
 ThrowPathConflictError(const char * requestedPath, const char * existingPath)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONFLICTINGUPDATEOPERATORS),
-					errmsg("Updating the path '%s' would create a conflict at '%s'",
-						   requestedPath, existingPath)));
+					errmsg(
+						"Modifying the path '%s' will result in a conflict occurring at '%s'",
+						requestedPath, existingPath)));
 }
 
 #endif

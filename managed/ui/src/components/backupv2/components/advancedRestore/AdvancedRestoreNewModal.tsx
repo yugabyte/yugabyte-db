@@ -22,10 +22,10 @@ import { getBackButDisableState } from '../restore/RestoreUtils';
 import {
   AdvancedRestoreContext,
   AdvancedRestoreFormContext,
-  PageRef,
-  initialAdvancedRestoreContextState
+  AdvancedRestoreMethods,
+  initialAdvancedRestoreContextState,
+  PageRef
 } from './AdvancedRestoreContext';
-import { AdvancedRestoreMethods } from './AdvancedRestoreContext';
 import {
   RestoreFormContext,
   initialRestoreContextState,

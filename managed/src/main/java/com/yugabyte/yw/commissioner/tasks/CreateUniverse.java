@@ -66,18 +66,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      Customer customer = Customer.get(universe.getCustomerId());
-      if (!confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)) {
-        for (Cluster cluster : taskParams().clusters) {
-          // Local provider can still use cron.
-          if (!cluster.userIntent.useSystemd
-              && cluster.userIntent.providerType != CloudType.local) {
-            log.warn(
-                "cron based universe cannot be created with YNP, will fallback to ansible "
-                    + "provisioning");
-            break;
-          }
+      for (Cluster cluster : taskParams().clusters) {
+        // Local provider can still use cron.
+        if (!cluster.userIntent.useSystemd && cluster.userIntent.providerType != CloudType.local) {
+          log.warn(
+              "cron based universe cannot be created with YNP, will fallback to ansible "
+                  + "provisioning");
+          break;
         }
       }
     }
@@ -131,7 +126,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Create preflight node check tasks for on-prem nodes.
     createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -150,7 +146,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Update task params.
     updateTaskDetailsInDB(taskParams());
@@ -228,6 +225,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
+      createPersistCpuCgroupConfiguredTask(universe);
+
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,
@@ -250,6 +249,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.masterJoinExistingCluster = false;
           });
+
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();
       }
@@ -279,8 +279,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Start ybc process on all the nodes
       if (taskParams().isEnableYbc()) {
-        createStartYbcProcessTasks(
-            taskParams().nodeDetailsSet, taskParams().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
@@ -288,10 +287,21 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureUniverseTasks(
           primaryCluster, newMasters, newTservers, null /* gflagsUpgradeSubtasks */);
 
+      if (primaryCluster.isGeoPartitioned() && primaryCluster.userIntent.enableYSQL) {
+        createTablespacesTasks(primaryCluster.getPartitions(), false);
+      }
+
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
           createLoadBalancerMap(taskParams(), null, null, null);
       createManageLoadBalancerTasks(loadBalancerMap);
+
+      // Auto-register universe with PA Collector when runtime config is enabled
+      if (confGetter.getConfForScope(
+          Customer.get(universe.getCustomerId()), CustomerConfKeys.paAutoRegistrationEnabled)) {
+        createRegisterUniverseWithPaCollectorTask(universe.getUniverseUUID())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

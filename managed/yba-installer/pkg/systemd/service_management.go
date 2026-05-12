@@ -2,12 +2,13 @@ package systemd
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 	"strconv"
 	"strings"
 
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // Stop the given systemctl services
@@ -97,15 +98,19 @@ func runSysctlCmd(cmd string, args ...string) error {
 }
 
 func isRoot() bool {
+	if viper.IsSet("as_root") {
+		return viper.GetBool("as_root")
+	}
+	logging.Debug("as_root not set, checking user id")
 	cmd := exec.Command("id", "-u")
 	output, err := cmd.Output()
 	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
+		logging.Fatal("Error: " + err.Error() + ".")
 	}
 
 	i, err := strconv.Atoi(string(output[:len(output)-1]))
 	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
+		logging.Fatal("Error: " + err.Error() + ".")
 	}
 
 	if i == 0 {

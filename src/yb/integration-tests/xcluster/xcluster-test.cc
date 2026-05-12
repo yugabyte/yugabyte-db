@@ -84,7 +84,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -605,7 +605,8 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " transactional batch of key range ["
               << start << ", " << end << ") into" << table->name().ToString();
     for (uint32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                          : table_handle.NewInsertOp(session->arena());
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
@@ -1541,7 +1542,7 @@ TEST_F(XClusterTestTransactionalOnly, UpdateWithinTransaction) {
   session->SetTransaction(nullptr);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
-  auto op = table_handle.NewInsertOp();
+  auto op = table_handle.NewInsertOp(session->arena());
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -1641,7 +1642,7 @@ TEST_F(XClusterTestTransactionalOnly, CleanupAbortedTransactions) {
       MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster created intents"));
   ASSERT_OK(consumer_cluster()->FlushTablets());
   // Then, set timeout to 0 and make sure we do cleanup on the next compaction.
-  SetAtomicFlag(0, &FLAGS_external_intent_cleanup_secs);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_intent_cleanup_secs) = 0;
   ASSERT_OK(InsertIntentsOnProducer(session, kNumRecordsPerBatch, kNumRecordsPerBatch * 2));
   // Wait for records to be replicated.
   ASSERT_OK(WaitFor(
@@ -2247,7 +2248,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");
@@ -2320,7 +2321,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");
@@ -2341,17 +2342,17 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   {
     auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
     ASSERT_EQ(tablet_ids.size(), 1);
-    auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+    auto old_ts = GetLeaderForTablet(consumer_cluster(), *tablet_ids.begin());
     old_ts->Shutdown();
     const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
     ASSERT_OK(WaitUntilTabletHasLeader(consumer_cluster(), *tablet_ids.begin(), deadline));
     decltype(old_ts) new_ts = nullptr;
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
-          new_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+          new_ts = GetLeaderForTablet(consumer_cluster(), *tablet_ids.begin());
           return new_ts != nullptr;
         },
-        MonoDelta::FromSeconds(10), "FindTabletLeader"));
+        MonoDelta::FromSeconds(10), "GetLeaderForTablet"));
     ASSERT_NE(old_ts, new_ts);
   }
 
@@ -2395,7 +2396,7 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   ASSERT_OK(CorrectlyPollingAllTablets(5));
   ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   // Write 1000 entries to each cluster.
   Status t1_s, t2_s;
@@ -3087,9 +3088,12 @@ TEST_F_EX(XClusterTest, TestPrematureLogGC, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) =
       std::numeric_limits<int64_t>::max();
 
-  // Write another batch of records.
+  // Write two batches of records. The first batch will be GCed,
+  // the second batch will not be GCed due to it will be in the last segment.
   ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
   ASSERT_OK(VerifyNumRecordsOnProducer(2 * kNumWriteRecords));
+  ASSERT_OK(InsertRowsInProducer(2 *kNumWriteRecords, 3 * kNumWriteRecords));
+  ASSERT_OK(VerifyNumRecordsOnProducer(3 * kNumWriteRecords));
 
   // Unflushed WAL segments can not be garbage collected. Flush all tablets WALs now.
   ASSERT_OK(
@@ -3258,7 +3262,8 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
 
   itest::TServerDetails* old_ts = nullptr;
   ASSERT_OK(FindTabletLeader(ts_map, consumer_tablet_id, kTimeout, &old_ts));
-  tserver::MiniTabletServer* old_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto* old_tserver =
+      GetLeaderForTablet(consumer_cluster(), consumer_tablet_id);
 
   itest::TServerDetails* new_ts = nullptr;
   for (auto& [ts_id, ts_details] : ts_map) {
@@ -3309,7 +3314,8 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
 
   ASSERT_OK(insert_rows_and_verify());
 
-  tserver::MiniTabletServer* new_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto* new_tserver =
+      GetLeaderForTablet(consumer_cluster(), consumer_tablet_id);
   auto& new_consumer =
       *dynamic_cast<tserver::XClusterConsumer*>(new_tserver->server()->GetXClusterConsumer());
 
@@ -3322,14 +3328,15 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 
   ASSERT_OK(insert_rows_and_verify());
+  ASSERT_OK(insert_rows_and_verify());
 
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
   // flags so disable FLAGS_enable_log_retention_by_op_idx for the duration of the flush instead.
-  SetAtomicFlag(false, &FLAGS_enable_log_retention_by_op_idx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
   SleepFor(2s * kTimeMultiplier);
   ASSERT_OK(FlushProducerTabletsAndGCLog());
-  SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
 
   // Failback to old tserver.
   ASSERT_OK(itest::LeaderStepDown(new_ts, consumer_tablet_id, old_ts, kTimeout));
@@ -3345,31 +3352,21 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   ASSERT_OK(insert_rows_and_verify());
 }
 
-Status VerifyMetaCacheObjectIsValid(
-    const rapidjson::Value* object, const JsonReader& json_reader,  const char* member_name) {
-  const rapidjson::Value* meta_cache = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(object, member_name, &meta_cache));
-  EXPECT_TRUE(meta_cache->HasMember("tablets"));
-  std::vector<const rapidjson::Value*> tablets;
-  return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
+Status VerifyMetaCacheObjectIsValid(const JsonValue& object, std::string_view member_name) {
+  return ResultToStatus(object[member_name]["tablets"].GetArray());
 }
 
 Status VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
-  JsonReader json_reader(produced_json);
-  RETURN_NOT_OK(json_reader.Init());
-  const rapidjson::Value* object = nullptr;
-  RETURN_NOT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
-  SCHECK_EQ(
-      CHECK_NOTNULL(object)->GetType(), rapidjson::kObjectType, IllegalState, "Not an JSON object");
+  JsonDocument doc;
+  auto root = VERIFY_RESULT(doc.Parse(produced_json));
 
-  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(root, "MainMetaCache"));
   bool found_xcluster_member = false;
-  for (auto it = object->MemberBegin(); it != object->MemberEnd(); ++it) {
-    std::string member_name = it->name.GetString();
+  for (const auto& [member_name, _] : VERIFY_RESULT(root.GetObject())) {
     if (member_name.starts_with(client::XClusterRemoteClientHolder::kClientName)) {
       found_xcluster_member = true;
     }
-    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(root, member_name));
   }
   SCHECK_FORMAT(
       found_xcluster_member, IllegalState, "No member name starting with $0 found",

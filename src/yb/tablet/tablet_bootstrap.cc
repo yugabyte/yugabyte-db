@@ -85,6 +85,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_splitter.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -267,8 +268,7 @@ struct ReplayState {
 
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables (not transaction status table)
-
-  const DocDbOpIds stored_op_ids;
+  DocDbOpIds stored_op_ids;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -464,7 +464,7 @@ class TabletBootstrap {
         append_pool_(data.append_pool),
         allocation_pool_(data.allocation_pool),
         log_sync_pool_(data.log_sync_pool),
-        skip_wal_rewrite_(GetAtomicFlag(&FLAGS_skip_wal_rewrite)),
+        skip_wal_rewrite_(FLAGS_skip_wal_rewrite),
         test_hooks_(data.test_hooks) {
   }
 
@@ -509,22 +509,22 @@ class TabletBootstrap {
     }
 
     std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
-    HybridTime min_replay_txn_start_ht = HybridTime::kInvalid;
-    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
+    HybridTime min_replay_txn_first_write_ht = HybridTime::kInvalid;
+    if (FLAGS_enable_flush_retryable_requests && data_.bootstrap_state_manager) {
       auto result = data_.bootstrap_state_manager->LoadFromDisk();
       if (result.ok()) {
         bootstrap_state_pb = std::move(*result);
 
-        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+        if (FLAGS_use_bootstrap_intent_ht_filter) {
           const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
-          min_replay_txn_start_ht = bootstrap_state.GetMinReplayTxnStartTime();
+          min_replay_txn_first_write_ht = bootstrap_state.GetMinReplayTxnFirstWriteTime();
         }
       } else if (!result.status().IsNotFound()) {
         return result.status();
       }
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_first_write_ht));
 
     if (data_.retryable_requests) {
       const auto table_type_for_retryable_request_timeout =
@@ -567,9 +567,7 @@ class TabletBootstrap {
     }
 
     // Only sleep if this isn't a new tablet, since we only want to delay on restart when testing.
-    if (PREDICT_FALSE(FLAGS_TEST_tablet_bootstrap_delay_ms > 0)) {
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_tablet_bootstrap_delay_ms));
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_tablet_bootstrap_delay_ms);
 
     // If there were blocks, there must be segments to replay. This is required by Raft, since we
     // always need to know the term and index of the last logged op in order to vote, know how to
@@ -631,7 +629,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet(HybridTime min_replay_txn_start_ht) {
+  Result<bool> OpenTablet(HybridTime min_replay_txn_first_write_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -645,7 +643,7 @@ class TabletBootstrap {
 
     auto participant = tablet->transaction_participant();
     if (participant) {
-      participant->SetMinReplayTxnStartTimeLowerBound(min_replay_txn_start_ht);
+      participant->SetMinReplayTxnFirstWriteTimeLowerBound(min_replay_txn_first_write_ht);
     }
 
     // Doing nothing for now except opening a tablet locally.
@@ -1126,15 +1124,16 @@ class TabletBootstrap {
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
       if (txn_status == TransactionStatus::APPLYING) {
-        auto apply_to_storages = docdb::StorageSet::All();
-        if (index <= flushed_op_ids.regular.index) {
-          apply_to_storages.ResetRegularDB();
+        docdb::StorageSet apply_to_storages;
+        if (index > flushed_op_ids.regular.index) {
+          apply_to_storages.SetRegularDB();
         }
         for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-          if (index <= flushed_op_ids.vector_indexes[idx].index) {
-            apply_to_storages.ResetVectorIndex(idx);
+          if (index > flushed_op_ids.vector_indexes[idx].index) {
+            apply_to_storages.SetVectorIndex(idx);
           }
         }
+
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
@@ -1288,7 +1287,7 @@ class TabletBootstrap {
   //
   // This functionality was originally introduced in
   // https://github.com/yugabyte/yugabyte-db/commit/41ef3f75e3c68686595c7613f53b649823b84fed
-  SegmentSequence::const_iterator SkipFlushedEntries(SegmentSequence* segments_ptr) {
+  Result<SegmentSequence::const_iterator> SkipFlushedEntries(SegmentSequence* segments_ptr) {
     static const char* kBootstrapOptimizerLogPrefix =
         "Bootstrap optimizer (skip_flushed_entries): ";
 
@@ -1437,7 +1436,7 @@ class TabletBootstrap {
           const auto first_op_index_to_replay =
               std::min(op_id_replay_lowest.index, last_op_id_in_retryable_requests.index);
           // Get the offset of the first mandatory op in the segment.
-          const auto index_entry = log_->GetLogReader()->GetIndexEntry(
+          const auto index_entry = VERIFY_RESULT(log_->GetLogReader())->GetIndexEntry(
               first_op_index_to_replay, first_segment.get());
           if (index_entry.ok()) {
             DCHECK_EQ(index_entry->segment_sequence_number,
@@ -1514,7 +1513,15 @@ class TabletBootstrap {
     }
 
     replay_state_ = std::make_unique<ReplayState>(flushed_op_ids, LogPrefix());
-    replay_state_->max_committed_hybrid_time = VERIFY_RESULT(tablet_->MaxPersistentHybridTime());
+
+    // Use only the regular DB frontier for safe time. The intents DB may contain hybrid times
+    // from async writes that have not yet been Raft committed.
+    if (tablet_->regular_db()) {
+      if (auto frontier = tablet_->regular_db()->GetFlushedFrontier()) {
+        replay_state_->max_committed_hybrid_time =
+            down_cast<docdb::ConsensusFrontier*>(frontier.get())->hybrid_time();
+      }
+    }
 
     if (FLAGS_force_recover_flushed_frontier) {
       LOG_WITH_PREFIX(WARNING)
@@ -1539,7 +1546,7 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenLog(log::CreateNewSegment(!GetAtomicFlag(&FLAGS_skip_wal_rewrite))),
+        OpenLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)),
           "Failed to open new log");
 
     log::SegmentSequence segments;
@@ -1548,7 +1555,7 @@ class TabletBootstrap {
     // If any cdc stream is active for this tablet, we will read WAL from beginning when
     // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+    if (!FLAGS_skip_wal_replay_from_beginning_with_cdc &&
         should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
@@ -1558,7 +1565,8 @@ class TabletBootstrap {
       }
     }
     // Find the earliest log segment we need to read, so the rest can be ignored.
-    auto iter = should_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
+    auto iter = should_skip_flushed_entries ? VERIFY_RESULT(SkipFlushedEntries(&segments))
+                                            : segments.begin();
 
     OpId last_committed_op_id;
     OpId last_read_entry_op_id;
@@ -1743,9 +1751,10 @@ class TabletBootstrap {
     }
 
     auto apply_status = tablet_->ApplyRowOperations(&operation, apply_to_storages);
-    // Failure is regular case, since could happen because transaction was aborted, while
+    // Expiration is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
-    LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
+    LOG_IF(FATAL, !apply_status.ok() && !IsTxnAborted(apply_status))
+        << "Apply operation failed: " << apply_status;
 
     tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
     return Status::OK();
@@ -1815,6 +1824,8 @@ class TabletBootstrap {
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
+    tablet_->vector_indexes().FillMaxPersistentOpIds(
+        replay_state_->stored_op_ids.vector_indexes, false);
     return s;
   }
 

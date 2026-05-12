@@ -7,8 +7,13 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -16,6 +21,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Provider;
@@ -319,14 +325,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    PlacementInfo placementInfo = primaryCluster.getOverallPlacement();
     createSingleKubernetesExecutorTask(
         universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
@@ -349,7 +354,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
-
+    boolean useExistingServerCert =
+        upgradeContext != null && upgradeContext.isUseExistingServerCert();
     // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
     // It will be set for KubernetesToggleImmutableYbc task.
     // Otherwise pick from universe primary cluster userIntent.
@@ -373,10 +379,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */);
     }
 
     if (upgradeTservers) {
@@ -399,11 +407,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
               .rollMaxBatchSize(getCurrentRollBatchSize(universe))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -423,7 +433,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
         Cluster asyncCluster = universeDetails.getReadOnlyClusters().get(0);
-        PlacementInfo readClusterPlacementInfo = asyncCluster.placementInfo;
+        PlacementInfo readClusterPlacementInfo = asyncCluster.getOverallPlacement();
         createSingleKubernetesExecutorTask(
             universe.getName(),
             CommandType.POD_INFO,
@@ -448,11 +458,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             enableYbc,
             ybcSoftwareVersion,
             PodUpgradeParams.builder()
-                .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+                .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
                 .rollMaxBatchSize(getCurrentRollBatchSize(universe))
                 .build(),
             ysqlMajorVersionUpgradeState,
-            rootCAUUID);
+            rootCAUUID,
+            useExistingServerCert,
+            null /* skipAZs */);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -484,10 +496,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */);
     }
   }
 
@@ -518,14 +532,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    PlacementInfo placementInfo = primaryCluster.getOverallPlacement();
     createSingleKubernetesExecutorTask(
         universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
@@ -595,7 +608,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
         PlacementInfo readClusterPlacementInfo =
-            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+            universeDetails.getReadOnlyClusters().get(0).getOverallPlacement();
         createSingleKubernetesExecutorTask(
             universe.getName(),
             CommandType.POD_INFO,
@@ -664,7 +677,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     createSingleKubernetesExecutorTask(
         universe.getName(),
         CommandType.POD_INFO,
-        primaryCluster.placementInfo,
+        primaryCluster.getOverallPlacement(),
         false /*isReadOnlyCluster*/);
 
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
@@ -693,7 +706,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
       KubernetesUpgradeCommonParams upgradeParamsReadOnly =
           new KubernetesUpgradeCommonParams(universe, readOnlyCluster, confGetter);
-      PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
+      PlacementInfo readClusterPlacementInfo = readOnlyCluster.getOverallPlacement();
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
@@ -775,6 +788,44 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     if (ysqlMajorVersionUpgrade && taskParams().getPreviousTaskUUID() == null) {
       createPGUpgradeTServerCheckTask(ybSoftwareVersion);
     }
+    createCheckShellConnectivityTask();
+  }
+
+  private void createCheckShellConnectivityTask() {
+    Universe universe = getUniverse();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableClientToNodeEncrypt) {
+      UUID rootCaUuid =
+          universe.getUniverseDetails().getClientRootCA() != null
+              ? universe.getUniverseDetails().getClientRootCA()
+              : universe.getUniverseDetails().rootCA;
+      if (CertificateHelper.isK8sCertManager(rootCaUuid)) {
+        doInPrecheckSubTaskGroup(
+            "CheckShellConnectivity",
+            subTaskGroup -> {
+              UniverseTaskParams params = new UniverseTaskParams();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              CheckShellConnectivity task = createTask(CheckShellConnectivity.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+      }
+    }
+  }
+
+  protected void checkOtelOperatorInstallation(Universe universe) {
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.skipOpentelemetryOperatorCheck)) {
+      log.info("Skipping Opentelemetry Operator check.");
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckOpentelemetryOperator",
+        subTaskGroup -> {
+          CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
+          task.initialize(universe.getUniverseDetails());
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   protected void createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
@@ -811,7 +862,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
-          cluster.placementInfo,
+          cluster.getOverallPlacement(),
           false /*isReadOnlyCluster*/);
       // Helm upgrade
       upgradePodsNonRestart(

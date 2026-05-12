@@ -493,7 +493,7 @@ When there is significant connection churn, the warm up of catalog caches on eac
 To set up connection pooling, explore the following approaches:
 
 - [Server-side connection pooling](../../additional-features/connection-manager-ysql/) using YSQL Connection Manager (Early Access in `v2024.2`).
-- [Client-side connection pooling](/preview/develop/drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
+- [Client-side connection pooling](/stable/develop/drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
 - [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
 ### Preload additional system tables {#preload-additional-system-tables}
@@ -555,7 +555,7 @@ If the catalog reads can be traced to a specific query, set the following config
 
 ```sql
 SET yb_debug_log_catcache_events = 1;
-SET yb_debug_report_error_stacktrace = 1;
+SET backtrace_functions = 'SearchCatCacheMiss';
 SET client_min_messages = LOG;
 ```
 

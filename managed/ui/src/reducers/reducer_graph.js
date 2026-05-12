@@ -14,7 +14,7 @@ import {
   RESET_GRAPH_FILTER,
   TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
-import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
+import { DEFAULT_GRAPH_FILTER } from '../components/metrics/GraphPanelHeader/GraphPanelHeader';
 
 const INITIAL_STATE = {
   graphFilter: DEFAULT_GRAPH_FILTER,

@@ -7,9 +7,15 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.CollectFilesRequest;
+import api.v2.models.CollectFilesResponse;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
+import api.v2.models.RunScriptRequest;
+import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
@@ -18,9 +24,14 @@ import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseOperatorImportReq;
+import api.v2.models.UniversePagedQuerySpec;
+import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
+import api.v2.models.UniverseResumeCanaryUpgrade;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -30,8 +41,8 @@ import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.YBATask;
-import com.google.inject.Inject;
 import com.yugabyte.yw.models.Audit;
+import jakarta.inject.Inject;
 import java.io.InputStream;
 import java.util.UUID;
 import play.mvc.Http;
@@ -39,12 +50,26 @@ import play.mvc.Http.Request;
 import play.mvc.Result;
 
 public class UniverseApiControllerImp extends UniverseApiControllerImpInterface {
-  @Inject private UniverseManagementHandler universeHandler;
-  @Inject private UniverseUpgradesManagementHandler universeUpgradeHandler;
+  private final UniverseManagementHandler universeHandler;
+  private final UniverseUpgradesManagementHandler universeUpgradeHandler;
+
+  @Inject
+  public UniverseApiControllerImp(
+      UniverseManagementHandler universeHandler,
+      UniverseUpgradesManagementHandler universeUpgradeHandler) {
+    this.universeHandler = universeHandler;
+    this.universeUpgradeHandler = universeUpgradeHandler;
+  }
 
   @Override
   public Universe getUniverse(Request request, UUID cUUID, UUID uniUUID) throws Exception {
     return universeHandler.getUniverse(cUUID, uniUUID);
+  }
+
+  @Override
+  public UniversePagedResp pageListUniverses(
+      Request request, UUID cUUID, UniversePagedQuerySpec universePagedQuerySpec) throws Exception {
+    return universeHandler.pageListUniverses(cUUID, universePagedQuerySpec);
   }
 
   @Override
@@ -119,6 +144,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask rollbackSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
     return universeUpgradeHandler.rollbackSoftwareUpgrade(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask resumeCanarySoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) throws Exception {
+    return universeUpgradeHandler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req);
   }
 
   @Override
@@ -204,6 +235,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public void rollbackDetachUniverse(
+      Request request, UUID cUUID, UUID uniUUID, Boolean isForceRollback) throws Exception {
+    universeHandler.rollbackDetachUniverse(request, cUUID, uniUUID, isForceRollback);
+  }
+
+  @Override
   public UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
     return universeHandler.getUniverseResources(request, cUUID, universeSpec);
@@ -219,5 +256,92 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask configureMetricsExport(
       Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
     return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
+  }
+
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+  }
+
+  @Override
+  public YBATask operatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
+    return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public void operatorImportUniversePrecheck(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
+    universeHandler.precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public RunScriptResponse runScript(
+      Request request, UUID cUUID, UUID uniUUID, RunScriptRequest runScriptRequest)
+      throws Exception {
+    return universeHandler.runScript(request, cUUID, uniUUID, runScriptRequest);
+  }
+
+  @Override
+  public CollectFilesResponse createFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest)
+      throws Exception {
+    return universeHandler.createFileCollection(request, cUUID, uniUUID, collectFilesRequest);
+  }
+
+  // Override Http method to stream binary file to client (like detachUniverseHttp)
+  @Override
+  public Result downloadFileCollectionHttp(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUUID, Boolean cleanupDbNodesAfter)
+      throws Exception {
+    InputStream is =
+        universeHandler.downloadFileCollection(
+            request, cUUID, uniUUID, collectionUUID, cleanupDbNodesAfter);
+    String filename = universeHandler.getFileCollectionFileName(collectionUUID);
+    return ok(is)
+        .withHeader("Content-Disposition", "attachment; filename=" + filename)
+        .as("application/gzip");
+  }
+
+  @Override
+  public InputStream downloadFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUUID, Boolean cleanupDbNodesAfter)
+      throws Exception {
+    return universeHandler.downloadFileCollection(
+        request, cUUID, uniUUID, collectionUUID, cleanupDbNodesAfter);
+  }
+
+  @Override
+  public CleanupCollectionInfo deleteFileCollection(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UUID collectionUUID,
+      Boolean deleteFromDbNodes,
+      Boolean deleteFromYba)
+      throws Exception {
+    // Default: delete from DB nodes = true, delete from YBA = false
+    boolean dbNodes = deleteFromDbNodes == null || deleteFromDbNodes;
+    boolean yba = deleteFromYba != null && deleteFromYba;
+
+    int nodesCleaned =
+        universeHandler.deleteFileCollection(request, cUUID, uniUUID, collectionUUID, dbNodes, yba);
+
+    String message =
+        String.format(
+            "File collection deleted (DB nodes: %s, YBA local: %s)",
+            dbNodes ? "yes" : "no", yba ? "yes" : "no");
+
+    return new CleanupCollectionInfo()
+        .collectionUuid(collectionUUID)
+        .nodesCleaned(nodesCleaned)
+        .message(message);
+  }
+
+  @Override
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws Exception {
+    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
   }
 }

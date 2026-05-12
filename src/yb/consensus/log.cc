@@ -452,6 +452,12 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
+  void SetPerDbCgroup(Cgroup* cgroup) {
+    if (task_stream_) {
+      task_stream_->SetTaskCgroup(cgroup);
+    }
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -608,7 +614,12 @@ void Log::Appender::Shutdown() {
 // This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
 // segments.
 void Log::SegmentAllocationTask() {
-  allocation_status_.Set(PreAllocateNewSegment());
+  auto status = PreAllocateNewSegment();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(ERROR) << "Failed to pre-allocate new WAL segment: " << status;
+    allocation_state_.store(SegmentAllocationState::kAllocationFailed, std::memory_order_release);
+  }
+  allocation_status_.Set(status);
 }
 
 const Status Log::kLogShutdownStatus(
@@ -838,7 +849,7 @@ Status Log::RollOver() {
 
     DCHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
 
-    LOG_WITH_PREFIX(INFO) << Format(
+    LOG_WITH_PREFIX(DETAIL) << Format(
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
@@ -847,7 +858,7 @@ Status Log::RollOver() {
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-    LOG_WITH_PREFIX(INFO) << "Rolled over to a new segment: " << active_segment_->path();
+    LOG_WITH_PREFIX(DETAIL) << "Rolled over to a new segment: " << active_segment_->path();
   }
   return Status::OK();
 }
@@ -962,7 +973,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       } else if (entry_batch->IsSingleEntryOfType(ASYNC_ROLLOVER_AT_FLUSH_MARKER)) {
         if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
           const auto min_size_to_rollover =
-              GetAtomicFlag(&FLAGS_min_segment_size_bytes_to_rollover_at_flush);
+              FLAGS_min_segment_size_bytes_to_rollover_at_flush;
           if (min_size_to_rollover < 0 || active_segment_->Size() < min_size_to_rollover) {
             VLOG_WITH_PREFIX(1) << Format("Skipping async wal rotation at flush. "
                                           "segment_size: $0 min_size_to_rollover: $1",
@@ -1004,6 +1015,14 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       RETURN_NOT_OK(RollOver());
       // Rollover prevents potential overflow.
       segment_will_overflow = false;
+    } else if (allocation_state() == SegmentAllocationState::kAllocationFailed) {
+      auto alloc_status = allocation_status_.Get();
+      LOG_WITH_PREFIX(ERROR)
+          << "WAL segment allocation failed: " << alloc_status
+          << ". Resetting state to allow retry on next append.";
+      allocation_state_.store(
+          SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+      return alloc_status;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
@@ -1354,10 +1373,10 @@ Status Log::Sync() {
     return UpdateSegmentReadableOffset();
   }
 
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
+  if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
     Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
-    int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
-                            GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
+    int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
+                            FLAGS_log_inject_latency_ms_stddev);
     if (sleep_ms > 0) {
       LOG_WITH_PREFIX(INFO) << "Injecting " << sleep_ms << "ms of latency in Log::Sync()";
       SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
@@ -1599,8 +1618,8 @@ OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  LOG_WITH_PREFIX(INFO) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
-                        << ", log segment size = " << options_.segment_size_bytes;
+  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
+                          << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 
@@ -1625,9 +1644,10 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG_WITH_PREFIX(INFO) << "Deleting log segment in path: " << segment->path()
-                            << " (GCed ops < " << segment->footer().max_replicate_index() + 1
-                            << ")";
+      LOG_WITH_PREFIX(DETAIL)
+          << "Deleting log segment in path: " << segment->path()
+          << " (GCed ops < " << segment->footer().max_replicate_index() + 1
+          << ")";
       RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
       (*num_gced)++;
 
@@ -1674,7 +1694,10 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
   return Status::OK();
 }
 
-LogReader* Log::GetLogReader() const {
+Result<LogReader*> Log::GetLogReader() const {
+  if (!reader_) {
+    return STATUS(IllegalState, "LogReader is not initialized");
+  }
   return reader_.get();
 }
 
@@ -1715,6 +1738,18 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 
 Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
   return active_segment_->TEST_WriteCorruptedEntryBatchAndSync();
+}
+
+void Log::SetPerDbCgroup(Cgroup* cgroup) {
+  if (appender_) {
+    appender_->SetPerDbCgroup(cgroup);
+  }
+  if (allocation_token_) {
+    allocation_token_->SetTaskCgroup(cgroup);
+  }
+  if (background_sync_threadpool_token_) {
+    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  }
 }
 
 Status Log::Close() {
@@ -2025,11 +2060,11 @@ Status Log::SwitchToAllocatedSegment() {
 
   // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
   // to stream all records from this segment based on the tablet leader safe time.
-  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (FLAGS_store_min_start_ht_running_txns) {
     footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
-  if (GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+  if (FLAGS_store_last_wal_op_log_ht) {
     footer_builder_.set_last_wal_op_log_ht(HybridTime::kInvalid.ToUint64());
   }
 
@@ -2165,6 +2200,11 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
     YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
   }
   LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
+  if (old_value.term < op_id.term) {
+    LOG(DFATAL) << "Last synced entry has been overwritten with an op from a later term. "
+                << "Potential data corruption on this replica. "
+                << "old_value: " << old_value << ", op_id: " << op_id;
+  }
 
   return Status::OK();
 }
@@ -2308,11 +2348,11 @@ bool Log::HasSufficientDiskSpaceForWrite() {
 }
 
 void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
-  if (!GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (!FLAGS_store_min_start_ht_running_txns) {
     return;
   }
   HybridTime min_start_ht_running_txns = HybridTime::kInitial;
-  if (min_start_ht_running_txns_callback_ && GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+  if (min_start_ht_running_txns_callback_ && FLAGS_store_last_wal_op_log_ht) {
     min_start_ht_running_txns = min_start_ht_running_txns_callback_();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
     DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);

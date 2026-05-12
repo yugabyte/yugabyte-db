@@ -12,9 +12,11 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.HaConfigStates.GlobalState;
@@ -26,6 +28,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,7 +60,9 @@ public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
-  private static final KeyLock<UUID> KEY_LOCK = new KeyLock<>();
+  private static final KeyLock<String> KEY_LOCK = new KeyLock<>();
+
+  private static volatile boolean isSwitchOverInProgress = false;
 
   @JsonIgnore private final int id = 1;
 
@@ -70,7 +75,7 @@ public class HighAvailabilityConfig extends Model {
   @JsonProperty("cluster_key")
   private String clusterKey;
 
-  private Long lastFailover;
+  @JsonIgnore private Long lastFailover;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
@@ -89,9 +94,17 @@ public class HighAvailabilityConfig extends Model {
     this.update();
   }
 
+  @ApiModelProperty(value = "HA last failover", example = "2022-12-12T13:07:18Z")
   @JsonProperty("last_failover")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getLastFailover() {
     return (this.lastFailover != null) ? new Date(this.lastFailover) : null;
+  }
+
+  @JsonSetter("last_failover")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public void setLastFailover(Date lastFailover) {
+    this.lastFailover = (lastFailover != null) ? lastFailover.getTime() : null;
   }
 
   public void updateAcceptAnyCertificate(boolean acceptAnyCertificate) {
@@ -101,22 +114,22 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
+    return this.instances.stream().filter(i -> !i.isLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.instances.stream().anyMatch(i -> i.isLeader() && i.isLocal());
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLocal() {
-    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLocal).findFirst();
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLeader() {
-    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLeader).findFirst();
   }
 
   public boolean getAcceptAnyCertificate() {
@@ -147,8 +160,9 @@ public class HighAvailabilityConfig extends Model {
 
   public static HighAvailabilityConfig update(
       UUID uuid, String clusterKey, boolean acceptAnyCertificate) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(uuid);
     return doWithLock(
-        uuid,
+        haConfig.getClusterKey(),
         config -> {
           config.setClusterKey(clusterKey);
           config.setAcceptAnyCertificate(acceptAnyCertificate);
@@ -185,12 +199,25 @@ public class HighAvailabilityConfig extends Model {
       SecretKey secretKey = keyGen.generateKey();
       return Base64.getEncoder().encodeToString(secretKey.getEncoded());
     } catch (NoSuchAlgorithmException e) {
+      log.error("Error generating cluster key", e);
       throw new PlatformServiceException(BAD_REQUEST, "Error generating cluster key");
     }
   }
 
   public static boolean isFollower() {
-    return get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
+    // Return follower to true as active is not known during switch over.
+    return isSwitchOverInProgress
+        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.isLeader()).orElse(false);
+  }
+
+  // Returns the address of the local instance from the HA config (the address of the YBA serving
+  // this request after any switchover or failover), or empty if HA is not configured.
+  public static Optional<String> getLocalInstanceAddress() {
+    return get().flatMap(HighAvailabilityConfig::getLocal).map(PlatformInstance::getAddress);
+  }
+
+  public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {
+    HighAvailabilityConfig.isSwitchOverInProgress = isSwitchOverInProgress;
   }
 
   public boolean anyConnected() {
@@ -235,26 +262,33 @@ public class HighAvailabilityConfig extends Model {
   }
 
   // Invoke the function after acquiring the lock.
-  public static <T> T doWithLock(UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    KEY_LOCK.acquireLock(haConfigUuid);
+  public static <T> T doWithLock(String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    KEY_LOCK.acquireLock(clusterKey);
     try {
-      return function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid));
+      return function.apply(
+          HighAvailabilityConfig.getByClusterKey(clusterKey)
+              .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key")));
     } finally {
-      KEY_LOCK.releaseLock(haConfigUuid);
+      KEY_LOCK.releaseLock(clusterKey);
     }
   }
 
-  // Invoke the function after acquiring the lock. If the lock cannot acquired, null is returned.
+  // Invoke the function after acquiring the lock. The function in the argument should return
+  // non-null if the lock is acquired to distinguish between lock acquisition failure vs actual
+  // value.
   public static <T> Optional<T> doWithTryLock(
-      UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    if (KEY_LOCK.tryLock(haConfigUuid)) {
+      String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    if (KEY_LOCK.tryLock(clusterKey)) {
       try {
         return Optional.ofNullable(
-            function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid)));
+            function.apply(
+                HighAvailabilityConfig.getByClusterKey(clusterKey)
+                    .orElseThrow(
+                        () -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key"))));
       } finally {
-        KEY_LOCK.releaseLock(haConfigUuid);
+        KEY_LOCK.releaseLock(clusterKey);
       }
     }
-    return null;
+    return Optional.empty();
   }
 }

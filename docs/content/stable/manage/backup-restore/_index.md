@@ -4,6 +4,9 @@ headerTitle: Backup and restore
 linkTitle: Backup and restore
 description: Back up and restore YugabyteDB
 headcontent: Create backups and restore your data
+aliases:
+  - /manage/backup-restore/
+  - /stable/backup-restore/
 menu:
   stable:
     identifier: backup-restore
@@ -15,7 +18,7 @@ type: indexpage
 {{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/back-up-restore-universes/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
 {{< /page-finder/head >}}
 
 Backup and restoration is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.
@@ -33,10 +36,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 - Perform full backups before performing a large operation, such as a DDL change.
 - Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
 - Avoid running a backup during or before a scheduled maintenance.
-
-{{< warning title="Backups and high DDL activity" >}}
-In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
-{{< /warning >}}
+- In v2025.2.1 and later, taking YSQL backups during DDL operations is supported by default, and backups succeed even in case of concurrent DDLs. In versions earlier than v2025.1.1, backups can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
 
 {{<index/block>}}
 

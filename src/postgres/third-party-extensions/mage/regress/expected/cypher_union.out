@@ -1,0 +1,176 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('cypher_union');
+NOTICE:  graph "cypher_union" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_union', $$CREATE ()$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION MATCH (n) RETURN n$$) as (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (n) RETURN n$$) as (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION RETURN 1$$) as (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ 1
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION RETURN NULL$$) as (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ 
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$RETURN [1,2,3] UNION RETURN 1$$) as (a agtype);
+     a     
+-----------
+ [1, 2, 3]
+ 1
+(2 rows)
+
+/*should return 1 row*/
+SELECT * FROM cypher('cypher_union', $$RETURN NULL UNION RETURN NULL$$) AS (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+/*should return 2 rows*/
+SELECT * FROM cypher('cypher_union', $$RETURN NULL UNION ALL RETURN NULL$$) AS (result agtype);
+ result 
+--------
+ 
+ 
+(2 rows)
+
+/*
+ *multiple unions, precedence
+ */
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION MATCH (n) RETURN n UNION MATCH (n) RETURN n$$) AS (result agtype);
+                             result                             
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+/*should return triple*/
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (n) RETURN n UNION ALL MATCH(n) RETURN n$$) AS (result agtype);
+                             result                             
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(3 rows)
+
+/*should return single*/
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (n) RETURN n UNION MATCH(n) RETURN n$$) AS (result agtype);
+                             result                             
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+/*should return just a pair*/
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION MATCH (n) RETURN n UNION ALL MATCH(n) RETURN n$$) AS (result agtype);
+                             result                             
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(2 rows)
+
+/*should return 3 null rows*/
+SELECT * FROM cypher('cypher_union', $$RETURN NULL UNION ALL RETURN NULL UNION ALL RETURN NULL$$) AS (result agtype);
+ result 
+--------
+ 
+ 
+ 
+(3 rows)
+
+/*should return 1 null row*/
+SELECT * FROM cypher('cypher_union', $$RETURN NULL UNION ALL RETURN NULL UNION RETURN NULL$$) AS (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+/*should return 2 null rows*/
+SELECT * FROM cypher('cypher_union', $$RETURN NULL UNION RETURN NULL UNION ALL RETURN NULL$$) AS (result agtype);
+ result 
+--------
+ 
+ 
+(2 rows)
+
+/* scoping */
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (m) RETURN n$$) AS (result agtype);
+ERROR:  could not find rte for n
+LINE 2: ..., $$MATCH (n) RETURN n UNION ALL MATCH (m) RETURN n$$) AS (r...
+                                                             ^
+/*
+ *UNION and UNION ALL, type casting
+ */
+SELECT * FROM cypher('cypher_union', $$RETURN 1.0::int UNION RETURN 1::float UNION ALL RETURN 2.0::float$$) AS (result agtype);
+ result 
+--------
+ 1
+ 2.0
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$RETURN 1.0::int UNION RETURN 1.0::float UNION ALL RETURN 1::int$$) AS (result agtype);
+ result 
+--------
+ 1
+ 1
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$RETURN 1.0::float UNION RETURN 1::int UNION RETURN 1::float$$) AS (result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+SELECT drop_graph('cypher_union', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher_union._ag_label_vertex
+drop cascades to table cypher_union._ag_label_edge
+NOTICE:  graph "cypher_union" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

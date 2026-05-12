@@ -33,6 +33,8 @@ import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -104,6 +106,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Slf4j
@@ -308,7 +311,7 @@ public class ModelFactory {
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
     Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
-
+    List<Region> regions = p.getAllRegions();
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
@@ -316,6 +319,8 @@ public class ModelFactory {
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     userIntent.useSystemd = useSystemd;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.regionList = regions.stream().map(Region::getUuid).collect(Collectors.toList());
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -329,14 +334,19 @@ public class ModelFactory {
       NodeDetails node = new NodeDetails();
       node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.cloud = cloudType.toString();
+      node.cloudInfo.instance_type = userIntent.instanceType;
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
       node2.nodeUuid = UUID.randomUUID();
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.instance_type = userIntent.instanceType;
+      node.cloudInfo.cloud = cloudType.toString();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
-    params.upsertPrimaryCluster(userIntent, pi);
+    params.upsertPrimaryCluster(userIntent, null, pi);
     return Universe.create(params, customerId);
   }
 
@@ -371,7 +381,7 @@ public class ModelFactory {
     params.setEnableYbc(enableYbc);
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
-    params.upsertPrimaryCluster(userIntent, pi);
+    params.upsertPrimaryCluster(userIntent, null, pi);
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
@@ -390,11 +400,15 @@ public class ModelFactory {
             if (params.nodeDetailsSet == null) {
               params.nodeDetailsSet = new HashSet<>();
             }
+            UUID azUUID = UUID.randomUUID();
             for (int i = 1; i <= numNodesToAdd; i++) {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();
+              node.cloudInfo.region = "region-1";
+              node.cloudInfo.az = "az-1";
               node.state = NodeState.Live;
               node.isTserver = true;
+              node.azUuid = azUUID;
               node.placementUuid = params.getPrimaryCluster().uuid;
               node.cloudInfo.private_ip = "127.0.0." + Integer.toString(i);
               params.nodeDetailsSet.add(node);
@@ -451,6 +465,26 @@ public class ModelFactory {
                 + "\", \"NFS_BUCKET\": \""
                 + bucketName
                 + "\"}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer,
+      String configName,
+      String backupLocation,
+      String bucketName,
+      List<String> nfsVolumes) {
+    ObjectNode data = Json.newObject();
+    data.put("BACKUP_LOCATION", backupLocation);
+    data.put("NFS_BUCKET", bucketName);
+    if (nfsVolumes != null) {
+      data.set("NFS_VOLUMES", Json.toJson(nfsVolumes));
+    }
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", configName);
+    formData.put("name", "NFS");
+    formData.put("type", "STORAGE");
+    formData.set("data", data);
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
@@ -537,7 +571,21 @@ public class ModelFactory {
     params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
     params.tableUUID = UUID.randomUUID();
+    return Schedule.create(customerUUID, params, taskType, 1000, null);
+  }
+
+  public static Schedule createScheduleBackupRequestParams(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, TaskType taskType) {
+    BackupRequestParams params = new BackupRequestParams();
+    params.storageConfigUUID = configUUID;
+    params.setUniverseUUID(universeUUID);
+    params.keyspaceTableList = new ArrayList<>();
+    KeyspaceTable keyspaceTable = new KeyspaceTable();
+    keyspaceTable.keyspace = "foo";
+    params.keyspaceTableList.add(keyspaceTable);
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
     return Schedule.create(customerUUID, params, taskType, 1000, null);
   }
 

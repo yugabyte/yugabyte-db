@@ -50,14 +50,14 @@ var retryTaskCmd = &cobra.Command{
 
 		rTask, response, err := retryRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "Retry")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Task", "Retry")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		tasks, response, err := authAPI.TasksList().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "Retry - Fetch Tasks")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Task", "Retry - Fetch Tasks")
 		}
 
 		newTaskUUID := rTask.GetTaskUUID()
@@ -91,13 +91,7 @@ var retryTaskCmd = &cobra.Command{
 
 			tasks, response, err := authAPI.TasksList().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"Task",
-					"Retry - Fetch Tasks",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Task", "Retry - Fetch Tasks")
 			}
 
 			newTaskUUID := rTask.GetTaskUUID()
@@ -116,7 +110,7 @@ var retryTaskCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 

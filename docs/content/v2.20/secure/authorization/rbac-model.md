@@ -42,6 +42,8 @@ Roles in YSQL can represent individual users or a group of users. They encapsula
 
 * Roles inherit the privileges of all other roles granted to them.
 
+* Like PostgreSQL, roles do not inherit role attributes (such as SUPERUSER, INHERIT, CREATEROLE, CREATEDB, REPLICATION, BYPASSRLS), even if the membership grant has the INHERIT attribute. You must actually [SET ROLE](../../../api/ysql/the-sql-language/statements/dcl_set_role/) to a specific role having the attribute in order to make use of the attribute.
+
 YugabyteDB inherits a number of roles from PostgreSQL, including the `postgres` user, and adds several new roles. View the YugabyteDB-specific roles for your clusters with the following command (or use `\duS` to display all roles):
 
 ```sql

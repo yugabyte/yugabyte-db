@@ -72,10 +72,9 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
     // Wait for the partition metadata to refresh.
     Thread.sleep(wait_time);
 
-    verifyClusterHealth(NUM_TABLET_SERVERS + 1);
-
     // Load should be balanced and load balancer should be idle.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS + 1));
     assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
+    verifyClusterHealth(NUM_TABLET_SERVERS + 1);
   }
 }

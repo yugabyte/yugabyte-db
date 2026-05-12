@@ -111,7 +111,7 @@ class TransactionTableState {
     if (PickStatusTabletId(tablets, callback)) {
       return;
     }
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No local transaction status tablet found";
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "No local transaction status tablet found";
     callback(RandomElement(tablets));
   }
 
@@ -134,6 +134,11 @@ class TransactionTableState {
 
   bool HasAnyRegionLocalStatusTablets() {
     return has_region_local_tablets_.load();
+  }
+
+  bool HasAnyTransactionLocalStatusTablets() {
+    SharedLock lock(mutex_);
+    return !tablets_.tablespaces.empty();
   }
 
   bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
@@ -429,12 +434,13 @@ class TransactionManager::Impl {
 
   void PickStatusTablet(
       PickStatusTabletCallback callback, TransactionFullLocality locality) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(OnCpu_Passive);
     if (table_state_.IsInitialized()) {
       if (ThreadRestrictions::IsWaitAllowed()) {
+        SCOPED_WAIT_STATUS(OnCpu_Active);
         table_state_.InvokeCallback(callback, locality);
       } else {
-        ASH_ENABLE_CONCURRENT_UPDATES();
-        SET_WAIT_STATUS(OnCpu_Passive);
         if (!invoke_callback_tasks_.Enqueue(
           &thread_pool_, &table_state_, callback, locality)) {
           SCOPED_WAIT_STATUS(OnCpu_Active);
@@ -446,8 +452,6 @@ class TransactionManager::Impl {
       return;
     }
 
-    ASH_ENABLE_CONCURRENT_UPDATES();
-    SET_WAIT_STATUS(OnCpu_Passive);
     if (!tasks_pool_.Enqueue(
       &thread_pool_, client_, &table_state_, 0 /* version */, callback,
       locality)) {
@@ -491,6 +495,10 @@ class TransactionManager::Impl {
 
   bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
     return table_state_.TablespaceIsRegionLocal(tablespace_oid);
+  }
+
+  bool TablespaceLocalTransactionsPossible() {
+    return table_state_.HasAnyTransactionLocalStatusTablets();
   }
 
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
@@ -595,6 +603,10 @@ bool TransactionManager::RegionLocalTransactionsPossible() {
 
 bool TransactionManager::TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
   return impl_->TablespaceIsRegionLocal(tablespace_oid);
+}
+
+bool TransactionManager::TablespaceLocalTransactionsPossible() {
+  return impl_->TablespaceLocalTransactionsPossible();
 }
 
 bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {

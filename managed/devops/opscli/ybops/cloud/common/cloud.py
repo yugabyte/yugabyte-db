@@ -19,7 +19,6 @@ import time
 
 import yaml
 from enum import Enum
-from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path)
@@ -45,10 +44,8 @@ class AbstractCloud(AbstractCommandParser):
     """Class that encapsulates the first layer of abstraction of commands, at the cloud level.
 
     This should be responsible for keeping high level data and options, as well as holding
-    instances to cloud-specific structures or APIs. This class is also responsible for providing
-    ways of calling out to Ansible.
+    instances to cloud-specific structures or APIs.
     """
-    VARS_DIR_SUFFIX = "vars/cloud"
     BASE_IMAGE_VERSION_KEY = "base_image_version"
     KEY_SIZE = 2048
     PUBLIC_EXPONENT = 65537
@@ -70,14 +67,6 @@ class AbstractCloud(AbstractCommandParser):
         super(AbstractCloud, self).__init__(name)
 
     def init(self, args=None):
-        devops_home = os.environ.get("yb_devops_home")
-        vars_file = os.path.join(devops_home,
-                                 AbstractCloud.VARS_DIR_SUFFIX,
-                                 "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
-        with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
-
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
         self.metadata = {}
@@ -138,31 +127,10 @@ class AbstractCloud(AbstractCommandParser):
         """
         pass
 
-    def get_default_base_image_version(self):
-        return self.ansible_vars.get(self.BASE_IMAGE_VERSION_KEY)
-
     def get_image_by_version(self, region, version=None):
         """Override to get image using cloud-specific APIs and clients.
         """
         pass
-
-    def setup_ansible(self, args):
-        """Prepare and return a base AnsibleProcess class as well as setup some initial arguments,
-        such as the cloud_type, for the respective playbooks.
-        Args:
-            args: the parsed command-line arguments, as setup by the relevant ArgParse instance.
-        """
-        ansible = AnsibleProcess()
-        ansible.playbook_args["cloud_type"] = self.name
-        if args.region:
-            ansible.playbook_args["cloud_region"] = args.region
-        if args.zone:
-            ansible.playbook_args["cloud_zone"] = args.zone
-        if hasattr(args, "custom_ssh_port") and args.custom_ssh_port:
-            ansible.playbook_args["custom_ssh_port"] = args.custom_ssh_port
-        if args.ansible_keep_remote_files:
-            ansible.keep_remote_files = True
-        return ansible
 
     def add_extra_args(self):
         """Override to setup cloud-specific command line flags.
@@ -170,10 +138,6 @@ class AbstractCloud(AbstractCommandParser):
         self.parser.add_argument("--region", required=False)
         self.parser.add_argument("--zone", required=False)
         self.parser.add_argument("--network", required=False)
-        self.parser.add_argument("--systemd_debug", action="store_true", default=False,
-                                 required=False)
-        self.parser.add_argument("--ansible_keep_remote_files", action="store_true", default=False,
-                                 required=False)
 
     def add_subcommand(self, command):
         """Subclass override to set a reference to the cloud into the subcommands we add.
@@ -186,42 +150,38 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command,
             "ssh2_enabled": args.ssh2_enabled,
-            "systemd_debug": args.systemd_debug,
         }
         if args.systemd_services:
             updated_vars.update({"systemd_services": args.systemd_services})
         updated_vars.update(extra_vars)
 
         if args.num_volumes:
-            volume_cnt = RemoteShell(updated_vars).run_command(
+            volume_cnt = RemoteShell(updated_vars).check_exec_command(
                 "df | awk '{{print $6}}' | egrep '^{}[0-9]+' | wc -l".format(
                     AbstractCloud.MOUNT_PATH_PREFIX
                 )
             )
-            if int(volume_cnt.stdout) < int(args.num_volumes):
+            if int(volume_cnt) < int(args.num_volumes):
                 raise YBOpsRuntimeError(
                     "Not all data volumes attached: needed {} found {}".format(
-                        args.num_volumes, volume_cnt.stdout
+                        args.num_volumes, volume_cnt
                     )
                 )
 
         if process == "thirdparty" or process == "platform-services":
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
             return
 
         if os.environ.get("YB_USE_FABRIC", False):
             file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
-            RemoteShell(updated_vars).run_command(
+            RemoteShell(updated_vars).check_exec_command(
                 "{} {} {}".format(file_path, process, command)
             )
-        else:
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, connect_options, args):
         # TODO Looks like this is not used.
         remote_shell = RemoteShell(connect_options)
         init_db_path = os.path.join(YB_HOME_DIR, "tserver/postgres/bin/initdb")
-        remote_shell.run_command(
+        remote_shell.check_exec_command(
             "bash -c \"YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses={} "
             "{} -D {}/yb_pg_initdb_tmp_data_dir "
             "-U postgres\"".format(master_addresses, init_db_path, args.remote_tmp_dir)
@@ -307,8 +267,8 @@ class AbstractCloud(AbstractCommandParser):
         serials = []
         # This command returns 'SHA1 Fingerprint=<value>' separated by new lines.
         cmd = "bash -c \"while openssl x509 -fingerprint -noout 2>/dev/null;do :;done < '{}'\""
-        output = remote_shell.run_command(cmd.format(remote_cert_path))
-        for line in output.stdout.splitlines():
+        output = remote_shell.check_exec_command(cmd.format(remote_cert_path))
+        for line in output.splitlines():
             tokens = line.split('=')
             if len(tokens) == 2:
                 logging.info("[app] Found fingerprint {} for {}"
@@ -322,13 +282,13 @@ class AbstractCloud(AbstractCommandParser):
         yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
         yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
         # Give write permissions to cert directory
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        remote_shell.check_exec_command('chmod -f 666 {}/* || true'.format(certs_dir))
         # Delete the new destination cert file if it exists.
-        remote_shell.run_command("rm -f '{}'".format(yb_root_cert_new_path))
+        remote_shell.check_exec_command("rm -f '{}'".format(yb_root_cert_new_path))
         # Copy the new root cert to ca_new.crt
         if certs_location == self.CERT_LOCATION_NODE:
-            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
-                                                           yb_root_cert_new_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
+                                                                  yb_root_cert_new_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
             remote_shell.put_file(root_cert_path, yb_root_cert_new_path)
         # Get the fingerprints of the certs.
@@ -336,12 +296,12 @@ class AbstractCloud(AbstractCommandParser):
         current_fingerprints = self.get_cert_fingerprints(remote_shell, yb_root_cert_path)
         if not new_fingerprints.issubset(current_fingerprints):
             # Append new cert content to ca.crt.
-            remote_shell.run_command(
+            remote_shell.check_exec_command(
                 "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
         else:
             logging.info("Multi cert is already created")
         # Reset the write permissions
-        remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+        remote_shell.check_exec_command('chmod 400 {}/*'.format(certs_dir))
 
     def remove_old_root_cert(self, connect_options, certs_dir):
         remote_shell = RemoteShell(connect_options)
@@ -354,13 +314,13 @@ class AbstractCloud(AbstractCommandParser):
         # No action needed if ca_new.crt is not present
         if not file_verify.exited:
             # Give write permissions to cert directory
-            remote_shell.run_command(
+            remote_shell.check_exec_command(
                 'chmod -f 666 {}/* || true'.format(certs_dir))
             # Remove ca.crt and rename ca_new.crt to ca.crt
-            remote_shell.run_command("mv '{}' '{}'".format(
+            remote_shell.check_exec_command("mv '{}' '{}'".format(
                 yb_root_cert_new_path, yb_root_cert_path))
             # Reset the write permissions
-            remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+            remote_shell.check_exec_command('chmod 400 {}/*'.format(certs_dir))
 
     def __verify_certs_hostname(self, node_crt_path, connect_options):
         host_port_user = get_host_port_user(connect_options)
@@ -369,7 +329,7 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Verifying Subject for certs {}".format(node_crt_path))
 
         # Get readable text version of cert
-        cert_text = remote_shell.run_command("cat {}".format(node_crt_path)).stdout.encode('utf-8')
+        cert_text = remote_shell.check_exec_command("cat {}".format(node_crt_path)).encode('utf-8')
         # Extract commonName and subjectAltName from the cert text output
         cert = x509.load_pem_x509_certificate(cert_text)
         # Extract commonName (CN) and Subject Alternative Name (SAN) from the certificate
@@ -417,7 +377,7 @@ class AbstractCloud(AbstractCommandParser):
         try:
             remote_shell = RemoteShell(connect_options)
             cmd = "openssl x509 -in {} -fingerprint -noout -sha256".format(root_crt_path)
-            out = remote_shell.run_command(cmd).stdout
+            out = remote_shell.check_exec_command(cmd)
             # Extract the fingerprint from the output
             match = re.search(r'Fingerprint=([A-F0-9:]+)', out)
             if not match:
@@ -457,7 +417,7 @@ class AbstractCloud(AbstractCommandParser):
 
         # Verify OpenSSL is installed
         try:
-            remote_shell.run_command('which openssl')
+            remote_shell.check_exec_command('which openssl')
         except YBOpsRuntimeError:
             logging.debug("Openssl not found, skipping certificate verification.")
             return
@@ -553,8 +513,8 @@ class AbstractCloud(AbstractCommandParser):
                 root_cert = root_cert_command.stdout
                 root_cert_new = None
                 if certs_location == self.CERT_LOCATION_NODE:
-                    root_cert_new = remote_shell.run_command(
-                        "cat '{}'".format(root_cert_path)).stdout
+                    root_cert_new = remote_shell.check_exec_command(
+                        "cat '{}'".format(root_cert_path))
                 if certs_location == self.CERT_LOCATION_PLATFORM:
                     with open(root_cert_path) as file:
                         root_cert_new = file.read()
@@ -571,9 +531,9 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Moving server certs located at {}, {}, {}.".format(
             root_cert_path, server_cert_path, server_key_path))
 
-        remote_shell.run_command('mkdir -p ' + certs_dir)
+        remote_shell.check_exec_command('mkdir -p ' + certs_dir)
         # Give write permissions. If the command fails, ignore.
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        remote_shell.check_exec_command('chmod -f 666 {}/* || true'.format(certs_dir))
 
         if certs_location == self.CERT_LOCATION_NODE:
             if skip_cert_validation == 'ALL':
@@ -587,12 +547,12 @@ class AbstractCloud(AbstractCommandParser):
                 self.verify_certs(root_cert_path, server_cert_path, server_key_path,
                                   connect_options, verify_hostname)
             if copy_root:
-                remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
-                                                               yb_root_cert_path))
-            remote_shell.run_command("cp '{}' '{}'".format(server_cert_path,
-                                                           yb_server_cert_path))
-            remote_shell.run_command("cp '{}' '{}'".format(server_key_path,
-                                                           yb_server_key_path))
+                remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
+                                                                      yb_root_cert_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(server_cert_path,
+                                                                  yb_server_cert_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(server_key_path,
+                                                                  yb_server_key_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
             if copy_root:
                 remote_shell.put_file(root_cert_path, yb_root_cert_path)
@@ -600,7 +560,7 @@ class AbstractCloud(AbstractCommandParser):
             remote_shell.put_file(server_key_path, yb_server_key_path)
 
         # Reset the write permission as a sanity check.
-        remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+        remote_shell.check_exec_command('chmod 400 {}/*'.format(certs_dir))
 
     def copy_xcluster_root_cert(
             self,
@@ -616,13 +576,14 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Moving server cert located at {} to {}:{}.".format(
             root_cert_path, node_ip, xcluster_root_cert_dir_path))
 
-        remote_shell.run_command('mkdir -p ' + xcluster_root_cert_dir_path)
+        remote_shell.check_exec_command('mkdir -p ' + xcluster_root_cert_dir_path)
         # Give write permissions. If the command fails, ignore.
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(xcluster_root_cert_dir_path))
+        remote_shell.check_exec_command('chmod -f 666 {}/* || true'.format(
+            xcluster_root_cert_dir_path))
         remote_shell.put_file(root_cert_path, xcluster_root_cert_path)
 
         # Reset the write permission as a sanity check.
-        remote_shell.run_command('chmod 400 {}/*'.format(xcluster_root_cert_dir_path))
+        remote_shell.check_exec_command('chmod 400 {}/*'.format(xcluster_root_cert_dir_path))
 
     def remove_xcluster_root_cert(
             self,
@@ -644,7 +605,8 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Removing server cert located at {} from server {}.".format(
             xcluster_root_cert_dir_path, node_ip))
 
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(xcluster_root_cert_dir_path))
+        remote_shell.check_exec_command('chmod -f 666 {}/* || true'.format(
+            xcluster_root_cert_dir_path))
         result = remote_shell.run_command_raw('rm ' + xcluster_root_cert_path)
         check_rm_result(result)
         # Remove the directory only if it is empty.
@@ -671,25 +633,25 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("Moving client certs located at {}, {}, {}.".format(
             root_cert_path, client_cert_path, client_key_path))
 
-        remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
+        remote_shell.check_exec_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
         # Give write permissions. If the command fails, ignore.
-        remote_shell.run_command(
+        remote_shell.check_exec_command(
             'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
 
         if certs_location == self.CERT_LOCATION_NODE:
-            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
-                                                           yb_root_cert_path))
-            remote_shell.run_command("cp '{}' '{}'".format(client_cert_path,
-                                                           yb_client_cert_path))
-            remote_shell.run_command("cp '{}' '{}'".format(client_key_path,
-                                                           yb_client_key_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
+                                                                  yb_root_cert_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(client_cert_path,
+                                                                  yb_client_cert_path))
+            remote_shell.check_exec_command("cp '{}' '{}'".format(client_key_path,
+                                                                  yb_client_key_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
             remote_shell.put_file(root_cert_path, yb_root_cert_path)
             remote_shell.put_file(client_cert_path, yb_client_cert_path)
             remote_shell.put_file(client_key_path, yb_client_key_path)
 
         # Reset the write permission as a sanity check.
-        remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
+        remote_shell.check_exec_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def cleanup_client_certs(self, connect_options):
         remote_shell = RemoteShell(connect_options)
@@ -704,14 +666,14 @@ class AbstractCloud(AbstractCommandParser):
             yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
 
         # Give write permissions. If the command fails, ignore.
-        remote_shell.run_command(
+        remote_shell.check_exec_command(
             'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
         # Remove client certs
-        remote_shell.run_command(
+        remote_shell.check_exec_command(
             "rm '{}' '{}' '{}' || true".format(
                 yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
         # Reset the write permission as a sanity check.
-        remote_shell.run_command(
+        remote_shell.check_exec_command(
             'chmod 400 {}/* || true'.format(self.YSQLSH_CERT_DIR))
 
     def create_encryption_at_rest_file(self, extra_vars, connect_options):
@@ -726,7 +688,7 @@ class AbstractCloud(AbstractCommandParser):
                 key_out.write(encryption_key)
             # Copy files over to node
             remote_shell = RemoteShell(connect_options)
-            remote_shell.run_command('mkdir -p ' + key_node_dir)
+            remote_shell.check_exec_command('mkdir -p ' + key_node_dir)
             remote_shell.put_file(os.path.join(common_path, key_file),
                                   os.path.join(key_node_dir, key_file))
 
@@ -757,7 +719,7 @@ class AbstractCloud(AbstractCommandParser):
         mount_points = self.get_mount_points_csv(args).split(',')
         for mount_point in mount_points:
             logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
+            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
 
     def wait_for_server_ports(self, private_ip, instance_name, server_ports):
         sock = None
@@ -817,11 +779,10 @@ class AbstractCloud(AbstractCommandParser):
             raise YBOpsRecoverableError(
                 'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
                     args.search_pattern, stdout, stderr))
-        if len(stdout) > 0:
-            if stdout[0].rstrip(os.linesep) != args.boot_script_token:
-                raise YBOpsRuntimeError(
-                    '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
-                        args.search_pattern, stdout))
+        if stdout and stdout.strip(os.linesep) != args.boot_script_token:
+            raise YBOpsRuntimeError(
+                '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
+                    args.search_pattern, stdout))
 
     def get_console_output(self, args):
         return ''

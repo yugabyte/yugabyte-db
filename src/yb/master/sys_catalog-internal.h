@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/doc_read_context.h"
@@ -70,11 +72,13 @@ class Visitor : public VisitorBase {
 // Template method defintions must go into a header file.
 template <class... Items>
 Status SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CurrentWaitState());
   return Mutate(QLWriteRequestPB::QL_STMT_UPDATE, leader_term, std::forward<Items>(items)...);
 }
 
 template <class... Items>
 Status SysCatalogTable::Upsert(const LeaderEpoch& epoch, Items&&... items) {
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CurrentWaitState());
   return Mutate(
       QLWriteRequestPB::QL_STMT_UPDATE, epoch, std::forward<Items>(items)...);
 }

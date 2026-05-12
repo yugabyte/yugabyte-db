@@ -18,6 +18,7 @@
 
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_path.h"
@@ -696,7 +697,7 @@ int DocKey::CompareTo(const DocKey& other) const {
   return CompareVectors(range_group_, other.range_group_);
 }
 
-DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
+DocKey DocKey::FromRedisKey(uint16_t hash, std::string_view key) {
   DocKey new_doc_key;
   new_doc_key.hash_present_ = true;
   new_doc_key.hash_ = hash;
@@ -704,7 +705,7 @@ DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
   return new_doc_key;
 }
 
-KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
+KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, std::string_view key) {
   KeyBytes result;
   result.AppendKeyEntryType(KeyEntryType::kUInt16Hash);
   result.AppendUInt16(hash);
@@ -716,9 +717,9 @@ KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
   return result;
 }
 
-std::string DocKey::DebugSliceToString(Slice slice) {
+std::string DocKey::DebugSliceToString(Slice slice, DocKeyPart part_to_decode) {
   DocKey key;
-  auto decoded_size = key.DecodeFrom(slice, DocKeyPart::kWholeDocKey, AllowSpecial::kTrue);
+  auto decoded_size = key.DecodeFrom(slice, part_to_decode, AllowSpecial::kTrue);
   if (!decoded_size.ok()) {
     return decoded_size.status().ToString() + ": " + slice.ToDebugHexString();
   }
@@ -1023,14 +1024,15 @@ Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   return status;
 }
 
-string SubDocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
+string SubDocKey::ToString(
+    AutoDecodeKeys auto_decode_keys, IncludeWriteTime include_write_time) const {
   std::string result("SubDocKey(");
   result.append(doc_key_.ToString(auto_decode_keys));
   result.append(", [");
 
   AppendVectorToString(&result, subkeys_, auto_decode_keys);
 
-  if (has_hybrid_time()) {
+  if (include_write_time && has_hybrid_time()) {
     if (!subkeys_.empty()) {
       result.append("; ");
     }

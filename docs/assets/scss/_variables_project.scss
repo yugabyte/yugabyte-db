@@ -1,7 +1,11 @@
+@import "./fontawesome/_default.scss";
+
 $primary: #fe6f42;
 $secondary: #312965;
-$google_font_name: "Inter";
-$google_font_family: "Inter:100,200,300,400,500,600,700,800,900";
+
+$td-enable-google-fonts: true;
+$td-google-font-name: "Inter";
+$td-google-font-family: "Inter:100,200,300,400,500,600,700,800,900";
 
 $YB_LIGHT_GRAY_BACK: #f5f6f8;
 $YB_LIGHT_GRAY: #f7f8f9;

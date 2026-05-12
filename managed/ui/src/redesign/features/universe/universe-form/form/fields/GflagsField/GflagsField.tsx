@@ -35,10 +35,10 @@ import { api, QUERY_KEY } from '../../../../../../utils/api';
 import { isVersionPGSupported } from '../../../utils/helpers';
 import { GFLAG_GROUPS } from '../../../../../../helpers/constants';
 //Icons
-import Edit from '../../../../../../assets/edit_pen.svg';
-import Close from '../../../../../../assets/close.svg';
-import Plus from '../../../../../../assets/plus.svg';
-import MoreIcon from '../../../../../../assets/ellipsis.svg';
+import EditIcon from '../../../../../../assets/edit_pen.svg?img';
+import CloseIcon from '../../../../../../assets/close.svg?img';
+import PlusIcon from '../../../../../../assets/plus.svg?img';
+import MoreIcon from '../../../../../../assets/ellipsis.svg?img';
 import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss';
 
 /* TODO :
@@ -346,7 +346,7 @@ export const GFlagsField = ({
               }
             >
               <Button bsClass="flag-icon-button mb-2" onClick={() => remove(index)}>
-                <img alt="Remove" src={Close} width="22" />
+                <img alt="Remove" src={CloseIcon} width="22" />
               </Button>
             </OverlayTrigger>
             &nbsp;
@@ -448,7 +448,7 @@ export const GFlagsField = ({
                     bsClass="flag-icon-button mr-10 mb-2"
                     onClick={() => handleSelectedOption(modalProps)}
                   >
-                    <img alt="Edit" src={Edit} width="20" />
+                    <img alt="Edit" src={EditIcon} width="20" />
                   </Button>
                 </OverlayTrigger>
               )}
@@ -469,7 +469,7 @@ export const GFlagsField = ({
                     handleRemoveFlag(row, index, server, checkFlagExistsOnOtherServer(server))
                   }
                 >
-                  <img alt="Remove" src={Close} width="22" />
+                  <img alt="Remove" src={CloseIcon} width="22" />
                 </Button>
               </OverlayTrigger>
             </div>
@@ -498,7 +498,7 @@ export const GFlagsField = ({
               bsClass="flag-icon-button display-inline-flex mb-2"
               onClick={() => handleSelectedOption(modalProps)}
             >
-              <img alt="Add" src={Plus} width="20" />
+              <img alt="Add" src={PlusIcon} width="20" />
               <span className="add-label">{t('universeForm.gFlags.addValue')}</span>
             </Button>
           )}

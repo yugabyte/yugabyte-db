@@ -4,6 +4,8 @@ headerTitle: Security
 linkTitle: Security
 description: Overview of security in YugabyteDB.
 headcontent: Secure your YugabyteDB universes
+aliases:
+  - /stable/explore/security/
 menu:
   stable:
     identifier: explore-security
@@ -32,7 +34,7 @@ The methods include the following:
 
 * **Password** - authenticate using MD5 or SCRAM-SHA-256.
 
-  MD5 is the default password encryption for YugabyteDB clusters. To set SCRAM-SHA-256 authentication, you must set the YB-TServer `--ysql_hba_conf_csv` flag to `scram-sha-256`.
+  SCRAM-SHA-256 is the default password encryption for YugabyteDB clusters.
 
 * **LDAP** - use external LDAP services to perform client authentication.
 

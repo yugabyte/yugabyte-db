@@ -185,7 +185,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
         AsString(operation_type), tablet ? tablet->tablet_id() : "(unknown)", consumption, limit,
         blocked_by, driver_mem_footprint);
 
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << msg;
 
     return STATUS(ServiceUnavailable, msg);
   }

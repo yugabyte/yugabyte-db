@@ -3,13 +3,18 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,22 +37,28 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -77,6 +88,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   private Commissioner mockCommissioner;
   private RuntimeConfGetter runtimeConfGetter;
   private RuntimeConfigFactory mockRuntimeConfigFactory;
+  private CertificateHelper mockCertificateHelper;
 
   @Before
   public void setUp() {
@@ -87,6 +99,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     gFlagsAuditHandler = new GFlagsAuditHandler(gFlagsValidationHandler);
     runtimeConfGetter = mock(RuntimeConfGetter.class);
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
+    mockCertificateHelper = mock(CertificateHelper.class);
 
     // Mock KubernetesManagerFactory
     KubernetesManagerFactory mockKubernetesManagerFactory = mock(KubernetesManagerFactory.class);
@@ -101,11 +114,17 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mockRuntimeConfigFactory,
             mock(YbcManager.class),
             runtimeConfGetter,
-            mock(CertificateHelper.class),
+            mockCertificateHelper,
             mock(AutoFlagUtil.class),
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
             mock(SoftwareUpgradeHelper.class));
+
+    lenient()
+        .when(
+            runtimeConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(true);
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -779,6 +798,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               universe -> {
                 UniverseDefinitionTaskParams details = universe.getUniverseDetails();
                 details.rootCA = existingRootCA;
+                details.setClientRootCA(existingRootCA);
                 details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
                 details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
                 universe.setUniverseDetails(details);
@@ -788,6 +808,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       params.setUniverseUUID(u.getUniverseUUID());
       params.clusters = u.getUniverseDetails().clusters;
       params.rootCA = existingRootCA; // Same rootCA
+      params.setClientRootCA(existingRootCA);
       params.selfSignedServerCertRotate = true;
       params.selfSignedClientCertRotate = true;
       params.rootAndClientRootCASame = true;
@@ -821,7 +842,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRotateCertsKubernetesPartialServerCertRotationFailure()
+  public void testRotateCertsKubernetesPartialServerCertRotation()
       throws IOException, NoSuchAlgorithmException {
     Customer c = ModelFactory.testCustomer();
     Universe u = createKubernetesUniverse(c);
@@ -834,7 +855,9 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             universe -> {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.rootCA = existingRootCA;
-              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = false;
+              details.setClientRootCA(existingRootCA);
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
               universe.setUniverseDetails(details);
             });
 
@@ -858,15 +881,46 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.selfSignedClientCertRotate = false; // Only server cert rotation
     params.rootAndClientRootCASame = true;
     params.rootCA = existingRootCA;
+    params.setClientRootCA(existingRootCA);
 
+    // Only server cert rotation
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
 
     assertEquals(
-        "Cannot rotate only one of server or client certificates at a time. "
-            + "Both must be rotated together for Kubernetes universes.",
+        "Cannot rotate only node to node certificate when client to node encryption is enabled.",
         exception.getMessage());
+
+    params.selfSignedClientCertRotate = true; // Only client cert rotation
+    params.selfSignedServerCertRotate = false;
+
+    // Only client cert rotation
+    exception =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
+    assertEquals(
+        "Cannot rotate only client to node certificate when node to node encryption is enabled.",
+        exception.getMessage());
+
+    params.selfSignedClientCertRotate = true;
+    params.selfSignedServerCertRotate = true;
+
+    // Mock the static method
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      UUID fakeTaskUUID =
+          FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+      when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+          .thenReturn(fakeTaskUUID);
+
+      // Rotate both server and client cert rotation
+      handler.rotateCerts(params, c, updatedUniverse);
+    }
   }
 
   @Test
@@ -905,23 +959,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRotateCertsKubernetesNullRootCA() throws IOException, NoSuchAlgorithmException {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverse(c);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = null;
-    params.rootAndClientRootCASame = true;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals("rootCA is null. Cannot perform any upgrade.", exception.getMessage());
-  }
-
-  @Test
   public void testRotateCertsKubernetesDifferentClientRootCA()
       throws IOException, NoSuchAlgorithmException {
     Customer c = ModelFactory.testCustomer();
@@ -938,7 +975,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
 
     assertEquals(
-        "clientRootCA not applicable for Kubernetes certificate rotation.", exception.getMessage());
+        "rootCA and clientRootCA cannot be different for Kubernetes certificate rotation.",
+        exception.getMessage());
   }
 
   @Test
@@ -990,7 +1028,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
 
     assertEquals(
-        "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.",
+        "CustomCertHostPath certificates are not supported for Kubernetes certificate rotation."
+            + " Use CertManager instead.",
         exception.getMessage());
   }
 
@@ -1054,6 +1093,630 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         exception.getMessage());
   }
 
+  @Test
+  public void testRotateCertsCreateNewRootCASuccess() throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID newRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, null, true, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = null;
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info for the new rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        newRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(newRootCA, capturedParams.rootCA);
+    verify(mockCertificateHelper)
+        .createRootCA(any(), eq(u.getUniverseDetails().nodePrefix), eq(c.getUuid()));
+  }
+
+  @Test
+  public void testRotateCertsExistingRootCASuccess() throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID newRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, null, true, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = newRootCA;
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info for the new rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        newRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(newRootCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsCreateNewClientRootCASuccess()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID existingRootCA = UUID.randomUUID();
+    UUID newClientRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createClientRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newClientRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    // Use non-Kubernetes universe since rootAndClientRootCASame = false is only valid for non-K8s
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.providerType = CloudType.aws;
+              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+              details.rootCA = existingRootCA;
+              universe.setUniverseDetails(details);
+            });
+
+    // Create certificate info for existing rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        existingRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    // Create certificate info for new clientRootCA
+    TestHelper.createTempFile(certBasePath, "test-client.crt", "test-client-cert");
+    CertificateInfo.create(
+        newClientRootCA,
+        c.getUuid(),
+        "test-client-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test-client.crt",
+        CertConfigType.SelfSigned);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.setClientRootCA(null);
+    params.rootCA = existingRootCA;
+    params.rootAndClientRootCASame = false;
+
+    // Mock the static method for createClientCertificate
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      handler.rotateCerts(params, c, u);
+
+      ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+          ArgumentCaptor.forClass(CertsRotateParams.class);
+      verify(mockCommissioner).submit(eq(TaskType.CertsRotate), paramsArgumentCaptor.capture());
+
+      CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+      assertEquals(newClientRootCA, capturedParams.getClientRootCA());
+      verify(mockCertificateHelper)
+          .createClientRootCA(any(), eq(u.getUniverseDetails().nodePrefix), eq(c.getUuid()));
+    }
+  }
+
+  @Test
+  public void testRotateCertsUseRootCAAsClientRootCAWhenRootAndClientRootCASame()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID existingRootCA = UUID.randomUUID();
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, existingRootCA, true, true);
+
+    // Create certificate info for existing rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        existingRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = existingRootCA;
+    params.setClientRootCA(null);
+    params.rootAndClientRootCASame = true;
+
+    // Mock the static method for createClientCertificate
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      handler.rotateCerts(params, c, u);
+
+      ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+          ArgumentCaptor.forClass(CertsRotateParams.class);
+      verify(mockCommissioner)
+          .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+      CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+      assertEquals(existingRootCA, capturedParams.getClientRootCA());
+    }
+  }
+
+  @Test
+  public void testUpgradeDBVersionCanaryRejectedWhenFlagDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.ybSoftwareVersion = "2.21.0.0-b2";
+    params.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(false);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertEquals(400, ex.getHttpStatus());
+    assertTrue(ex.getMessage().contains("Canary upgrade is disabled"));
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testUpgradeDBVersionCanarySucceedsWhenFlagEnabled() {
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableYbcForUniverse)))
+        .thenReturn(false);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcCompatibleDbVersion)))
+        .thenReturn("2.17.0.0-b1");
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2.20.2.0-b1";
+            });
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    // Stable -> stable upgrade (avoids preview/stable check); both >= YBDB rollback threshold.
+    params.ybSoftwareVersion = "2.22.0.0-b1";
+    params.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    UUID fakeTaskUuid = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUuid);
+
+    UUID result =
+        handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    assertEquals(fakeTaskUuid, result);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.SoftwareUpgradeYB), any(SoftwareUpgradeParams.class));
+  }
+
+  @Test
+  public void testUpgradeDBVersionCanaryRejectedWhenUniversePausedWithoutResume() {
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableYbcForUniverse)))
+        .thenReturn(false);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcCompatibleDbVersion)))
+        .thenReturn("2.17.0.0-b1");
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    final UUID universeUuid = u.getUniverseUUID();
+    UUID pausedTaskUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.20.2.0-b1";
+          universe.getUniverseDetails().softwareUpgradeState =
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          universe.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+          universe.setUniverseDetails(universe.getUniverseDetails());
+        });
+
+    Universe fresh = Universe.getOrBadRequest(universeUuid);
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(universeUuid);
+    params.ybSoftwareVersion = "2.22.0.0-b1";
+    params.clusters.add(fresh.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(universeUuid)));
+    assertEquals(400, ex.getHttpStatus());
+    assertTrue(ex.getMessage().contains("paused canary"));
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWhenFlagDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(false);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("Canary upgrade is disabled"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgrade() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.ybSoftwareVersion = "2.21.0.0-b2";
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.placementModificationTaskUuid = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenAnswer(invocation -> invocation.getArgument(2));
+
+    UUID result = handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID);
+
+    assertEquals(taskUUID, result);
+    ArgumentCaptor<TaskType> taskTypeCaptor = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<SoftwareUpgradeParams> paramsCaptor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    ArgumentCaptor<UUID> uuidCaptor = ArgumentCaptor.forClass(UUID.class);
+    verify(mockCommissioner)
+        .submit(taskTypeCaptor.capture(), paramsCaptor.capture(), uuidCaptor.capture());
+    assertEquals(TaskType.SoftwareUpgradeYB, taskTypeCaptor.getValue());
+    assertEquals(u.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+    assertEquals(taskUUID, uuidCaptor.getValue());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsNonPausedTask() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWrongTaskType() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.GFlagsUpgrade, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("not a software upgrade task"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsUniverseNotPaused() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("not in Paused"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsTaskUUIDMismatch() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+    UUID otherTaskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.placementModificationTaskUuid = otherTaskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("does not match"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWrongUniverse() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u1 = ModelFactory.createUniverse("Universe1", c.getId());
+    Universe u2 = ModelFactory.createUniverse("Universe2", c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u1.getUniverseUUID());
+    storedParams.clusters.add(u1.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe.saveDetails(
+        u1.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          details.updatingTaskUUID = taskUUID;
+          universe.setUniverseDetails(details);
+        });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u2.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("does not belong"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeUpdatesCustomerTask() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.placementModificationTaskUuid = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    CustomerTask customerTask =
+        CustomerTask.create(
+            c,
+            updatedUniverse.getUniverseUUID(),
+            taskUUID,
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            updatedUniverse.getName());
+    customerTask.save();
+
+    // Commissioner.submit(..., explicitTaskUuid) reuses the same task UUID (resume path).
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenAnswer(invocation -> invocation.getArgument(2));
+
+    UUID result =
+        handler.resumeCanarySoftwareUpgrade(
+            c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID);
+
+    assertEquals(taskUUID, result);
+    CustomerTask updatedTask = CustomerTask.findByTaskUUID(taskUUID);
+    assertNotNull(updatedTask);
+    assertEquals(updatedUniverse.getUniverseUUID(), updatedTask.getTargetUUID());
+    assertNull(updatedTask.getCompletionTime());
+  }
+
   private Universe createKubernetesUniverse(Customer customer) {
     return createKubernetesUniverseInternal(customer, null, true, true);
   }
@@ -1063,6 +1726,16 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       UUID rootCA,
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt) {
+    return createKubernetesUniverseInternal(
+        customer, rootCA, enableNodeToNodeEncrypt, enableClientToNodeEncrypt, "2.28.0.0-b0");
+  }
+
+  private Universe createKubernetesUniverseInternal(
+      Customer customer,
+      UUID rootCA,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      String ybSoftwareVersion) {
     Universe u = ModelFactory.createUniverse(customer.getId());
     u.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     u.save();
@@ -1074,11 +1747,199 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
           details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
           details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt =
               enableClientToNodeEncrypt;
-          details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.28.0.0-b0";
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = ybSoftwareVersion;
           if (rootCA != null) {
             details.rootCA = rootCA;
           }
           universe.setUniverseDetails(details);
         });
+  }
+
+  // ==================== Cert-Manager Certificate Rotation Tests ====================
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerRootCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    // Use supported version for cert-manager cert rotation
+    Universe u = createKubernetesUniverseInternal(c, null, true, false, "2026.1.0.0-b1");
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info with K8SCertManager type
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        params.rootCA,
+        c.getUuid(),
+        "test-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.K8SCertManager);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.RootCert, capturedParams.rootCARotationType);
+    assertEquals(params.rootCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerUnsupportedVersion()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    // Use unsupported version for cert-manager cert rotation
+    Universe u = createKubernetesUniverseInternal(c, null, true, false, "2025.2.0.0-b0");
+
+    UUID certManagerRootCA = UUID.randomUUID();
+
+    // Create certificate info with K8SCertManager type
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        certManagerRootCA,
+        c.getUuid(),
+        "test-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.K8SCertManager);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = certManagerRootCA;
+    params.rootAndClientRootCASame = true;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "Certificate rotation cert manager managed certificates is not supported for this"
+            + " version. Please upgrade to a supported version.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerWithExistingCertManagerCert()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    UUID existingCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for existing cert-manager cert
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "existing.crt", "existing-cert");
+    CertificateInfo.create(
+        existingCertManagerCA,
+        c.getUuid(),
+        "existing-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/existing.crt",
+        CertConfigType.K8SCertManager);
+
+    // Use supported version and set existing cert-manager rootCA
+    Universe u =
+        createKubernetesUniverseInternal(c, existingCertManagerCA, true, true, "2026.1.0.0-b1");
+
+    UUID newCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for new cert-manager cert
+    TestHelper.createTempFile(certBasePath, "new.crt", "new-cert");
+    CertificateInfo.create(
+        newCertManagerCA,
+        c.getUuid(),
+        "new-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/new.crt",
+        CertConfigType.K8SCertManager);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = newCertManagerCA;
+    params.rootAndClientRootCASame = true;
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.RootCert, capturedParams.rootCARotationType);
+    assertEquals(newCertManagerCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerServerCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    UUID existingCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for existing cert-manager cert
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "existing.crt", "existing-cert");
+    CertificateInfo.create(
+        existingCertManagerCA,
+        c.getUuid(),
+        "existing-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/existing.crt",
+        CertConfigType.K8SCertManager);
+
+    // Use supported version and set existing cert-manager rootCA
+    Universe u =
+        createKubernetesUniverseInternal(c, existingCertManagerCA, true, false, "2026.1.0.0-b1");
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = existingCertManagerCA; // Same rootCA
+    params.selfSignedServerCertRotate = true;
+    params.rootAndClientRootCASame = true;
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.ServerCert, capturedParams.rootCARotationType);
   }
 }

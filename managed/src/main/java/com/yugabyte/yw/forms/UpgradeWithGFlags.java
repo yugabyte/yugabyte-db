@@ -99,6 +99,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
       }
+      GFlagsUtil.validateFipsCompliancy(
+          newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
         for (NodeDetails nodeDetails : universe.getNodesInCluster(curCluster.uuid)) {

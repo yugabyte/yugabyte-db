@@ -57,3 +57,7 @@ HeapDeformTuple
 
 # PG version
 YbgGetPgVersion
+
+# Ident Conf
+YbgLoadIdent
+YbgCheckUsermap

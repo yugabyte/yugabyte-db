@@ -62,7 +62,7 @@ YB_DEFINE_TYPED_ENUM(StmtOp, uint8_t,
 
 class PgStatement : public PgMemctx::Registrable {
  public:
-  explicit PgStatement(const PgSession::ScopedRefPtr& pg_session)
+  explicit PgStatement(const PgSessionPtr& pg_session)
       : pg_session_(pg_session), arena_(SharedThreadSafeArena()) {
   }
 
@@ -76,7 +76,7 @@ class PgStatement : public PgMemctx::Registrable {
 
  protected:
   // YBSession that this statement belongs to.
-  PgSession::ScopedRefPtr pg_session_;
+  PgSessionPtr pg_session_;
 
  private:
   std::shared_ptr<ThreadSafeArena> arena_;

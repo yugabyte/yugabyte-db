@@ -64,7 +64,8 @@ struct EncodedReadHybridTime {
   EncodedDocHybridTime in_txn_limit;
   bool local_limit_gt_read;
 
-  explicit EncodedReadHybridTime(const ReadHybridTime& read_time);
+  explicit EncodedReadHybridTime(
+      const ReadHybridTime& read_time, IntraTxnWriteId write_id = kMaxWriteId);
 
   // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of
   // read_time and local_limit (in terms of hybrid time comparison), and this slice points to
@@ -153,6 +154,10 @@ class IntentAwareIterator final {
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
+  // Directly fetch value from underlying iterator for specified key. Returns empty slice
+  // when entry not found.
+  Result<Slice> FetchValue(Slice key);
+
   const ReadHybridTime& read_time() const {
     return read_time_;
   }
@@ -183,11 +188,12 @@ class IntentAwareIterator final {
       Slice* result_value = nullptr);
 
   // Finds the oldest record for a particular key that is larger than the
-  // specified min_hybrid_time, returns the overwrite time.
+  // specified min_hybrid_time, returns the overwrite time as a DocHybridTime
+  // (including write_id).
   // This record may not be a full record, but instead a merge record (e.g. a
   // TTL row).
-  // Returns HybridTime::kInvalid if no such record was found.
-  Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
+  // Returns DocHybridTime::kInvalid if no such record was found.
+  Result<DocHybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
 
   void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key = Slice());
 
@@ -451,9 +457,26 @@ class NODISCARD_CLASS IntentAwareIteratorBoundScope {
 using IntentAwareIteratorLowerboundScope = IntentAwareIteratorBoundScope<true>;
 using IntentAwareIteratorUpperboundScope = IntentAwareIteratorBoundScope<false>;
 
-std::string DebugDumpKeyToStr(Slice key);
+class NODISCARD_CLASS IntentAwareIteratorBoundsScope {
+ public:
+  IntentAwareIteratorBoundsScope(
+      Slice lower_bound, Slice upper_bound, IntentAwareIterator* iterator)
+      : lower_bound_scope_(lower_bound, iterator),
+        upper_bound_scope_(upper_bound, iterator) {
+  }
 
-// Used for IntentIterator only.
-void AppendStrongWrite(dockv::KeyBytes* out);
+  ~IntentAwareIteratorBoundsScope() = default;
+
+  IntentAwareIteratorBoundsScope(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope(IntentAwareIteratorBoundsScope&&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(IntentAwareIteratorBoundsScope&&) = delete;
+
+ private:
+  IntentAwareIteratorLowerboundScope lower_bound_scope_;
+  IntentAwareIteratorUpperboundScope upper_bound_scope_;
+};
+
+std::string DebugDumpKeyToStr(Slice key);
 
 } // namespace yb::docdb

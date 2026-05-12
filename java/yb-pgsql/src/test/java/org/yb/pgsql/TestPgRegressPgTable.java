@@ -12,26 +12,50 @@
 //
 package org.yb.pgsql;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.junit.runners.Parameterized;
+import org.yb.util.YBParameterizedTestRunnerNonTsanOnly;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBParameterizedTestRunnerNonTsanOnly.class)
 public class TestPgRegressPgTable extends BasePgRegressTestPorted {
+  private final boolean objectLockingEnabled;
+  private final boolean concurrentDDLEnabled;
+
+  public TestPgRegressPgTable(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
+    this.objectLockingEnabled = objectLockingEnabled;
+    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  }
+
+  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  public static List<Object[]> parameters() {
+    return Arrays.asList(
+        new Object[]{false, false},
+        new Object[]{true, false},
+        new Object[]{true, true});
+  }
+
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28393) error output is flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
+    flagMap.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
+    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flagMap.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
     return flagMap;
   }
 

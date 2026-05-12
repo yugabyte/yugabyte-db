@@ -5,7 +5,8 @@ set -euo pipefail
 
 export GO111MODULE=on
 
-readonly protoc_version=21.5
+# https://protobuf.dev/support/version-support/
+readonly protoc_version=33.0
 readonly package_name='node-agent'
 readonly default_platforms=("linux/amd64" "linux/arm64")
 readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
@@ -41,10 +42,19 @@ readonly build_os=$(to_lower "$(uname -s)")
 readonly build_arch=$(to_lower "$(uname -m)")
 
 setup_protoc() {
+    install_protoc=false
     if [ ! -f "$GOBIN"/protoc ]; then
+        install_protoc=true
+    else
+        installed_version=$("$GOBIN"/protoc --version | awk -F ' ' '{print $2}')
+        if [ "$installed_version" != "$protoc_version" ]; then
+            install_protoc=true
+        fi
+    fi
+    if [ "$install_protoc" = true ]; then
         pushd "$project_dir"
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0
         local release_url=https://github.com/protocolbuffers/protobuf/releases
         local protoc_os=$build_os
         if [ "$protoc_os" = "darwin" ]; then
@@ -98,14 +108,33 @@ build_pymodule() {
     popd
 }
 
-get_executable_name() {
+get_executable_name(){
+    local num_args="$#"
     local os=$1
     local arch=$2
-    executable=${package_name}-${os}-${arch}
+    local suffix=""
+    if [ "$num_args" -gt 2 ]; then
+        suffix="-$3"
+    fi
+    executable=${package_name}${suffix}-${os}-${arch}
     if [ "$os" = "windows" ]; then
         executable+='.exe'
     fi
     echo "$executable"
+}
+
+get_node_agent_executable_name(){
+    local os=$1
+    local arch=$2
+    local name=$(get_executable_name "$os" "$arch")
+    echo "$name"
+}
+
+get_ynp_executable_name(){
+    local os=$1
+    local arch=$2
+    local name=$(get_executable_name "$os" "$arch" "ynp")
+    echo "$name"
 }
 
 prepare() {
@@ -113,19 +142,13 @@ prepare() {
     generate_golang_grpc_files
 }
 
-build_for_platform() {
-    local os=$1
-    local arch=$2
-    exec_name=$(get_executable_name "$os" "$arch")
-    echo "Building ${exec_name}"
-    executable="$build_output_dir/$exec_name"
+build_ynp_python() {
     pushd "$project_dir"
     WHEEL_DIR="./pywheels"
     mkdir -p "$WHEEL_DIR"
     # Read requirements.txt and download packages
     while IFS= read -r pkg || [ -n "$pkg" ]; do
         echo "Downloading $pkg..."
-
         # Special handling for setuptools - download as wheel
         if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
             echo "Downloading setuptools as wheel (no build dependencies)..."
@@ -148,6 +171,32 @@ build_for_platform() {
             python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
         fi
     done < ynp_requirements_3.6.txt
+    popd
+}
+
+build_ynp_go() {
+    local exec_name=$(get_ynp_executable_name "$os" "$arch")
+    local executable="$build_output_dir/$exec_name"
+    pushd "$project_dir"
+    echo "Building ${exec_name}"
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+    go build -o "$executable" "$project_dir"/ynp/cmd/main.go
+    if [ $? -ne 0 ]; then
+        echo "Build failed for $exec_name"
+        exit 1
+    fi
+    popd
+}
+
+build_for_platform() {
+    local os=$1
+    local arch=$2
+    build_ynp_python
+    build_ynp_go
+    local exec_name=$(get_node_agent_executable_name "$os" "$arch")
+    local executable="$build_output_dir/$exec_name"
+    pushd "$project_dir"
+    echo "Building ${exec_name}"
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
     go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
@@ -189,27 +238,46 @@ format() {
     popd
 }
 
+run_test() {
+    local dir=$1
+    pushd "$project_dir"
+    echo "Running tests in ${dir}..."
+    set +e
+    go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+    status=$?
+    set -e
+    popd
+    return $status
+}
+
 run_tests() {
+    local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
     pushd "$project_dir"
-    for dir in */ ; do
-        # Remove trailing slash.
-        dir=$(echo "${dir}" | sed 's/\/$//')
-        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
-            echo "Skipping directory ${dir}"
-            continue
+    if [ -n "$testone_path" ]; then
+        run_test "$testone_path"
+        if [ $? -ne 0 ]; then
+            failed_tests+=("$testone_path")
         fi
-        echo "Running tests in ${dir}..."
-        set +e
-        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
-        status=$?
-        if [ $status -ne 0 ]; then
-            echo "Tests failed for $dir"
-            failed_tests+=("$dir")
-        fi
-        set -e
-    done
+    else
+        for dir in */ ; do
+            # Remove trailing slash.
+            dir=$(echo "${dir}" | sed 's/\/$//')
+            if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+                echo "Skipping directory ${dir}"
+                continue
+            fi
+            if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
+                echo "Skipping directory ${dir} for testone"
+                continue
+            fi
+            run_test "$dir"
+            if [ $? -ne 0 ]; then
+                failed_tests+=("$dir")
+            fi
+        done
+    fi
     popd
     if [ ${#failed_tests[@]} -ne 0 ]; then
         echo "Failed tests: ${failed_tests[*]}"
@@ -229,11 +297,8 @@ package_for_platform() {
     bin_dir="${version_dir}/bin"
     templates_dir="${version_dir}/templates"
     echo "Packaging ${staging_dir_name}"
-    os_exec_name=$(get_executable_name "$os" "$arch")
-    exec_name="node-agent"
-    if [ $os == "windows" ]; then
-        exec_name+='.exe'
-    fi
+    node_agent_exec_name=$(get_node_agent_executable_name "$os" "$arch")
+    ynp_exec_name=$(get_ynp_executable_name "$os" "$arch")
     pushd "$build_output_dir"
     echo "Creating staging directory ${staging_dir_name}"
     rm -rf "$staging_dir_name"
@@ -241,7 +306,8 @@ package_for_platform() {
     mkdir -p "$script_dir"
     mkdir -p "$bin_dir"
     mkdir -p "$templates_dir"
-    cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
+    cp -rf "$node_agent_exec_name" "${bin_dir}/node-agent"
+    cp -rf "$ynp_exec_name" "${bin_dir}/node-provisioner"
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
@@ -257,14 +323,13 @@ package_for_platform() {
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
     cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
-    pushd "$project_dir"
-    cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
-    cp -rf ../devops/roles/install_mount_ephemeral_drives_script/templates/mount_ephemeral_drives.sh.j2 "${script_dir}"/ynp/modules/provision/mount_ephemeral_drives/templates/run.j2
-    popd
+    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
+    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/rootsystemd/templates/
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd
-    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" .
+    # Create the tar.gz package without ./ prefix.
+    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" "$version"
     popd
 }
 
@@ -292,17 +357,19 @@ prepare=false
 build=false
 clean=false
 test=false
+testone=false
 package=false
 version=0
 update_dependencies=false
 build_pymodule=false
+testone_path=""
 
 
 show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies|build-pymodule>
+./build.sh <fmt|prepare|build|clean|test|testone <package>|package <version>|update-dependencies|build-pymodule>
 EOT
 exit 1
 }
@@ -326,6 +393,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     test)
       test=true
+      ;;
+    testone)
+      testone=true
+      shift
+      if [[ $# -gt 0 ]]; then
+        testone_path=$1
+      fi
       ;;
     package)
       package=true
@@ -404,6 +478,17 @@ if [ "$test" == "true" ]; then
     echo "Running tests..."
     prepare
     run_tests
+fi
+
+if [ "$testone" == "true" ]; then
+    if [ -z "$testone_path"  ]; then
+        echo "Test path is not specified for testone"
+        exit 1
+    fi
+    help_needed=false
+    echo "Running test for ${testone_path}..."
+    prepare
+    run_tests "$testone_path"
 fi
 
 if [ "$package" == "true" ]; then

@@ -39,6 +39,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -97,6 +98,8 @@ DEFINE_RUNTIME_bool(enable_schema_version_check, yb::kIsDebug,
     "Whether to check existence of given schema version in CheckCotablePacking and "
     "CheckColocationPacking. If it's off, always return Status::OK().");
 
+METRIC_DEFINE_entity(table);
+
 using std::string;
 
 using strings::Substitute;
@@ -120,10 +123,41 @@ std::string MakeTableInfoLogPrefix(
   return primary ? tablet_log_prefix : Format("TBL $0 $1", table_id, tablet_log_prefix);
 }
 
+std::string MakeTabletDirName(const TabletId& tablet_id) {
+  return Format("tablet-$0", tablet_id);
+}
+
+template <typename Filter, typename... Other>
+inline bool DoApplyFilter0(const TableInfoPtr& info, Filter&& filter, Other&&...) {
+  static_assert(sizeof...(Other) == 0);
+  return filter(info);
+}
+
+template <typename... Filter>
+inline bool DoApplyFilter(const TableInfoPtr& info, Filter&&... filter) {
+  if constexpr (sizeof...(Filter) == 0) {
+    return true;
+  } else {
+    return DoApplyFilter0(info, std::forward<Filter>(filter)...);
+  }
+}
+
+// Using variadic template args to be able to pass no filter at all.
+template <typename... Filter>
+std::vector<TableInfoPtr> DoCollectTableInfos(const TableInfoMap& tables, Filter&&... filter) {
+  std::vector<TableInfoPtr> result;
+  result.reserve(tables.size());
+  for (const auto& [_, info] : tables) {
+    if (DoApplyFilter(info, std::forward<Filter>(filter)...)) {
+      result.push_back(info);
+    }
+  }
+  return result;
+}
+
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -146,6 +180,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      Primary primary,
                      std::string table_id_,
                      std::string namespace_name,
+                     NamespaceId namespace_id,
                      std::string table_name,
                      TableType table_type,
                      const Schema& schema,
@@ -159,6 +194,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      SkipTableTombstoneCheck skip_table_tombstone_check_)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
+      namespace_id(std::move(namespace_id)),
       table_name(std::move(table_name)),
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
@@ -255,7 +291,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_index()) {
+  if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -338,11 +374,13 @@ Status TableInfo::MergeSchemaPackings(
   // the latest schema.
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
-  LOG_IF_WITH_PREFIX(DFATAL,
-                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
-      << "After merging schema packings during restore, latest schema does not"
-      << " have the same packing as the corresponding latest packing for table "
-      << table_id;
+  LOG_IF_WITH_PREFIX(
+      DFATAL, !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
+      << Format(
+             "After merging schema packings during restore, latest schema does not have the same"
+             " packing as the corresponding latest packing for table $0, latest packing: $1, "
+             "current schema: $2",
+             table_id, latest_packing.ToString(), doc_read_context->schema().ToString());
   return Status::OK();
 }
 
@@ -459,14 +497,37 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
     dockv::PartitionSchema partition_schema) {
   return std::make_shared<TableInfo>(
       std::move(log_prefix), Primary::kTrue, std::move(table_id), std::move(namespace_name),
-      std::move(table_name), table_type, schema, qlexpr::IndexMap(),
+      "" /* namespace_id */, std::move(table_name), table_type, schema, qlexpr::IndexMap(),
       std::nullopt /* index_info */, 0 /* schema_version */, partition_schema, OpId{}, HybridTime{},
       "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
 }
 
+bool TableInfo::IsVectorIndex() const {
+  return index_info && index_info->is_vector_index();
+}
+
 bool TableInfo::NeedVectorIndex() const {
-  return index_info && index_info->is_vector_index() &&
+  return IsVectorIndex() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
+}
+
+MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
+  MetricAttributeMap attrs;
+  attrs["table_id"] = table_id;
+  attrs["table_name"] = table_name;
+  attrs["table_type"] = TableType_Name(table_type);
+  attrs["namespace_name"] = namespace_name;
+  if (table_type == PGSQL_TABLE_TYPE && !namespace_id.empty()) {
+    auto db_oid = GetPgsqlDatabaseOid(namespace_id);
+    if (db_oid.ok()) {
+      attrs["database_oid"] = std::to_string(*db_oid);
+    }
+  }
+  return attrs;
+}
+
+MetricEntityPtr TableInfo::CreateMetricEntity(MetricRegistry* registry) const {
+  return METRIC_ENTITY_table.Instantiate(registry, table_id, CreateMetricAttributeMap());
 }
 
 Status KvStoreInfo::LoadTablesFromPB(
@@ -561,7 +622,7 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         continue;
       }
       RSTATUS_DCHECK(
-          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          table_info->IsVectorIndex(), Corruption,
           "Only vector indexes could be colocated to the non colocated table: $0",
           table_info->ToString());
     }
@@ -692,14 +753,6 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
 }
 
-namespace {
-
-std::string MakeTabletDirName(const TabletId& tablet_id) {
-  return Format("tablet-$0", tablet_id);
-}
-
-} // namespace
-
 // ============================================================================
 
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
@@ -772,7 +825,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(TableIdView table_id, const RaftGroupId& raft_group_id,
                          const TablesMap& tables, const char* file_name, int line_number) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -805,12 +858,12 @@ Status MakeColocatedTableNotFound(
   return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const {
   std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
   const auto& tables = kv_store_.tables;
 
   const auto& id = !table_id.empty() ? table_id : primary_table_id_;
@@ -909,6 +962,17 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   if (fs_manager_->env()->FileExists(intents_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
+  for (const auto& info : GetAllColocatedVectorIndexes()) {
+    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+    auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
+    if (status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
+    } else {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Failed to destroy vector index storage at: " << storage_dir  << ": " << status;
+    }
   }
 
   // TODO(tsplit): decide what to do with snapshots for split tablets that we delete after split.
@@ -1085,13 +1149,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
-
-      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
-                split_child_tablet_ids_.size(),
-                Corruption, "Expected exact number of child tablet ids");
-      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
-        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));
-      }
+      split_child_tablet_ids_.assign(
+          superblock.split_child_tablet_ids().begin(), superblock.split_child_tablet_ids().end());
     }
 
     last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
@@ -1207,7 +1266,7 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
-  LOG_WITH_FUNC(INFO) << "Superblock: " << AsString(snapshot_superblock);
+  LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
@@ -1432,7 +1491,8 @@ void RaftGroupMetadata::SetSchemaAndTableName(
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::AddTable(
-    const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
+    const std::string& table_id, const std::string& namespace_name,
+    const NamespaceId& namespace_id, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
@@ -1445,6 +1505,7 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
                                                             primary,
                                                             table_id,
                                                             namespace_name,
+                                                            namespace_id,
                                                             table_name,
                                                             table_type,
                                                             schema,
@@ -1666,7 +1727,7 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
   return Flush();
 }
 
-Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
+Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
     bool require_history_cutoff, bool initial_retention_barrier) {
 
@@ -1676,7 +1737,18 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
+  if (!initial_retention_barrier) {
+    if (cdc_min_replicated_index() < cdc_wal_index) {
+      VLOG_WITH_PREFIX(1) << "Moving cdc_min_replicated index WAL retention barrier to "
+                          << cdc_wal_index;
+      set_cdc_min_replicated_index_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving cdc_min_replicated index WAL retention barrier. "
+                          << "The barrier is set at " << cdc_min_replicated_index()
+                          << ", current requirement is for " << cdc_wal_index
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (cdc_min_replicated_index() > cdc_wal_index) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1688,7 +1760,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // History Retention
   if (require_history_cutoff) {
-    if (!initial_retention_barrier ||
+    if (!initial_retention_barrier) {
+      if (cdc_sdk_safe_time() < cdc_sdk_history_cutoff) {
+        VLOG_WITH_PREFIX(1) << "Moving history retention barrier to " << cdc_sdk_history_cutoff;
+        set_cdc_sdk_safe_time_check = true;
+      } else {
+        VLOG_WITH_PREFIX(1) << "Skipping moving history retention barrier. "
+                            << "The barrier is set at " << cdc_sdk_safe_time()
+                            << ", current requirement is for " << cdc_sdk_history_cutoff
+                            << ", cannot move the barrier backwards.";
+      }
+    } else if (
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
       VLOG_WITH_PREFIX(1) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
@@ -1702,7 +1784,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier ||
+  if (!initial_retention_barrier) {
+    if (cdc_sdk_min_checkpoint_op_id() < cdc_sdk_intents_op_id) {
+      VLOG_WITH_PREFIX(1) << "Moving intents retention barrier to " << cdc_sdk_intents_op_id;
+      set_cdc_min_checkpoint_op_id_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving intents retention barrier. "
+                          << "The barrier is set at " << cdc_sdk_min_checkpoint_op_id()
+                          << ", current requirement is for " << cdc_sdk_intents_op_id
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (
       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
@@ -1724,7 +1816,19 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
                                                 set_cdc_sdk_safe_time_check));
   }
 
-  return set_cdc_min_checkpoint_op_id_check;
+  return Status::OK();
+}
+
+std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {
+  std::lock_guard lock(data_mutex_);
+
+  std::ostringstream oss;
+  oss << LogPrefix() << " CDC Retention Barriers: "
+      << "cdc_min_replicated_index: " << cdc_min_replicated_index_
+      << ", cdc_sdk_min_checkpoint_op_id: " << cdc_sdk_min_checkpoint_op_id_
+      << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time_;
+
+  return oss.str();
 }
 
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
@@ -1802,7 +1906,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::vector<TabletId> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
@@ -1821,12 +1925,11 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 }
 
 void RaftGroupMetadata::SetSplitDone(
-    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+    const OpId& op_id, const std::vector<TabletId>& children) {
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  split_child_tablet_ids_[0] = child1;
-  split_child_tablet_ids_[1] = child2;
+  split_child_tablet_ids_ = children;
 }
 
 void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
@@ -1855,8 +1958,11 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
   if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
     split_op_id_ = OpId();
-    split_child_tablet_ids_[0] = std::string();
-    split_child_tablet_ids_[1] = std::string();
+    split_child_tablet_ids_.clear();
+  }
+  if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
+      active_restorations_.end()) {
+    return;
   }
   active_restorations_.push_back(restoration_id);
 }
@@ -1929,11 +2035,15 @@ Status RaftGroupMetadata::OldSchemaGC(
             << "Unknown table during " << __func__ << ": " << table_id.ToString();
         continue;
       }
-      if (!it->second->doc_read_context->schema_packing_storage.HasVersionBelow(schema_version)) {
+      const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
+      const auto min_active = schema_packing_storage.registry().MinActiveVersion();
+      const auto new_min_schema_version =
+          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
+                                                                        : schema_version;
+      if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
-      auto new_value = std::make_shared<TableInfo>(
-          *it->second, schema_version);
+      auto new_value = std::make_shared<TableInfo>(*it->second, new_min_schema_version);
       RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",
@@ -2105,10 +2215,10 @@ SchemaPtr RaftGroupMetadata::schema(const TableId& table_id) const {
   return table_info->SharedSchema();
 }
 
-std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) const {
+Result<std::shared_ptr<IndexMap>> RaftGroupMetadata::index_map(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info =
-      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+      table_id.empty() ? primary_table_info() : VERIFY_RESULT(GetTableInfo(table_id));
   return table_info->index_map;
 }
 
@@ -2246,12 +2356,13 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
 
 std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
   std::lock_guard lock(data_mutex_);
-  std::vector<TableInfoPtr> result;
-  result.reserve(kv_store_.tables.size());
-  for (const auto& [id, info] : kv_store_.tables) {
-    result.push_back(info);
-  }
-  return result;
+  return DoCollectTableInfos(kv_store_.tables);
+}
+
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedVectorIndexes() const {
+  std::lock_guard lock(data_mutex_);
+  return DoCollectTableInfos(
+      kv_store_.tables, [](const auto& info) { return info->IsVectorIndex(); });
 }
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
@@ -2397,7 +2508,13 @@ std::string RaftGroupMetadata::intents_rocksdb_dir() const {
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kSnapshotsDirName);
+}
+
+std::string RaftGroupMetadata::vector_index_dir(
+    const PgVectorIdxOptionsPB& vector_index_options) const {
+  return docdb::GetStorageDir(
+      kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

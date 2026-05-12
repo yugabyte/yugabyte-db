@@ -34,8 +34,6 @@ public class TestPgRegressMatview extends BasePgRegressTest {
     // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     flags.put("enable_object_locking_for_table_locks", "false");
-    flags.put("allowed_preview_flags_csv",
-              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     return flags;
   }
 

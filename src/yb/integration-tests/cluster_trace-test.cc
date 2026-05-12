@@ -36,7 +36,7 @@ class TraceClusterTest : public ExternalMiniClusterITestBase {
 
   void PrepareCluster() {
     ASSERT_NO_FATALS(StartCluster());
-    workload_.reset(new TestWorkload(cluster_.get()));
+    workload_.reset(new TestYcqlWorkload(cluster_.get()));
     workload_->Setup();
     workload_->Start();
     // Wait for some data to come in.
@@ -49,7 +49,7 @@ class TraceClusterTest : public ExternalMiniClusterITestBase {
     }
   }
 
-  std::unique_ptr<TestWorkload> workload_;
+  std::unique_ptr<TestYcqlWorkload> workload_;
 };
 
 TEST_F(TraceClusterTest, TestTracingUnderLoad) {

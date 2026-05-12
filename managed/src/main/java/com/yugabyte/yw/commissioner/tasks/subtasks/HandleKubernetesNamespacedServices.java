@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -77,7 +78,7 @@ public class HandleKubernetesNamespacedServices extends UniverseTaskBase {
       if (taskParams().handleOwnershipChanges) {
         Map<UUID, UUID> servicesChangeOwnership = new HashMap<>();
         for (Cluster cluster : universe.getUniverseDetails().clusters) {
-          if (cluster.userIntent.providerType != CloudType.kubernetes) {
+          if (Util.getSingleProviderType(cluster.userIntent) != CloudType.kubernetes) {
             continue;
           }
           try {
@@ -93,8 +94,7 @@ public class HandleKubernetesNamespacedServices extends UniverseTaskBase {
           PlacementInfo pi = cluster.placementInfo;
           boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
           KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-          Provider provider =
-              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+          Provider provider = Util.getSingleProvider(cluster);
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
           for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
             UUID azUUID = entry.getKey();
@@ -130,7 +130,7 @@ public class HandleKubernetesNamespacedServices extends UniverseTaskBase {
       // Handle services to remove
       Map<UUID, Set<String>> servicesToRemove = new HashMap<>();
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        if (cluster.userIntent.providerType != CloudType.kubernetes) {
+        if (Util.getSingleProviderType(cluster.userIntent) != CloudType.kubernetes) {
           continue;
         }
         boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
@@ -151,7 +151,7 @@ public class HandleKubernetesNamespacedServices extends UniverseTaskBase {
         }
         PlacementInfo pi = cluster.placementInfo;
         KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        Provider provider = Util.getSingleProvider(cluster);
         boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();

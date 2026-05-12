@@ -27,7 +27,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb::pggate {
 
@@ -46,7 +45,11 @@ class PgDml : public PgStatement {
   ~PgDml() override;
 
   // Append a target in SELECT or RETURNING.
-  Status AppendTarget(PgExpr* target);
+  Status AppendTarget(PgExpr* target, bool is_for_secondary_index);
+
+  Status AppendIndexTarget(PgExpr* target);
+
+  Status AddBaseYbctidTarget();
 
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
@@ -111,7 +114,7 @@ class PgDml : public PgStatement {
     bool is_executed_;
   };
 
-  explicit PgDml(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgDml(const PgSessionPtr& pg_session);
 
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB* AllocTargetPB() = 0;
@@ -147,7 +150,6 @@ class PgDml : public PgStatement {
       Request* req, std::optional<PgOid> db_oid, uint64_t version) {
     auto& request = *DCHECK_NOTNULL(req);
     if (db_oid) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       request.set_ysql_db_catalog_version(version);
       request.set_ysql_db_oid(*db_oid);
     } else {
@@ -181,7 +183,7 @@ class PgDml : public PgStatement {
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
-  std::vector<PgFetchedTarget*> targets_;
+  FetchedTargetsPtr targets_;
   bool has_aggregate_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the

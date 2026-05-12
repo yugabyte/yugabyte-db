@@ -7,7 +7,6 @@ package xcluster
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -36,8 +35,8 @@ var listXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 ||
-			len(strings.TrimSpace(targetUniName)) == 0 {
+		if util.IsEmptyString(sourceUniName) ||
+			util.IsEmptyString(targetUniName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source or target universe name\n", formatter.RedColor))
@@ -101,10 +100,15 @@ var listXClusterCmd = &cobra.Command{
 		for _, x := range xclusterUUIDs {
 			rGet, response, err := authAPI.GetXClusterConfig(x).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "List")
 			}
-			r = append(r, rGet)
+
+			xclusterConfig := util.CheckAndDereference(
+				rGet,
+				fmt.Sprintf("No xcluster found with uuid %s", x),
+			)
+
+			r = append(r, xclusterConfig)
 		}
 
 		xcluster.SourceUniverse = sourceUniverse

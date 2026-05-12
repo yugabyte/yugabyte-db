@@ -12,8 +12,13 @@
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
+#ifdef __linux__
+#include "yb/util/cgroups.h"
+#endif
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::literals;
@@ -47,6 +52,12 @@ void ProcessWrapper::Kill(int signal) {
   }
 }
 
+void ProcessWrapper::Shutdown() { Kill(); }
+
+std::optional<int64_t> ProcessWrapper::ProcessId() {
+  return proc_ ? std::make_optional(proc_->pid()) : std::nullopt;
+}
+
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
 // ------------------------------------------------------------------------------------------------
@@ -66,8 +77,13 @@ void ProcessSupervisor::RunThread() {
   });
   std::string process_name = GetProcessName();
   while (true) {
-    if (process_wrapper_) {
-      Result<int> wait_result = process_wrapper_->Wait();
+    std::shared_ptr<ProcessWrapper> pw;
+    {
+      std::lock_guard lock(mtx_);
+      pw = process_wrapper_;
+    }
+    if (pw) {
+      Result<int> wait_result = pw->Wait();
       if (wait_result.ok()) {
         int ret_code = *wait_result;
         if (ret_code == 0) {
@@ -120,6 +136,17 @@ Status ProcessSupervisor::StartProcessUnlocked() {
   auto process_wrapper = CreateProcessWrapper();
   RETURN_NOT_OK(process_wrapper->Start());
 
+#ifdef __linux__
+  if (cgroup_) {
+    if (auto pid = process_wrapper->ProcessId()) {
+      WARN_NOT_OK(
+          cgroup_->MoveProcessToGroup(*pid),
+          Format("Failed to move $0 (pid $1) to cgroup $2",
+                 GetProcessName(), *pid, cgroup_->full_name()));
+    }
+  }
+#endif
+
   process_wrapper_.swap(process_wrapper);
   return Status::OK();
 }
@@ -141,11 +168,11 @@ Status ProcessSupervisor::InitializeProcessWrapperUnlocked() {
 }
 
 Status ProcessSupervisor::Restart() {
-  return KillAndChangeState(YbSubProcessState::kRunning);
+  return StopProcessAndChangeState(YbSubProcessState::kRunning);
 }
 
 Status ProcessSupervisor::Pause() {
-  return KillAndChangeState(YbSubProcessState::kPaused);
+  return StopProcessAndChangeState(YbSubProcessState::kPaused);
 }
 
 void ProcessSupervisor::Stop() {
@@ -155,7 +182,7 @@ void ProcessSupervisor::Stop() {
     state_ = YbSubProcessState::kStopping;
     PrepareForStop();
     if (process_wrapper_) {
-      process_wrapper_->Kill();
+      process_wrapper_->Shutdown();
     }
     if (!supervisor_thread_) {
       return;
@@ -184,7 +211,7 @@ void ProcessSupervisor::Stop() {
   supervisor_thread_->Join();
 }
 
-Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
+Status ProcessSupervisor::StopProcessAndChangeState(YbSubProcessState new_state) {
   {
     std::lock_guard lock(mtx_);
     if (state_ != YbSubProcessState::kPaused && state_ != YbSubProcessState::kRunning) {
@@ -192,7 +219,7 @@ Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
           IllegalState, "State must be either paused or running, state is $0", state_);
     }
     if (process_wrapper_) {
-      process_wrapper_->Kill(SIGKILL);
+      process_wrapper_->Shutdown();
     }
     state_ = new_state;
   }
@@ -226,6 +253,11 @@ Status ProcessSupervisor::Init(YbSubProcessState target_state) {
   }
 
   return Status::OK();
+}
+
+std::optional<int64_t> ProcessSupervisor::ProcessId() {
+  std::lock_guard l(mtx_);
+  return process_wrapper_ ? process_wrapper_->ProcessId() : std::nullopt;
 }
 
 }  // namespace yb

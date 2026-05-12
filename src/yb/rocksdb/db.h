@@ -38,6 +38,8 @@
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
 
+#include "yb/storage/storage_types.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -63,6 +65,8 @@ class EventListener;
 class WriteBatch;
 
 YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
+
+using FlushAbility = yb::storage::FlushAbility;
 
 extern const char kDefaultColumnFamilyName[];
 
@@ -107,6 +111,8 @@ struct Range {
 //  value: the table properties object of the given table.
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
+
+using UserFrontierRange = std::pair<yb::storage::UserFrontierPtr, yb::storage::UserFrontierPtr>;
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -727,6 +733,8 @@ class DB {
     return Flush(options, DefaultColumnFamily());
   }
 
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) = 0;
+
   // Wait for end of mem-table data flushing.
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) = 0;
   virtual Status WaitForFlush() {
@@ -832,10 +840,10 @@ class DB {
     return result;
   }
 
-  virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
   virtual Status ModifyFlushedFrontier(
-      UserFrontierPtr values,
+      yb::storage::UserFrontierPtr values,
       FrontierModificationMode mode) {
     return Status::OK();
   }
@@ -844,10 +852,17 @@ class DB {
 
   // Might return stale frontiers if invoked after records have been written to the memtable, but
   // before frontiers are updated.
-  virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
-
-  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
+  virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
+      yb::storage::UpdateUserValueType type) {
     return nullptr;
+  }
+
+  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
+    return nullptr;
+  }
+
+  virtual UserFrontierRange CalcMemTableFrontiers() {
+    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
@@ -927,8 +942,10 @@ class DB {
 
   virtual bool NeedsDelay() { return false; }
 
+  virtual bool AreWritesStopped() { return false; }
+
   // Returns approximate middle key (see Version::GetMiddleKey).
-  virtual yb::Result<std::string> GetMiddleKey() = 0;
+  virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other

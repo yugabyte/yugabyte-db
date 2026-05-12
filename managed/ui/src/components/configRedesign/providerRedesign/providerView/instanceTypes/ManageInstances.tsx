@@ -34,7 +34,7 @@ import { SortDirection } from '../../../../../redesign/utils/dtos';
 import { NodeAgentAPI, QUERY_KEY } from '../../../../../redesign/features/NodeAgent/api';
 import { isNonEmptyArray } from '../../../../../utils/ObjectUtils';
 import { formatNumberToText } from '../../../../../utils/Formatters';
-import ErrorIcon from '../../../../../redesign/assets/error.svg';
+import ErrorIcon from '../../../../../redesign/assets/error.svg?img';
 
 interface ManageInstancesProps {
   providerConfig: OnPremProvider;

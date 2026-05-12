@@ -13,6 +13,9 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -79,12 +82,16 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = GetNumAdvisoryLockTablets();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
         kExpiredSessionCleanupMs / 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kExpiredSessionCleanupMs;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(5);
     PgAdvisoryLockTestBase::SetUp();
+  }
+
+  virtual uint32_t GetNumAdvisoryLockTablets() {
+    return 1;
   }
 };
 
@@ -279,6 +286,28 @@ TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
   ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 }
 
+// The deprecated GUC must not skip YB advisory locks.
+TEST_F(PgAdvisoryLockTest,
+       YB_DISABLE_TEST_IN_TSAN(DeprecatedSilenceGucStillAcquiresYbAdvisoryLocks)) {
+  constexpr int kMinTxnAgeMs = 0;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = on"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 where k=1"));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")),
+      2);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
+}
+
 TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksWithWaiters)) {
   constexpr int kMinTxnAgeMs = 0;
   auto conn = ASSERT_RESULT(Connect());
@@ -368,7 +397,8 @@ TEST_F(PgAdvisoryLockTest, VerifyLockTimeout) {
   // Verify the lock attempt fails with advisory lock timeout error.
   Status result = conn2_session_lock_future.get();
   ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.ToString(), "Timed out waiting for Acquire Advisory Lock");
+  // Most build types return "Timed out" while Mac returns "timed out". Ignore the 'T'.
+  ASSERT_STR_CONTAINS(result.ToString(), "imed out waiting for Acquire Advisory Lock");
 }
 
 TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {
@@ -385,6 +415,52 @@ TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {
   ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
   // Verify that unlock attempt return false because the lock is already released.
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
+}
+
+class PgAdvisoryLockTestMultipleTablets : public PgAdvisoryLockTest {
+ protected:
+  uint32_t GetNumAdvisoryLockTablets() override {
+    return 3;
+  }
+};
+
+TEST_F_EX(PgAdvisoryLockTest, LocksHashedOnAllCols, PgAdvisoryLockTestMultipleTablets) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(0)"));
+
+  auto advisory_table_id =
+      ASSERT_RESULT(GetTableIDFromTableName(std::string(tserver::kPgAdvisoryLocksTableName)));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), advisory_table_id);
+  ASSERT_EQ(peers.size(), 3);
+  size_t peers_with_intents = 0;
+  for (auto peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents)) > 0) {
+      peers_with_intents++;
+    }
+  }
+  ASSERT_EQ(peers_with_intents, 1);
+
+  for (size_t i = 1; i <= 10; ++i) {
+    ASSERT_OK(conn.FetchFormat("select pg_advisory_lock($0)", i));
+  }
+  for (auto peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_GT(ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents)), 0);
+  }
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(1)"));
+    return Status::OK();
+  });
+  ASSERT_EQ(status_future.wait_for(
+      std::chrono::seconds(2 * kTimeMultiplier)), std::future_status::timeout);
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock_all()"));
+  ASSERT_EQ(status_future.wait_for(
+      std::chrono::seconds(1 * kTimeMultiplier)), std::future_status::ready);
+  ASSERT_OK(status_future.get());
 }
 
 } // namespace yb::pgwrapper

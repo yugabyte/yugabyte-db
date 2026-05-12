@@ -64,6 +64,8 @@ using yb::consensus::StateChangeContext;
 
 namespace yb {
 
+class Cgroup;
+
 namespace tserver {
 class CatchUpServiceTest;
 class UpdateTransactionResponsePB;
@@ -168,6 +170,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       const TabletPtr& tablet,
       const std::shared_ptr<MemTracker>& server_mem_tracker,
       rpc::Messenger* messenger,
+      rpc::ThreadPoolPtr service_pool,
       rpc::ProxyCache* proxy_cache,
       const scoped_refptr<log::Log>& log,
       const scoped_refptr<MetricEntity>& table_metric_entity,
@@ -181,6 +184,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       consensus::MultiRaftManager* multi_raft_manager,
       ThreadPool* flush_bootstrap_state_pool);
 
+  // Set the per-database cgroup on all internal consensus/WAL tokens and the tablet's
+  // RocksDB task cgroup. Used for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
+
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
   // in the consensus configuration.
@@ -193,11 +200,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  void AbortActiveTransactions() const;
+  void AbortActiveTransactions(
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
   Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+      DisableFlushOnShutdown disable_flush_on_shutdown,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Check that the tablet is in a RUNNING state.
   Status CheckRunning() const;
@@ -250,6 +259,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
+
+  bool AreWritesStopped() override;
 
   // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
   // in a valid state or a peer is not running (shutting down or shut down).
@@ -418,6 +429,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   //------------------------------------------------------------------------------------------------
   // CDC Related
 
+  bool is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh = nullptr) const;
+
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
   Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
@@ -437,6 +450,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
   bool is_under_cdc_sdk_replication();
+
+  Status reset_all_cdc_retention_barriers_if_stale();
 
   HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
@@ -461,6 +476,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
+  std::string AllCDCRetentionBarriersToString() const;
   //------------------------------------------------------------------------------------------------
 
   OpId GetLatestCheckPoint();
@@ -477,13 +494,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   std::string LogPrefix() const;
 
-  // Called from RemoteBootstrapSession and RemoteBootstrapAnchorSession to change role of the
-  // new peer post RBS.
-  Status ChangeRole(const std::string& requestor_uuid);
-
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushBootstrapState();
   Result<OpId> CopyBootstrapStateTo(const std::string& dest_path);
+  Status CopyBootstrapStateForTabletSplit(const std::string& child_wal_dir);
   Status SubmitFlushBootstrapStateTask();
 
   void EnableFlushBootstrapState();
@@ -600,8 +614,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OperationCounter preparing_operations_counter_;
 
-  // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
-  // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.
+  // Serializes access to set_cdc_min_replicated_index and is_cdc_min_replicated_index_stale and
+  // protects cdc_min_replicated_index_refresh_time_ for reads and writes.
   mutable simple_spinlock cdc_min_replicated_index_lock_;
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
@@ -623,7 +637,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
+  void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
 
   MetricRegistry* metric_registry_;
 
@@ -656,11 +670,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::deque<std::pair<OpId, std::vector<StdStatusCallback>>> in_flight_async_write_queries_
       GUARDED_BY(async_write_queries_mutex_);
 
+  rpc::ThreadPoolPtr service_thread_pool_holder_;
+
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client);
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client);
 
 }  // namespace tablet
 }  // namespace yb

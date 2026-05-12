@@ -28,6 +28,8 @@ class TestConsensusContext : public ConsensusContext {
 
   bool ShouldApplyWrite() override { return true; }
 
+  bool AreWritesStopped() override { return false; }
+
   Result<HybridTime> PreparePeerRequest() override { return HybridTime(); }
 
   Status MajorityReplicated(const OpId& committed_op_id) override { return Status::OK(); }

@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { MutableRefObject } from 'react';
+import React, { MutableRefObject } from 'react';
 import clsx from 'clsx';
 import { differenceWith, intersectionWith, isEqual, keys, size } from 'lodash';
 import { useTranslation } from 'react-i18next';
@@ -24,7 +24,9 @@ import { BaseDiff } from './BaseDiff';
 import { Task } from '../../../dtos';
 import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
 import {
+  AZOverridePerAZ,
   Cluster,
+  CloudType,
   ClusterType,
   MasterPlacementMode,
   PlacementAZ,
@@ -282,8 +284,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           !beforeRegion
             ? DiffOperation.ADDED
             : !afterRegion
-            ? DiffOperation.REMOVED
-            : DiffOperation.CHANGED
+              ? DiffOperation.REMOVED
+              : DiffOperation.CHANGED
         }
         ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
         attribute={{
@@ -471,19 +473,17 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           element: <>{attributes}</>
         }}
         afterValue={{
-          title: `${
-            afterValue?.userIntent?.dedicatedNodes
+          title: `${afterValue?.userIntent?.dedicatedNodes
               ? MasterPlacementMode.DEDICATED
               : MasterPlacementMode.COLOCATED
-          }`,
+            }`,
           element: <>{afterComp}</>
         }}
         beforeValue={{
-          title: `${
-            beforeValue?.userIntent?.dedicatedNodes
+          title: `${beforeValue?.userIntent?.dedicatedNodes
               ? MasterPlacementMode.DEDICATED
               : MasterPlacementMode.COLOCATED
-          }`,
+            }`,
           element: <>{beforeComp}</>
         }}
       />
@@ -559,6 +559,140 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
         operation={DiffOperation.CHANGED}
         beforeValue={{ element: <>{beforeComp}</> }}
         afterValue={{ element: <>{afterComp}</> }}
+      />
+    );
+  }
+
+  // Build a map of placement UUID -> AZ name from cluster placementInfo.
+  getPlacementUuidToAzName(cluster: Cluster): Record<string, string> {
+    const map: Record<string, string> = {};
+    cluster?.placementInfo?.cloudList?.forEach((cloud) => {
+      cloud?.regionList?.forEach((region: PlacementRegion) => {
+        region?.azList?.forEach((az: PlacementAZ) => {
+          if (az?.uuid) map[az.uuid] = az.name ?? az.uuid;
+        });
+      });
+    });
+    return map;
+  }
+
+  getK8sAzOverridesDiffComponent(
+    beforeValue: Cluster,
+    afterValue: Cluster,
+    clusterType: ClusterType
+  ) {
+    const beforeProviderK8s = beforeValue?.userIntent?.providerType === CloudType.kubernetes;
+    const afterProviderK8s = afterValue?.userIntent?.providerType === CloudType.kubernetes;
+    if (!beforeProviderK8s && !afterProviderK8s) return;
+
+    const beforeOverrides: Record<string, AZOverridePerAZ> =
+      beforeValue?.userIntent?.userIntentOverrides?.azOverrides ?? {};
+    const afterOverrides: Record<string, AZOverridePerAZ> =
+      afterValue?.userIntent?.userIntentOverrides?.azOverrides ?? {};
+    if (isEqual(beforeOverrides, afterOverrides)) return;
+
+    const beforeAzNames = this.getPlacementUuidToAzName(beforeValue);
+    const afterAzNames = this.getPlacementUuidToAzName(afterValue);
+    const allAzUuids = Array.from(
+      new Set([...Object.keys(beforeOverrides), ...Object.keys(afterOverrides)])
+    ).sort();
+
+    const k8sOverrideFields = ['volumeSize', 'numVolumes', 'storageClass'] as const;
+    const fieldLabels: Record<string, string> = {
+      volumeSize: 'Volume Size',
+      numVolumes: 'Number of Volumes',
+      storageClass: 'Storage Class'
+    };
+    const processTypes = ['TSERVER', 'MASTER'] as const;
+    const processLabels: Record<string, string> = { TSERVER: 'T-Server', MASTER: 'Master' };
+
+    const isEmptyVal = (v: unknown): boolean =>
+      v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+    const toDisplayVal = (v: unknown, fallback: string): string =>
+      isEmptyVal(v) ? fallback : String(v);
+
+    type K8sChange = {
+      processType: 'TSERVER' | 'MASTER';
+      field: (typeof k8sOverrideFields)[number];
+      beforeVal: string;
+      afterVal: string;
+      beforeOp?: DiffOperation;
+      afterOp?: DiffOperation;
+    };
+    type K8sFlatRow = {
+      label: string;
+      indent: number;
+      beforeVal: string;
+      afterVal: string;
+      beforeOp?: DiffOperation;
+      afterOp?: DiffOperation;
+    };
+    const flatRows: K8sFlatRow[] = [];
+
+    allAzUuids.forEach((azUuid) => {
+      const beforeEntry = beforeOverrides[azUuid];
+      const afterEntry = afterOverrides[azUuid];
+      const azName = afterAzNames[azUuid] ?? beforeAzNames[azUuid] ?? azUuid;
+      const beforeHasAz = !!beforeEntry;
+      const afterHasAz = !!afterEntry;
+      const changes: K8sChange[] = [];
+
+      processTypes.forEach((processType) => {
+        const beforeDevice = beforeEntry?.perProcess?.[processType]?.deviceInfo;
+        const afterDevice = afterEntry?.perProcess?.[processType]?.deviceInfo;
+
+        k8sOverrideFields.forEach((field) => {
+          const rawBefore = beforeHasAz ? beforeDevice?.[field] : undefined;
+          const rawAfter = afterHasAz ? afterDevice?.[field] : undefined;
+          const beforeVal = toDisplayVal(rawBefore, '---');
+          const afterVal = toDisplayVal(rawAfter, '---');
+          const same = isEmptyVal(rawBefore) && isEmptyVal(rawAfter) ? true : beforeVal === afterVal;
+          if (same) return;
+
+          this.changesCount++;
+          const beforeOp = !beforeHasAz ? undefined : !afterHasAz ? DiffOperation.REMOVED : !same ? DiffOperation.REMOVED : undefined;
+          const afterOp = !afterHasAz ? undefined : !beforeHasAz ? DiffOperation.ADDED : !same ? DiffOperation.ADDED : undefined;
+          changes.push({ processType, field, beforeVal, afterVal, beforeOp, afterOp });
+        });
+      });
+
+      if (changes.length > 0) {
+        flatRows.push({ label: azName, indent: 0, beforeVal: '', afterVal: '' });
+        const byProcess = new Map<string, K8sChange[]>();
+        changes.forEach((c) => {
+          if (!byProcess.has(c.processType)) byProcess.set(c.processType, []);
+          byProcess.get(c.processType)!.push(c);
+        });
+        processTypes.forEach((processType) => {
+          const list = byProcess.get(processType);
+          if (!list?.length) return;
+          flatRows.push({ label: processLabels[processType], indent: 1, beforeVal: '', afterVal: '' });
+          list.forEach((c) => {
+            flatRows.push({
+              label: fieldLabels[c.field] ?? c.field,
+              indent: 2,
+              beforeVal: c.beforeVal,
+              afterVal: c.afterVal,
+              beforeOp: c.beforeOp,
+              afterOp: c.afterOp
+            });
+          });
+        });
+      }
+    });
+
+    if (flatRows.length === 0) return;
+
+    this.cards[clusterType].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          title: 'K8s AZ Overrides',
+          element: <K8sAZOverrideRows flatRows={flatRows} />
+        }}
+        operation={DiffOperation.CHANGED}
+        beforeValue={{ title: '', element: <K8sAZOverrideRows flatRows={flatRows} kind="before" /> }}
+        afterValue={{ title: '', element: <K8sAZOverrideRows flatRows={flatRows} kind="after" /> }}
       />
     );
   }
@@ -703,8 +837,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           changesCountByOperation[DiffOperation.CHANGED] > 0
             ? DiffOperation.CHANGED
             : changesCountByOperation[DiffOperation.ADDED] > 0
-            ? DiffOperation.ADDED
-            : DiffOperation.REMOVED
+              ? DiffOperation.ADDED
+              : DiffOperation.REMOVED
         }
       />
     );
@@ -747,6 +881,12 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     this.getCommunicationDiffComponent(
       this.diffProps.beforeData as UniverseDetails,
       this.diffProps.afterData as UniverseDetails,
+      ClusterType.PRIMARY
+    );
+
+    this.getK8sAzOverridesDiffComponent(
+      beforePrimaryCluster,
+      afterPrimaryCluster,
       ClusterType.PRIMARY
     );
 
@@ -808,6 +948,73 @@ const RegionAttributePlaceholder = () => {
         </ul>
       </ul>
     </div>
+  );
+};
+
+// Single-line rows for K8s AZ Overrides so attribute, before, and after align on the same line.
+const useK8sRowStyles = makeStyles((theme) => ({
+  row: {
+    minHeight: 32,
+    lineHeight: '32px',
+    fontSize: 13,
+    color: theme.palette.grey[900],
+    display: 'block',
+    '&:empty': { minHeight: 32 }
+  },
+  marker: {
+    '&::before': {
+      content: '"↳ "',
+    }
+  }
+}));
+
+const K8sAZOverrideRows = ({
+  flatRows,
+  kind
+}: {
+  flatRows: Array<{
+    label: string;
+    indent: number;
+    beforeVal: string;
+    afterVal: string;
+    beforeOp?: DiffOperation;
+    afterOp?: DiffOperation;
+  }>;
+  kind?: 'before' | 'after';
+}) => {
+  const classes = useK8sRowStyles();
+  const indentPx = 16;
+
+  if (kind === 'before') {
+    return (
+      <>
+        {flatRows.map((row, i) => (
+          <div key={i} className={classes.row}>
+            <DeviceInfoField content={row.beforeVal || ''} operation={row.beforeOp} />
+          </div>
+        ))}
+      </>
+    );
+  }
+  if (kind === 'after') {
+    return (
+      <>
+        {flatRows.map((row, i) => (
+          <div key={i} className={classes.row}>
+            <DeviceInfoField content={row.afterVal || ''} operation={row.afterOp} />
+          </div>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      {flatRows.map((row, i) => (
+        <div key={i} className={clsx(classes.row, row.indent > 0 && classes.marker)} style={{ paddingLeft: row.indent * indentPx }}>
+          {row.label}
+        </div>
+      ))}
+    </>
   );
 };
 

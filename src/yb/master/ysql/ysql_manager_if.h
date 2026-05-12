@@ -50,6 +50,12 @@ class YsqlManagerIf {
       const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const = 0;
   virtual Result<std::string> GetPgSchemaName(
       const PgTableAllOids& oids, const ReadHybridTime& read_time = ReadHybridTime()) const = 0;
+
+  // Returns a boolean pg_index status column (e.g. indislive/indisready/indisvalid) for the
+  // given PG OIDs.
+  virtual Result<bool> GetPgIndexStatus(
+      PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+      const ReadHybridTime& read_time = ReadHybridTime()) const = 0;
 };
 
 }  // namespace master

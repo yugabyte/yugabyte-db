@@ -23,10 +23,6 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.*;
-import io.yugabyte.operator.v1alpha1.Backup;
-import io.yugabyte.operator.v1alpha1.BackupStatus;
-import io.yugabyte.operator.v1alpha1.RestoreJob;
-import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversestatus.Actions;
 import java.io.BufferedReader;
 import java.io.File;
@@ -100,6 +96,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
     try {
       if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
         log.debug("Not updating restore status: Universe is not operator controlled");
+        return;
       }
       log.info("Update Restore Job Status called for task {} ", taskUUID);
       try (final KubernetesClient kubernetesClient =
@@ -180,10 +177,10 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
    */
   @Override
   public void updateDrConfigStatus(
-      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+      com.yugabyte.yw.models.DrConfig drConfig, String operationStatus, UUID taskUUID) {
     try {
       if (drConfig != null && drConfig.getKubernetesResourceDetails() != null) {
-        log.info("Update Dr config Status called for task {} ", taskUUID);
+        log.info("Update Dr config status called for task {} ", taskUUID);
         try (final KubernetesClient kubernetesClient =
             new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
           DrConfig drConfigCr =
@@ -192,8 +189,15 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
                   kubernetesClient.resources(DrConfig.class),
                   DrConfig.class);
           DrConfigStatus status = drConfigCr.getStatus();
+          if (status == null) {
+            status = new DrConfigStatus();
+          }
 
-          status.setMessage("Dr Config State: " + drConfig.getState().name());
+          status.setMessage(
+              "Operation Status: "
+                  + operationStatus
+                  + ". Dr Config State: "
+                  + drConfig.getState().name());
           status.setResourceUUID(drConfig.getUuid().toString());
           status.setTaskUUID(taskUUID.toString());
 
@@ -210,6 +214,89 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       // This can happen for a variety of reasons.
       // We might fail to talk to the API server, might need to add retries around this logic
       log.error("Exception in updating dr config cr status", e);
+    }
+  }
+
+  /*
+   * Update PitrConfig Status
+   */
+  @Override
+  public void updatePitrConfigStatus(
+      com.yugabyte.yw.models.PitrConfig pitrConfig, String taskName, UUID taskUUID) {
+    try {
+      if (pitrConfig != null && pitrConfig.getKubernetesResourceDetails() != null) {
+        log.info("Update PITR config Status called for task {} ", taskUUID);
+        try (final KubernetesClient kubernetesClient =
+            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+          PitrConfig pitrConfigCr =
+              operatorUtils.getResource(
+                  pitrConfig.getKubernetesResourceDetails(),
+                  kubernetesClient.resources(PitrConfig.class),
+                  PitrConfig.class);
+          PitrConfigStatus status = pitrConfigCr.getStatus();
+          if (status == null) {
+            status = new PitrConfigStatus();
+          }
+
+          status.setMessage("PITR Config State: " + pitrConfig.getState().toString());
+          status.setResourceUUID(pitrConfig.getUuid().toString());
+          status.setTaskUUID(taskUUID.toString());
+
+          pitrConfigCr.setStatus(status);
+          kubernetesClient
+              .resources(PitrConfig.class)
+              .inNamespace(namespace)
+              .resource(pitrConfigCr)
+              .updateStatus();
+          log.info("Updated Status for PITR config CR {}", pitrConfigCr);
+        }
+      }
+    } catch (Exception e) {
+      // This can happen for a variety of reasons.
+      // We might fail to talk to the API server, might need to add retries around this logic
+      log.error("Exception in updating pitr config cr status", e);
+    }
+  }
+
+  @Override
+  public void updatePitrRestoreStatus(String message, UUID taskUUID, Universe universe) {
+    try {
+      if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
+        log.debug("Not updating restore status: Universe is not operator controlled");
+        return;
+      }
+      log.info("Update PITR Restore Status called for task {} ", taskUUID);
+      try (final KubernetesClient kubernetesClient =
+          new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+
+        for (PitrRestore pitrRestore :
+            kubernetesClient
+                .resources(PitrRestore.class)
+                .inNamespace(namespace)
+                .list()
+                .getItems()) {
+          if (pitrRestore.getStatus() != null
+              && taskUUID.toString().equals(pitrRestore.getStatus().getTaskUUID())) {
+            // Found our Pitr Restore.
+            log.info("Found pitrRestore {} task {} ", pitrRestore, taskUUID);
+            PitrRestoreStatus status = pitrRestore.getStatus();
+
+            status.setMessage(message);
+            status.setTaskUUID(taskUUID.toString());
+
+            pitrRestore.setStatus(status);
+            kubernetesClient
+                .resources(PitrRestore.class)
+                .inNamespace(namespace)
+                .resource(pitrRestore)
+                .replaceStatus();
+            log.info("Updated Status for PITR Restore CR {}", pitrRestore);
+            break;
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error("Exception in updating pitrRestore cr status", e);
     }
   }
 
@@ -295,36 +382,31 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       UUID taskUUID,
       UniverseState state,
       Throwable t) {
-    if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
-      return;
-    }
     Customer cust = Customer.get(universe.getCustomerId());
     try (final KubernetesClient client =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
       YBUniverse ybUniverse = getYBUniverse(client, universeName);
       if (ybUniverse == null) {
-        log.info("YBUniverse {}/{} is not found", universeName.namespace, universeName.name);
+        log.error("YBUniverse {}/{} is not found", universeName.namespace, universeName.name);
         return;
       }
-      YBUniverseStatus status = ybUniverse.getStatus();
+      YBUniverseStatus status = getOrCreateUniverseStatus(ybUniverse);
 
-      boolean shouldUpdateStatus =
-          state.equals(UniverseState.READY)
-              ? !operatorUtils.universeAndSpecMismatch(cust, universe, ybUniverse)
-              : true;
-      if (shouldUpdateStatus) {
-        status.setUniverseState(state.getUniverseStateString());
-      }
+      status.setUniverseState(state.getUniverseStateString());
+      ybUniverse.setStatus(status);
       // Handle the success case
       String message = null;
-      if (t == null) {
-        removeUniverseAction(status, taskName);
-        message = String.format("Task %s (%s) succeeded", taskName, taskUUID);
-      } else {
-        Actions action = getOrCreateUniverseAction(status, taskName);
-        action.setStatus(Actions.Status.FAILED);
-        message = String.format("Task %s(%s) failed: %s", taskName, taskUUID, t.getMessage());
-        action.setMessage(message);
+      // Keep a null message if we don't have any tasks
+      if (taskUUID != null) {
+        if (t == null) {
+          removeUniverseAction(status, taskName);
+          message = String.format("Task %s (%s) succeeded", taskName, taskUUID);
+        } else {
+          Actions action = getOrCreateUniverseAction(status, taskName);
+          action.setStatus(Actions.Status.FAILED);
+          message = String.format("Task %s(%s) failed: %s", taskName, taskUUID, t.getMessage());
+          action.setMessage(message);
+        }
       }
       // Updating Kubernetes Custom Resource (if done through operator).
       this.updateUniverseStatus(
@@ -362,6 +444,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
               cqlEndpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
             }
           } catch (Exception e) {
+            log.warn("Got Exception in Getting CQL Service Endpoints", e);
           }
 
           sqlEndpoints.addAll(Arrays.asList(u.getYSQLServerAddresses().split(",")));
@@ -374,6 +457,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
               sqlEndpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
             }
           } catch (Exception e) {
+            log.warn("Got Exception in Getting SQL Service Endpoints", e);
           }
         }
 
@@ -388,7 +472,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .resources(YBUniverse.class)
           .inNamespace(ybUniverse.getMetadata().getNamespace())
           .resource(ybUniverse)
-          .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
+          .updateStatus();
 
       // Update Swamper Targets configMap
       String configMapName =

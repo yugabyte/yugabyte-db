@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
@@ -19,13 +18,9 @@ import lombok.extern.slf4j.Slf4j;
 /** Generic command runner on the DB node. */
 @Slf4j
 public class RunNodeCommand extends UniverseTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
-
   @Inject
-  protected RunNodeCommand(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected RunNodeCommand(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends NodeTaskParams {

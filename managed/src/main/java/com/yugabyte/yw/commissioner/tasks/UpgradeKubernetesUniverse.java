@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -31,7 +32,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -100,9 +100,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       preTaskActions();
 
       KubernetesPlacement primaryPlacement = new KubernetesPlacement(primaryPI, false);
-      Provider provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+      Provider provider = Util.getSingleProvider(taskParams().getPrimaryCluster());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
       String masterAddresses =
@@ -260,10 +258,11 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */);
+          null /* rootCAUUID */,
+          null /* skipAZs */);
     }
     if (upgradeTservers) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -286,10 +285,11 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
               .rollMaxBatchSize(getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize))
-              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
               .build(),
           null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */);
+          null /* rootCAUUID */,
+          null /* skipAZs */);
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

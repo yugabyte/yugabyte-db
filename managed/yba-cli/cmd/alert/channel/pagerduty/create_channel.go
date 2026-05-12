@@ -5,8 +5,6 @@
 package pagerduty
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel/channelutil"
@@ -30,7 +28,7 @@ var createPagerdutyChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(apiKey)) == 0 {
+		if util.IsEmptyString(apiKey) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No API key specified to create PagerDuty alert channel\n",
@@ -41,7 +39,7 @@ var createPagerdutyChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(routingKey)) == 0 {
+		if util.IsEmptyString(routingKey) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No routing key specified to create PagerDuty alert channel\n",

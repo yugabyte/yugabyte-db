@@ -22,15 +22,12 @@ import { restoreSnapShot } from '../common/PitrAPI';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import CautionIcon from '../common/CautionIcon';
+import { DatePicker, TimePicker } from 'react-widgets';
+import momentLocalizer from 'react-widgets-moment';
+
 import './PointInTimeRecoveryModal.scss';
+import 'react-widgets/dist/css/react-widgets.css';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const reactWidgets = require('react-widgets');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const momentLocalizer = require('react-widgets-moment');
-require('react-widgets/dist/css/react-widgets.css');
-
-const { DatePicker, TimePicker } = reactWidgets;
 momentLocalizer(moment);
 
 interface PointInTimeRecoveryModalProps {
@@ -94,7 +91,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const interceptBackupLink = useInterceptBackupTaskLinks();
-  
+
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
 
   const createPITR = useMutation((values: any) => restoreSnapShot(universeUUID, values), {
@@ -102,9 +99,11 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       toast.success(
         <span>
           {config.dbName} is being recovered. Click &nbsp;
-          {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-            here
-          </a>)}
+          {interceptBackupLink(
+            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+              here
+            </a>
+          )}
           &nbsp; for task details.
         </span>
       );
@@ -353,6 +352,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                                 setFieldValue('customTime' as never, time, true)
                               }
                               id="PitrRecoveryTimeSelector"
+                              format="hh:mm:ss A"
                             />
                           </Col>
                         </Row>

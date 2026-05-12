@@ -83,7 +83,7 @@ class DocPath {
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.
   static DocPath DocPathFromRedisKey(
-      uint16_t hash, const std::string& key, const std::string& subkey = "");
+      uint16_t hash, std::string_view key, std::string_view subkey = "");
 
   const KeyEntryValues& subkeys() const {
     return subkeys_;

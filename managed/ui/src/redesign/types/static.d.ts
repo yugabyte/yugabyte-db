@@ -25,24 +25,14 @@ declare module '*.sass';
 declare module '*.less';
 declare module '*.styl';
 
-// Type as defined here: https://github.com/jaredLunde/snowpack-plugin-svgr
-// declare module '*.svg' {
-//   const ref: React.RefForwardingComponent<SVGSVGElement, React.SVGAttributes<SVGSVGElement>>;
-//   export default ref;
-// }
+declare module '*.svg' {
+  import * as React from 'react';
 
-// declare module '*.svg' {
-//   const ref: string;
-//   export default ref;
-// }
-
-// declare module '*.svg' {
-//   import * as React from 'react';
-
-//   const ReactComponent: React.FunctionComponent<React.SVGProps<SVGSVGElement> & { title?: string }>;
-
-//   export default ReactComponent;
-// }
+  const ReactComponent: React.FunctionComponent<
+    React.ComponentProps<'svg'> & { title?: string; titleId?: string; desc?: string; descId?: string }
+  >;
+  export default ReactComponent;
+}
 
 declare module '*.bmp' {
   const ref: string;
@@ -64,3 +54,6 @@ declare module '*.png' {
   const ref: string;
   export default ref;
 }
+
+declare module 'react-widgets';
+declare module 'react-widgets-moment';

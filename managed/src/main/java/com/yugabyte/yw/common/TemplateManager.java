@@ -26,8 +26,6 @@ public class TemplateManager extends DevopsBase {
 
   @Inject Config appConfig;
 
-  @Inject NodeAgentClient nodeAgentClient;
-
   @Override
   protected String getCommandType() {
     return COMMAND_TYPE;
@@ -80,11 +78,6 @@ public class TemplateManager extends DevopsBase {
     }
     commandArgs.add("--ssh_user");
     commandArgs.add(details.sshUser);
-
-    commandArgs.add("--vars_file");
-    commandArgs.add(keyInfo.vaultFile);
-    commandArgs.add("--vault_password_file");
-    commandArgs.add(keyInfo.vaultPasswordFile);
     commandArgs.add("--private_key_file");
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");

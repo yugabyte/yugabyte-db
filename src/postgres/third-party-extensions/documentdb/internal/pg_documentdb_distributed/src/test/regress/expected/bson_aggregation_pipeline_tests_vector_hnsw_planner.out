@@ -96,9 +96,9 @@ EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bs
                      Filter: bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson)
 (7 rows)
 
-SELECT batch_insert_testing_vector_documents_hnsw_planner('agg_vector_hnsw_planner', 1, 100, 10);
+SELECT batch_insert_testing_vector_documents_hnsw_planner('agg_vector_hnsw_planner', 10, 100, 10);
 NOTICE:  Inserting 100 documents into agg_vector_hnsw_planner
-NOTICE:  Begin id: 1, Batch size: 10, batch count: 10
+NOTICE:  Begin id: 10, Batch size: 10, batch count: 10
  batch_insert_testing_vector_documents_hnsw_planner 
 ---------------------------------------------------------------------
  
@@ -136,28 +136,40 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "
 (1 row)
 
 set documentdb.enableVectorPreFilter to on;
-EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
-                                                                    QUERY PLAN                                                                    
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
+                                                                                                                                    QUERY PLAN                                                                                                                                    
 ---------------------------------------------------------------------
- Limit (actual rows=0 loops=1)
-   ->  Nested Loop (actual rows=0 loops=1)
-         Join Filter: (collection_1.ctid = collection.ctid)
-         Rows Removed by Join Filter: 1
-         ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=1 loops=1)
-               CosmosSearch Custom Params: { "efSearch" : 1 }
-               ->  Index Scan using foo_1 on documents_8401_8400002 collection_1 (actual rows=1 loops=1)
-                     Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
-                     Filter: bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson)
-         ->  Materialize (actual rows=1 loops=1)
-               ->  Seq Scan on documents_8401_8400002 collection (actual rows=1 loops=1)
-                     Filter: (document @< '{ "a" : "s" }'::bson)
-                     Rows Removed by Filter: 99
-(13 rows)
+ Sort (actual rows=0 loops=1)
+   Output: (bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))), ((agg_stage_0."sortScore" + '0'::double precision))
+   Sort Key: ((agg_stage_0."sortScore" + '0'::double precision))
+   Sort Method: quicksort  Memory: 25kB
+   ->  Subquery Scan on agg_stage_0 (actual rows=0 loops=1)
+         Output: bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))), (agg_stage_0."sortScore" + '0'::double precision)
+         ->  Limit (actual rows=0 loops=1)
+               Output: collection_1.document, ((public.vector(bson_extract_vector(collection_1.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+               ->  Nested Loop (actual rows=0 loops=1)
+                     Output: collection_1.document, ((public.vector(bson_extract_vector(collection_1.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+                     Join Filter: (collection_1.ctid = collection.ctid)
+                     Rows Removed by Join Filter: 102
+                     ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=102 loops=1)
+                           Output: collection_1.document, (public.vector(bson_extract_vector(collection_1.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector), collection_1.ctid
+                           CosmosSearch Custom Params: { "efSearch" : 1, "iterativeScan" : "relaxed_order" }
+                           ->  Index Scan using foo_1 on documentdb_data.documents_8401_8400002 collection_1 (actual rows=102 loops=1)
+                                 Output: collection_1.document, collection_1.ctid
+                                 Order By: (public.vector(bson_extract_vector(collection_1.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                                 Filter: bson_search_param(collection_1.document, '{ "efSearch" : { "$numberInt" : "1" }, "iterativeScan" : "relaxed_order" }'::bson)
+                     ->  Materialize (actual rows=1 loops=102)
+                           Output: collection.ctid
+                           ->  Seq Scan on documentdb_data.documents_8401_8400002 collection (actual rows=1 loops=1)
+                                 Output: collection.ctid
+                                 Filter: (collection.document @< '{ "a" : "s" }'::bson)
+                                 Rows Removed by Filter: 104
+(25 rows)
 
 set documentdb.enableVectorPreFilterV2 to on;
 -- This is currently a post-filter and will not use the filter index.
 EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
-                                                                               QUERY PLAN                                                                               
+                                                                                         QUERY PLAN                                                                                          
 ---------------------------------------------------------------------
  Sort (actual rows=0 loops=1)
    Sort Key: (((public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector) + '0'::double precision))
@@ -165,15 +177,15 @@ EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bs
    ->  Subquery Scan on agg_stage_0 (actual rows=0 loops=1)
          ->  Limit (actual rows=0 loops=1)
                ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=0 loops=1)
-                     CosmosSearch Custom Params: { "efSearch" : 1 }
+                     CosmosSearch Custom Params: { "efSearch" : 1, "iterativeScan" : "relaxed_order" }
                      ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=0 loops=1)
                            Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
-                           Filter: ((document @< '{ "a" : "s" }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson))
-                           Rows Removed by Filter: 1
+                           Filter: ((document @< '{ "a" : "s" }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" }, "iterativeScan" : "relaxed_order" }'::bson))
+                           Rows Removed by Filter: 102
 (11 rows)
 
 EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "_id": { "$lt": 5 }} }  } } ], "cursor": {} }');
-                                                                                                               QUERY PLAN                                                                                                                
+                                                                                                                                                                    QUERY PLAN                                                                                                                                                                    
 ---------------------------------------------------------------------
  Sort (actual rows=0 loops=1)
    Sort Key: (((public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector) + '0'::double precision))
@@ -181,10 +193,10 @@ EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bs
    ->  Subquery Scan on agg_stage_0 (actual rows=0 loops=1)
          ->  Limit (actual rows=0 loops=1)
                ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=0 loops=1)
-                     CosmosSearch Custom Params: { "efSearch" : 1 }
+                     CosmosSearch Custom Params: { "efSearch" : 1, "iterativeScan" : "relaxed_order" }
                      ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=0 loops=1)
                            Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
-                           Filter: ((document @< '{ "_id" : { "$numberInt" : "5" } }'::bson) AND (object_id < '{ "" : { "$numberInt" : "5" } }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson))
-                           Rows Removed by Filter: 1
+                           Filter: ((document @< '{ "_id" : { "$numberInt" : "5" } }'::bson) AND (object_id < '{ "" : { "$numberInt" : "5" } }'::bson) AND (object_id >= '{ "" : { "$numberDouble" : "-Infinity" } }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" }, "iterativeScan" : "relaxed_order" }'::bson))
+                           Rows Removed by Filter: 102
 (11 rows)
 

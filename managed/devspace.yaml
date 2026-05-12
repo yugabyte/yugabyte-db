@@ -44,7 +44,8 @@ deployments:
         -  ${YBA_ADDITIONAL_VALUES_FILE}
       values:
         image:
-          repository: quay.io/yugabyte/yugaware-itest
+          repository: ${YBA_IMAGE_REPO}
+          pullSecret: ${PULL_SECRET}
           tag: ${YB_IMAGE_TAG}
         yugaware:
           service:
@@ -64,7 +65,7 @@ deployments:
 
 dev:
   yba:
-    imageSelector: quay.io/yugabyte/yugaware-itest
+    imageSelector: ${YBA_IMAGE_REPO}
     container: yugaware
 
     sync:
@@ -150,6 +151,12 @@ vars:
   YBA_HELM_RELEASE_NAME:
     source: env
     default: "yba-${DEVSPACE_NAMESPACE}"
+  YBA_IMAGE_REPO:
+    source: env
+    default: "quay.io/yugabyte/yugaware-itest"
+  PULL_SECRET:
+    source: env
+    default: "yugabyte-k8s-pull-secret"
   STORAGE_CLASS:
     source: env
     default: "yb-standard"

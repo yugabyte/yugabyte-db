@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.GZIPOutputStream;
+import javax.annotation.Nullable;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.jackson.Jacksonized;
@@ -116,6 +117,36 @@ public class AttachDetachSpec {
   private ImportExportRelease ybReleaseMetadata;
 
   private boolean skipReleases;
+
+  private JsonNode yugawareProperty;
+
+  @Nullable
+  public String resolveSourceYbaSoftwareVersionForAttach() {
+    if (this.yugawareProperty == null || !this.yugawareProperty.isArray()) {
+      return null;
+    }
+    String ver = versionFromYugawarePropertyArray(ConfigHelper.ConfigType.SoftwareVersion.name());
+    if (StringUtils.isNotBlank(ver)) {
+      return ver;
+    }
+    return versionFromYugawarePropertyArray(ConfigHelper.ConfigType.YugawareMetadata.name());
+  }
+
+  private String versionFromYugawarePropertyArray(String propertyName) {
+    for (JsonNode node : this.yugawareProperty) {
+      if (!node.hasNonNull("name") || !propertyName.equals(node.get("name").asText())) {
+        continue;
+      }
+      JsonNode value = node.get("value");
+      if (value != null && value.hasNonNull("version")) {
+        String version = value.get("version").asText();
+        if (StringUtils.isNotBlank(version)) {
+          return version;
+        }
+      }
+    }
+    return null;
+  }
 
   public InputStream exportSpec() throws IOException {
     String specBasePath = this.oldPlatformPaths.storagePath + "/attach-detach-specs/export";
@@ -178,10 +209,9 @@ public class AttachDetachSpec {
 
   private void exportAccessKey(AccessKey accessKey, TarArchiveOutputStream tarArchive)
       throws IOException {
-    // VaultFile should always have a path.
-    String vaultPath = accessKey.getKeyInfo().vaultFile;
-    File vaultFile = new File(vaultPath);
-    File accessKeyFolder = vaultFile.getParentFile();
+    String privateKey = accessKey.getKeyInfo().privateKey;
+    File privateKeyFile = new File(privateKey);
+    File accessKeyFolder = privateKeyFile.getParentFile();
     Util.addFilesToTarGZ(accessKeyFolder.getAbsolutePath(), "keys/", tarArchive);
     log.debug("Added accessKey {} to tar gz file.", accessKey.getKeyCode());
   }
@@ -511,12 +541,6 @@ public class AttachDetachSpec {
             CommonUtils.replaceBeginningPath(
                 key.getKeyInfo().privateKey, this.oldPlatformPaths.storagePath, storagePath);
       }
-      key.getKeyInfo().vaultPasswordFile =
-          CommonUtils.replaceBeginningPath(
-              key.getKeyInfo().vaultPasswordFile, this.oldPlatformPaths.storagePath, storagePath);
-      key.getKeyInfo().vaultFile =
-          CommonUtils.replaceBeginningPath(
-              key.getKeyInfo().vaultFile, this.oldPlatformPaths.storagePath, storagePath);
     }
   }
 
@@ -627,8 +651,6 @@ public class AttachDetachSpec {
       for (AccessKey key : this.provider.getAllAccessKeys()) {
         AccessKey.KeyInfo keyInfo = key.getKeyInfo();
         try {
-          FileData.upsertFileInDB(keyInfo.vaultFile);
-          FileData.upsertFileInDB(keyInfo.vaultPasswordFile);
           if (keyInfo.privateKey != null) {
             FileData.upsertFileInDB(keyInfo.privateKey);
           }
@@ -636,7 +658,7 @@ public class AttachDetachSpec {
             FileData.upsertFileInDB(keyInfo.publicKey);
           }
 
-          File accessKeyDir = new File(keyInfo.vaultFile).getParentFile();
+          File accessKeyDir = new File(keyInfo.privateKey).getParentFile();
           // GCP provider contains credentials.json file.
           if (this.provider.getCloudCode().equals(Common.CloudType.gcp)) {
             FileData.upsertFileInDB(

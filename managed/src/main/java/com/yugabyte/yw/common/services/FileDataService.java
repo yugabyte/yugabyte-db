@@ -129,7 +129,7 @@ public class FileDataService {
         // For all files only on disk, update them in the DB.
         for (String file : fileOnlyOnDisk) {
           log.info("Syncing file " + file + " to the DB");
-          FileData.writeFileToDB(storagePath + file, storagePath, confGetter);
+          FileData.writeFileToDB(storagePath + file, storagePath);
         }
         log.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
       }
@@ -208,21 +208,6 @@ public class FileDataService {
             "Error {} replacing private key path {}. Skipping.",
             e.getMessage(),
             keyInfo.privateKey);
-      }
-
-      try {
-        keyInfo.vaultPasswordFile = fixFilePath(keyPattern, keyInfo.vaultPasswordFile, storagePath);
-      } catch (Exception e) {
-        log.warn(
-            "Error {} replacing vault password file {}. Skipping.",
-            e.getMessage(),
-            keyInfo.vaultPasswordFile);
-      }
-
-      try {
-        keyInfo.vaultFile = fixFilePath(keyPattern, keyInfo.vaultFile, storagePath);
-      } catch (Exception e) {
-        log.warn("Error {} replacing vault file {}. Skipping.", e.getMessage(), keyInfo.vaultFile);
       }
 
       try {

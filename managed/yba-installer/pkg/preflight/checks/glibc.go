@@ -10,7 +10,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
-const minSupportedGlibcVersion = "2.25"
+const minSupportedGlibcVersion = "2.28"
 
 var Glibc = &glibcCheck{
 	name:        "glibc",

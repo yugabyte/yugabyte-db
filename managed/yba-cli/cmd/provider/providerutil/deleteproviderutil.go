@@ -7,7 +7,6 @@ package providerutil
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -27,7 +26,7 @@ func DeleteProviderValidation(cmd *cobra.Command) {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 	var providerName string
-	if len(strings.TrimSpace(providerNameFlag)) > 0 {
+	if !util.IsEmptyString(providerNameFlag) {
 		providerName = providerNameFlag
 	} else {
 		cmd.Help()
@@ -54,19 +53,17 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	providerListRequest := authAPI.GetListOfProviders()
 	providerListRequest = providerListRequest.Name(providerName)
 
-	if len(strings.TrimSpace(providerCode)) != 0 {
+	if !util.IsEmptyString(providerCode) {
 		providerListRequest = providerListRequest.ProviderCode(providerCode)
 	}
 
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
 		callSite := "Provider"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			callSite, "Delete - Fetch Providers")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete - Fetch Providers")
 	}
 
 	if len(r) < 1 {
@@ -85,12 +82,13 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	rTask, response, err := authAPI.DeleteProvider(providerUUID).Execute()
 	if err != nil {
 		callSite := "Provider"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
+
+	util.CheckTaskAfterCreation(rTask)
 
 	msg := fmt.Sprintf("The provider %s (%s) is being deleted",
 		formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
@@ -114,5 +112,5 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 }

@@ -229,6 +229,7 @@ class PgSessionExpirationTest : public PgConnTest {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
     PgConnTest::UpdateMiniClusterOptions(options);
     for (const auto& tserver_flag : std::initializer_list<std::string>{
              "--pg_client_use_shared_memory=true",

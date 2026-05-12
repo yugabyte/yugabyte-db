@@ -136,6 +136,6 @@ SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pi
 
 -- invalid cases
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": { "a": 1 } }, { "$project": { "accesses.since": 0 }} ]}');
-ERROR:  The $indexStats stage specification must be an empty object
+ERROR:  The $indexStats stage specification is required to be provided as an empty object.
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$match": { "a": 1 } }, { "$indexStats": { } }, { "$project": { "accesses.since": 0 }} ]}');
-ERROR:  $indexStats is only valid as the first stage in the pipeline.
+ERROR:  The $indexStats operator can only be used as the initial stage in the pipeline.

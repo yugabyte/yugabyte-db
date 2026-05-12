@@ -3,68 +3,68 @@ SET search_path TO documentdb_api,documentdb_core;
 SET documentdb.next_collection_id TO 9200;
 SET documentdb.next_collection_index_id TO 9200;
 
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 1, "name" : "Dev" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 3, "name" : "Ron", "reportsTo" : "Eliot" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 4, "name" : "Andrew", "reportsTo" : "Eliot" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 5, "name" : "Asya", "reportsTo" : "Ron" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 6, "name" : "Dan", "reportsTo" : "Andrew" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 1, "userName" : "Sam" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 2, "userName" : "Alex", "friend" : "Sam" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 3, "userName" : "Jamie", "friend" : "Alex" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 4, "userName" : "Taylor", "friend" : "Alex" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 5, "userName" : "Morgan", "friend" : "Jamie" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_socialgroup', '{ "_id" : 6, "userName" : "Jordan", "friend" : "Taylor" }');
 
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+    '{ "aggregate": "graphlookup_socialgroup", "pipeline": [ { "$graphLookup": { "from": "graphlookup_socialgroup", "startWith": "$friend", "connectFromField": "friend", "connectToField": "userName", "as": "friendChain" } } ]}');
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+    '{ "aggregate": "graphlookup_socialgroup", "pipeline": [ { "$graphLookup": { "from": "graphlookup_socialgroup", "startWith": "$friend", "connectFromField": "friend", "connectToField": "userName", "as": "friendChain" } } ]}');
 
 
-SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 0, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 1, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 2, "airport" : "ORD", "connects" : [ "JFK" ] }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 3, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 4, "airport" : "LHR", "connects" : [ "PWM" ] }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_places', '{ "_id" : 0, "placeCode" : "P1", "nearby" : [ "P2", "P3" ] }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_places', '{ "_id" : 1, "placeCode" : "P2", "nearby" : [ "P1", "P4" ] }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_places', '{ "_id" : 2, "placeCode" : "P3", "nearby" : [ "P1" ] }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_places', '{ "_id" : 3, "placeCode" : "P4", "nearby" : [ "P2", "P5" ] }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_places', '{ "_id" : 4, "placeCode" : "P5", "nearby" : [ "P4" ] }');
 
-SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 1, "name" : "Dev", "nearestAirport" : "JFK" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 2, "name" : "Eliot", "nearestAirport" : "JFK" }');
-SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 3, "name" : "Jeff", "nearestAirport" : "BOS" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_visitors', '{ "_id" : 1, "userName" : "Sam", "homePlace" : "P1" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_visitors', '{ "_id" : 2, "userName" : "Alex", "homePlace" : "P1" }');
+SELECT documentdb_api.insert_one('db', 'graphlookup_visitors', '{ "_id" : 3, "userName" : "Jamie", "homePlace" : "P2" }');
 
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "maxDepth": 2 } } ]}');
 
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "maxDepth": 2 } } ]}');
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "depthField": "depth" } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "depthField": "stepsCount" } } ]}');
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "depthField": "depth" } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "depthField": "stepsCount" } } ]}');
 
 
 -- $graphLookup inside $facet
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$facet": { "inner": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ] } } ]}');
+    '{ "aggregate": "graphlookup_socialgroup", "pipeline": [ { "$facet": { "inner": [ { "$graphLookup": { "from": "graphlookup_socialgroup", "startWith": "$friend", "connectFromField": "friend", "connectToField": "userName", "as": "friendChain" } } ] } } ]}');
 
 
 -- $graphLookup inside $lookup
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$lookup": { "from": "graph_lookup_employees", "as": "inner", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ] } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$lookup": { "from": "graphlookup_socialgroup", "as": "inner", "pipeline": [ { "$graphLookup": { "from": "graphlookup_socialgroup", "startWith": "$friend", "connectFromField": "friend", "connectToField": "userName", "as": "friendChain" } } ] } } ]}');
 
 
 -- source can be sharded
-SELECT documentdb_api.shard_collection('db', 'graph_lookup_travelers', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'graphlookup_visitors', '{ "_id": "hashed" }', false);
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "maxDepth": 2 } } ]}');
 
 
 -- target cannot be sharded
-SELECT documentdb_api.shard_collection('db', 'graph_lookup_airports', '{ "_id": "hashed" }', false);
-SELECT documentdb_api.shard_collection('db', 'graph_lookup_employees', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'graphlookup_places', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'graphlookup_socialgroup', '{ "_id": "hashed" }', false);
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+    '{ "aggregate": "graphlookup_socialgroup", "pipeline": [ { "$graphLookup": { "from": "graphlookup_socialgroup", "startWith": "$friend", "connectFromField": "friend", "connectToField": "userName", "as": "friendChain" } } ]}');
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+    '{ "aggregate": "graphlookup_visitors", "pipeline": [ { "$graphLookup": { "from": "graphlookup_places", "startWith": "$homePlace", "connectFromField": "nearby", "connectToField": "placeCode", "as": "reachablePlaces", "maxDepth": 2 } } ]}');

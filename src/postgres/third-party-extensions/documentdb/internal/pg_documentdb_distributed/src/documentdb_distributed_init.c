@@ -26,6 +26,9 @@ bool EnableShardRebalancer = DEFAULT_ENABLE_SHARD_REBALANCER;
 #define DEFAULT_CLUSTER_ADMIN_ROLE ""
 char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 
+#define DEFAULT_ENABLE_MOVE_COLLECTION true
+bool EnableMoveCollection = DEFAULT_ENABLE_MOVE_COLLECTION;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -48,6 +51,13 @@ InitDocumentDBDistributedConfigurations(const char *prefix)
 		gettext_noop(
 			"Determines whether or not to enable shard rebalancer APIs."),
 		NULL, &EnableShardRebalancer, DEFAULT_ENABLE_SHARD_REBALANCER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enable_move_collection", prefix),
+		gettext_noop(
+			"Determines whether or not to enable move collection."),
+		NULL, &EnableMoveCollection, DEFAULT_ENABLE_MOVE_COLLECTION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomStringVariable(

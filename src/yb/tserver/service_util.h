@@ -41,8 +41,6 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
-
 namespace yb::tserver {
 
 // Non-template helpers.
@@ -152,11 +150,7 @@ struct TabletPeerTablet {
 // Returns true if successful.
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const TabletId& tablet_id);
-
-Result<TabletPeerTablet> LookupTabletPeer(
-    TabletPeerLookupIf* tablet_manager,
-    const Slice& tablet_id);
+    TabletIdView tablet_id);
 
 bool IsErrorCodeNotTheLeader(const Status& status);
 
@@ -237,10 +231,15 @@ struct LeaderTabletPeer {
 // it is used to piggyback a TabletConsensusInfo for the receiver of this response to refresh
 // its meta-cache.
 template <class Resp>
-void FillTabletConsensusInfo(Resp* resp, const TabletId& tablet_id, tablet::TabletPeerPtr peer) {
+void FillTabletConsensusInfo(Resp* resp, TabletIdView tablet_id, tablet::TabletPeerPtr peer) {
   if constexpr (HasTabletConsensusInfo<Resp>::value) {
     auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
-    outgoing_tablet_consensus_info->set_tablet_id(tablet_id);
+    if constexpr (std::is_same_v<decltype(outgoing_tablet_consensus_info),
+                                 TabletConsensusInfoPB*>) {
+      outgoing_tablet_consensus_info->set_tablet_id(tablet_id.data(), tablet_id.size());
+    } else {
+      outgoing_tablet_consensus_info->dup_tablet_id(tablet_id);
+    }
 
     if (auto consensus = peer->GetRaftConsensus()) {
       *(outgoing_tablet_consensus_info->mutable_consensus_state()) =
@@ -253,7 +252,7 @@ void FillTabletConsensusInfo(Resp* resp, const TabletId& tablet_id, tablet::Tabl
 
 template <class Resp>
 Result<LeaderTabletPeer> LookupLeaderTablet(
-    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id, Resp* resp,
+    TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id, Resp* resp,
     TabletPeerTablet peer = TabletPeerTablet()) {
   if (peer.tablet_peer) {
     LOG_IF(DFATAL, peer.tablet_peer->tablet_id() != tablet_id)
@@ -282,7 +281,11 @@ void FillTabletConsensusInfoIfRequestOpIdStale(
     if (auto consensus = peer->GetRaftConsensus()) {
       auto cstate = consensus.get()->GetConsensusStateFromCache();
       if (cstate.has_config() && req->raft_config_opid_index() < cstate.config().opid_index()) {
-        outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
+        if constexpr (rpc::IsGoogleProtobuf<Resp>) {
+          outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
+        } else {
+          outgoing_tablet_consensus_info->dup_tablet_id(peer->tablet_id());
+        }
         *(outgoing_tablet_consensus_info->mutable_consensus_state()) = cstate;
         VLOG(1) << "Sending out Consensus state for tablet: " << peer->tablet_id()
                   << ", leader TServer is: "
@@ -320,9 +323,9 @@ Status CheckPeerIsReady(
   const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
-    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
+    TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp = nullptr);
+    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp = nullptr);
 
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
@@ -384,9 +387,6 @@ class CatalogVersionChecker {
       return VersionInfo(std::nullopt, request.ysql_catalog_version());
     }
     DCHECK(request.has_ysql_db_catalog_version());
-    SCHECK(
-        FLAGS_ysql_enable_db_catalog_version_mode, InvalidArgument,
-        "enable_db_catalog_version_mode is not enabled");
     SCHECK(request.has_ysql_db_oid(), InvalidArgument, "ysql_db_oid is not specified");
     return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version());
   }

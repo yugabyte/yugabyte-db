@@ -70,6 +70,7 @@ class TabletServerPathHandlers {
   void HandleRemoteBootstrapsPage(const Webserver::WebRequest& req,
                                   Webserver::WebResponse* resp);
   void HandleObjectLocksPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleCgroupsPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp);
   void HandleIntentsDBPage(const Webserver::WebRequest& req,
@@ -86,11 +87,14 @@ class TabletServerPathHandlers {
                                Webserver::WebResponse* resp);
   void HandleTabletsJSON(const Webserver::WebRequest& req,
                          Webserver::WebResponse* resp);
+  void HandleSnapshotsPage(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleTabletMetaCacheJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);
+  void OutputConnectivity(std::ostream& output);
 
   TabletServer* const tserver_;
 

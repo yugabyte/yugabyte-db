@@ -17,11 +17,13 @@
 
 #include <memory>
 
-#include "yb/util/clone_ptr.h"
 #include "yb/util/enums.h"
 
 namespace rocksdb {
 
+class Arena;
+class BoundaryValuesExtractor;
+class Cache;
 class CompactionContext;
 class CompactionFeed;
 class DataBlockAwareIndexInternalIterator;
@@ -35,8 +37,6 @@ class ReadFileFilter;
 class Statistics;
 class IteratorFilter;
 class TableReader;
-class UserFrontier;
-class UserFrontiers;
 class WritableFile;
 class WriteBatch;
 
@@ -44,6 +44,7 @@ struct BlockBasedTableOptions;
 struct CompactionContextOptions;
 struct CompactionInputFiles;
 struct FilterKeyCache;
+struct FileMetaData;
 struct KeyValueEntry;
 struct Options;
 struct QueryOptions;
@@ -66,14 +67,7 @@ using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 class DirectWriteHandler;
 
-YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing));
-
 YB_STRONGLY_TYPED_BOOL(AllowCompactionFailures);
 YB_STRONGLY_TYPED_BOOL(SkipCorruptDataBlocksUnsafe);
-
-// Frontier should be copyable, but should still preserve its polymorphic nature. We cannot use
-// shared_ptr here, because we are planning to modify the copied value. If we used shared_ptr and
-// modified the copied value, the original value would also change.
-using UserFrontierPtr = yb::clone_ptr<UserFrontier>;
 
 } // namespace rocksdb

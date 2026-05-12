@@ -60,16 +60,6 @@ extern bool yb_force_tablespace_locality;
 extern uint32_t yb_force_tablespace_locality_oid;
 
 /*
- * Guc that toggles whether strict inequalities are pushed down.
- */
-extern bool yb_pushdown_strict_inequality;
-
-/*
- * Guc that toggles whether IS NOT NULL is pushed down.
- */
-extern bool yb_pushdown_is_not_null;
-
-/*
  * Guc that toggles the pg_locks view on/off.
  */
 extern bool yb_enable_pg_locks;
@@ -140,6 +130,11 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * GUC variable that enables pg_export_snapshot and SET TRANSACTION SNAPSHOT.
+ */
+extern bool yb_enable_pg_export_snapshot;
+
+/*
  * Guc variable that enables replication slot consumption.
  */
 extern bool yb_enable_replication_slot_consumption;
@@ -175,7 +170,24 @@ extern char* yb_default_replica_identity;
  */
 extern bool yb_enable_consistent_replication_from_hash_range;
 
+/*
+ * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
+ * streams.
+ */
+extern bool yb_cdcsdk_stream_tables_without_primary_key;
+
+/*
+ * GUC variable that allows UPDATE/DELETE on tables under a publication with REPLICA IDENTITY
+ * DEFAULT or CHANGE that do not have a primary key.
+ */
+extern bool yb_cdcsdk_allow_dml_without_pk;
+
 extern bool enable_object_locking_infra;
+
+extern bool yb_enable_ddl_savepoint_infra;
+
+extern bool yb_skip_ensure_read_time_in_parallel_execution;
+
 /*
  * xcluster consistency level
  */
@@ -285,6 +297,8 @@ extern bool yb_debug_log_catcache_events;
 
 extern bool yb_debug_log_snapshot_mgmt;
 
+extern bool yb_debug_log_snapshot_mgmt_stack_trace;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
@@ -293,6 +307,12 @@ extern bool yb_mixed_mode_saop_pushdown;
 
 extern bool yb_use_internal_auto_analyze_service_conn;
 
+// Keep in sync with the same definition in common_flags.cc
+#ifdef NDEBUG
+#define kEnableDdlTransactionBlocks true
+#else
+#define kEnableDdlTransactionBlocks false
+#endif
 extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
@@ -300,6 +320,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 extern bool yb_allow_dockey_bounds;
 
 extern bool yb_ignore_read_time_in_walsender;
+
+extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
@@ -312,6 +334,12 @@ extern int32_t yb_sampling_algorithm;
 extern int yb_fk_references_cache_limit;
 
 extern bool yb_xcluster_target_ddl_bypass;
+
+/*
+ * If true, when no tablespace is assigned to table, use cluster replication info to estimate
+ * network costs.
+ */
+extern bool yb_use_cluster_config_for_geolocation_costing;
 
 #ifdef __cplusplus
 } // extern "C"

@@ -68,14 +68,17 @@ class ClientFailoverITest : public ExternalMiniClusterITestBase {
 TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
 
-  vector<string> ts_flags = { "--TEST_enable_remote_bootstrap=false" };
+  vector<string> ts_flags = {
+    "--TEST_enable_remote_bootstrap=false",
+    "--committed_config_change_role_timeout_sec=5"
+  };
   vector<string> master_flags = {"--catalog_manager_wait_for_new_tablets_to_elect_leader=false"};
 
   // Start up with 4 tablet servers.
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 4));
 
   // Create the test table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_write_timeout_millis(kTimeout.ToMilliseconds());
   workload.Setup();
 
@@ -207,6 +210,11 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
       leader, tablet_id, to_add, consensus::PeerMemberType::PRE_VOTER, std::nullopt, kTimeout));
   HostPort hp = HostPortFromPB(leader->registration->common().private_rpc_addresses(0));
   ASSERT_OK(StartRemoteBootstrap(to_add, tablet_id, leader->uuid(), hp, 1, kTimeout));
+  // Unless PeerMessageQueue::TrackedPeer::needs_remote_bootstrap is reset (which is done only when
+  // the leader prepares a StartRemoteBootstrap rpc), the leader doesn't make any progress on both,
+  // promoting the peer and catching it up too. Hence resetting the flag here since it doesn't seem
+  // to be of any use downstream in the test.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_enable_remote_bootstrap", "true"));
 
   const string& new_ts_uuid = cluster_->tablet_server(missing_replica_index)->uuid();
   InsertOrDie(&replica_indexes, missing_replica_index);

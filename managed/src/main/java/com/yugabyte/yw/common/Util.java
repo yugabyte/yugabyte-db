@@ -14,12 +14,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -43,7 +45,9 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.ebean.DB;
 import io.swagger.annotations.ApiModel;
+import jakarta.persistence.PersistenceException;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -87,6 +91,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -167,6 +172,9 @@ public class Util {
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION = "2.25.1.0-b184";
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION = "2024.2.1.0-b185";
 
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW = "2.29.0.0-b650";
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_STABLE = "2026.1.0.0-b0";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";
@@ -209,6 +217,9 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  private static final Set<String> FILTERED_INSTANCE_KEYS_FOR_LOGGING =
+      ImmutableSet.of("name", "id", "private_ip", "private_dns", "is_running", "region", "zone");
 
   public static final String HTTP_SCHEME = "http://";
 
@@ -848,6 +859,11 @@ public class Util {
     if (nodeInUniverse == null) {
       return null;
     }
+    return getIpToUse(universe, nodeInUniverse, cloudEnabled);
+  }
+
+  public static String getIpToUse(
+      Universe universe, NodeDetails nodeInUniverse, boolean cloudEnabled) {
     if (GFlagsUtil.isUseSecondaryIP(universe, nodeInUniverse, cloudEnabled)) {
       return nodeInUniverse.cloudInfo.secondary_private_ip;
     }
@@ -961,6 +977,51 @@ public class Util {
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       return provider.getDetails().skipProvisioning;
+    }
+    return false;
+  }
+
+  /**
+   * Validates that a custom linux_user is not specified for manual on-prem provisioned universes.
+   * Manual on-prem node agents run as yugabyte user and cannot switch to other users.
+   *
+   * @param linuxUser The linux user specified in the request
+   * @param universe The target universe
+   * @throws PlatformServiceException if validation fails
+   */
+  public static void validateLinuxUserForOnPrem(String linuxUser, Universe universe) {
+    if (StringUtils.isNotBlank(linuxUser)
+        && !NodeManager.YUGABYTE_USER.equals(linuxUser)
+        && isOnPremManualProvisioning(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot specify custom linux_user for manual on-prem provisioned universes. "
+              + "Node agent runs as yugabyte user and cannot switch users.");
+    }
+  }
+
+  public static boolean configureCgroup(
+      Provider provider, boolean isForProvision, RuntimeConfGetter confGetter) {
+    return configureCgroup(null, provider, isForProvision, confGetter);
+  }
+
+  public static boolean configureCgroup(
+      @Nullable UserIntent userIntent,
+      Provider provider,
+      boolean isForProvision,
+      RuntimeConfGetter confGetter) {
+    if (userIntent != null && userIntent.isCpuCgroupConfigured()) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.onprem)
+        && provider.getDetails().getCloudInfo().onprem.enableMultiTenancy) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      return false;
+    }
+    if (isForProvision && !(provider.getCloudCode().equals(CloudType.onprem))) {
+      return confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
     }
     return false;
   }
@@ -1128,13 +1189,72 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
-    boolean isKubernetesUniverse =
-        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    boolean isKubernetesUniverse = false;
+    if (params.getPrimaryCluster() != null) {
+      isKubernetesUniverse =
+          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    }
     for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static UUID getSingleProviderUUID(Cluster cluster) {
+    return getSingleProviderUUID(cluster.userIntent);
+  }
+
+  public static UUID getSingleProviderUUID(UserIntent userIntent) {
+    return UUID.fromString(userIntent.provider);
+  }
+
+  public static Provider getSingleProvider(Cluster cluster) {
+    return getSingleProvider(cluster.userIntent);
+  }
+
+  public static Provider getSingleProvider(UserIntent userIntent) {
+    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
+    return getProviderGetter(universe.getUniverseDetails());
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams params) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) ->
+        providerMap.computeIfAbsent(
+            n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
+  }
+
+  public static Set<UUID> getAllProviderUUIDs(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .collect(Collectors.toSet());
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
+    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
+    return getSingleProvider(cluster);
+  }
+
+  public static boolean checkAnyProviderType(
+      UserIntent userIntent, Predicate<CloudType> predicate) {
+    return userIntent.getAllCloudTypes().stream().filter(predicate).findFirst().isPresent();
+  }
+
+  public static CloudType getSingleProviderType(Cluster cluster) {
+    return getSingleProviderType(cluster.userIntent);
+  }
+
+  public static CloudType getSingleProviderType(UserIntent userIntent) {
+    return userIntent.providerType;
   }
 
   public static String getYbcNodeIp(Universe universe) {
@@ -1631,5 +1751,75 @@ public class Util {
       log.error("URL is malformed: {}", e.getMessage());
       throw new IllegalArgumentException(e);
     }
+  }
+
+  // Waits for DB connection to be established with retry mechanism.
+  public static void waitForDBConnection(int retryLimit) {
+    int count = 1;
+    while (true) {
+      try {
+        DB.sqlQuery("SELECT 1").findOneOrEmpty();
+        log.info("DB connection is established after {} attempts", count);
+        break;
+      } catch (PersistenceException pe) {
+        if (count > retryLimit) {
+          log.error("DB connection could not be established after {} attempts", count, pe);
+          throw pe;
+        }
+        String errMsg = pe.getMessage();
+        if (errMsg == null || !errMsg.contains("Connection is closed")) {
+          log.error("DB connection could not be established due to unexpected error", pe);
+          throw pe;
+        }
+        count++;
+        log.info("Waiting for DB to connection - {} attempts...", count);
+        try {
+          Thread.sleep(100);
+        } catch (InterruptedException ignored) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+  }
+
+  public static List<String> getCheckProcessStatusCommand(String user, String processName) {
+    return ImmutableList.<String>builder()
+        .add("pgrep")
+        .add("-xlu")
+        .add(user)
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("--user")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("true")
+        .build();
+  }
+
+  /**
+   * Return a minimal instance details for logging.
+   *
+   * @param instances
+   * @return the filtered instance details.
+   */
+  public static List<Map<String, JsonNode>> filterInstanceDetailsForLogging(
+      List<Map<String, JsonNode>> instances) {
+    return instances.stream()
+        .map(
+            m ->
+                m.entrySet().stream()
+                    .filter(e -> e.getValue() != null && !e.getValue().isNull())
+                    .filter(e -> FILTERED_INSTANCE_KEYS_FOR_LOGGING.contains(e.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
+        .collect(Collectors.toList());
   }
 }

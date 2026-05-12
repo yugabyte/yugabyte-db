@@ -43,7 +43,7 @@ const size_t kSizePerDbFilter = kSizeDbOid + HybridTime::SizeOfHybridTimeRepr;
 // important for transactions, because boundary values would have the commit time of a transaction,
 // but e.g. "apply intent" Raft log entries will have a later hybrid time, which would be reflected
 // here.
-class ConsensusFrontier : public rocksdb::UserFrontier {
+class ConsensusFrontier : public storage::UserFrontier {
  public:
   std::unique_ptr<UserFrontier> Clone() const override {
     return std::make_unique<ConsensusFrontier>(*this);
@@ -60,8 +60,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   bool Equals(const UserFrontier& rhs) const override;
   std::string ToString() const override;
   void ToPB(google::protobuf::Any* pb) const override;
-  void Update(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) override;
-  bool IsUpdateValid(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) const
+  void Update(const storage::UserFrontier& rhs, storage::UpdateUserValueType type) override;
+  bool IsUpdateValid(const storage::UserFrontier& rhs, storage::UpdateUserValueType type) const
       override;
   Status FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
@@ -115,7 +115,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void SetGlobalFilter(HybridTime value);
 
   void UpdateSchemaVersion(
-      const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type);
+      const Uuid& table_id, SchemaVersion version, storage::UpdateUserValueType type);
   void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
   void ResetSchemaVersion();
 
@@ -197,7 +197,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   bool has_vector_deletion_ = false;
 };
 
-using ConsensusFrontiers = rocksdb::UserFrontiersBase<ConsensusFrontier>;
+using ConsensusFrontiers = storage::UserFrontiersBase<ConsensusFrontier>;
 
 inline void set_op_id(const OpId& op_id, ConsensusFrontiers* frontiers) {
   frontiers->Smallest().set_op_id(op_id);
@@ -234,7 +234,7 @@ OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
   // See TabletPeer::GetEarliestNeededLogIndex
   if (db == nullptr ||
       (invalid_if_no_new_data &&
-       db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
+       db->GetFlushAbility() == storage::FlushAbility::kNoNewData)) {
     return OpId::Invalid();
   }
 

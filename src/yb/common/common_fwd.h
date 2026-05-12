@@ -21,7 +21,12 @@
 #include "yb/common/ql_protocol.fwd.h"
 #include "yb/common/redis_protocol.fwd.h"
 #include "yb/common/wire_protocol.fwd.h"
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
+
+namespace google::protobuf {
+template <typename Element> class RepeatedPtrField;
+}
 
 namespace yb {
 
@@ -69,6 +74,55 @@ enum class DataType;
 enum class SortingType;
 
 YB_STRONGLY_TYPED_BOOL(ClampUncertaintyWindow);
+
+// Temporary typedef for lightweight protobuf migration
+using QLRSColDescMsg = LWQLRSColDescPB;
+using QLRSRowDescMsg = LWQLRSRowDescPB;
+using QLWriteRequestMsg = LWQLWriteRequestPB;
+using QLValueMsg = LWQLValuePB;
+using QLExpressionMsg = LWQLExpressionPB;
+using PgsqlExpressionMsg = LWPgsqlExpressionPB;
+using RedisResponseMsg = LWRedisResponsePB;
+using RedisWriteRequestMsg = LWRedisWriteRequestPB;
+using RedisReadRequestMsg = LWRedisReadRequestPB;
+using QLResponseMsg = LWQLResponsePB;
+using QLReadRequestMsg = LWQLReadRequestPB;
+using PgsqlResponseMsg = LWPgsqlResponsePB;
+using PgsqlWriteRequestMsg = LWPgsqlWriteRequestPB;
+using PgsqlReadRequestMsg = LWPgsqlReadRequestPB;
+using PgsqlLockRequestMsg = LWPgsqlLockRequestPB;
+using QLTypeMsg = LWQLTypePB;
+using ChildTransactionDataMsg = LWChildTransactionDataPB;
+using ChildTransactionResultMsg = LWChildTransactionResultPB;
+using QLJsonOperationMsg = LWQLJsonOperationPB;
+using QLReferencedColumnsMsg = LWQLReferencedColumnsPB;
+using QLConditionMsg = LWQLConditionPB;
+using QLColumnValueMsg = LWQLColumnValuePB;
+using PgsqlColumnValueMsg = LWPgsqlColumnValuePB;
+using PgVectorReadOptionsMsg = LWPgVectorReadOptionsPB;
+using RedisKeyValueMsg = LWRedisKeyValuePB;
+using TransactionMetadataMsg = LWTransactionMetadataPB;
+using SubTransactionMetadataMsg = LWSubTransactionMetadataPB;
+using RedisGetRequestMsg = LWRedisGetRequestPB;
+using RedisSubKeyBoundMsg = LWRedisSubKeyBoundPB;
+using RedisKeyValueSubKeyMsg = LWRedisKeyValueSubKeyPB;
+using RedisArrayMsg = LWRedisArrayPB;
+using QLMapValueMsg = LWQLMapValuePB;
+using PgsqlColRefMsg = LWPgsqlColRefPB;
+using PgsqlBatchArgumentMsg = LWPgsqlBatchArgumentPB;
+using PgsqlSamplingStateMsg = LWPgsqlSamplingStatePB;
+using PgsqlSampleBlockMsg = LWPgsqlSampleBlockPB;
+using SortedSetOptionsMsg = LWSortedSetOptionsPB;
+using RedisIndexBoundMsg = LWRedisIndexBoundPB;
+using RedisCollectionGetRangeRequestMsg = LWRedisCollectionGetRangeRequestPB;
+using PgsqlPagingStateMsg = LWPgsqlPagingStatePB;
+using PgsqlAdvisoryLockMsg = LWPgsqlAdvisoryLockPB;
+
+using QLReadRequestMsgs = ArenaList<QLReadRequestMsg>;
+using PgsqlBatchArgumentMsgs = ArenaList<PgsqlBatchArgumentMsg>;
+using PgsqlExpressionMsgs = ArenaList<PgsqlExpressionMsg>;
+using PgsqlReadRequestMsgs = ArenaList<PgsqlReadRequestMsg>;
+using QLExpressionMsgs = ArenaList<QLExpressionMsg>;
 
 namespace common {
 

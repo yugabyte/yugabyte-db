@@ -93,6 +93,8 @@ export const useCPUAlert = (nodeHost: string = "") => {
   });
 
   useEffect(() => {
+    let isMounted = true;
+
     const computeCpuAlerts = async () => {
       const end = new Date();
       const interval = { start: subMinutes(end, 5), end };
@@ -137,10 +139,16 @@ export const useCPUAlert = (nodeHost: string = "") => {
           };
         });
 
-      setCpuAlerts(cpuAlerts);
+      if (isMounted) {
+        setCpuAlerts(cpuAlerts);
+      }
     };
 
     computeCpuAlerts();
+
+    return () => {
+      isMounted = false;
+    };
   }, [nodeHost, refetch]);
 
   return { data: cpuAlerts, refetch: refetchAlerts };

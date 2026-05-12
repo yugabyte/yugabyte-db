@@ -113,6 +113,7 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
+  cgroups.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -121,6 +122,7 @@ set(UTIL_SRCS
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
+  csv_util.cc
   curl_util.cc
   date_time.cc
   debug-util.cc
@@ -134,6 +136,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  dist_trace.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -152,7 +155,8 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  jsonreader.cc
+  html_print_helper.cc
+  json_document.cc
   jsonwriter.cc
   jwt_util.cc
   jwtcpp_util.cc
@@ -187,6 +191,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
+  perf_util.cc
   pg_util.cc
   physical_time.cc
   port_picker.cc
@@ -241,13 +246,19 @@ set(UTIL_SRCS
   varint.cc
   write_buffer.cc
   yb_partition.cc
-  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   thread_holder.cc
   )
 
+set(OPENTELEMETRY_LIBRARIES
+  opentelemetry_trace
+  opentelemetry_exporter_otlp_http
+  opentelemetry_resources
+  opentelemetry_proto)
+
 set(UTIL_LIBS
+  absl
   boost_system
   boost_thread
   boost_atomic
@@ -264,13 +275,13 @@ set(UTIL_LIBS
   protobuf
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY})
+  ${OPENSSL_SSL_LIBRARY}
+  ${OPENTELEMETRY_LIBRARIES})
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
-    absl
     rt
     libbacktrace)
 endif()
@@ -349,6 +360,10 @@ ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
+if (NOT APPLE)
+  # We disable this test when running on Apple platform as it does not support cgroups.
+  ADD_YB_TEST(cgroups-test)
+endif()
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
@@ -371,7 +386,7 @@ ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
-ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(json_document-test)
 ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)

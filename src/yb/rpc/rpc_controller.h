@@ -157,6 +157,7 @@ class RpcController {
   int32_t call_id() const;
 
   CallResponsePtr response() const;
+  RefCntBuffer data_holder() const;
 
   Result<CallResponsePtr> CheckedResponse() const;
 
@@ -167,6 +168,10 @@ class RpcController {
   // Test only flag which is transferred to OutboundCall during its preparation time. This is used
   // to reproduce the stuck RPC scenario seen in production.
   void TEST_force_stuck_outbound_call() { TEST_disable_outbound_call_response_processing = true; }
+
+  void set_pool_tag(ThreadPoolTag pool_tag) { pool_tag_ = pool_tag; }
+
+  ThreadPoolTag pool_tag() const { return pool_tag_; }
 
  private:
   friend class OutboundCall;
@@ -183,6 +188,8 @@ class RpcController {
 
   std::unique_ptr<Sidecars> outbound_sidecars_;
   bool TEST_disable_outbound_call_response_processing = false;
+
+  ThreadPoolTag pool_tag_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };

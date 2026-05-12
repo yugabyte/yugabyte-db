@@ -22,10 +22,9 @@ EOT
 }
 
 num_cores_to_keep={{ yb_num_clean_cores_to_keep }}
+YB_CRASH_DIR="{{ yb_home_dir }}/cores/"
 if [[ -n "{{ yb_cores_dir }}" ]]; then
   YB_CRASH_DIR="{{yb_cores_dir}}/"
-else
-  YB_CRASH_DIR="{{ yb_home_dir }}/cores/"
 fi
 while [[ $# -gt 0 ]]; do
   case "$1" in

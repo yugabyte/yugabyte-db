@@ -13,7 +13,7 @@
 
 #include "yb/master/yql_peers_vtable.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -55,7 +55,7 @@ PeersVTable::PeersVTable(const TableName& table_name,
 }
 
 Result<VTableDataPtr> PeersVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those

@@ -17,7 +17,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include "yb/util/flags.h"
+#include <boost/thread/locks.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -32,18 +32,16 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/locks.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/metrics.h"
@@ -59,7 +57,7 @@
 using std::string;
 using std::vector;
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBMetaDataCache;
@@ -216,12 +214,12 @@ class Operation {
     return operation_ ? operation_->space_used_by_request() : 0;
   }
 
-  RedisResponsePB& response() {
+  RedisResponseMsg& response() {
     switch (type_) {
       case OperationType::kRead:
-        return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisReadOp*>(operation_.get())->response();
       case OperationType::kWrite:
-        return *down_cast<YBRedisWriteOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisWriteOp*>(operation_.get())->response();
       case OperationType::kNone: FALLTHROUGH_INTENDED;
       case OperationType::kLocal:
         FATAL_INVALID_ENUM_VALUE(OperationType, type_);
@@ -261,7 +259,7 @@ class Operation {
 
   void GetKeys(RedisKeyList* keys) const {
     if (FLAGS_redis_safe_batch) {
-      keys->emplace_back(operation_ ? operation_->GetKey() : Slice());
+      keys->emplace_back(operation_ ? operation_->GetKey() : std::string_view());
     }
   }
 
@@ -294,14 +292,14 @@ class Operation {
 
     if (status.ok()) {
       if (operation_) {
-        call_->RespondSuccess(index_, metrics_, &response());
+        call_->RespondSuccess(
+            index_, metrics_, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
       } else {
-        RedisResponsePB resp;
-        call_->RespondSuccess(index_, metrics_, &resp);
+        call_->RespondSuccess(index_, metrics_, rpc::MakeSharedMessage<LWRedisResponsePB>());
       }
     } else if ((type_ == OperationType::kRead || type_ == OperationType::kWrite) &&
                response().code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-      call_->Respond(index_, false, &response());
+      call_->Respond(index_, false, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
     } else {
       call_->RespondFailure(index_, status);
     }
@@ -915,6 +913,10 @@ class BatchContextImpl : public BatchContext {
     return Format("{ tablets: $0 }", tablets_);
   }
 
+  const ThreadSafeArenaPtr& arena() const override {
+    return thread_safe_arena_;
+  };
+
  private:
   template <class... Args>
   void DoApply(Args&&... args) {
@@ -978,6 +980,7 @@ class BatchContextImpl : public BatchContext {
   std::atomic<bool> retry_lookups_;
   std::atomic<size_t> lookups_left_;
   MCUnorderedMap<Slice, TabletOperations, Slice::Hash> tablets_;
+  ThreadSafeArenaPtr thread_safe_arena_ = SharedThreadSafeArena();
 };
 
 } // namespace

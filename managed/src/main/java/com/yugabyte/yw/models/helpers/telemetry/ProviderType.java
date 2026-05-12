@@ -8,7 +8,7 @@ public enum ProviderType {
   LOKI(true, false),
   DYNATRACE(false, true),
   S3(true, false),
-  OTLP(true, false);
+  OTLP(true, true);
 
   public final boolean isAllowedForLogs;
   public final boolean isAllowedForMetrics;

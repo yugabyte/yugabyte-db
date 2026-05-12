@@ -75,12 +75,12 @@ var describeConfigurationAlertCmd = &cobra.Command{
 			// Execute alert list request
 			r, response, err := alertListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
+				util.FatalHTTPError(
 					response,
 					err,
 					"Alert Policy",
-					"Describe - List Alert Configurations")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+					"Describe - List Alert Configurations",
+				)
 			}
 
 			if len(r.GetEntities()) < 1 {

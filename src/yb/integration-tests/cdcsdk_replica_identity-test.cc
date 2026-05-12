@@ -29,7 +29,6 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
@@ -620,9 +619,6 @@ TEST_F(
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
 
-  // Assert that the safe time is invalid in the tablet_peers
-  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
-
   // Count the number of snapshot READs.
   uint32_t reads_snapshot = 0;
   bool do_update = true;
@@ -685,6 +681,10 @@ TEST_F(
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
             << change_resp.cdc_sdk_proto_records_size();
+  auto explicit_checkpoint = change_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp.safe_hybrid_time());
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
   ASSERT_OK(UpdateRows(2 /* key */, 6 /* value */, &test_cluster_));
   ASSERT_OK(UpdateRows(2 /* key */, 10 /* value */, &test_cluster_));
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
@@ -715,7 +715,6 @@ TEST_F(
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
 
-  // Assert that the safe time is invalid in the tablet_peers
   AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 }
 

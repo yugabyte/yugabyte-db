@@ -42,7 +42,7 @@ namespace tablet {
 
 class TabletRestorePatch;
 
-YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
+YB_DEFINE_ENUM(CreateCheckpointIn, (kSubDir)(kUseSuffix));
 
 struct CreateSnapshotData {
   HybridTime snapshot_hybrid_time;
@@ -80,12 +80,18 @@ class TabletSnapshots : public TabletComponent {
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
-  // use_subdir_for_intents specifies whether to create intents DB checkpoint inside
-  // <dir>/<kIntentsSubdir> or <dir>.<kIntentsDBSuffix>
+  // Parameter `create_checkpoint_in` specifies whether to create sub-components checkpoint inside
+  // <dir>/<sub-component-storage> or <dir>.<sub-component-storage>
+  // Parameter `use_try_lock` if true, will use try_lock instead of blocking lock. If the lock
+  // cannot be acquired, the function will return early. Currently only used by remote bootstrap
+  // caller to avoid multiple RPC threads blocking on the same checkpoint in case it takes longer
+  // than RPC timeouts.
+  // In case of failure, the caller is responsible for cleanup.
+  YB_STRONGLY_TYPED_BOOL(UseTryLock);
   Status CreateCheckpoint(
       const std::string& dir,
-      CreateIntentsCheckpointIn create_intents_checkpoint_in =
-          CreateIntentsCheckpointIn::kUseIntentsDbSuffix);
+      CreateCheckpointIn create_checkpoint_in = CreateCheckpointIn::kSubDir,
+      UseTryLock use_try_lock = UseTryLock::kFalse);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
@@ -97,6 +103,8 @@ class TabletSnapshots : public TabletComponent {
   static std::string SnapshotsDirName(const std::string& rocksdb_dir);
 
   static bool IsTempSnapshotDir(const std::string& dir);
+
+  static bool IsLastSnapshotTimeFilePath(const std::string& dir);
 
  private:
   struct RestoreMetadata;
@@ -122,8 +130,7 @@ class TabletSnapshots : public TabletComponent {
 
   Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
-  Status DoCreateCheckpoint(
-      const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in);
+  Status DoCreateCheckpoint(const std::string& dir, CreateCheckpointIn create_checkpoint_in);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
 

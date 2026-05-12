@@ -50,30 +50,30 @@ class AbstractTablet {
   // Redis support.
   virtual Status HandleRedisReadRequest(
       const docdb::ReadOperationData& read_operation_data,
-      const RedisReadRequestPB& redis_read_request,
-      RedisResponsePB* response) = 0;
+      const RedisReadRequestMsg& redis_read_request,
+      RedisResponseMsg* response) = 0;
 
   //------------------------------------------------------------------------------------------------
   // CQL support.
   virtual Status HandleQLReadRequest(
       const docdb::ReadOperationData& read_operation_data,
-      const QLReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata,
+      const QLReadRequestMsg& ql_read_request,
+      const TransactionMetadataMsg& transaction_metadata,
       QLReadRequestResult* result,
       WriteBuffer* rows_data) = 0;
 
   Status HandleQLReadRequest(
       const docdb::ReadOperationData& read_operation_data,
-      const QLReadRequestPB& ql_read_request,
+      const QLReadRequestMsg& ql_read_request,
       const TransactionOperationContext& txn_op_context,
       const docdb::YQLStorageIf& ql_storage,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       QLReadRequestResult* result,
       WriteBuffer* rows_data);
 
-  virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                  const size_t row_count,
-                                                  QLResponsePB* response) const = 0;
+  virtual Status CreatePagingStateForRead(const QLReadRequestMsg& ql_read_request,
+                                          const size_t row_count,
+                                          QLResponseMsg* response) const = 0;
 
   virtual TabletRetentionPolicy* RetentionPolicy() = 0;
 
@@ -100,9 +100,9 @@ class AbstractTablet {
   virtual Status HandlePgsqlReadRequest(
       const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
-      const PgsqlReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata,
-      const SubTransactionMetadataPB& subtransaction_metadata,
+      const PgsqlReadRequestMsg& ql_read_request,
+      const TransactionMetadataMsg& transaction_metadata,
+      const SubTransactionMetadataMsg& subtransaction_metadata,
       PgsqlReadRequestResult* result) = 0;
 
   virtual Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) = 0;
@@ -112,9 +112,9 @@ class AbstractTablet {
   // PGSQL support.
   //-----------------------------------------------------------------------------------------------
 
-  virtual Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
-                                                  const size_t row_count,
-                                                  PgsqlResponsePB* response) const = 0;
+  virtual Status CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_request,
+                                          size_t row_count,
+                                          PgsqlResponseMsg* response) const = 0;
 
   Status ProcessPgsqlReadRequest(
       const docdb::PgsqlReadOperationData& op_data,

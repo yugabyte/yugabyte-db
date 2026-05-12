@@ -1,11 +1,12 @@
-* @microsoft/documentdb-contributors
+* @documentdb/documentdb-maintainers
 
 /.pipelines/ @safern @visridha @shuaitian-git @lichoil
 /.github/workflows/ @safern @visridha @shuaitian-git @lichoil
+/packaging/ @shuaitian-git @lichoil @fatmelon
 
-*.csv @microsoft/documentdb-engine-reviewers
-*.sql @microsoft/documentdb-engine-reviewers
-Make* @microsoft/documentdb-engine-reviewers
-/internal/ @microsoft/documentdb-engine-reviewers
-/pg_documentdb/ @microsoft/documentdb-engine-reviewers
-/pg_documentdb_core/ @microsoft/documentdb-engine-reviewers
+*.csv @documentdb/documentdb-maintainers
+*.sql @documentdb/documentdb-maintainers
+Make* @documentdb/documentdb-maintainers
+/internal/ @documentdb/documentdb-maintainers
+/pg_documentdb/ @documentdb/documentdb-maintainers
+/pg_documentdb_core/ @documentdb/documentdb-maintainers

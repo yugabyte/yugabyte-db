@@ -32,7 +32,7 @@ SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 CSV_FILEPATH = f"{SCRIPT_PATH}/upstream_repositories.csv"
 
 
-def main(filepath):
+def main(filepath, *diff_options):
     with open(CSV_FILEPATH) as f:
         table = csv.DictReader(f)
         # The table is sorted.  Reverse the table so that longer local_path matches first.  For
@@ -73,7 +73,7 @@ def main(filepath):
         p1 = subprocess.Popen(["git", "-C", local_upstream_repo_path, "show",
                                f"{commit}:{upstream_filepath}"],
                               stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["diff", filepath, "-"],
+        p2 = subprocess.Popen(["diff", filepath, "-"] + list(diff_options),
                               stdin=p1.stdout,
                               stdout=subprocess.PIPE)
         p1.stdout.close()   # Allow p1 to receive a SIGPIPE if p2 exits.
@@ -128,4 +128,4 @@ def main(filepath):
 
 
 if __name__ == "__main__":
-    exit(main(sys.argv[1]))
+    exit(main(*sys.argv[1:]))

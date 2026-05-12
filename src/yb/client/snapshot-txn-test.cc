@@ -225,7 +225,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
   // Clock skew is modified by a random amount every 100ms.
   return std::thread([cluster, stop] {
     const server::SkewedClock::DeltaTime upperbound =
-        std::chrono::microseconds(GetAtomicFlag(&FLAGS_max_clock_skew_usec)) / 2;
+        std::chrono::microseconds(FLAGS_max_clock_skew_usec) / 2;
     const auto lowerbound = -upperbound;
     while (!stop->load(std::memory_order_acquire)) {
       auto num_servers = cluster->num_tablet_servers();
@@ -530,7 +530,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
         session->SetForceConsistentRead(ForceConsistentRead::kFalse);
 
         for (;;) {
-          const YBqlReadOpPtr op = table_.NewReadOp();
+          const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
           auto* const req = op->mutable_request();
           table_.AddColumns(table_.AllColumnNames(), req);
           req->set_limit(total_values / 2 + 10);
@@ -566,7 +566,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
           if (!op->response().has_paging_state()) {
             break;
           }
-          paging_state = op->response().paging_state();
+          paging_state = op->response().paging_state().ToGoogleProtobuf();
         }
 
         if (failed) {
@@ -818,7 +818,7 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
           if (op->succeeded()) {
             break;
           }
-          if (op->response().error_message().find("timed out after") == std::string::npos) {
+          if (!op->response().error_message().Contains("timed out after")) {
             ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
           }
         }

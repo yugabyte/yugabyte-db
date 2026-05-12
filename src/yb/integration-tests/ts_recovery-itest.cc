@@ -69,7 +69,7 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_tserver_flags = extra_tserver_flags;
   if (num_tablet_servers < 3) {
-    opts.extra_master_flags.push_back("--replication_factor=1");
+    opts.replication_factor = 1;
   }
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
@@ -80,7 +80,7 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
   const std::string crash_flag = "--TEST_fault_crash_during_log_replay=0.05";
   ASSERT_NO_FATALS(StartCluster({ crash_flag }));
 
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_num_write_threads(4);
   work.set_write_batch_size(1);
   work.set_write_timeout_millis(100);
@@ -136,7 +136,7 @@ TEST_F(TsRecoveryITest, CrashAfterLogSegmentPreAllocationg) {
 
   auto& tserver = *cluster_->tablet_server(0);
 
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_num_write_threads(4);
   work.set_write_timeout_millis(100);
   work.set_timeout_allowed(true);

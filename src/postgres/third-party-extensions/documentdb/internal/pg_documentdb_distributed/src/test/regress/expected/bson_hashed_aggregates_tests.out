@@ -1,0 +1,60 @@
+SET search_path TO documentdb_api,documentdb_api_catalog,documentdb_core;
+SET documentdb.next_collection_id TO 1430;
+SET documentdb.next_collection_index_id TO 1430;
+SET citus.next_shard_id TO 143000;
+-- Insert test data for hashed aggregates
+SELECT * FROM documentdb_api.insert_one('db', 'hash_aggTest', '{ "_id": 1, "key": 1, "value": "abc" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api.insert_one('db', 'hash_aggTest', '{ "_id": 2, "key": 2, "value": "def" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Enforce hashed aggregate plans
+BEGIN;
+SET LOCAL enable_hashagg = on;
+SET LOCAL enable_sort = off;
+SET LOCAL enable_incremental_sort = off;
+SET LOCAL documentdb.defaultcursorfirstpagebatchsize = 1;
+-- TEST each aggregate, TODO add more
+SELECT cursorPage->'cursor.firstBatch' FROM aggregate_cursor_first_page('db', '{ "aggregate": "hash_aggTest", "pipeline": [ { "$group": { "_id": "$key", "items": { "$push": "$$ROOT" } } } ], "cursor" : {  } }');
+                                                                      ?column?                                                                      
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "items" : [ { "_id" : { "$numberInt" : "1" }, "key" : { "$numberInt" : "1" }, "value" : "abc" } ] } ] }
+(1 row)
+
+ROLLBACK;
+-- Check if we are really are doing hash aggregations
+BEGIN;
+SET LOCAL enable_hashagg = on;
+SET LOCAL enable_sort = off;
+SET LOCAL enable_incremental_sort = off;
+SET LOCAL documentdb.defaultcursorfirstpagebatchsize = 1;
+EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "hash_aggTest", "pipeline": [ { "$group": { "_id": "$key", "items": { "$push": "$$ROOT" } } } ], "cursor" : {  } }');
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 134 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 134 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0 (actual rows=2 loops=1)
+               ->  HashAggregate (actual rows=2 loops=1)
+                     Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$key" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                     Batches: 1  Memory Usage: 24kB
+                     ->  Bitmap Heap Scan on documents_1430_143006 collection (actual rows=2 loops=1)
+                           Recheck Cond: (shard_key_value = '1430'::bigint)
+                           Heap Blocks: exact=1
+                           ->  Bitmap Index Scan on _id_ (actual rows=2 loops=1)
+                                 Index Cond: (shard_key_value = '1430'::bigint)
+(16 rows)
+
+ROLLBACK;

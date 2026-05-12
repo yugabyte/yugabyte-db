@@ -19,7 +19,6 @@
 
 #include "yb/gutil/bits.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/memory_monitor.h"
@@ -31,6 +30,7 @@
 #include "yb/tserver/server_main_util.h"
 
 #include "yb/util/background_task.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -227,6 +227,10 @@ std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker()
   return block_based_table_mem_tracker_;
 }
 
+std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_builder_mem_tracker() {
+  return block_based_table_builder_mem_tracker_;
+}
+
 std::shared_ptr<MemTracker> TabletMemoryManager::read_wal_mem_tracker() {
   return read_wal_mem_tracker_;
 }
@@ -252,6 +256,11 @@ void TabletMemoryManager::InitBlockCache(
       block_cache_size_bytes,
       "BlockBasedTable",
       server_mem_tracker_);
+
+  // We can also set block_based_table_builder_mem_tracker_ explicitly to track
+  // BlockBasedTableBuilder memory usage separately under BlockBasedTableBuilder->server->root.
+  // Otherwise, it is tracked under
+  // BlockBasedTableBuilder->[Regular|Intents]DB->tablet-<tablet_id>->Tablets_overhead->server->root
 
   if (block_cache_size_bytes != DB_CACHE_SIZE_CACHE_DISABLED) {
     options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
@@ -366,9 +375,10 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
       // we will schedule a second flush, which will unnecessarily stall writes for a short time.
       // This will not happen often, but should be fixed.
       if (tablet_to_flush) {
-        LOG(INFO) << LogPrefix(peer_to_flush) << "Flushing tablet " << tablet_to_flush->tablet_id()
-                  << ", which has oldest memstore write time of "
-                  << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
+        LOG(DETAIL) << LogPrefix(peer_to_flush) << "Flushing tablet "
+                    << tablet_to_flush->tablet_id()
+                    << ", which has oldest memstore write time of "
+                    << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
             tablet_to_flush->Flush(
                 tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
@@ -383,7 +393,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     }
     first_iteration = false;
   }
-  LOG(INFO) << Format(
+  LOG(DETAIL) << Format(
       "RocksDB reported write buffers size of $0 bytes now under Memstore global limit",
       memory_monitor_->memory_usage());
 }
@@ -428,7 +438,7 @@ int64 ComputeTabletOverheadLimit() {
 int32_t GetDbBlockCacheNumShardBits() {
   auto num_cache_shard_bits = FLAGS_db_block_cache_num_shard_bits;
   if (num_cache_shard_bits < 0) {
-    const auto num_cores = base::NumCPUs();
+    const auto num_cores = NumEffectiveCPUs();
     if (num_cores <= 16) {
       return rocksdb::kSharedLRUCacheDefaultNumShardBits;
     }

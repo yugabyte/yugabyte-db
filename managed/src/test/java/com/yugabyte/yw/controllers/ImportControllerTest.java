@@ -250,7 +250,9 @@ public class ImportControllerTest extends CommissionerBaseTest {
             + "/nodes/"
             + nodeDetailsMap.elements().next().get("nodeName").asText();
     editUnivBody.put("nodeAction", NodeActionType.REMOVE.name());
-    result = doRequestWithAuthTokenAndBody("PUT", nodeUrl, authToken, editUnivBody);
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", nodeUrl, authToken, editUnivBody));
     assertBadRequest(result, "Node actions cannot be performed on universe");
 
     // Delete should succeed.

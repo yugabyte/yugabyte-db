@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: cmd_copy
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/cmd_copy/
 type: docs
 ---
 

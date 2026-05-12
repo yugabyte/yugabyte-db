@@ -117,7 +117,9 @@
 #include "utils/relcache.h"
 #include "utils/yb_inheritscache.h"
 #include "utils/yb_tuplecache.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include <inttypes.h>
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
@@ -187,6 +189,8 @@ bool		criticalSharedRelcachesBuilt = false;
 static long relcacheInvalsReceived = 0L;
 
 static long YbNumRelCachePreloads = 0L;
+static long YbNumRelCacheInitFileRevalidated = 0L;
+static long YbNumRelCacheInitFileRevalidationFailed = 0L;
 
 /*
  * Set only when this is a pg auth backend that needs to rebuild the relcache
@@ -267,9 +271,6 @@ do { \
 	} \
 	else \
 		hentry->reldesc = (RELATION); \
-	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId) && \
-		RELATION->rd_rel->reltablespace >= FirstNormalObjectId) \
-		YBCRecordTablespaceOid(MyDatabaseId, RELATION->rd_id, RELATION->rd_rel->reltablespace); \
 } while(0)
 
 #define RelationIdCacheLookup(ID, RELATION) \
@@ -293,9 +294,6 @@ do { \
 	if (hentry == NULL) \
 		elog(WARNING, "failed to delete relcache entry for OID %u", \
 			 (RELATION)->rd_id); \
-	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId) && \
-		RELATION->rd_rel->reltablespace >= FirstNormalObjectId) \
-		YBCClearTablespaceOid(MyDatabaseId, RELATION->rd_id); \
 } while(0)
 
 /*
@@ -384,7 +382,7 @@ do { \
  * faked nailed shared relation entries from the previous attempt that failed,
  * so they need to be replaced by the real entries read from the init file.
  */
-#define YbRelationCacheReinsert(RELATION, shared)	\
+#define YbRelationCacheReinsert(RELATION, shared, yb_retry)	\
 do { \
 	Assert(!IsBootstrapProcessingMode()); \
 	RelIdCacheEnt *hentry; bool found; \
@@ -395,34 +393,44 @@ do { \
 	{ \
 		Relation _old_rel = hentry->reldesc; \
 		hentry->reldesc = (RELATION); \
-		/* We should only find fake nailed shared relation cache entries. */ \
-		Assert(_old_rel->rd_isnailed); \
+		/* We should only find fake nailed shared relation cache entries the first time. */ \
+		Assert(_old_rel->rd_isnailed || yb_retry); \
 		if (shared) \
 			Assert(_old_rel->rd_rel->relisshared); \
 		else \
 			Assert(!_old_rel->rd_rel->relisshared); \
-		Assert(_old_rel->rd_refcnt == 1); \
-		Assert(!OidIsValid(_old_rel->rd_rel->relowner)); \
+		if (_old_rel->rd_isnailed) \
+			Assert(_old_rel->rd_refcnt == 1); \
+		else \
+			Assert(_old_rel->rd_refcnt == 0); \
+		/*
+		 * On a retry, we may have already loaded an entry successfully last time.
+		 * In that case the entry is valid and therefore has a valid relowner.
+		 */ \
+		Assert(!OidIsValid(_old_rel->rd_rel->relowner) || yb_retry); \
 		/*
 		 * Calling RelationDecrementReferenceCount on a fake nailed
 		 * relation hits assertion failure because it expects a resource
 		 * owner, but a fake entry's relowner is InvalidOid. Simply set
 		 * rd_refcnt to 0 for RelationDestroyRelation to work.
 		 */ \
-		_old_rel->rd_refcnt = 0; \
+		if (_old_rel->rd_isnailed) \
+			_old_rel->rd_refcnt = 0; \
 		RelationDestroyRelation(_old_rel, false); \
-		/* The new relation must be valid nailed relation */ \
-		Assert(RELATION->rd_isnailed); \
+		/* The new relation must be valid relation */ \
+		Assert(RELATION->rd_isnailed || yb_retry); \
 		if (shared) \
 			Assert(RELATION->rd_rel->relisshared); \
 		else \
 			Assert(!RELATION->rd_rel->relisshared); \
-		Assert(RELATION->rd_refcnt == 1); \
+		if (RELATION->rd_isnailed) \
+			Assert(RELATION->rd_refcnt == 1); \
+		else \
+			Assert(RELATION->rd_refcnt == 0); \
 		Assert(OidIsValid(RELATION->rd_rel->relowner)); \
 	} \
 	else \
 		hentry->reldesc = (RELATION); \
-		/* No need to call YBCRecordTablespaceOid on a system relation */ \
 	Assert(RELATION->rd_id < FirstNormalObjectId); \
 } while(0)
 
@@ -460,8 +468,9 @@ static void AssertPendingSyncConsistency(Relation relation);
 static void AtEOXact_cleanup(Relation relation, bool isCommit);
 static void AtEOSubXact_cleanup(Relation relation, bool isCommit,
 								SubTransactionId mySubid, SubTransactionId parentSubid);
-static bool load_relcache_init_file(bool shared);
+static bool load_relcache_init_file(bool shared, bool yb_retry);
 static void write_relcache_init_file(bool shared);
+static void YbResetRelationCacheAfterPreloadFailure(void);
 static void write_item(const void *data, Size len, FILE *fp);
 
 static void formrdesc(const char *relationName, Oid relationReltype,
@@ -624,6 +633,9 @@ AllocateRelationDesc(Form_pg_class relp)
 	relation->rd_att = CreateTemplateTupleDesc(relationForm->relnatts);
 	/* which we mark as a reference-counted tupdesc */
 	relation->rd_att->tdrefcount = 1;
+
+	/* YB: See struct field's comment for explanation. */
+	relation->belongs_to_yb_system_db = false;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -1374,6 +1386,7 @@ YbIsNonAlterableRelation(Relation rel)
 typedef struct YbUpdateRelationCacheState
 {
 	bool		sys_relations_update_required;
+	bool		sys_relations_only;
 	bool		has_partitioned_tables;
 	bool		has_relations_with_trigger;
 	bool		has_relations_with_row_security;
@@ -1408,6 +1421,8 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
  *  the second phase. This is because updating the partition information requires attribute
  *  information to be loaded for pg_partitioned_table, pg_type etc.
  *
+ *  If YbUseMinimalCatalogCachePreload is in operation, this will only prepare
+ *  relcache entries for system relations because only those entries are prefetched.
  *  Note: We assume that any error happening here will fatal so as to not end
  *  up with partial information in the cache.
  */
@@ -1430,6 +1445,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 		Oid			relid = relp->oid;
+
+		if (state->sys_relations_only && !IsSystemClass(relid, relp))
+			continue;
 
 		++num_tuples;
 
@@ -1550,6 +1568,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		/* make sure relation is marked as having no open file yet */
 		relation->rd_smgr = NULL;
 
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Insert relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), relid);
 		RelationCacheInsert(relation, true);
 
 		/* It's fully valid */
@@ -2110,7 +2131,9 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
-	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
+	/* YB: In replica identity CHANGE, we always get the primary key of the row. */
+	if ((replident == REPLICA_IDENTITY_DEFAULT ||
+		 replident == YB_REPLICA_IDENTITY_CHANGE) && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
 	else if (replident == REPLICA_IDENTITY_INDEX && OidIsValid(candidateIndex))
 		relation->rd_replidindex = candidateIndex;
@@ -2219,7 +2242,9 @@ YbRaiseInvalidDBConnectionError()
 	ereport(FATAL,
 			(errcode(ERRCODE_CONNECTION_FAILURE),
 			 errmsg("could not reconnect to database"),
-			 errhint("Database might have been dropped by another user.")));
+			 errhint("Database may have been dropped and recreated. "
+					 "Ensure your client connection pool or metadata cache "
+					 "is refreshed to pick up the new database OID.")));
 }
 
 typedef enum YbPFetchTable
@@ -2757,7 +2782,8 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 						  YbRunWithPrefetcherContext *ctx)
 {
 	if (yb_debug_log_catcache_events)
-		elog(LOG, "Updating relcache");
+		elog(LOG, "Updating relcache%s",
+			 (state->sys_relations_only || YbUseMinimalCatalogCachesPreload()) ? " (system-only)" : "");
 
 	YBLoadRelations(state);
 
@@ -2803,7 +2829,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 }
 
 static YbcStatus
-YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
+YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx, bool sys_relations_only)
 {
 	MemoryContext own_mem_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													  "UpdateRelationCacheContext",
@@ -2813,6 +2839,7 @@ YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
 	YbUpdateRelationCacheState state = {0};
 
 	YbInitUpdateRelationCacheState(&state);
+	state.sys_relations_only = sys_relations_only;
 	YbcStatus	status = YbUpdateRelationCacheImpl(&state, ctx);
 
 	YbCleanupUpdateRelationCacheState(&state);
@@ -2955,13 +2982,28 @@ YbGetRelCachePreloads()
 	return YbNumRelCachePreloads;
 }
 
+long
+YbGetRelCacheInitFileRevalidated()
+{
+	return YbNumRelCacheInitFileRevalidated;
+}
+
+long
+YbGetRelCacheInitFileRevalidationFailed()
+{
+	return YbNumRelCacheInitFileRevalidationFailed;
+}
+
 static YbcStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
 	YbNumRelCachePreloads++;
-	if (Log_connections || *(YBCGetGFlags()->ysql_enable_relcache_init_optimization))
-		elog(LOG, "Preloading relcache for database %u, session user id: %u",
-			 MyDatabaseId, GetSessionUserId());
+	int log_level =
+		(Log_connections ||
+		 yb_debug_log_catcache_events ||
+		 *(YBCGetGFlags()->ysql_enable_relcache_init_optimization)) ? LOG : DEBUG1;
+	elog(log_level, "Preloading relcache for database %u, session user id: %u, yb_read_time: %" PRIu64,
+		 MyDatabaseId, GetSessionUserId(), yb_read_time);
 
 	/*
 	 * During relcache loading postgres reads the data from multiple sys tables.
@@ -3033,9 +3075,50 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_ATTRIBUTE);
 	YbFillCaches(prefetcher);
 
-	status = YbUpdateRelationCache(ctx);
-	if (status)
-		return status;
+	{
+		MemoryContext saved_context = CurrentMemoryContext;
+
+		PG_TRY();
+		{
+			status = YbUpdateRelationCache(ctx, false /* sys_relations_only */ );
+		}
+		PG_CATCH();
+		{
+			MemoryContextSwitchTo(saved_context);
+
+			/*
+			 * Only attempt recovery during connection setup (InitProcessing).
+			 * In normal operation (e.g. DDL-triggered relcache refresh),
+			 * propagate the error as-is.
+			 */
+			if (!IsInitProcessingMode())
+				PG_RE_THROW();
+
+			ErrorData  *edata = CopyErrorData();
+
+			if (edata->elevel >= FATAL)
+				PG_RE_THROW();
+
+			FlushErrorState();
+
+			ereport(WARNING,
+					(errcode(edata->sqlerrcode),
+					 errmsg("relcache preload failed, retrying with "
+							"system-only mode: %s",
+							edata->message),
+					 edata->detail ? errdetail("%s", edata->detail) : 0,
+					 edata->context ? errcontext("%s", edata->context) : 0));
+			FreeErrorData(edata);
+
+			YbResetRelationCacheAfterPreloadFailure();
+
+			status = YbUpdateRelationCache(ctx, true /* sys_relations_only */ );
+		}
+		PG_END_TRY();
+
+		if (status)
+			return status;
+	}
 
 	/*
 	 * DB connection is not valid anymore in case:
@@ -3066,6 +3149,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+	elog(log_level, "Preloading relcache complete");
 	return NULL;
 }
 
@@ -3102,6 +3186,17 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTH_MEMBERS);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DATABASE);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS);
+
+	/*
+	 * YB: Prefetch the LCV table for AP specifically, as YbPrefetchRequiredData
+	 * is called by AP in postgres.c.
+	 * When called by regular backends in postinit.c via
+	 * RelationCacheInitializePhase3, the LCV has already been read from the
+	 * systable, so no need to prefetch it.
+	 */
+	if (YbIsAuthPassthroughInProgress(MyProcPort))
+		YbTryRegisterLogicalClientVersionTableForPrefetching();
+
 	status = YbPrefetch(prefetcher);
 	if (status)
 		return status;
@@ -3415,7 +3510,7 @@ retry:
 
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
-		elog(LOG, "Rebuilding relcache entry for %s (oid %d) took %ld us",
+		elog(LOG, "Building relcache entry %p for %s (oid %u) took %ld us", relation,
 			 RelationGetRelationName(relation), RelationGetRelid(relation),
 			 INSTR_TIME_GET_MICROSEC(duration));
 	}
@@ -4152,6 +4247,9 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 */
 	RelationCacheInsert(relation, false);
 
+	/* YB: See struct field's comment for explanation. */
+	relation->belongs_to_yb_system_db = false;
+
 	/* It's fully valid */
 	relation->rd_isvalid = true;
 }
@@ -4701,6 +4799,10 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 */
 	if (!rebuild)
 	{
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Delete relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), RelationGetRelid(relation));
+
 		/* Remove it from the hash table */
 		RelationCacheDelete(relation);
 
@@ -4803,6 +4905,10 @@ RelationClearRelation(Relation relation, bool rebuild)
 			 */
 			elog(ERROR, "relation %u deleted while still in use", save_relid);
 		}
+
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Rebuild relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), save_relid);
 
 		keep_tupdesc = equalTupleDescs(relation->rd_att, newrel->rd_att);
 		keep_rules = equalRuleLocks(relation->rd_rules, newrel->rd_rules);
@@ -5214,6 +5320,43 @@ YbRelationCacheInvalidate()
 		Assert(!relation->rd_isnailed);
 		/* Delete this entry immediately */
 		RelationClearRelation(relation, false);
+	}
+}
+
+/*
+ * YbResetRelationCacheAfterPreloadFailure — tear down all non-nailed relcache
+ * entries after a failed relcache preload so that a retry can
+ * re-populate with system-only relations.
+ *
+ */
+static void
+YbResetRelationCacheAfterPreloadFailure(void)
+{
+	HASH_SEQ_STATUS status;
+	RelIdCacheEnt *idhentry;
+
+	hash_seq_init(&status, RelationIdCache);
+
+	while ((idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Relation	relation = idhentry->reldesc;
+
+		if (relation->rd_isnailed)
+		{
+			Assert(relation->rd_refcnt <= 2);
+			if (relation->rd_refcnt == 2)
+				RelationDecrementReferenceCount(relation);
+			continue;
+		}
+
+		RelationCloseSmgr(relation);
+
+		Assert(relation->rd_refcnt <= 1);
+		if (relation->rd_refcnt == 1)
+			RelationDecrementReferenceCount(relation);
+
+		RelationCacheDelete(relation);
+		RelationDestroyRelation(relation, false);
 	}
 }
 
@@ -5914,6 +6057,9 @@ RelationBuildLocalRelation(const char *relname,
 	 */
 	EOXactListAdd(rel);
 
+	/* YB: See struct field's comment for explanation. */
+	rel->belongs_to_yb_system_db = false;
+
 	/* It's fully valid */
 	rel->rd_isvalid = true;
 
@@ -5942,7 +6088,8 @@ RelationBuildLocalRelation(const char *relname,
  */
 void
 RelationSetNewRelfilenode(Relation relation, char persistence,
-						  bool yb_copy_split_options)
+						  bool yb_copy_split_options,
+						  YbOptSplit *preserved_index_split_options)
 {
 	Oid			newrelfilenode;
 	Relation	pg_class;
@@ -6018,7 +6165,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 * an implicit part of the base table.
 			 */
 			YbIndexSetNewRelfileNode(relation, newrelfilenode,
-									 yb_copy_split_options);
+									 yb_copy_split_options, preserved_index_split_options);
 		else if (relation->rd_rel->relkind == RELKIND_RELATION ||
 				 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		{
@@ -6285,7 +6432,7 @@ RelationCacheInitializePhase2(void)
 	 * Try to load the shared relcache cache file.  If unsuccessful, bootstrap
 	 * the cache with pre-made descriptors for the critical shared catalogs.
 	 */
-	if (!load_relcache_init_file(true))
+	if (!load_relcache_init_file(true, false /* yb_retry */ ))
 	{
 		formrdesc("pg_database", DatabaseRelation_Rowtype_Id, true,
 				  Natts_pg_database, Desc_pg_database);
@@ -6314,6 +6461,167 @@ RelationCacheInitializePhase2(void)
 	}
 
 	MemoryContextSwitchTo(oldcxt);
+}
+
+static void
+YbTriggerInternalRelcacheBuild()
+{
+	const char *dbname = YBCGetDatabaseName(MyDatabaseId);
+	MemoryContext oldcxt;
+
+	int			i;
+	for (i = 0; i < 20; i++)
+	{
+		/* Trigger an internal connection to rebuild the relcache file. */
+		HandleYBStatus(YBCTriggerRelcacheInitConnection(dbname));
+
+		/*
+		 * Reload the relcache init files that are newly generated by the
+		 * internal connection.
+		 */
+		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+		if (load_relcache_init_file(true /* shared */, true /* yb_retry */ ) &&
+			load_relcache_init_file(false /* shared */, true /* yb_retry */ ))
+			return;
+
+		/*
+		 * Sometimes the newly generated relcache init files are already
+		 * stale. This can happen when this call to YBCTriggerRelcacheInitConnection
+		 * finds that the tserver already has an internal connection in progress
+		 * so it will not trigger another new one. But since the in progress internal
+		 * connection has already started earlier, it might have written a stale
+		 * relcache init file when there are back-to-back DDLs that have increased
+		 * catalog version multiple times.
+		 */
+		elog(LOG, "retry to load relcache init file for database %u, attempt: %d",
+			 MyDatabaseId, i + 1);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	elog(ERROR, "failed to load relcache init file for database %u", MyDatabaseId);
+}
+
+static bool
+YbTryRevalidateRelcacheFile(uint64_t stored_version, uint64_t catalog_version, int *reason)
+{
+	if (!YbIsInvalidationMessageEnabled())
+	{
+		*reason = 1;
+		return false;
+	}
+	if (IsBinaryUpgrade)
+	{
+		/*
+		 * IsBinaryUpgrade=true indicates we are doing catalog restore during a
+		 * major version update. In this case local tserver is actually yb-master
+		 * which has not implemented YBCGetTserverCatalogMessageLists.
+		 */
+		*reason = 2;
+		return false;
+	}
+
+	if (catalog_version - stored_version >
+		*YBCGetGFlags()->ysql_max_invalidation_message_queue_size)
+	{
+		/* We cannot get all the invalidation messages needed for revalidation. */
+		*reason = 3;
+		return false;
+	}
+
+	YbcCatalogMessageLists message_lists = {0};
+	uint32_t    num_catalog_versions = catalog_version - stored_version;
+	Assert(OidIsValid(MyDatabaseId));
+	/*
+	 * Let the new connection waits for the local tserver's shared memory catalog
+	 * version to catch up, making the invalidation messages more likely to be
+	 * available.
+	 */
+	YbWaitForSharedCatalogVersionToCatchup(catalog_version);
+	HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
+													stored_version,
+													num_catalog_versions,
+													&message_lists));
+	if (message_lists.num_lists == 0)
+	{
+		*reason = 4;
+		/* No match found, incremental refresh of relcache not possible. */
+		return false;
+	}
+
+	for (YbcCatalogMessageList *msglist = message_lists.message_lists;
+		 msglist < message_lists.message_lists + message_lists.num_lists;
+		 ++msglist)
+	{
+		/*
+		 * Each msglist represents the invalidation messages associated with
+		 * a new catalog version. Check the message list for the current new
+		 * catalog version at invalMessages.
+		 */
+		const SharedInvalidationMessage *invalMessages =
+			(const SharedInvalidationMessage *) msglist->message_list;
+
+		/*
+		 * We do not have the invalidation messages for this new version. This
+		 * can happen if we only incremented the catalog version without providing
+		 * the invalidation messages (UPDATE pg_yb_catalog_version SET current_version =
+		 * current_version + 1), or a DDL generated too many invalidation messages
+		 * that exceeded yb_max_num_invalidation_messages.
+		 */
+		if (!invalMessages)
+		{
+			*reason = 5;
+			return false;
+		}
+
+		/*
+		 * We have an empty message which means the new version does not invalidate
+		 * any cache at all. Just skip it.
+		 */
+		if (msglist->num_bytes == 0)
+			continue;
+
+		/*
+		 * Sanity check, this can happen when the messages are generated by a
+		 * different release. In this case we do not understand the new
+		 * messages.
+		 */
+		if (msglist->num_bytes % sizeof(SharedInvalidationMessage) != 0)
+		{
+			*reason = 6;
+			return false;
+		}
+
+		size_t		nmsgs = msglist->num_bytes / sizeof(SharedInvalidationMessage);
+
+		for (size_t i = 0; i < nmsgs; ++i)
+		{
+			const SharedInvalidationMessage *msg = invalMessages + i;
+			if (!YbCanApplyMessage(msg))
+			{
+				*reason = 7;
+				return false;
+			}
+			/* Only SHAREDINVALRELCACHE_ID can invalidate relcache. */
+			if (msg->id != SHAREDINVALRELCACHE_ID)
+				continue;
+			/* The entire relcache is invalidated. */
+			if (msg->rc.relId == InvalidOid)
+			{
+				*reason = 8;
+				return false;
+			}
+			/* A relation in the relcache init file is invalidated. */
+			if (RelationIdIsInInitFile(msg->rc.relId))
+			{
+				*reason = 9;
+				return false;
+			}
+		}
+	}
+	/*
+	 * No need to set *reason which is only meaningful when the function
+	 * returns false.
+	 */
+	return true;
 }
 
 /*
@@ -6355,7 +6663,7 @@ RelationCacheInitializePhase3(void)
 	if (YBIsDBCatalogVersionMode())
 	{
 		/*
-		 * load_relcache_init_file(true) has been called earlier when
+		 * load_relcache_init_file(true, false) has been called earlier when
 		 * MyDatabaseId is not known yet. That makes Postgres think
 		 * that the shared relcache init file does not exist and therefore
 		 * it sets needNewCacheFile to true.
@@ -6363,11 +6671,12 @@ RelationCacheInitializePhase3(void)
 		Assert(needNewCacheFile);
 
 		/*
-		 * Now that we know MyDatabaseId, call load_relcache_init_file(true)
+		 * Now that we know MyDatabaseId, call load_relcache_init_file(true, false)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) && !YbCatalogPreloadRequired();
+		needNewCacheFile = !load_relcache_init_file(true, false /* yb_retry */ ) &&
+						   !YbCatalogPreloadRequired();
 	}
 
 	/*
@@ -6376,7 +6685,7 @@ RelationCacheInitializePhase3(void)
 	 * catalogs.
 	 */
 	if (IsBootstrapProcessingMode() ||
-		!load_relcache_init_file(false))
+		!load_relcache_init_file(false, false /* yb_retry */ ))
 	{
 		needNewCacheFile = true;
 
@@ -6457,21 +6766,7 @@ RelationCacheInitializePhase3(void)
 			!yb_is_internal_connection &&
 			!IsBinaryUpgrade)
 		{
-			const char *dbname = YBCGetDatabaseName(MyDatabaseId);
-
-			/* Trigger an internal connection to rebuild the relcache file. */
-			HandleYBStatus(YBCTriggerRelcacheInitConnection(dbname));
-
-			/*
-			 * Reload the relcache init files that are newly generated by the
-			 * internal connection.
-			 */
-			oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-			if (!load_relcache_init_file(true) || !load_relcache_init_file(false))
-				elog(ERROR, "failed to load relcache init file for database %u",
-					 MyDatabaseId);
-			MemoryContextSwitchTo(oldcxt);
-
+			YbTriggerInternalRelcacheBuild();
 			/* Resume preloading of the core catalog tables only. */
 			YbPrefetchRequiredData(false);
 
@@ -6741,6 +7036,12 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	LockRelationOid(indexoid, AccessShareLock);
 	if (IsYugaByteEnabled())
 	{
+		/*
+		 * The prefetcher must be started to ensure we do not accept any
+		 * invalidation messages which can remove relcache entries that we
+		 * have just built.
+		 */
+		Assert(YBCIsSysTablePrefetchingStarted());
 		RelationIdCacheLookup(indexoid, ird);
 	}
 	else
@@ -7314,7 +7615,9 @@ RelationGetIndexList(Relation relation)
 	oldlist = relation->rd_indexlist;
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
-	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
+	/* YB: In replica identity CHANGE, we always get the primary key of the row. */
+	if ((replident == REPLICA_IDENTITY_DEFAULT ||
+		 replident == YB_REPLICA_IDENTITY_CHANGE) && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
 	else if (replident == REPLICA_IDENTITY_INDEX && OidIsValid(candidateIndex))
 		relation->rd_replidindex = candidateIndex;
@@ -7652,6 +7955,9 @@ RelationGetIndexPredicate(Relation relation)
  *
  * The returned result is palloc'd in the caller's memory context and should
  * be bms_free'd when not needed anymore.
+ *
+ * TODO(kramanathan): Cache the results of this computation at planning
+ * time to avoid repeated work. (#29126)
  */
 void
 YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
@@ -7666,9 +7972,12 @@ YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 	if (isnull)
 		return;
 
-	Node	   *indexNode = stringToNode(TextDatumGetCString(datum));
+	char *datum_str = TextDatumGetCString(datum);
+	Node	   *indexNode = stringToNode(datum_str);
 
 	pull_varattnos_min_attr(indexNode, 1, indexattrs, attr_offset + 1);
+
+	pfree((void *) datum_str);
 }
 
 bool
@@ -8593,7 +8902,7 @@ errtableconstraint(Relation rel, const char *conname)
  * NOTE: we assume we are already switched into CacheMemoryContext.
  */
 static bool
-load_relcache_init_file(bool shared)
+load_relcache_init_file(bool shared, bool yb_retry)
 {
 	FILE	   *fp;
 	char		initfilename[MAXPGPATH];
@@ -8607,6 +8916,7 @@ load_relcache_init_file(bool shared)
 	int			i;
 	uint64_t	ybc_stored_cache_version = 0;
 	bool		yb_stale_version = false;
+	bool		yb_need_update_relcache_file = false;
 
 	/*
 	 * YB: Disable shared init file in per database catalog version mode when
@@ -8679,11 +8989,34 @@ load_relcache_init_file(bool shared)
 		 * If we already have a newer cache version (e.g. from reading the
 		 * shared init file) or master has newer catalog version then this file is too old.
 		 */
-		if (YbGetCatalogCacheVersion() > ybc_stored_cache_version)
+		const uint64_t catalog_cache_version = YbGetCatalogCacheVersion();
+		if (catalog_cache_version > ybc_stored_cache_version)
 		{
-			yb_stale_version = true;
-			unlink_initfile(initfilename, ERROR);
-			goto read_failed;
+			/* only meaningful when YbTryRevalidateRelcacheFile returns false. */
+			int reason = 0;
+			const bool revalidated =
+				YbTryRevalidateRelcacheFile(ybc_stored_cache_version, catalog_cache_version, &reason);
+			if (revalidated)
+			{
+				YbNumRelCacheInitFileRevalidated++;
+				elog(DEBUG1, "Revalidated %srelcache init file for database %u from version %" PRIu64 " to %" PRIu64,
+					 (shared ? "shared " : ""),
+					 MyDatabaseId, ybc_stored_cache_version, catalog_cache_version);
+				ybc_stored_cache_version = catalog_cache_version;
+				yb_need_update_relcache_file = true;
+			}
+			else
+			{
+				YbNumRelCacheInitFileRevalidationFailed++;
+				elog(LOG,
+					 "Cannot revalidate %srelcache init file for database %u from version %" PRIu64 " to %" PRIu64
+					 ", reason: %d",
+					 (shared ? "shared " : ""),
+					 MyDatabaseId, ybc_stored_cache_version, catalog_cache_version, reason);
+				yb_stale_version = true;
+				unlink_initfile(initfilename, ERROR);
+				goto read_failed;
+			}
 		}
 	}
 
@@ -9038,7 +9371,13 @@ load_relcache_init_file(bool shared)
 	for (relno = 0; relno < num_rels; relno++)
 	{
 		if (YBIsDBCatalogVersionMode())
-			YbRelationCacheReinsert(rels[relno], shared);
+		{
+			Relation relation = rels[relno];
+			if (yb_debug_log_catcache_events)
+				elog(LOG, "Reinsert relcache entry %p for %s (oid %u)", relation,
+					 RelationGetRelationName(relation), RelationGetRelid(relation));
+			YbRelationCacheReinsert(rels[relno], shared, yb_retry);
+		}
 		else
 			RelationCacheInsert(rels[relno], false);
 	}
@@ -9064,6 +9403,8 @@ load_relcache_init_file(bool shared)
 		criticalSharedRelcachesBuilt = true;
 	else
 		criticalRelcachesBuilt = true;
+	if (yb_need_update_relcache_file)
+		write_relcache_init_file(shared);
 	return true;
 
 	/*

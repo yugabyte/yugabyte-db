@@ -7,8 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Field, FormikProps } from 'formik';
 import { FC, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { Field, FormikProps } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { get } from 'lodash';
@@ -21,6 +22,8 @@ import { YBModalForm } from '../../common/forms';
 import { YBButton, YBControlledNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { ThrottleParameters, ThrottleParamsVal } from '../common/IBackup';
+import { useRefetchTasks } from '@app/redesign/features/tasks/TaskUtils';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '@app/actions/universe';
 import * as Yup from 'yup';
 
 import { toast } from 'react-toastify';
@@ -43,6 +46,15 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   const [showRestoreDefaultModal, setShowRestoreDefaultModal] = useState(false);
 
   const queryClient = useQueryClient();
+  const dispatch = useDispatch();
+  const refetchTasks = useRefetchTasks();
+
+  const refreshCurrentUniverse = () => {
+    dispatch(fetchUniverseInfo(currentUniverseUUID) as any).then((response: any) => {
+      dispatch(fetchUniverseInfoResponse(response.payload));
+      refetchTasks();
+    });
+  };
 
   const { data: throttleParameters, isLoading } = useQuery(
     ['throttle_parameters', currentUniverseUUID],
@@ -61,8 +73,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
       setThrottleParameters(currentUniverseUUID, values),
     {
       onSuccess: () => {
-        toast.success(`Parameters updated successfully!.`);
+        toast.success(`Parameters are being updated!.`);
         queryClient.invalidateQueries(['throttle_parameters', currentUniverseUUID]);
+        refreshCurrentUniverse();
         onHide();
       },
       onError: (err: any) => {
@@ -73,8 +86,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
 
   const resetParameters = useMutation(() => resetThrottleParameterToDefaults(currentUniverseUUID), {
     onSuccess: () => {
-      toast.success(`Parameters restored to defaults`);
+      toast.success(`Parameters are being reset to their default values.`);
       queryClient.invalidateQueries(['throttle_parameters', currentUniverseUUID]);
+      refreshCurrentUniverse();
       onHide();
     },
     onError: (err: any) => {
@@ -233,7 +247,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
               currentValue: convertMBToBytes(values.disk_write_bytes_per_sec.currentValue)
             }
           };
-          
+
           configureThrottleParameters.mutateAsync(payload);
         }}
         render={(formikProps: FormikProps<ThrottleParameters['throttleParamsMap']>) => {
@@ -317,9 +331,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   <Row>
                     <Col lg={12} className="no-padding">
                       Disk read bytes per second to throttle disk usage during backups
-                        <span className="text-secondary">
-                          - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}
-                        </span>
+                      <span className="text-secondary">
+                        - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}
+                      </span>
                     </Col>
                     <Col lg={5} className="no-padding">
                       <Field

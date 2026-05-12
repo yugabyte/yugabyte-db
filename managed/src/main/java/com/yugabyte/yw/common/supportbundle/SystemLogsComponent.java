@@ -92,7 +92,6 @@ public class SystemLogsComponent implements SupportBundleComponent {
       }
     } catch (Exception e) {
       log.error("Error while collecting system logs: ", e);
-      e.printStackTrace();
     }
   }
 

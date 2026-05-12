@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -73,6 +74,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -155,6 +157,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(defaultRegion, defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
+    defaultUserIntent.dedicatedNodes = true;
     defaultUserIntent.masterGFlags = new HashMap<>();
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
@@ -220,40 +223,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     }
     double burstVal = 1.2;
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(defaultProvider);
-
-    Map<String, Object> storageOverrides =
-        (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
-    if (defaultUserIntent.deviceInfo != null) {
-      Map<String, Object> tserverDiskSpecs =
-          (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
-      Map<String, Object> masterDiskSpecs =
-          (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
-
-      if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
-      }
-      if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
-      }
-      if (defaultUserIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
-      }
-
-      // For master
-      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
-      }
-      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
-      }
-      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
-        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
-      }
-      storageOverrides.put("tserver", tserverDiskSpecs);
-      storageOverrides.put("master", masterDiskSpecs);
-    }
 
     expectedOverrides.put(
         "replicas",
@@ -353,7 +322,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverGFlags.put("placement_zone", defaultAZ.getCode());
     tserverGFlags.put(
         "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
-    tserverGFlags.put("start_redis_proxy", "true");
+    tserverGFlags.put("start_redis_proxy", String.valueOf(defaultUserIntent.enableYEDIS));
     gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
@@ -422,6 +391,45 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("enabled", false);
     ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
+
+    Map<String, Object> storageOverrides =
+        (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
+    if (defaultUserIntent.deviceInfo != null) {
+      Map<String, Object> tserverDiskSpecs =
+          (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
+      Map<String, Object> masterDiskSpecs =
+          (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
+
+      if (defaultUserIntent.deviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.deviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.deviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      }
+
+      // For master
+      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
+      }
+      storageOverrides.put("tserver", tserverDiskSpecs);
+      storageOverrides.put("master", masterDiskSpecs);
+    }
+
+    Map<String, Map<String, Integer>> stsIndex = new HashMap<>();
+    stsIndex.put("tserver", ImmutableMap.of("start", 0, "end", 0));
+    stsIndex.put("master", ImmutableMap.of("start", 0, "end", 0));
+    expectedOverrides.put("stsIndex", stsIndex);
 
     expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
@@ -649,7 +657,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -700,7 +708,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -750,7 +758,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -1285,6 +1293,107 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallNewlyAddedAZUsesNewDeviceInfo() throws IOException {
+    // Saved universe is single AZ (defaultAZ in defaultRegion). Add a new
+    // region/AZ to the provider that simulates the multi-AZ migration target.
+    AvailabilityZone newAZ =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-2", "PlacementAZ 2", "subnet-2");
+    Map<String, String> newAzConfig = new HashMap<>();
+    newAzConfig.put("KUBECONFIG", "test");
+    newAZ.updateConfig(newAzConfig);
+    newAZ.save();
+
+    // Build the new (task) UniverseDetails that contains:
+    //  - a new userIntent with per-AZ deviceInfo overrides for the newly added AZ
+    //  - a placementInfo containing both AZs
+    UniverseDefinitionTaskParams taskUniverseDetails =
+        Json.fromJson(
+            Json.toJson(defaultUniverse.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        taskUniverseDetails.getPrimaryCluster().userIntent;
+    newUserIntent.regionList = ImmutableList.of(defaultRegion.getUuid());
+
+    DeviceInfo newAzTserverDeviceInfo = new DeviceInfo();
+    newAzTserverDeviceInfo.numVolumes = 3;
+    newAzTserverDeviceInfo.volumeSize = 200;
+    newAzTserverDeviceInfo.storageClass = "new-tserver-sc";
+
+    DeviceInfo newAzMasterDeviceInfo = new DeviceInfo();
+    newAzMasterDeviceInfo.numVolumes = 2;
+    newAzMasterDeviceInfo.volumeSize = 150;
+    newAzMasterDeviceInfo.storageClass = "new-master-sc";
+
+    newUserIntent.updateUserIntentOverrides(
+        uIO ->
+            uIO.updateAZOverride(
+                newAZ.getUuid(),
+                azO -> {
+                  azO.updatePerProcess(
+                      ServerType.TSERVER, perProc -> perProc.setDeviceInfo(newAzTserverDeviceInfo));
+                  azO.updatePerProcess(
+                      ServerType.MASTER, perProc -> perProc.setDeviceInfo(newAzMasterDeviceInfo));
+                }));
+
+    PlacementInfo newPi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(defaultAZ.getUuid(), newPi);
+    PlacementInfoUtil.addPlacementZone(newAZ.getUuid(), newPi);
+    taskUniverseDetails.getPrimaryCluster().placementInfo = newPi;
+
+    // Initialize the executor targeted at the newly added AZ.
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix + "-az-2";
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = taskUniverseDetails;
+    params.placementInfo = newPi;
+    params.azCode = newAZ.getCode();
+    params.namespace = "demo-ns-az-2";
+    // Non-empty masterAddresses signals an AZ-scoped (multi-AZ) deployment.
+    params.masterAddresses = "fake-master:7100";
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            expectedOverrideFile.capture());
+
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // The storage block must reflect the new userIntent overrides for the
+    // newly added AZ, NOT the saved userIntent's defaults.
+    Map<String, Object> storage = (Map<String, Object>) overrides.get("storage");
+    assertNotNull(storage);
+    Map<String, Object> tserverDiskSpecs = (Map<String, Object>) storage.get("tserver");
+    Map<String, Object> masterDiskSpecs = (Map<String, Object>) storage.get("master");
+
+    assertEquals(newAzTserverDeviceInfo.numVolumes, tserverDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzTserverDeviceInfo.volumeSize), tserverDiskSpecs.get("size"));
+    assertEquals(newAzTserverDeviceInfo.storageClass, tserverDiskSpecs.get("storageClass"));
+
+    assertEquals(newAzMasterDeviceInfo.numVolumes, masterDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzMasterDeviceInfo.volumeSize), masterDiskSpecs.get("size"));
+    assertEquals(newAzMasterDeviceInfo.storageClass, masterDiskSpecs.get("storageClass"));
+  }
+
+  @Test
   public void testHelmDelete() {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_DELETE, /* set namespace */ true);
@@ -1373,7 +1482,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         createExecutor(
             KubernetesCommandExecutor.CommandType.POD_INFO,
             defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
-    assertEquals(3, defaultUniverse.getNodes().size());
+    assertEquals(6, defaultUniverse.getNodes().size());
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1)).getPodInfos(azConfig, nodePrefix, namespace);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

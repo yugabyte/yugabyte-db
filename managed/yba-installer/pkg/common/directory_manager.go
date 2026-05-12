@@ -199,6 +199,10 @@ func GetYbdbPackagePath() string {
 	return GetFileMatchingGlobOrFatal(ybdbPackageGlob)
 }
 
+func GetPACollectorPackagePath() string {
+	return GetFileMatchingGlobOrFatal(PACollectorPackageGlob)
+}
+
 // Gets 0 or 1 matches of YBDB package path.
 // Fatal error if more than 1 match.
 func MaybeGetYbdbPackagePath() string {
@@ -241,8 +245,28 @@ func GetSelfSignedCAKeyPath() string {
 func GetYBAInstallerDataDir() string {
 	return filepath.Join(GetDataRoot(), "yba-installer")
 }
+
 func GetSelfSignedCertsDir() string {
 	return filepath.Join(GetYBAInstallerDataDir(), "certs")
+}
+
+// GetPerfAdvisorDataDir returns the perf-advisor directory under baseInstall (config, certs, etc.).
+func GetPerfAdvisorDataDir() string {
+	return filepath.Join(GetDataRoot(), "perf-advisor")
+}
+
+// GetPerfAdvisorCertsDir returns the directory for Perf Advisor TLS certs (e.g. tls.p12).
+func GetPerfAdvisorCertsDir() string {
+	return filepath.Join(GetPerfAdvisorDataDir(), "certs")
+}
+
+// GetPlatformServerCertPaths returns the paths to the platform server cert and key (YBA TLS).
+// Uses viper server_cert_path/server_key_path when set, otherwise self-signed cert paths.
+func GetPlatformServerCertPaths() (certPath, keyPath string) {
+	if k := viper.GetString("server_key_path"); k != "" {
+		return viper.GetString("server_cert_path"), k
+	}
+	return GetSelfSignedServerCertPath(), GetSelfSignedServerKeyPath()
 }
 
 func GetReplicatedBaseDir() string {

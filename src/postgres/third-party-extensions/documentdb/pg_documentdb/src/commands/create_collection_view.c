@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/create_collection_view.c
+ * src/commands/create_collection_view.c
  *
  * Implementation of view and collection creation functions.
  *
@@ -40,22 +40,6 @@ typedef struct CreateSpec
 
 	bool capped;
 
-	/* timeseries */
-
-	/* expireAfterSeconds */
-
-	/* clusteredIndex */
-
-	/* changeStreamPreAndPostImages */
-
-	/* autoIndexId */
-
-	/* size (max_size) */
-
-	/* max: (max_documents) */
-
-	/* storageEngine */
-
 	/* validator */
 	const bson_value_t *validator;
 
@@ -65,24 +49,14 @@ typedef struct CreateSpec
 	/* validationAction */
 	char *validationAction;
 
-	/* indexOptionDefaults */
-
 	/* viewOn */
 	char *viewOn;
 
 	/* pipeline */
 	bson_value_t pipeline;
 
-	/* collation */
-
-	/* writeConcern */
-
-	/* encryptedFields */
-
 	/* idIndex */
 	bson_value_t idIndex;
-
-	/* comment */
 } CreateSpec;
 
 static const StringView SystemPrefix = { .string = "system.", .length = 7 };
@@ -126,6 +100,7 @@ command_create_collection_view(PG_FUNCTION_ARGS)
 		GetMongoCollectionOrViewByNameDatum(
 			databaseDatum, createDatum, NoLock);
 
+	ThrowIfServerOrTransactionReadOnly();
 	if (collection != NULL)
 	{
 		/* Collection exists validate options */
@@ -237,7 +212,7 @@ ValidateIdIndexDocument(const bson_value_t *idIndexDocument)
 		{
 			EnsureTopLevelFieldType("create.idIndex.name", &idIterator, BSON_TYPE_UTF8);
 
-			/* The name is ignored. */
+			/* The specified name will be ignored. */
 		}
 		else if (strcmp(key, "v") == 0)
 		{
@@ -245,7 +220,7 @@ ValidateIdIndexDocument(const bson_value_t *idIndexDocument)
 		}
 		else if (strcmp(key, "ns") == 0)
 		{
-			/* The namespace is ignored. */
+			/* The specified namespace will be ignored. */
 		}
 		else
 		{
@@ -283,7 +258,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 								errmsg(
-									"namespaces cannot have embedded null characters")));
+									"Namespaces are not allowed to contain any embedded null characters")));
 			}
 		}
 		else if (strcmp(key, "viewOn") == 0)
@@ -296,13 +271,13 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 				if (strlen(spec->viewOn) == 0)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-									errmsg("'viewOn' cannot be empty")));
+									errmsg("The 'viewOn' field must not be empty")));
 				}
 				else if (strlen(spec->viewOn) != (size_t) strLength)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 									errmsg(
-										"namespaces cannot have embedded null characters")));
+										"Namespaces are not allowed to contain any embedded null characters")));
 				}
 			}
 		}
@@ -326,7 +301,8 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			if (!IsBsonValueEmptyDocument(bson_iter_value(&createIter)))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("time series collections not supported yet")));
+								errmsg(
+									"Time series data collections are currently not supported")));
 			}
 		}
 		else if (strcmp(key, "clusteredIndex") == 0)
@@ -341,7 +317,8 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		else if (strcmp(key, "changeStreamPreAndPostImages") == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("changeStreamPreAndPostImages not supported yet")));
+							errmsg(
+								"changeStreamPreAndPostImages is currently unsupported")));
 		}
 		else if (strcmp(key, "autoIndexId") == 0)
 		{
@@ -361,7 +338,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
-									"Field create.idIndex cannot be an empty document")));
+									"The create.idIndex field must not contain an empty document")));
 			}
 
 			/* Validate that it is of the right format */
@@ -369,7 +346,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		}
 		else if (strcmp(key, "size") == 0 || strcmp(key, "max") == 0)
 		{
-			/* Ignore: Capped collection options */
+			/* Cannot apply capped collection settings */
 		}
 		else if (strcmp(key, "storageEngine") == 0 ||
 				 strcmp(key, "indexOptionDefaults") == 0)
@@ -418,14 +395,15 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 	if (spec->name == NULL || strlen(spec->name) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Invalid namespace specified '%s.'",
+						errmsg("The specified namespace is invalid: '%s'.",
 							   TextDatumGetCString(databaseDatum))));
 	}
 
 	if (spec->viewOn == NULL && spec->pipeline.value_type != BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
-						errmsg("'pipeline' requires 'viewOn' to also be specified")));
+						errmsg(
+							"'viewOn' needs to be specified.")));
 	}
 
 	if (spec->viewOn != NULL && spec->idIndex.value_type != BSON_TYPE_EOD)
@@ -464,7 +442,7 @@ CheckUnsupportedViewPipelineStages(const bson_value_t *pipeline)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"Each element of the 'pipeline' array must be an object")));
+								"Every item within the 'pipeline' array is required to be an object.")));
 		}
 
 		pgbsonelement stageElement;
@@ -480,8 +458,8 @@ CheckUnsupportedViewPipelineStages(const bson_value_t *pipeline)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OPTIONNOTSUPPORTEDONVIEW),
 							errmsg(
-								"The aggregation stage %s of the pipeline cannot be used "
-								"in the view definition because it writes to disk",
+								"The aggregation stage %s in the pipeline is not permitted "
+								"in the view definition as it performs disk writes",
 								stageElement.path)));
 		}
 	}
@@ -500,13 +478,14 @@ ValidatePipelineForCreateView(Datum databaseDatum, const char *viewName,
 	{
 		StringView viewStringView = CreateStringViewFromString(viewName);
 		CheckUnsupportedViewPipelineStages(pipeline);
-		ValidateAggregationPipeline(databaseDatum, &viewStringView,
+		ValidateAggregationPipeline(DatumGetTextP(databaseDatum), &viewStringView,
 									pipeline);
 	}
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(savedMemoryContext);
-		RethrowPrependDocumentDBError("Invalid pipeline for view caused by :: ");
+		RethrowPrependDocumentDBError(
+			"Pipeline configuration for the view is invalid");
 	}
 	PG_END_TRY();
 }
@@ -585,19 +564,21 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 	{
 		/* We have a collection, we're trying to create a view - error */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-						errmsg("ns: %s.%s already exists with different options: {}",
-							   collection->name.databaseName,
-							   collection->name.collectionName)));
+						errmsg(
+							"Namespace %s.%s already exists but with different configuration options: {}",
+							collection->name.databaseName,
+							collection->name.collectionName)));
 	}
 
 	if (collection->viewDefinition != NULL && createDefinition->viewOn == NULL)
 	{
 		/* We have a view and trying to create a collection - error */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-						errmsg("ns: %s.%s already exists with different options: %s",
-							   collection->name.databaseName,
-							   collection->name.collectionName,
-							   PgbsonToJsonForLogging(collection->viewDefinition))));
+						errmsg(
+							"Namespace %s.%s already exists but with different configuration options: %s",
+							collection->name.databaseName,
+							collection->name.collectionName,
+							PgbsonToJsonForLogging(collection->viewDefinition))));
 	}
 
 	if (collection->viewDefinition != NULL && createDefinition->viewOn != NULL)
@@ -611,10 +592,11 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		if (!PgbsonEquals(collection->viewDefinition, viewDefinition))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-							errmsg("ns: %s.%s already exists with different options: %s",
-								   collection->name.databaseName,
-								   collection->name.collectionName,
-								   PgbsonToJsonForLogging(collection->viewDefinition))));
+							errmsg(
+								"Namespace %s.%s already exists but with different configuration options: %s",
+								collection->name.databaseName,
+								collection->name.collectionName,
+								PgbsonToJsonForLogging(collection->viewDefinition))));
 		}
 	}
 
@@ -642,10 +624,11 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 
 		/* schema validation not match - error */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-						errmsg("ns: %s.%s already exists with different options: %s",
-							   collection->name.databaseName,
-							   collection->name.collectionName,
-							   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+						errmsg(
+							"Namespace %s.%s already exists but with different configuration options: %s",
+							collection->name.databaseName,
+							collection->name.collectionName,
+							PgbsonToJsonForLogging(createSchemaValidatorInfo))));
 	}
 
 	if (collection->schemaValidator.validator != NULL && createDefinition->validator !=
@@ -660,11 +643,12 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-							errmsg("ns: %s.%s already exists with different options: %s",
-								   collection->name.databaseName,
-								   collection->name.collectionName,
-								   PgbsonToJsonForLogging(
-									   createSchemaValidatorInfo))));
+							errmsg(
+								"Namespace %s.%s already exists but with different configuration options: %s",
+								collection->name.databaseName,
+								collection->name.collectionName,
+								PgbsonToJsonForLogging(
+									createSchemaValidatorInfo))));
 		}
 	}
 
@@ -687,10 +671,11 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-							errmsg("ns: %s.%s already exists with different options: %s",
-								   collection->name.databaseName,
-								   collection->name.collectionName,
-								   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+							errmsg(
+								"Namespace %s.%s already exists but with different configuration options: %s",
+								collection->name.databaseName,
+								collection->name.collectionName,
+								PgbsonToJsonForLogging(createSchemaValidatorInfo))));
 		}
 	}
 
@@ -710,10 +695,11 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-							errmsg("ns: %s.%s already exists with different options: %s",
-								   collection->name.databaseName,
-								   collection->name.collectionName,
-								   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+							errmsg(
+								"Namespace %s.%s already exists but with different configuration options: %s",
+								collection->name.databaseName,
+								collection->name.collectionName,
+								PgbsonToJsonForLogging(createSchemaValidatorInfo))));
 		}
 	}
 
@@ -805,7 +791,7 @@ WalkPipelineForViewCycles(Datum databaseDatum, const char *viewName,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"Each element of the 'pipeline' array must be an object")));
+								"Every item within the 'pipeline' array is required to be an object.")));
 		}
 
 		pgbsonelement stageElement;
@@ -903,7 +889,7 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 	{
 		const char *databaseStr = TextDatumGetCString(databaseDatum);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_GRAPHCONTAINSCYCLE),
-						errmsg("View cycle detected: %s.%s -> %s.%s",
+						errmsg("Cycle detected in view: %s.%s -> %s.%s",
 							   databaseStr, viewName, databaseStr, viewSource)));
 	}
 
@@ -920,7 +906,8 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 		if (list_length(intermediateViews) > MAX_VIEW_DEPTH)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_VIEWDEPTHLIMITEXCEEDED),
-							errmsg("View depth exceeded limit %d", MAX_VIEW_DEPTH)));
+							errmsg("Depth limit exceeded in view. MaxDepth is %d",
+								   MAX_VIEW_DEPTH)));
 		}
 
 		CHECK_FOR_INTERRUPTS();
@@ -975,6 +962,6 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 
 		appendStringInfo(errorStr, " %s.%s", databaseStr, viewName);
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_GRAPHCONTAINSCYCLE),
-						errmsg("View cycle detected: %s", errorStr->data)));
+						errmsg("Cycle detected in view: %s", errorStr->data)));
 	}
 }

@@ -25,6 +25,9 @@
 #define YB_YSQL_CONN_MGR_POOL_MODE POOL_PER_USER_DB
 #define YB_POOL_MODE YB_YSQL_CONN_MGR_POOL_MODE
 
+#define YB_CONTROL_CONN_NON_REP_STATS_INDEX 0
+#define YB_CONTROL_CONN_REP_STATS_INDEX 1
+#define YB_TXN_POOL_STATS_START_INDEX 2
 
 struct ConnectionStats {
   uint64_t active_clients;
@@ -41,4 +44,5 @@ struct ConnectionStats {
   char user_name[USER_NAME_MAX_LEN];
   int database_oid;
   int user_oid;
+  bool logical_rep;
 };

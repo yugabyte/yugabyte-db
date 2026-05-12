@@ -1,5 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { UniverseCard } from './UniverseCard';
@@ -25,6 +26,9 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../actions/customers';
 import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
+import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
+import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import { compareUniversesForDashboardDisplay } from './universeDisplaySort';
 
 import './UniverseDisplayPanel.scss';
 
@@ -71,12 +75,10 @@ export const UniverseDisplayPanel = ({
       nodeAgent.universeUuid
   );
   if (getPromiseState(providers).isSuccess()) {
-    let universeDisplayList = <span />;
+    let universeDisplayList: ReactNode = <span />;
     if (getPromiseState(universeList).isSuccess()) {
-      universeDisplayList = universeList.data
-        .sort((a: any, b: any) => {
-          return Date.parse(a.creationDate) < Date.parse(b.creationDate);
-        })
+      universeDisplayList = [...universeList.data]
+        .sort(compareUniversesForDashboardDisplay)
         .map((universeItem: any) => {
           return (
             <UniverseCard
@@ -90,7 +92,8 @@ export const UniverseDisplayPanel = ({
         });
     }
     const hasUniverseMissingNodeAgent = universeList.data.some(
-      (universe: Universe) => universe.universeDetails.nodeAgentMissing === true
+      (universe: Universe) =>
+        universe.universeDetails.nodeAgentMissing === true && !getIsKubernetesUniverse(universe)
     );
     const nodeAgentEnablerScanInterval =
       globalRuntimeConfigQuery.data?.configEntries?.find(
@@ -102,9 +105,13 @@ export const UniverseDisplayPanel = ({
       globalRuntimeConfigQuery.data?.configEntries?.find(
         (configEntry: RunTimeConfigEntry) =>
           configEntry.key === RuntimeConfigKey.ENABLE_AUTO_NODE_AGENT_INSTALLATION
-      )?.value === 'true' ?? false;
+      )?.value === 'true';
 
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
+    const isNewV2CreateUniverseUIEnabled = isV2CreateEditUniverseEnabled(
+      globalRuntimeConfigQuery?.data
+    );
+
     return (
       <div className="universe-display-panel-container">
         <Row>
@@ -119,7 +126,9 @@ export const UniverseDisplayPanel = ({
                 }}
                 isControl
               >
-                <Link to="/universes/create">
+                <Link
+                  to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
+                >
                   <YBButton
                     btnClass="universe-button btn btn-lg btn-orange"
                     disabled={isDisabled(currentCustomer.data.features, 'universe.create')}

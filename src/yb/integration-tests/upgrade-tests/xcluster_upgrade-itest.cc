@@ -99,8 +99,7 @@ class XClusterUpgradeTestBase : public UpgradeTestBase {
     }
 
     master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(consumer_client().GetNamespaceInfo(
-        std::string() /* namespace_id */, kNamespaceName, YQL_DATABASE_PGSQL, &resp));
+    RETURN_NOT_OK(consumer_client().GetNamespaceInfo(kNamespaceName, YQL_DATABASE_PGSQL, &resp));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }

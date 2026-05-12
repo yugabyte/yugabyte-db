@@ -3,7 +3,7 @@
  *
  * src/utils/error_utils.c
  *
- * Utilities for throwing the Mongo errors from SQL functions
+ * Utilities for throwing the DocumentDB errors from SQL functions
  *
  *-------------------------------------------------------------------------
  */
@@ -13,7 +13,10 @@
 #include <utils/builtins.h>
 #include "utils/documentdb_errors.h"
 #include "utils/version_utils.h"
+#include "utils/error_utils.h"
+#include "utils/documentdb_pg_compatibility.h"
 
+format_log_hook unredacted_log_emit_hook = NULL;
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -25,11 +28,11 @@ PG_FUNCTION_INFO_V1(command_throw_mongo_error);
 /*
  * This method is useful in cases where the error codes can't be thrown from SQL directly
  * Postgres imposes a restriction on error codes to not use lower case letters or special
- * characters and only allows usage of [A-Z0-9] characters but today the range of mongo error
+ * characters and only allows usage of [A-Z0-9] characters but today the range of DocumentDB error
  * codes consider all the combination and if such error code is thrown directly from SQL,
  * then it results in `unrecognized error`.
  *
- * e.g.: f100Y (Namespace not sharded mongo error with code 118)
+ * e.g.: f100Y (Namespace not sharded error with code 118)
  *
  * This function is useful in those scenarios and its UDF should be called as:
  *

@@ -46,7 +46,7 @@ namespace rocksdb {
 class FixedSizeFilterBlockBuilder : public FilterBlockBuilder {
  public:
   FixedSizeFilterBlockBuilder(const SliceTransform* prefix_extractor,
-      const BlockBasedTableOptions& table_opt);
+      const BlockBasedTableOptions& table_opt, const yb::MemTrackerPtr& mem_tracker);
 
   ~FixedSizeFilterBlockBuilder() {
     results_.clear();
@@ -71,9 +71,10 @@ class FixedSizeFilterBlockBuilder : public FilterBlockBuilder {
   const SliceTransform* prefix_extractor_;
   bool whole_key_filtering_;
 
+  yb::MemTrackerPtr mem_tracker_;
   std::unique_ptr<FilterBitsBuilder> bits_builder_; // writer to the results
   std::unique_ptr<const char[]> active_block_data_;
-  std::vector<std::unique_ptr<const char[]>> results_;
+  std::vector<TrackedAllocation> results_;
 };
 
 // A FilterBlockReader will attempt to read the block associated with the keys of interest.

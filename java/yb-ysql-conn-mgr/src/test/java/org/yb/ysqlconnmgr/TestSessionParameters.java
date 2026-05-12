@@ -15,8 +15,13 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.fail;
+import static org.yb.AssertionWrappers.assertThrows;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -25,11 +30,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Arrays;
-
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.client.TestUtils;
+import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -118,14 +126,15 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] {}),
     new SessionParameter("search_path", "\"$user\", public", "test",
       new ExceptionType[] {}),
+    // JDBC sends TimeZone in the startup packet, and it can't be overridden using startup options
     new SessionParameter("TimeZone", "UTC", "EST",
-      new ExceptionType[] {}),
+      new ExceptionType[] { ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_transaction_isolation", "read committed", "serializable",
       new ExceptionType[] { ExceptionType.YB_CACHE_MAPPING }),
     new SessionParameter("transaction_isolation", "read committed",
       "read committed", "serializable",
       new ExceptionType[] { ExceptionType.YB_CACHE_MAPPING, ExceptionType.TRANSACTION_SKIP,
-        ExceptionType.SET_UNIQUE }),
+        ExceptionType.SET_UNIQUE, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("geqo", "on", "off",
       new ExceptionType[] {}),
     new SessionParameter("statement_timeout", "0", "999",
@@ -134,7 +143,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
     new SessionParameter("idle_in_transaction_session_timeout", "0", "999",
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
-    new SessionParameter("extra_float_digits", "1", "2",
+    // JDBC sets this to be default value of 2 in startup packet
+    new SessionParameter("extra_float_digits", "2", "3",
       new ExceptionType[] { ExceptionType.EXTRA_FLOAT_DIGITS, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_statistics_target", "100", "200",
       new ExceptionType[] {}),
@@ -546,14 +556,14 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       String parameterName = sp.parameterName;
       String expectedValue = sp.expectedValue;
 
-      // (GH#22248) (rbarigidad) Startup parameters with spaces are not parsed
-      // correctly, they are ignored for now as well.
+      String valueWithEscapedSpaces = expectedValue.replace(" ", "\\ ");
+
       if (sp.exceptionSet.contains(ExceptionType.INVALID_STARTUP))
         continue;
 
       try (Connection conn = getConnectionBuilder()
           .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-          .withOptions(String.format("-c %s=%s", parameterName, expectedValue))
+          .withOptions(String.format("-c %s=%s", parameterName, valueWithEscapedSpaces))
           .connect();
           Statement stmt = conn.createStatement()) {
         String fetchedValue = fetchParameterValue(stmt, sp);
@@ -566,34 +576,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
   @Test
   public void testTimeZoneSetting() throws Exception {
-    try (Connection conn =
-        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .withOptions("-c TimeZone=Asia/Kolkata").connect()) {
-      PGConnection pgConn = (PGConnection) conn;
-      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
-
-      // Get the timezone directly
-      String backendTimeZone = params.get("TimeZone");
-      assertTrue("Backend timezone should be set correctly from startup packet",
-          backendTimeZone.equals("Asia/Kolkata"));
-    }
-
-    try (Connection conn =
-        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .withOptions("-c timezone=Asia/Kolkata").connect()) {
-      PGConnection pgConn = (PGConnection) conn;
-      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
-
-      // Get the timezone directly
-      String backendTimeZone = params.get("TimeZone");
-      assertTrue("Backend timezone should be set correctly from startup packet",
-          backendTimeZone.equals("Asia/Kolkata"));
-    }
-
-    try (
-        Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
-        Statement stmt = conn.createStatement()) {
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
       stmt.execute("SET TimeZone = 'Asia/Kolkata'");
       PGConnection pgConn = (PGConnection) conn;
       Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
@@ -604,10 +590,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
           backendTimeZone.equals("Asia/Kolkata"));
     }
 
-    try (
-        Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
-        Statement stmt = conn.createStatement()) {
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
       stmt.execute("SET timezone = 'Asia/Kolkata'");
       PGConnection pgConn = (PGConnection) conn;
       Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
@@ -617,5 +603,338 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       assertTrue("Backend timezone should be set correctly from SET command",
           backendTimeZone.equals("Asia/Kolkata"));
     }
+  }
+
+  @Test
+  public void testStartupParameterPrecedence() throws Exception {
+    // Test the precedence between guc setting specified through "options" key and one specified
+    // directly in the startup packet. pgJDBC driver only allows us to use the former method.
+    // See getParametersForStartup() function in pgJDBC driver code.
+    //
+    // To still test for the precedence, we try to set "client_encoding" through "options". The
+    // driver internally adds a (client_encoding, UTF8) pair to the startup packet and we test that
+    // that setting has a higher precedence
+    //
+    // Note: We don't test that setting an option through "options" field works, that is
+    // accomplished in testStartupParameters() above
+
+    SessionParameter sp =
+        new SessionParameter("client_encoding", "SQL_ASCII", "UTF8", new ExceptionType[] {});
+    String parameterName = sp.parameterName;
+    String expectedValue = sp.expectedValue;
+
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .withOptions("-c client_encoding=SQL_ASCII")
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      String fetchedValue = fetchParameterValue(stmt, sp);
+      assertTrue(String.format("expected value %s for %s, but fetched %s instead", expectedValue,
+                     parameterName, fetchedValue),
+          expectedValue.equals(fetchedValue));
+    }
+  }
+
+  @Test
+  public void testStartupParameterCaseInsensitivity() throws Exception {
+    // Test that sending a startup parameter in a different case than what Postgres sends in
+    // ParameterStatus works correctly.
+    // This mainly tests that whatever state the connection manager stores is case-insensitive:
+    // either by lowercasing all GUC names in case of auth passthrough or forwarding the startup
+    // packet to auth backend and using the name in returned ParameterStatus packet.
+    SessionParameter sp =
+        new SessionParameter("default_transaction_read_only", "off", "on", new ExceptionType[] {});
+    String parameterName = sp.parameterName;
+    String expectedValue = sp.expectedValue;
+
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .withOptions("-c DEFAULT_TRANSACTION_READ_ONLY=on")
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      String fetchedValue = fetchParameterValue(stmt, sp);
+
+      assertTrue(String.format("expected value %s for %s, but fetched %s instead", expectedValue,
+                     parameterName, fetchedValue),
+          expectedValue.equals(fetchedValue));
+    }
+  }
+
+  @Test
+  public void testInvalidStartupParameter() throws Exception {
+    // Test that setting an invalid parameter in startup packet fails at the time of database
+    // connection. We use ysqlsh here since we don't want to execute ANY query after connecting,
+    // whereas JDBC tries to execute some SET statements after connecting. With JDBC, we try to
+    // deploy the state to a transactional backend which fails and we're not able to distinguish
+    // it from connection failure.
+
+    // Sleep for some time to wait for the cluster to come up. We have to do this since this
+    // driver doesn't have any retry mechanism
+    Thread.sleep(5000);
+
+    File pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    final InetSocketAddress postgresAddress = miniCluster.getYsqlConnMgrContactPoints().get(0);
+
+    List<String> args = Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", postgresAddress.getHostName(),
+      "-p", Integer.toString(postgresAddress.getPort()),
+      "-U", "yugabyte",
+      "-v", "ON_ERROR_STOP=1",
+      "-c", "\\q"
+    );
+
+
+    Map<String, String> invalidEnv = new HashMap<String, String>();
+    invalidEnv.put("PGOPTIONS", "-c geqo=abc");
+    assertThrows(
+        IOException.class, () -> { ProcessUtil.runProcess(args, Integer.MAX_VALUE, invalidEnv); });
+
+    Map<String, String> validEnv = new HashMap<String, String>();
+    invalidEnv.put("PGOPTIONS", "-c geqo=off");
+    ProcessUtil.runProcess(args, Integer.MAX_VALUE, validEnv);
+  }
+
+  @Test
+  public void testSettingOverrideVariableInStartupPacket() throws Exception {
+    // Startup parameters are set with the source PGC_S_CLIENT while SET statements are set
+    // with the source PGC_S_SESSION. There can be settings with PGC_S_OVERRIDE which would
+    // not be overridden with startup options but would get overriden with SET statements.
+    // We test this fact with the GUC session_authorization.
+
+    final String roleName = "test_user_session_auth";
+
+    // Connect as yugabyte user to yugabyte db
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute(String.format("CREATE ROLE %s WITH login", roleName));
+    }
+
+    // Connect as test user to yugabyte db
+    try (
+        Connection connTestUser =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser(roleName).withDatabase("yugabyte").connect();
+        Statement stmtTestUser = connTestUser.createStatement()) {
+      try (ResultSet rs = stmtTestUser.executeQuery("SELECT 1")) {
+        assertTrue("SELECT 1 should return a row", rs.next());
+      }
+    }
+
+    // Execute a global DDL as a workaround for role not applying when startup packet is processed
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute(
+          "create role tmp1; grant tmp1 to yugabyte; revoke tmp1 from yugabyte; drop role tmp1;");
+    }
+
+    // Try to set session authorization in startup packet
+    String sessionAuthOption = String.format("-c session_authorization=%s", roleName);
+
+    try (
+        Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).withUser("yugabyte")
+            .withDatabase("yugabyte").withOptions(sessionAuthOption).connect();
+        Statement stmt = conn.createStatement()) {
+
+      try (ResultSet rs = stmt.executeQuery("SHOW SESSION AUTHORIZATION")) {
+        assertTrue("SHOW SESSION AUTHORIZATION should return a row", rs.next());
+        String actualSessionAuth = rs.getString(1);
+        assertEquals("yugabyte", actualSessionAuth);
+      }
+    }
+  }
+
+  @Test
+  public void testExecutingResetWithinATransaction() throws Exception {
+    // Test geqo parameter behavior with startup packet, transaction, SET, RESET, and rollback
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c geqo=off")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Check that geqo is off from startup packet
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off from startup packet", "off", geqoValue);
+      }
+
+      // Start a transaction
+      stmt.execute("BEGIN");
+
+      // Set geqo to on within the transaction
+      stmt.execute("SET geqo = on");
+
+      // Check that geqo is now on
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on after SET", "on", geqoValue);
+      }
+
+      // Reset geqo within the transaction
+      stmt.execute("RESET geqo");
+
+      // Check that geqo is back to startup value (off)
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after RESET", "off", geqoValue);
+      }
+
+      // Set geqo to on again to test rollback behavior
+      stmt.execute("SET geqo = on");
+
+      // Verify it's on before rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on before rollback", "on", geqoValue);
+      }
+
+      // Rollback the transaction
+      stmt.execute("ROLLBACK");
+
+      // Check that geqo is back to startup value (off) after rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after rollback", "off", geqoValue);
+      }
+    }
+  }
+
+  @Test
+  public void testSettingBackendContextVariable() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c ignore_system_indexes=true")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Verify the startup option works correctly on all backends in the pool
+      for (int i = 0; i < 5; i++) {
+        try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          String value = rs.getString(1);
+          assertEquals("ignore_system_indexes should be on", "on", value);
+        }
+      }
+
+      // PGC_BACKEND parameters cannot be set after connection start
+      try {
+        stmt.execute("SET ignore_system_indexes = on");
+        fail("SET ignore_system_indexes should have failed");
+      } catch (Exception e) {
+        assertTrue("Expected error about parameter cannot be set after connection start",
+            e.getMessage().contains("cannot be set after connection start"));
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCSession() throws Exception {
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 500", 500, value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_yb_ash_sample_size", "600");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 600", 600, value);
+      }
+    }
+  }
+
+  private void updateRuntimeFlagPGCBackend() throws Exception {
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false", value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_pg_conf_csv", "ignore_system_indexes=true");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
+      }
+
+      try (
+          Connection newConn =
+              getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                  .withUser("yugabyte").withDatabase("yugabyte").connect();
+          Statement newStmt = newConn.createStatement()) {
+        try (ResultSet rs = newStmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("expected one row for ignore_system_indexes", rs.next());
+          boolean value = rs.getBoolean(1);
+          assertTrue("ignore_system_indexes should be true in the new session", value);
+        }
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthBackend() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "true");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthPassthrough() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "false");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
   }
 }

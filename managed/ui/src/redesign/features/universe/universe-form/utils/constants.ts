@@ -42,8 +42,11 @@ export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
 export const CPU_ARCHITECTURE_FIELD = 'instanceConfig.arch';
 export const LINUX_VERSION_FIELD = 'instanceConfig.imageBundleUUID';
-export const ENABLE_EBS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
+export const ENABLE_EBS_CONFIG_FIELD =
+  'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
 export const EBS_KMS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.kmsConfigUUID';
+export const K8S_ENCRYPTION_TYPE_FIELD = 'instanceConfig.k8sEncryptionType';
+export const ENABLE_TLS_FIELD = 'instanceConfig.enableTLS';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';
@@ -57,6 +60,9 @@ export const SOFTWARE_VERSION_FIELD = 'advancedConfig.ybSoftwareVersion';
 export const COMMUNICATION_PORTS_FIELD = 'advancedConfig.communicationPorts';
 export const PG_COMPATIBILITY_FIELD = 'advancedConfig.enablePGCompatibitilty';
 export const CONNECTION_POOLING_FIELD = 'advancedConfig.enableConnectionPooling';
+export const MULTI_TENANCY_QOS_FIELD = 'advancedConfig.enableMultiTenancyQos';
+export const MULTI_TENANCY_QOS_MAX_DB_CPU_FIELD = 'advancedConfig.multiTenancyQosMaxDbCpuPercent';
+export const MULTI_TENANCY_QOS_MAX_DB_COUNT_FIELD = 'advancedConfig.multiTenancyQosMaxDbCount';
 
 //Gflags
 export const GFLAGS_FIELD = 'gFlags';
@@ -67,7 +73,8 @@ export const USER_TAGS_FIELD = 'instanceTags';
 
 //K8s overrides
 export const UNIVERSE_OVERRIDES_FIELD = 'universeOverrides';
-export const AZ_OVERRIDES_FIELD = 'azOverrides';
+export const AZ_OVERRIDES_FIELD = 'azOverrides'; // Helm: userIntent.azOverrides (YAML strings per AZ)
+export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides'; // K8s: userIntent.userIntentOverrides.azOverrides (per-AZ volume/config)
 
 // ------------Universe Form Fields Path End------------
 
@@ -118,10 +125,14 @@ export const PRIMARY_FIELDS = [
   CUSTOMIZE_PORT_FIELD,
   UNIVERSE_OVERRIDES_FIELD,
   AZ_OVERRIDES_FIELD,
+  K8S_AZ_OVERRIDES_FIELD,
   MASTER_PLACEMENT_FIELD,
   CPU_ARCHITECTURE_FIELD,
   LINUX_VERSION_FIELD,
   CONNECTION_POOLING_FIELD,
+  MULTI_TENANCY_QOS_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_CPU_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FIELD,
   ENABLE_EBS_CONFIG_FIELD,
   EBS_KMS_CONFIG_FIELD
 ];
@@ -159,6 +170,9 @@ export const ASYNC_FIELDS = [
   CPU_ARCHITECTURE_FIELD,
   LINUX_VERSION_FIELD,
   CONNECTION_POOLING_FIELD,
+  MULTI_TENANCY_QOS_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_CPU_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FIELD,
   CUSTOMIZE_PORT_FIELD,
   COMMUNICATION_PORTS_FIELD
 ];
@@ -184,6 +198,9 @@ export const INHERITED_FIELDS_FROM_PRIMARY = [
   CPU_ARCHITECTURE_FIELD,
   LINUX_VERSION_FIELD,
   CONNECTION_POOLING_FIELD,
+  MULTI_TENANCY_QOS_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_CPU_FIELD,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FIELD,
   CUSTOMIZE_PORT_FIELD,
   COMMUNICATION_PORTS_FIELD,
   ENABLE_EBS_CONFIG_FIELD,

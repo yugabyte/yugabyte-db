@@ -106,11 +106,10 @@ var DeleteReadReplicaUniverseCmd = &cobra.Command{
 
 		rTask, response, err := deleteRR.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err,
-				"Universe", "Delete Read Only Cluster")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Delete Read Only Cluster")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The read replica from universe %s is being deleted",
 			formatter.Colorize(universeName, formatter.GreenColor))
@@ -129,9 +128,7 @@ var DeleteReadReplicaUniverseCmd = &cobra.Command{
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 			universeData, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Universe")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Universe", "Create - Fetch Universe")
 			}
 
 			universesCtx := formatter.Context{
@@ -149,7 +146,7 @@ var DeleteReadReplicaUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 

@@ -3,7 +3,7 @@ import { Variant } from '@material-ui/core/styles/createTypography';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import InfoIcon from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg?img';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { getTableCountsOfConcern } from '../ReplicationUtils';
@@ -80,6 +80,14 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           className={clsx(classes.label, classes.ready)}
         >
           <i className="fa fa-check-circle" />
+          {t(drConfig.state)}
+        </Typography>
+      );
+      break;
+    case DrConfigState.PAUSED:
+      stateLabel = (
+        <Typography variant={variant} component="span" className={clsx(classes.label)}>
+          <i className={clsx('fa fa-pause-circle-o', classes.warning)} />
           {t(drConfig.state)}
         </Typography>
       );

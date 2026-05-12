@@ -64,9 +64,7 @@ var removeNodesCmd = &cobra.Command{
 			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Node Instance", "Remove - Fetch Provider")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Remove - Fetch Provider")
 		}
 		if len(r) < 1 {
 			logrus.Fatalf(
@@ -85,8 +83,7 @@ var removeNodesCmd = &cobra.Command{
 
 		rDelete, response, err := authAPI.DeleteInstance(providerUUID, ip).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Remove")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Remove")
 		}
 
 		if rDelete.GetSuccess() {

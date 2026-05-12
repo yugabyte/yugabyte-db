@@ -8,7 +8,7 @@ import clsx from 'clsx';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 
-import ellipsisIcon from '../../../../common/media/more.svg';
+import EllipsisIcon from '../../../../common/media/more.svg?img';
 import { EmptyListPlaceholder } from '../../EmptyListPlaceholder';
 import { VolumeList } from './VolumeList';
 import { YBLabelWithIcon } from '../../../../common/descriptors';
@@ -38,7 +38,7 @@ export const InstanceTypeList = ({
     <div className={styles.buttonContainer} onClick={(event) => event.stopPropagation()}>
       <Dropdown id="instance-type-table-actions-dropdown" pullRight>
         <Dropdown.Toggle noCaret>
-          <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
+          <img src={EllipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
           <MenuItem

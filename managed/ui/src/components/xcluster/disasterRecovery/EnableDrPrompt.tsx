@@ -5,7 +5,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { YBButton, YBTooltip } from '../../../redesign/components';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { ReactComponent as BackupIcon } from '../../../redesign/assets/fileBackup.svg';
+import BackupIcon from '../../../redesign/assets/fileBackup.svg';
 import { DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER } from './constants';
 
 interface EnableDrPromptProps {

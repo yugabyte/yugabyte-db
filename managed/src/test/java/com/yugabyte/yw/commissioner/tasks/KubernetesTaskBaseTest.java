@@ -34,7 +34,7 @@ public class KubernetesTaskBaseTest {
   public void testGetK8sNodeName(String podName, String server, boolean isMultiAz) {
     ServerType serverType = server.equals("master") ? ServerType.MASTER : ServerType.TSERVER;
     NodeDetails node =
-        KubernetesUtil.getKubernetesNodeName(1, "az-1", serverType, isMultiAz, false);
+        KubernetesUtil.getKubernetesNodeName(1, "az-1", serverType, isMultiAz, false, 0);
     assertEquals(podName, node.nodeName);
   }
 
@@ -63,7 +63,8 @@ public class KubernetesTaskBaseTest {
             isMultiAz,
             newNamingStyle,
             "demo-universe",
-            isReadOnlyCluster);
+            isReadOnlyCluster,
+            0);
     assertEquals(podName, pod);
   }
 }

@@ -11,7 +11,7 @@ import { Universe } from '../../../universe-form/utils/dto';
 import { TaskObject } from '../utils/types';
 import { rollBackStyles } from '../utils/RollbackUpgradeStyles';
 //icons
-import ErrorIcon from '../../../../../assets/error-circle.svg';
+import ErrorIcon from '../../../../../assets/error-circle.svg?img';
 
 interface RollbackBannerProps {
   taskDetail: TaskObject;

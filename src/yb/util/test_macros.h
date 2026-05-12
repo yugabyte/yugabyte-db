@@ -171,6 +171,9 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 #define ASSERT_RESULT_FAST(expr) \
   RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
+// Helper version of ASSERT_RESULT which returns reference instead of std::reference_wrapper.
+#define ASSERT_RESULT_REF(expr) ASSERT_RESULT(expr).get()
+
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
 #define EXPECT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
@@ -183,6 +186,14 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   std::string _s = (str); \
   if (_s.find((substr)) == std::string::npos) { \
     FAIL() << "Expected to find substring '" << (substr) \
+    << "'. Got: '" << _s << "'"; \
+  } \
+  } while (0)
+
+#define EXPECT_STR_CONTAINS(str, substr) do { \
+  std::string _s = (str); \
+  if (_s.find((substr)) == std::string::npos) { \
+    ADD_FAILURE() << "Expected to find substring '" << (substr) \
     << "'. Got: '" << _s << "'"; \
   } \
   } while (0)

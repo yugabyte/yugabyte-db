@@ -201,10 +201,11 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 		return leftNext ? 1 : -1;
 	}
 
-	pgbsonelement leftElement;
-	pgbsonelement rightElement;
-	BsonIterToPgbsonElement(&leftIter, &leftElement);
-	BsonIterToPgbsonElement(&rightIter, &rightElement);
+	StringView leftKey = bson_iter_key_string_view(&leftIter);
+	StringView rightKey = bson_iter_key_string_view(&rightIter);
+
+	const bson_value_t *leftValue = bson_iter_value(&leftIter);
+	const bson_value_t *rightValue = bson_iter_value(&rightIter);
 
 	leftNext = bson_iter_next(&leftIter);
 	rightNext = bson_iter_next(&rightIter);
@@ -245,8 +246,9 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 
 	/* next compare field name. Field name needs to be collation insensitive, hence we make sure we perform
 	 * collation agnostic comparison by passing a NULL collation string*/
-	int cmp = CompareStrings(leftElement.path, leftElement.pathLength, rightElement.path,
-							 rightElement.pathLength, collationStringIgnore);
+	int cmp = CompareStrings(leftKey.string, leftKey.length,
+							 rightKey.string, rightKey.length,
+							 collationStringIgnore);
 	if (cmp != 0)
 	{
 		return cmp;
@@ -254,8 +256,8 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 
 	*isComparisonValid = true;
 	bool ignoreIsComparisonValid;
-	bson_type_t leftType = leftElement.bsonValue.value_type;
-	bson_type_t rightType = rightElement.bsonValue.value_type;
+	bson_type_t leftType = leftValue->value_type;
+	bson_type_t rightType = rightValue->value_type;
 
 	/* Special case, if we're comparing MINKEY & NULL
 	 * MinKey is greater than null since Null happens to include
@@ -275,7 +277,8 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 	if (leftType == BSON_TYPE_MINKEY || leftType == BSON_TYPE_MAXKEY ||
 		rightType == BSON_TYPE_MINKEY || rightType == BSON_TYPE_MAXKEY)
 	{
-		return CompareBsonValueAndType(&leftElement.bsonValue, &rightElement.bsonValue,
+		return CompareBsonValueAndType(leftValue,
+									   rightValue,
 									   &ignoreIsComparisonValid);
 	}
 
@@ -286,6 +289,6 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 		return cmp;
 	}
 
-	return CompareBsonValueAndType(&leftElement.bsonValue, &rightElement.bsonValue,
+	return CompareBsonValueAndType(leftValue, rightValue,
 								   &ignoreIsComparisonValid);
 }

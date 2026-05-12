@@ -15,12 +15,14 @@
 
 #include "yb/util/thread_pool.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
@@ -35,28 +37,47 @@ using namespace std::literals;
 DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
     "Default RPC YBThreadPool idle timeout value in milliseconds");
 
+static bool detailed_logging = true;
 namespace yb {
 
 bool TEST_fail_to_create_second_thread_in_thread_pool_without_queue = false;
 
+void YBThreadPool::DisableDetailedLogging() { detailed_logging = false; }
+
 namespace {
 
 class Worker;
+struct WorkerLink;
 
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;
-using WaitingWorkers = LockFreeStack<Worker>;
+using WaitingWorkers = LockFreeStack<WorkerLink>;
 
 constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
 
 struct ThreadPoolShare {
   const ThreadPoolOptions options;
+#ifdef __linux__
+  std::atomic<Cgroup*> cgroup;
+#endif
   TaskQueue task_queue;
   std::atomic<size_t> task_queue_size{0};
   WaitingWorkers waiting_workers;
   std::atomic<size_t> num_workers{0};
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
-      : options(std::move(o)) {}
+      : options(std::move(o))
+#ifdef __linux__
+        , cgroup(options.cgroup)
+#endif
+  {}
+
+  Cgroup* GetCgroup() const {
+#ifdef __linux__
+    return cgroup.load(std::memory_order_acquire);
+#else
+    return nullptr;
+#endif
+  }
 
   void PushTask(ThreadPoolTask* task) {
     if (options.metrics.queue_time_us_stats) {
@@ -87,9 +108,7 @@ YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
 
 class Worker : public boost::intrusive::list_base_hook<> {
  public:
-  explicit Worker(ThreadPoolShare& share, bool persistent)
-      : share_(share), persistent_(persistent) {
-  }
+  explicit Worker(ThreadPoolShare& share, bool persistent);
 
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
@@ -98,18 +117,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
 
-  ~Worker() {
-    {
-      std::lock_guard lock(mutex_);
-      DCHECK(!task_);
-      if (state_ == WorkerState::kIdleStop) {
-        return;
-      }
-    }
-    if (thread_) {
-      thread_->Join();
-    }
-  }
+  ~Worker();
 
   Worker(const Worker& worker) = delete;
   void operator=(const Worker& worker) = delete;
@@ -148,18 +156,62 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return added_to_waiting_workers_;
   }
 
+#ifdef __linux__
+  void MoveToCurrentCgroup() {
+    if (thread_) {
+      auto* cg = share_.GetCgroup();
+      if (cg) {
+        auto status = cg->MoveThreadToGroup(thread_->tid());
+        if (!status.ok()) {
+          LOG(WARNING) << "Failed to move worker thread to cgroup: " << status;
+        }
+        current_cgroup_ = cg;
+      }
+    }
+  }
+
+  void MoveToPoolCgroup() {
+    auto* cg = share_.GetCgroup();
+    if (!cg) cg = DefaultThreadCgroup();
+    MoveToCgroup(cg);
+  }
+
+  void MoveToCgroup(Cgroup* target) {
+    if (target && target != current_cgroup_) {
+      auto status = target->MoveCurrentThreadToGroup();
+      if (status.ok()) {
+        current_cgroup_ = target;
+      } else {
+        LOG(WARNING) << "Failed to move thread to cgroup: " << status;
+        current_cgroup_ = nullptr;
+      }
+    }
+  }
+#endif
+
  private:
   // Our main invariant is empty task queue or empty worker queue.
   // In other words, one of those queues should be empty.
   // Meaning that we do not have work (task queue empty) or
   // does not have free hands (worker queue empty)
   void Execute(ThreadPoolTask* task) {
+#ifdef __linux__
+    MoveToPoolCgroup();
+#endif
+
     Thread::current_thread()->SetUserData(&share_);
     bool has_run_metrics = share_.options.metrics.run_time_us_stats != nullptr;
     if (!task) {
       task = PopTask();
     }
     while (task) {
+#ifdef __linux__
+      if (auto* task_cg = task->cgroup()) {
+        MoveToCgroup(task_cg);
+      } else {
+        MoveToPoolCgroup();
+      }
+#endif
       auto start = MonoTime::NowIf(has_run_metrics);
       if (!task->run_token()) {
         task->Run();
@@ -249,31 +301,87 @@ class Worker : public boost::intrusive::list_base_hook<> {
 
   void AddToWaitingWorkers() REQUIRES(mutex_) {
     if (!added_to_waiting_workers_) {
-      share_.waiting_workers.Push(this);
+      share_.waiting_workers.Push(link_);
       added_to_waiting_workers_ = true;
     }
   }
 
-  friend void SetNext(Worker& worker, Worker* next) {
-    worker.next_waiting_worker_ = next;
-  }
-
-  friend Worker* GetNext(Worker& worker) {
-    return worker.next_waiting_worker_;
-  }
-
   ThreadPoolShare& share_;
   const bool persistent_;
+  WorkerLink* link_ = nullptr;
   scoped_refptr<Thread> thread_;
+#ifdef __linux__
+  std::atomic<Cgroup*> current_cgroup_{nullptr};
+#endif
   mutable std::mutex mutex_;
   std::condition_variable cond_;
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
   ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
-  Worker* next_waiting_worker_ = nullptr;
+};
+
+struct WorkerLink {
+  Worker* worker = nullptr;
+  std::atomic<WorkerLink*> next_link{nullptr};
 };
 
 using Workers = boost::intrusive::list<Worker>;
+
+void SetNext(WorkerLink& worker, WorkerLink* next) {
+  worker.next_link.store(next, std::memory_order_release);
+}
+
+WorkerLink* GetNext(WorkerLink& worker) {
+  return worker.next_link.load(std::memory_order_acquire);
+}
+
+class FreeWorkerLinks {
+ public:
+  ~FreeWorkerLinks() {
+    while (auto link = free_links_.Pop()) {
+      delete link;
+    }
+  }
+
+  WorkerLink* Acquire() {
+    auto link = free_links_.Pop();
+    if (!link) {
+      link = new WorkerLink{};
+    }
+    return link;
+  }
+
+  void Release(WorkerLink* link) {
+    link->worker = nullptr;
+    free_links_.Push(link);
+  }
+
+ private:
+  LockFreeStack<WorkerLink> free_links_;
+};
+
+FreeWorkerLinks free_worker_links_;
+
+Worker::Worker(ThreadPoolShare& share, bool persistent)
+    : share_(share), persistent_(persistent),
+      link_(free_worker_links_.Acquire()) {
+  link_->worker = this;
+}
+
+Worker::~Worker() {
+  {
+    std::lock_guard lock(mutex_);
+    DCHECK(!task_);
+    if (state_ == WorkerState::kIdleStop) {
+      free_worker_links_.Release(link_);
+      return;
+    }
+  }
+  if (thread_) {
+    thread_->Join();
+  }
+  free_worker_links_.Release(link_);
+}
 
 } // namespace
 
@@ -281,7 +389,12 @@ class YBThreadPool::Impl {
  public:
   explicit Impl(ThreadPoolOptions options)
       : share_(std::move(options)) {
-    LOG(INFO) << "Starting thread pool " << share_.options.ToString();
+    if (detailed_logging) {
+      LOG(INFO) << "Starting thread pool " << share_.options.ToString();
+    } else {
+      VLOG(1) << "Starting thread pool " << share_.options.ToString();
+    }
+
     for (size_t index = 0; index != options.min_workers; ++index) {
       if (!TryStartNewWorker(nullptr, /* persistent = */ true).ok()) {
         break;
@@ -384,8 +497,8 @@ class YBThreadPool::Impl {
 
   // Returns true if we found worker that will pick up this task, false otherwise.
   bool NotifyWorker(ThreadPoolTask* task) {
-    while (auto worker = share_.waiting_workers.Pop()) {
-      auto state = worker->Notify(task);
+    while (auto link = share_.waiting_workers.Pop()) {
+      auto state = link->worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
           if (task && share_.options.metrics.queue_time_us_stats) {
@@ -399,7 +512,7 @@ class YBThreadPool::Impl {
           std::lock_guard lock(mutex_);
           if (!closing_) {
             workers_.erase_and_dispose(
-                workers_.iterator_to(*worker), std::default_delete<Worker>());
+                workers_.iterator_to(*link->worker), std::default_delete<Worker>());
           }
         } break;
       }
@@ -481,6 +594,19 @@ class YBThreadPool::Impl {
     return share_.num_workers.load(std::memory_order_relaxed) & ~kStopCreatingWorkersFlag;
   }
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) EXCLUDES(mutex_) {
+    share_.cgroup.store(cgroup, std::memory_order_release);
+    if (!cgroup) {
+      return;
+    }
+    std::lock_guard lock(mutex_);
+    for (auto& worker : workers_) {
+      worker.MoveToCurrentCgroup();
+    }
+  }
+#endif
+
  private:
   ThreadPoolShare share_;
   Workers workers_ GUARDED_BY(mutex_);
@@ -545,6 +671,12 @@ bool YBThreadPool::Idle() const {
   return impl_->Idle();
 }
 
+#ifdef __linux__
+void YBThreadPool::SetCgroup(Cgroup* cgroup) {
+  impl_->SetCgroup(cgroup);
+}
+#endif
+
 // ------------------------------------------------------------------------------------------------
 // ThreadSubPoolBase
 // ------------------------------------------------------------------------------------------------
@@ -597,6 +729,93 @@ bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
 
 MonoDelta DefaultIdleTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// YBTaggedThreadPools
+// ------------------------------------------------------------------------------------------------
+
+YBTaggedThreadPools::YBTaggedThreadPools(YBTaggedThreadPools::OptionsGenerator options_generator)
+    : options_generator_{std::move(options_generator)} {}
+
+YBTaggedThreadPools::~YBTaggedThreadPools() {
+  Shutdown();
+}
+
+void YBTaggedThreadPools::Shutdown() {
+  PoolMap pools;
+  {
+    std::lock_guard lock(mutex_);
+    shutting_down_ = true;
+    std::swap(pools, pools_);
+  }
+  for (auto& pool : pools | std::views::values) {
+    pool->Shutdown();
+  }
+}
+
+YBThreadPoolPtr YBTaggedThreadPools::LookupPool(Tag tag) {
+  auto itr = pools_.find(tag);
+  if (itr != pools_.end()) {
+    return itr->second;
+  }
+  return nullptr;
+}
+
+Result<YBThreadPoolPtr> YBTaggedThreadPools::Pool(Tag tag) {
+  {
+    SharedLock lock(mutex_);
+    if (auto pool = LookupPool(tag)) {
+      return pool;
+    }
+  }
+
+  std::vector<YBThreadPoolPtr> to_shutdown;
+  YBThreadPoolPtr pool;
+  {
+    std::lock_guard lock(mutex_);
+    if (auto pool = LookupPool(tag)) {
+      return pool;
+    }
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "thread pools shutting down");
+    }
+    to_shutdown = CleanupIdlePools();
+
+    pool = pools_.try_emplace(
+      tag, std::make_shared<YBThreadPool>(options_generator_(tag))).first->second;
+  }
+
+  for (const auto& shutdown_pool : to_shutdown) {
+    shutdown_pool->Shutdown();
+  }
+  return pool;
+}
+
+size_t YBTaggedThreadPools::ActivePools() {
+  SharedLock lock(mutex_);
+  return pools_.size();
+}
+
+std::vector<YBThreadPoolPtr> YBTaggedThreadPools::CleanupIdlePools() {
+  std::vector<YBThreadPoolPtr> to_shutdown;
+  auto itr = pools_.begin();
+  while (itr != pools_.end()) {
+    auto& pool = itr->second;
+    // use_count() and shared_ptr reference count increment are both relaxed memory ordering. But
+    // obtaining a reference from YBTaggedThreadPools requires mutex, and assuming absence of
+    // weak_ptr, it is impossible to obtain a reference from outside YBTaggedThreadPools when
+    // use_count() == 1. So there is no issue with use_count() increasing after this check, unless
+    // weak_ptr is used.
+    if (pool.use_count() == 1 && pool->NumWorkers() == 0) {
+      to_shutdown.emplace_back(std::move(pool));
+      itr = pools_.erase(itr);
+    } else {
+      ++itr;
+    }
+  }
+  return to_shutdown;
 }
 
 } // namespace yb

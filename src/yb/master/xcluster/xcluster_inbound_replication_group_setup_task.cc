@@ -39,6 +39,7 @@
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
@@ -62,6 +63,9 @@ DEFINE_test_flag(bool, fail_universe_replication_merge, false,
 
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
+
+DEFINE_test_flag(int32, pause_at_start_of_setup_replication_group_ms, 0,
+    "Delay in milliseconds before merging ALTER replication group into main replication group");
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
@@ -204,6 +208,12 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateInputArguments() {
     SCHECK_FORMAT(
         !IsColocatedDbParentTableId(source_table_id), NotSupported,
         "Pre GA colocated databases are not supported with xCluster replication: $0",
+        source_table_id);
+    SCHECK_FORMAT(
+        is_db_scoped_ ||
+        xcluster::StripSequencesDataAliasIfPresent(source_table_id) != kPgSequencesDataTableId,
+        NotSupported,
+        "Replication of the sequences_data table is not supported: $0",
         source_table_id);
     SCHECK(source_table_ids.insert(source_table_id).second, InvalidArgument,
            "Duplicate table source table id: $0", data_.source_table_ids);
@@ -424,6 +434,7 @@ Status XClusterInboundReplicationGroupSetupTask::UpdateSourceStreamOptions() {
 
 Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   std::lock_guard l(mutex_);
+  AtomicFlagSleepMs(&FLAGS_TEST_pause_at_start_of_setup_replication_group_ms);
 
   // Last minute validations.
   // TODO: Block DDLs and other xCluster setup/alter operations between this step till the end of
@@ -604,9 +615,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
   std::set<TableId> validated_tables;
   for (const auto& namespace_id : data_.target_namespace_ids) {
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
-        catalog_manager_, namespace_id,
-        /*include_sequences_data=*/
-        data_.automatic_ddl_mode));
+        catalog_manager_, namespace_id, data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 
@@ -876,7 +885,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     const client::YBTableInfo& source_table_info) {
   bool is_ysql_table = source_table_info.table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   if (parent_task_->data_.transactional &&
-      !GetAtomicFlag(&FLAGS_TEST_allow_ycql_transactional_xcluster) && !is_ysql_table) {
+      !FLAGS_TEST_allow_ycql_transactional_xcluster && !is_ysql_table) {
     return STATUS_FORMAT(
         NotSupported, "Transactional replication is not supported for non-YSQL tables: $0",
         source_table_info.table_name.ToString());
@@ -936,8 +945,8 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
       }
     }
 
-    // Verify that the table on the target side supports replication.
-    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
+    if (!parent_task_->data_.automatic_ddl_mode && is_ysql_table && t.has_relation_type() &&
+        t.relation_type() == MATVIEW_TABLE_RELATION) {
       return STATUS_FORMAT(
           NotSupported, "Replication is not supported for materialized view: $0",
           source_table_info.table_name.ToString());
@@ -994,6 +1003,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
             VERIFY_RESULT(parent_task_->ConvertSourceToTargetNamespace(
                 VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(source_table_id_))))));
   }
+
   return table_schema_resp;
 }
 

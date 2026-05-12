@@ -54,71 +54,89 @@ std::string kThreadIdentifier = "ysql_client_lease_refresh";
 
 class YsqlLeasePoller : public MasterLeaderPollerInterface {
  public:
-  YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finder);
+  YsqlLeasePoller(
+      TabletServer& server, const YsqlLeaderClientListener& listener, MasterLeaderFinder& finder);
   ~YsqlLeasePoller() = default;
   Status Poll() override;
   MonoDelta IntervalToNextPoll(int32_t consecutive_failures) override;
   void Init() override;
   void ResetProxy() override;
-  std::string category() override;
   std::string name() override;
   const std::string& LogPrefix() const override;
-  std::future<Status> RelinquishLease();
+  std::future<Status> RelinquishLease(MonoDelta timeout) const;
 
  private:
   TabletServer& server_;
+  YsqlLeaderClientListener listener_;
   MasterLeaderFinder& finder_;
   std::optional<master::MasterDdlProxy> proxy_;
 };
 
 class YsqlLeaseClient::Impl {
  public:
-  Impl(TabletServer& server, server::MasterAddressesPtr master_addresses);
+  Impl(TabletServer& server, const YsqlLeaderClientListener& listener);
+
   Impl(const Impl& other) = delete;
   void operator=(const Impl& other) = delete;
 
   Status Start();
-  Status Stop();
-  std::future<Status> RelinquishLease();
-  void set_master_addresses(server::MasterAddressesPtr master_addresses);
+  void Shutdown();
+  std::future<Status> RelinquishLease(MonoDelta timeout) const;
+  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
 
  private:
   MasterLeaderFinder finder_;
-  std::unique_ptr<YsqlLeasePoller> poller_;
+  YsqlLeasePoller poller_;
   MasterLeaderPollScheduler poll_scheduler_;
 };
 
-YsqlLeaseClient::YsqlLeaseClient(TabletServer& server, server::MasterAddressesPtr master_addresses)
-    : impl_(std::make_unique<YsqlLeaseClient::Impl>(server, std::move(master_addresses))) {}
-Status YsqlLeaseClient::Start() { return impl_->Start(); }
-Status YsqlLeaseClient::Stop() { return impl_->Stop(); }
-std::future<Status> YsqlLeaseClient::RelinquishLease() { return impl_->RelinquishLease(); }
-void YsqlLeaseClient::set_master_addresses(server::MasterAddressesPtr master_addresses) {
-  impl_->set_master_addresses(std::move(master_addresses));
-}
-YsqlLeaseClient::~YsqlLeaseClient() {
-  WARN_NOT_OK(Stop(), "Unable to stop ysql client lease thread");
+YsqlLeaseClient::YsqlLeaseClient(
+    TabletServer& server, const YsqlLeaderClientListener& listener)
+    : impl_(std::make_unique<YsqlLeaseClient::Impl>(server, listener)) {}
+
+Status YsqlLeaseClient::Start() {
+  return impl_->Start();
 }
 
-YsqlLeaseClient::Impl::Impl(TabletServer& server, server::MasterAddressesPtr master_addresses)
-    : finder_(server.messenger(), server.proxy_cache(), std::move(master_addresses)),
-      poller_(std::make_unique<YsqlLeasePoller>(server, finder_)),
-      poll_scheduler_(finder_, *poller_.get()) {}
+void YsqlLeaseClient::Shutdown() {
+  impl_->Shutdown();
+}
+
+std::future<Status> YsqlLeaseClient::RelinquishLease(MonoDelta timeout) const {
+  return impl_->RelinquishLease(timeout);
+}
+
+void YsqlLeaseClient::UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
+  impl_->UpdateMasterAddresses(std::move(master_addresses));
+}
+
+YsqlLeaseClient::~YsqlLeaseClient() {
+  Shutdown();
+}
+
+YsqlLeaseClient::Impl::Impl(
+    TabletServer& server, const YsqlLeaderClientListener& listener)
+    : finder_(server.messenger(), server.proxy_cache(), nullptr),
+      poller_(server, listener, finder_),
+      poll_scheduler_(finder_, poller_) {}
 
 Status YsqlLeaseClient::Impl::Start() { return poll_scheduler_.Start(); }
 
-Status YsqlLeaseClient::Impl::Stop() { return poll_scheduler_.Stop(); }
-
-std::future<Status> YsqlLeaseClient::Impl::RelinquishLease() {
-  return poller_->RelinquishLease();
+void YsqlLeaseClient::Impl::Shutdown() {
+  poll_scheduler_.Shutdown();
 }
 
-void YsqlLeaseClient::Impl::set_master_addresses(server::MasterAddressesPtr master_addresses) {
-  finder_.set_master_addresses(std::move(master_addresses));
+std::future<Status> YsqlLeaseClient::Impl::RelinquishLease(MonoDelta timeout) const {
+  return poller_.RelinquishLease(timeout);
 }
 
-YsqlLeasePoller::YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finder)
-    : server_(server), finder_(finder) {}
+void YsqlLeaseClient::Impl::UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
+  poll_scheduler_.UpdateMasterAddresses(std::move(master_addresses));
+}
+
+YsqlLeasePoller::YsqlLeasePoller(
+    TabletServer& server, const YsqlLeaderClientListener& listener, MasterLeaderFinder& finder)
+    : server_(server), listener_(listener), finder_(finder) {}
 
 Status YsqlLeasePoller::Poll() {
   if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !IsYsqlLeaseEnabled()) {
@@ -126,11 +144,9 @@ Status YsqlLeasePoller::Poll() {
   }
 
   auto timeout =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms));
+      MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms);
   if (!proxy_) {
-    auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(timeout));
-    VLOG_WITH_PREFIX(1) << "Connected to leader master server at " << hostport;
-    proxy_ = master::MasterDdlProxy(&finder_.get_proxy_cache(), hostport);
+    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterDdlProxy>(timeout));
   }
 
   master::RefreshYsqlLeaseRequestPB req;
@@ -147,11 +163,11 @@ Status YsqlLeasePoller::Poll() {
   master::RefreshYsqlLeaseResponsePB resp;
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
-          GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
+          FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob)) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));
-  return server_.ProcessLeaseUpdate(resp.info());
+  return listener_(resp.info());
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {
@@ -164,13 +180,11 @@ void YsqlLeasePoller::ResetProxy() {
   proxy_.reset();
 }
 
-std::string YsqlLeasePoller::category() { return kThreadIdentifier; }
-
 std::string YsqlLeasePoller::name() { return kThreadIdentifier; }
 
 const std::string& YsqlLeasePoller::LogPrefix() const { return server_.LogPrefix(); }
 
-std::future<Status> YsqlLeasePoller::RelinquishLease() {
+std::future<Status> YsqlLeasePoller::RelinquishLease(MonoDelta timeout) const {
   auto current_host_port = finder_.get_master_leader_hostport();
   if (current_host_port == HostPort()) {
     // HostPort isn't set. We've never sent a successful request, don't bother trying to relinquish.
@@ -180,8 +194,7 @@ std::future<Status> YsqlLeasePoller::RelinquishLease() {
   }
   auto proxy = master::MasterDdlProxy(&finder_.get_proxy_cache(), current_host_port);
   auto rpc = std::make_shared<rpc::RpcController>();
-  rpc->set_timeout(
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms)));
+  rpc->set_timeout(timeout);
   master::RelinquishYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
   auto resp = std::make_shared<master::RelinquishYsqlLeaseResponsePB>();

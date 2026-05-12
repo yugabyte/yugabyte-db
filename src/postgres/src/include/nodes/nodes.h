@@ -561,6 +561,9 @@ typedef enum NodeTag
 	T_YbTIDBitmap,
 	T_YbSkippableEntities,
 	T_YbUpdateAffectedEntities,
+	T_YbMergeScanInfo,
+	T_YbMergeScanSaopColInfo,
+	T_YbSortInfo,
 
 } NodeTag;
 
@@ -877,6 +880,25 @@ typedef enum OnConflictAction
 	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
 	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
+
+/*
+ * YB: Return true if the OnConflictAction represents an explicitly
+ * specified ON CONFLICT clause (DO NOTHING or DO UPDATE).
+ *
+ * ONCONFLICT_NONE means no clause was written. ONCONFLICT_YB_REPLACE is a
+ * YB-specific blind-write hint set by COPY ... WITH REPLACE or by
+ * promotion from yb_enable_upsert_mode; it is not an explicitly specified
+ * ON CONFLICT clause. Executor sites that gate speculative-insert,
+ * INSERT ON CONFLICT batching, arbiter-index setup, or EXPLAIN
+ * "Conflict Resolution" output on the presence of an explicitly
+ * specified ON CONFLICT clause should use this predicate instead of
+ * "action != ONCONFLICT_NONE".
+ */
+static inline bool
+YbOnConflictClauseIsExplicitlySpecified(OnConflictAction action)
+{
+	return action == ONCONFLICT_NOTHING || action == ONCONFLICT_UPDATE;
+}
 
 /*
  * LimitOption -

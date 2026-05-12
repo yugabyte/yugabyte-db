@@ -55,6 +55,12 @@ YB_DEFINE_ENUM(
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 
+struct TxnReadPoint {
+  uint64_t txn; // Transaction serial number
+  uint64_t read_time_serial_no; // Read time serial number
+  bool is_clamped; // Whether the uncertainty window is clamped
+};
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
@@ -63,6 +69,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   ~PgTxnManager();
 
+  // Abort any active transactions. Must be called before pgapi is destroyed since the abort
+  // path calls YBCIsLegacyModeForCatalogOps which dereferences the global pgapi pointer.
+  void Shutdown();
+
   Status BeginTransaction(int64_t start_time);
 
   Status CalculateIsolation(
@@ -70,7 +80,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
@@ -118,7 +128,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void RestoreSessionState(const YbcPgSessionState& session_data);
 
   [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
+  [[nodiscard]] TxnReadPoint GetCurrentReadPointState() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
+  // Restores the read point to saved_read_point.read_time, but only if the current
+  // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
+  Status RestoreReadPoint(const TxnReadPoint& saved_read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   Result<std::string> ExportSnapshot(
@@ -134,7 +149,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status AcquireObjectLock(
       SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -155,19 +170,27 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool EnableTableLocking() const;
+  bool IsTableLockingEnabledForCurrentTxn() const;
+  bool ShouldEnableTableLocking() const;
+
+  void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
  private:
   class SerialNo {
    public:
     SerialNo();
     SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
-    void IncTxn(bool preserve_read_time_history);
+    void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
+    void IncMaxReadTime();
     Status RestoreReadTime(uint64_t read_time_serial_no);
     [[nodiscard]] uint64_t txn() const { return txn_; }
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
     [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
+    [[nodiscard]] uint64_t max_read_time() const { return max_read_time_; }
+    std::string ToString() const {
+      return YB_CLASS_TO_STRING(txn, read_time, min_read_time, max_read_time);
+    }
 
    private:
     uint64_t txn_;
@@ -236,6 +259,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
+  bool using_table_locks_ = false;
   bool snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 
@@ -261,15 +285,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
   bool is_read_time_history_cutoff_disabled_{false};
+  bool clamp_uncertainty_window_{false};
 
 #ifndef NDEBUG
  public:
   void DEBUG_CheckOptionsForPerform(const tserver::PgPerformOptionsPB& options) const;
  private:
-  struct DEBUG_TxnInfo;
-  friend DEBUG_TxnInfo;
   void DEBUG_UpdateLastObjectLockingInfo();
-  std::unique_ptr<DEBUG_TxnInfo> debug_last_object_locking_txn_info_;
+  uint64_t debug_last_object_locking_txn_serial_ = 0;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);

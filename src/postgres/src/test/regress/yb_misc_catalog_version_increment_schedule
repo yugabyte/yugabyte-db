@@ -2,7 +2,7 @@
 #
 ####################################################################################################
 # This testsuite includes tests that test the catalog version increment when
-# yb_make_all_ddl_statements_incrementing is set to true. This needs to be a
+# yb_test_make_all_ddl_statements_incrementing is set to true. This needs to be a
 # separate schedule because the flag requires a cluster restart to apply.
 # The tests in this schedule are not ported from PostgreSQL original tests.
 ####################################################################################################

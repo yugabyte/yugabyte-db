@@ -112,13 +112,12 @@ extern void YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt);
 
-extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
-								   AttrMap *newToOldAttmap);
-
 extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
-extern void YBCValidatePlacement(const char *placement_info, bool check_satisfiable);
+extern void YBCValidatePlacements(const char *live_placement_info,
+								  const char *read_placement_info,
+								  bool check_satisfiable);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
@@ -127,15 +126,20 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time,
 									 YbCRSLsnType lsn_type,
-									 YbCRSOrderingMode yb_ordering_mode);
+									 YbCRSOrderingMode yb_ordering_mode,
+									 Oid database_oid);
+
+extern void YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+							   size_t *num_slot_entries);
 
 extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 									size_t *numreplicationslots);
 
-extern void YBCGetReplicationSlot(const char *slot_name,
-								  YbcReplicationSlotDescriptor **replication_slot);
+extern bool YBCGetReplicationSlot(const char *slot_name,
+								  YbcReplicationSlotDescriptor **replication_slot,
+								  bool if_exists);
 
-extern void YBCDropReplicationSlot(const char *slot_name);
+extern void YBCDropReplicationSlot(const char *slot_name, bool if_exists);
 
 extern void
 			YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,

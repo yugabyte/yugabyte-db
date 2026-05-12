@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -38,7 +39,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -142,7 +142,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -187,7 +187,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -224,7 +224,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   public void testSoftwareUpgradeBatches() {
     updateDefaultUniverse(true, OLD_VERSION, 4, 4, 4);
 
-    RuntimeConfigEntry.upsertGlobal("yb.task.upgrade.batch_roll_enabled", "true");
+    factory.globalRuntimeConf().setValue("yb.task.upgrade.batch_roll_enabled", "true");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
@@ -235,7 +235,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(36)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -290,7 +290,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -350,8 +350,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeManager, times(45)).nodeCommand(any(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(
@@ -375,7 +375,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -422,6 +422,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
 
     PlacementInfo pi = new PlacementInfo();
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
@@ -446,7 +448,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(16)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -664,6 +666,17 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
     assertEquals("Upgraded tservers", tserverNames, configuredTservers);
 
+    // Re-mark node as upgrading to ensure order is correct.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              u.getNode(tserverUpdatedButNotLive.getNodeName()).state =
+                  NodeDetails.NodeState.UpgradeSoftware;
+              u.setUniverseDetails(details);
+            });
+
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
         .precheckTasks(
@@ -698,16 +711,18 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Override
   protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
-    List<TaskType> lst =
-        new ArrayList<>(
-            Arrays.asList(
-                TaskType.CheckUpgrade,
-                TaskType.CheckMemory,
-                TaskType.CheckLocale,
-                TaskType.CheckGlibc));
+    List<TaskType> prechecks = new ArrayList<>();
     if (hasRollingRestarts) {
-      lst.add(0, TaskType.CheckNodesAreSafeToTakeDown);
+      prechecks.add(TaskType.CheckServiceLiveness);
+      prechecks.add(TaskType.CheckNodeCommandExecution);
+      prechecks.add(TaskType.CheckNodesAreSafeToTakeDown);
     }
-    return lst.toArray(new TaskType[0]);
+    prechecks.addAll(
+        Arrays.asList(
+            TaskType.CheckUpgrade,
+            TaskType.CheckMemory,
+            TaskType.CheckLocale,
+            TaskType.CheckGlibc));
+    return prechecks.toArray(new TaskType[0]);
   }
 }

@@ -15,7 +15,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}';
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -38,7 +38,7 @@ ROLLBACK;
 SELECT documentdb_api.shard_collection('db','reshard', '{"value":1}');
 ERROR:  only shard keys that use hashed are supported
 SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hash"}');
-ERROR:  invalid value for shard key: hash
+ERROR:  Shard key value provided is invalid: hash
 -- create two indexes before re-sharding
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'db',
@@ -59,13 +59,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 SELECT collection_id AS reshard_collection_id FROM documentdb_api_catalog.collections
 WHERE collection_name = 'reshard' AND database_name = 'db' \gset
 \d documentdb_data.documents_:reshard_collection_id
-                     Table "documentdb_data.documents_24000"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_24000"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_24000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_24001" documentdb_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
@@ -84,13 +83,12 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hashed"}', fal
 (1 row)
 
 \d documentdb_data.documents_:reshard_collection_id
-                     Table "documentdb_data.documents_24000"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_24000"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_24000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_24003" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
@@ -152,14 +150,14 @@ SELECT count(*) FROM documentdb_api.collection('db','reshard') WHERE document @@
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value": ["hello","world"]}');
                                                                                                      insert_one                                                                                                      
 ---------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain an array." } ] }
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "A shard key is not permitted to include any array elements." } ] }
 (1 row)
 
 -- documents with regex shard key are not allowed
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value":  {"$regularExpression":{"pattern":"foo","options":""}}}');
-                                                                                                     insert_one                                                                                                     
+                                                                                                                       insert_one                                                                                                                       
 ---------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "A shard key is not allowed to include any regular expression pattern." } ] }
 (1 row)
 
 -- documents with double shard key are allowed
@@ -175,7 +173,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY object_id;
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -201,7 +199,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY object_id;
-                                                          QUERY PLAN                                                           
+                                                               QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -225,7 +223,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY object_id;
-                                                          QUERY PLAN                                                          
+                                                               QUERY PLAN                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -250,7 +248,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY object_id;
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -283,7 +281,7 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
-                                                                      QUERY PLAN                                                                       
+                                                                           QUERY PLAN                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -308,7 +306,7 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
-                                                                      QUERY PLAN                                                                       
+                                                                           QUERY PLAN                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -385,7 +383,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY object_id;
-                                                           QUERY PLAN                                                           
+                                                                QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Sort
    Sort Key: remote_scan.worker_column_2
@@ -434,9 +432,9 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"a.b":"hashed"}', true)
 
 -- we should not allow arrays in the path even if the value is not an array
 SELECT documentdb_api.insert_one('db','reshard','{"_id":"10", "a": [{"b":22}]}');
-                                                                                                                  insert_one                                                                                                                  
+                                                                                                                            insert_one                                                                                                                            
 ---------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain array values or array descendants." } ] }
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key is not allowed to include array values or any array-derived elements." } ] }
 (1 row)
 
 -- nested objects should be fine
@@ -451,7 +449,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"a.b":22}' ORDER BY object_id;
-                                                       QUERY PLAN                                                       
+                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1

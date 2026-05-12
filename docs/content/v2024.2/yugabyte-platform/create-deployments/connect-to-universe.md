@@ -33,9 +33,9 @@ If the universe uses Client-to-Node encryption in transit, to connect you need t
 
 For information on connecting using a client shell using this certificate, see [Connect from your desktop](#connect-from-your-desktop).
 
-To use TLS to connect an application, refer to the [driver documentation](/preview/develop/drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+To use TLS to connect an application, refer to the [driver documentation](/stable/develop/drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/preview/develop/drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/stable/develop/drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
 
 ## Connect to a universe node
 
@@ -179,7 +179,7 @@ Replace the following:
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
 
-To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
+To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/develop/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
   </div>
 
@@ -239,7 +239,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [Third party tools](/preview/integrations/tools/).
+For information on using popular third-party tools with YugabyteDB, see [Third party tools](/stable/integrations/tools/).
 
 ## Run workloads
 

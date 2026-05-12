@@ -9,6 +9,7 @@ menu:
     identifier: alterable-function-only-attributes
     parent: subprogram-attributes
     weight: 30
+aliases:
 type: indexpage
 showRightNav: true
 ---

@@ -766,7 +766,7 @@ class AtomicGauge : public Gauge {
   }
 
   T value() const {
-    return static_cast<T>(value_.Load(kMemOrderRelease));
+    return static_cast<T>(value_.Load(kMemOrderNoBarrier));
   }
   virtual void set_value(const T& value) {
     int64_t new_value = static_cast<int64_t>(value);
@@ -839,6 +839,9 @@ class AtomicGauge : public Gauge {
  private:
   DISALLOW_COPY_AND_ASSIGN(AtomicGauge);
 };
+
+template <class T>
+using AtomicGaugePtr = scoped_refptr<AtomicGauge<T>>;
 
 template <class T>
 void IncrementGauge(const scoped_refptr<AtomicGauge<T>>& gauge) {

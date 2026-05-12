@@ -26,12 +26,17 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.RefetchOIDCAccessToken;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -39,8 +44,12 @@ import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.CustomerLoginFormData;
+import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
@@ -62,8 +71,14 @@ import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -73,7 +88,13 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -83,6 +104,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.pekko.stream.Materializer;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -108,8 +130,6 @@ public class SessionController extends AbstractPlatformController {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
   static final Pattern PROXY_PATTERN = Pattern.compile("^(.+):([0-9]{1,5})/.*$");
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private Config config;
 
@@ -139,6 +159,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
+  @Inject private EmbeddedCollectorInitializer embeddedCollectorInitializer;
+
   private final ApiHelper apiHelper;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -152,12 +174,14 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject
   public SessionController(
-      CustomWsClientFactory wsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
+      CustomWsClientFactory wsClientFactory,
+      RuntimeConfigFactory runtimeConfigFactory,
+      Materializer materializer) {
     WSClient wsClient =
         wsClientFactory.forCustomConfig(
             runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.apiHelper = new ApiHelper(wsClient);
+    this.apiHelper = new ApiHelper(wsClient, materializer);
   }
 
   @ApiModel(description = "Session information")
@@ -181,6 +205,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
       nickname = "getSessionInfo",
       value =
           "Get current user and customer uuid. This will not generate or return the API token, use"
@@ -188,6 +213,7 @@ public class SessionController extends AbstractPlatformController {
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
@@ -397,17 +423,22 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/json")
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/javascript")
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.showJWTInfoOnLogin");
+    boolean allowLocalLoginWithSso =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.allow_local_login_with_sso");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
+    responseJson.put("allow_local_login_with_sso", allowLocalLoginWithSso);
     platformConfig = String.format(platformConfig, responseJson.toString());
-    return ok(platformConfig).as(MimeTypes.JSON);
+    return ok(platformConfig).as("application/javascript");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -750,6 +781,9 @@ public class SessionController extends AbstractPlatformController {
           newRbacRole.getName(),
           createdRoleBinding.toString());
     }
+
+    // Have to call it here, because customer only present inside the same transaction.
+    embeddedCollectorInitializer.initialize(cust);
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;

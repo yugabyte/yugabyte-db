@@ -67,6 +67,9 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/tserver/tserver.messages.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -86,9 +89,9 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_async_writes, false,
-    "Enable asynchronous quorum commit for writes. When enabled, multiple write statements in a "
-    "transaction can execute concurrently, reducing overall latency.");
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_write_pipelining, false,
+    "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
+    "write statements in a transaction are executed concurrently, reducing overall latency.");
 
 using std::pair;
 using std::shared_ptr;
@@ -112,7 +115,7 @@ const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTSe
 
 bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
-  return FLAGS_ysql_enable_async_writes && table_type == YBTableType::PGSQL_TABLE_TYPE &&
+  return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
 }
 
@@ -137,14 +140,16 @@ Batcher::Batcher(
     YBTransactionPtr transaction,
     ConsistentReadPoint* read_point,
     bool force_consistent_read,
-    int64_t leader_term)
+    int64_t leader_term,
+    ThreadSafeArenaPtr arena)
     : client_(client),
       weak_session_(session),
       async_rpc_metrics_(session->async_rpc_metrics()),
       transaction_(std::move(transaction)),
       read_point_(read_point),
       force_consistent_read_(force_consistent_read),
-      leader_term_(leader_term) {}
+      leader_term_(leader_term),
+      arena_(std::move(arena)) {}
 
 Batcher::~Batcher() {
   LOG_IF_WITH_PREFIX(DFATAL, outstanding_rpcs_ != 0)
@@ -168,6 +173,10 @@ void Batcher::Abort(const Status& status) {
 
 void Batcher::SetDeadline(CoarseTimePoint deadline) {
   deadline_ = deadline;
+}
+
+void Batcher::SetPoolTag(rpc::ThreadPoolTag pool_tag) {
+  pool_tag_ = pool_tag;
 }
 
 bool Batcher::HasPendingOperations() const {
@@ -257,7 +266,9 @@ void Batcher::FlushAsync(
 
     if (status.ok() && yb_op->table()->partition_schema().IsHashPartitioning()) {
       if (in_flight_op.partition_key.empty()) {
-        if (!yb_op->read_only()) {
+        // Partition key is empty for advisory unlock all op(s). Instead, the tablet is set.
+        if (!yb_op->read_only() &&
+            yb_op->type() != YBOperation::Type::PGSQL_LOCK && !yb_op->tablet()) {
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
       } else {
@@ -343,7 +354,7 @@ void Batcher::LookupTabletFor(InFlightOp* op) {
 
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
-  VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
+  VLOG_WITH_PREFIX_AND_FUNC(3)
       << "Op: " << op->ToString() << ", result: " << AsString(lookup_result);
 
   if (lookup_result.ok()) {
@@ -581,8 +592,9 @@ void Batcher::ExecuteOperations(Initial initial) {
 
   // Now flush the ops for each group.
   // Consistent read is not required when whole batch fits into one command.
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "force_consistent_read=" << force_consistent_read
+                               << ", ops_info_.groups.size()=" << ops_info_.groups.size();
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
-  VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
   // Set batcher's 'rpcs_start_time_micros_' only when it is uninitialized, i.e, only for
   // a new batcher and not a retry_batcher.
@@ -665,18 +677,23 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // levels the read algorithm would differ.
 
   AsyncRpcData data{
-      .batcher = self,
-      .tablet = tablet,
-      .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
-      .need_consistent_read = need_consistent_read,
-      .ops = InFlightOps(group.begin, group.end),
-      .need_metadata = group.need_metadata
+    .batcher = self,
+    .tablet = tablet,
+    .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
+    .need_consistent_read = need_consistent_read,
+    .arena = arena_,
+    .ops = InFlightOps(group.begin, group.end),
+    .need_metadata = group.need_metadata
   };
 
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
-  if (!data.need_metadata && transaction && transaction->HasPendingAsyncWrites(tablet_id)) {
-    data.need_metadata = true;
+  if (transaction) {
+    auto term_opt = transaction->GetPendingAsyncWriteTerm(tablet_id);
+    if (term_opt) {
+      data.leader_term = *term_opt;
+      data.need_metadata = true;
+    }
   }
 
   const auto op_group = first_op->group();
@@ -686,13 +703,15 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     case OpGroup::kUnlock: {
       data.use_async_write = UseAsyncWrites(
           first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
-      return std::make_shared<WriteRpc>(data);
+      return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);
+      data.use_async_write = UseAsyncWrites(
+          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX, pool_tag_);
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }
@@ -766,6 +785,13 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
 
 void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
   ProcessRpcStatus(rpc, s);
+
+  if (s.ok()) {
+    const auto& resp = rpc.resp();
+    if (resp.has_async_write_op_id()) {
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+    }
+  }
 }
 
 void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
@@ -774,21 +800,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      // We have a async write. Record the OpId, and send a async RPC to track its completion.
-      // At time of final commit, we will wait for all these async writes to complete.
-      auto transaction = this->transaction();
-      if (transaction) {
-        const auto op_id = OpId::FromPB(resp.async_write_op_id());
-        const auto& tablet = rpc.tablet();
-
-        if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
-          // Multiple write operations can get combined into the same async write RPC resulting in
-          // duplicate OpIds.
-          auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-              shared_from_this(), tablet.tablet_id(), rpc.ts_proxy(), op_id);
-          wait_for_async_write_rpc->SendRpc();
-        }
-      }
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
     }
 
     if (resp.has_propagated_hybrid_time()) {
@@ -807,7 +819,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
           << "Received a per_row_error for an out-of-bound op index " << row_index
           << " (sent only " << rpc.ops().size() << " ops)\n"
           << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-          << rpc.resp().DebugString();
+          << rpc.resp().ShortDebugString();
       continue;
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;
@@ -873,6 +885,27 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
     return;
   }
   transaction->WaitForAsyncWrites(tablet_id, std::move(callback));
+}
+
+void Batcher::HandleAsyncWriteResponse(
+    const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
+    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
+  // We have a async write. Record the OpId, and send a async RPC to track its completion.
+  // At time of final commit, we will wait for all these async writes to complete.
+  auto transaction = this->transaction();
+  if (!transaction) {
+    LOG_WITH_PREFIX(DFATAL) << "No transaction found for async write response";
+    return;
+  }
+
+  const auto op_id = OpId::FromPB(async_write_op_id);
+  if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
+    // Multiple write operations can get combined into the same async write RPC resulting in
+    // duplicate OpIds.
+    auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
+        shared_from_this(), tablet.tablet_id(), ts_proxy, op_id);
+    wait_for_async_write_rpc->SendRpc();
+  }
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

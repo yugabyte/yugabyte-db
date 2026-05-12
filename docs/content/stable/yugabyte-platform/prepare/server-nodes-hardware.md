@@ -58,8 +58,11 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
+- [Ephemeral disks](../../../deploy/checklist/#ephemeral-disks)
 
-It is recommended to use separate disks for the Linux OS and for the data.
+   **Note**: Ephemeral disks are currently supported only for on-premises provider and _not_ a public cloud provider (AWS, GCP, or Azure).
+
+When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
 
   </div>
 

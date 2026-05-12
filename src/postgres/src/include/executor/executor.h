@@ -247,6 +247,7 @@ extern bool EvalPlanQualFetchRowMark(EPQState *epqstate, Index rti, TupleTableSl
 extern TupleTableSlot *EvalPlanQualNext(EPQState *epqstate);
 extern void EvalPlanQualBegin(EPQState *epqstate);
 extern void EvalPlanQualEnd(EPQState *epqstate);
+extern bool yb_refresh_stats_before_exec;
 
 /*
  * functions in execProcnode.c

@@ -197,6 +197,8 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   // already completed successfully.
   bool TryCancel() EXCLUDES(done_result_mutex_) override;
 
+  bool IsAlterReplication() const override { return is_alter_replication_; }
+
  private:
   friend class XClusterTableSetupTask;
 

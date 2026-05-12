@@ -30,6 +30,8 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const maxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
 
+  const ebsVolumeEnabled = getConfigValue('yb.universe.allow_cloud_volume_encryption') === 'true';
+
   return {
     runtimeConfigs,
     providerRuntimeConfigs,
@@ -38,6 +40,7 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     osPatchingEnabled,
     useK8CustomResources,
     maxVolumeCount,
-    canUseSpotInstance
+    canUseSpotInstance,
+    ebsVolumeEnabled
   };
 };

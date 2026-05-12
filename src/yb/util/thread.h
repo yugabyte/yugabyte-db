@@ -140,7 +140,7 @@ typedef scoped_refptr<Thread> ThreadPtr;
 // TODO: Consider allowing fragment IDs as category parameters.
 class Thread : public RefCountedThreadSafe<Thread> {
  public:
-  static const char kPaddingChar;
+  static constexpr char kPaddingChar = 'x';
 
   // This constructor pattern mimics that in std::thread. There is
   // one constructor for each number of arguments that the thread
@@ -316,6 +316,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
     return pthread_self();
 #endif
   }
+
+  static Result<std::string> ThreadName(int64_t thread_id);
 
   void* user_data() {
     return user_data_;

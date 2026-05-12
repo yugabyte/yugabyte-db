@@ -14,9 +14,10 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include <chrono>
-#include <string>
-#include <utility>
+#include <concepts>
+#include <span>
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/common/pgsql_error.h"
@@ -28,6 +29,7 @@
 #include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/json_document.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -56,15 +58,7 @@ const MonoTime& PGPostgresEpoch() {
   return result;
 }
 
-// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
-void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
-  CHECK(str);
-  size_t start_pos = 0;
-  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
-    str->replace(start_pos, from.length(), to);
-    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-  }
-}
+std::string PqEscapeStringConn(const std::string& input);
 
 namespace {
 
@@ -126,19 +120,22 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   result.reserve(512);
   result += Format("host=$0 port=$1", settings.host, settings.port);
   if (!settings.dbname.empty()) {
-    result += Format(" dbname=$0", PqEscapeLiteral(settings.dbname));
+    result += Format(" dbname=$0", PqEscapeStringConn(settings.dbname));
   }
   if (settings.connect_timeout) {
     result += Format(" connect_timeout=$0", settings.connect_timeout);
   }
   if (!settings.user.empty()) {
-    result += Format(" user=$0", PqEscapeLiteral(settings.user));
+    result += Format(" user=$0", PqEscapeStringConn(settings.user));
   }
   if (!settings.password.empty()) {
     result += Format(" password=$0", mask_password ? "<REDACTED>" : settings.password);
   }
   if (!settings.replication.empty()) {
-    result += Format(" replication=$0", PqEscapeLiteral(settings.replication));
+    result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
+  }
+  if (settings.yb_auto_analyze) {
+    result += Format(" yb_auto_analyze=true");
   }
   return result;
 }
@@ -264,6 +261,7 @@ constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
 constexpr Oid BSONOID = 8095;
+constexpr Oid GRAPHIDOID = 8116;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -298,7 +296,7 @@ bool IsValidType(Oid pg_type) {
   } else if constexpr (std::is_same_v<T, int32_t>) {
     return pg_type == INT4OID;
   } else if constexpr (std::is_same_v<T, int64_t>) {
-    return pg_type == INT8OID;
+    return pg_type == INT8OID || pg_type == GRAPHIDOID;
   } else if constexpr (std::is_same_v<T, float>) {
     return pg_type == FLOAT4OID;
   } else if constexpr (std::is_same_v<T, double>) {
@@ -309,6 +307,12 @@ bool IsValidType(Oid pg_type) {
     return pg_type == UUIDOID;
   } else if constexpr (std::is_same_v<T, std::vector<float>>) {
     return pg_type == VECTOROID;
+  } else if constexpr (std::is_same_v<T, JsonDocument>) { // NOLINT
+    switch (pg_type) {
+      case JSONOID: [[fallthrough]];
+      case JSONBOID: return true;
+    }
+    return false;
   }
 }
 
@@ -318,48 +322,263 @@ bool IsValidType(Oid pg_type) {
   return IsValidType<typename T::Type>(pg_type);
 }
 
+Result<PGResultPtr> CheckResult(PGResultPtr src, const std::string& command) {
+  auto* result = src.get();
+  const auto status = PQresultStatus(result);
+  switch(status) {
+    case ExecStatusType::PGRES_TUPLES_OK: [[fallthrough]];
+    case ExecStatusType::PGRES_COPY_IN:
+      return src;
+
+    case ExecStatusType::PGRES_COPY_BOTH:        [[fallthrough]];
+    case ExecStatusType::PGRES_COPY_OUT:         [[fallthrough]];
+    case ExecStatusType::PGRES_COMMAND_OK:       [[fallthrough]];
+    case ExecStatusType::PGRES_EMPTY_QUERY:      [[fallthrough]];
+    case ExecStatusType::PGRES_BAD_RESPONSE:     [[fallthrough]];
+    case ExecStatusType::PGRES_NONFATAL_ERROR:   [[fallthrough]];
+    case ExecStatusType::PGRES_FATAL_ERROR:      [[fallthrough]];
+    case ExecStatusType::PGRES_SINGLE_TUPLE:     [[fallthrough]];
+    case ExecStatusType::PGRES_PIPELINE_SYNC:    [[fallthrough]];
+    case ExecStatusType::PGRES_PIPELINE_ABORTED:
+      break;
+  }
+
+  const auto msg = GetPQErrorMessage(result);
+  return STATUS(
+      NetworkError,
+      Format("Fetch '$0' failed: $1, message: $2", command, status, msg),
+      Slice() /* msg2 */,
+      PgsqlError(GetSqlState(result))).CloneAndAddErrorCode(AuxilaryMessage(msg));
+}
+
 }  // namespace
+
+namespace libpq_utils::internal {
+
+template<BasePGType T>
+Status GetValueHelper<T>::CheckType(const PGresult* result, int column) {
+  const auto pg_type = PQftype(result, column);
+  SCHECK(
+      IsValidType<T>(pg_type), Corruption,
+      "Unexpected type $0 of column #$1 ('$2')", pg_type, column, PQfname(result, column));
+  return Status::OK();
+}
+
+template<BasePGType T>
+GetValueResult<T> GetValueHelper<T>::Get(const PGresult* result, int row, int column) {
+  SCHECK(
+      (!PQgetisnull(result, row, column)),
+      Corruption, "Unexpected NULL value at row: $0, column: $1", row, column);
+
+  if constexpr (IsPGNonNeg<T>) {
+    const auto value = VERIFY_RESULT(GetValueHelper<typename T::Type>::Get(result, row, column));
+    SCHECK_GE(value, 0, Corruption, "Bad narrow cast");
+    return value;
+  } else if constexpr (IsPGFloatType<T>) { // NOLINT
+    using FloatType = typename FloatTraits<T>::FloatType;
+    using IntType = typename FloatTraits<T>::IntType;
+    static_assert(sizeof(FloatType) == sizeof(IntType), "Wrong sizes");
+    const auto value = VERIFY_RESULT(GetValueImpl<IntType>(result, row, column));
+    return *pointer_cast<const FloatType*>(&value);
+  } else if constexpr (IsPGIntType<T>) {
+    return GetValueImpl<std::make_unsigned_t<T>>(result, row, column);
+  } else if constexpr (std::is_same_v<T, MonoDelta>) { // NOLINT
+    return MonoDelta::FromMicroseconds(
+        VERIFY_RESULT(GetValueHelper<int64_t>::Get(result, row, column)));
+  } else if constexpr (std::is_same_v<T, JsonDocument>) { // NOLINT
+    JsonDocument doc;
+    RETURN_NOT_OK(doc.Parse(VERIFY_RESULT(GetValueHelper<std::string>::Get(result, row, column))));
+    return doc;
+  } else {
+    return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
+  }
+}
+
+template struct GetValueHelper<int16_t>;
+template struct GetValueHelper<int32_t>;
+template struct GetValueHelper<int64_t>;
+template struct GetValueHelper<PGUint16>;
+template struct GetValueHelper<PGUint32>;
+template struct GetValueHelper<PGUint64>;
+template struct GetValueHelper<float>;
+template struct GetValueHelper<double>;
+template struct GetValueHelper<bool>;
+template struct GetValueHelper<std::string>;
+template struct GetValueHelper<char>;
+template struct GetValueHelper<PGOid>;
+template struct GetValueHelper<Uuid>;
+template struct GetValueHelper<MonoDelta>;
+template struct GetValueHelper<JsonDocument>;
+
+FetchHelper<RowAsString>::RowsResult FetchHelper<RowAsString>::FetchRows(
+    Result<PGResultPtr>&& source) {
+  auto result = VERIFY_RESULT(std::move(source));
+  RowsType rows;
+  auto num_rows = PQntuples(result.get());
+  rows.reserve(num_rows);
+  for (decltype(num_rows) row = 0; row < num_rows; ++row) {
+    rows.push_back(VERIFY_RESULT(RowToString(result.get(), row, DefaultColumnSeparator())));
+  }
+  return rows;
+}
+
+class CopyStoreInt {
+  static void DoStore(uint16_t value, char* buf) { BigEndian::Store16(buf, value); }
+  static void DoStore(uint32_t value, char* buf) { BigEndian::Store32(buf, value); }
+  static void DoStore(uint64_t value, char* buf) { BigEndian::Store64(buf, value); }
+
+ public:
+  static constexpr size_t kMaxSize = sizeof(uint64_t);
+
+  template<class T>
+  requires(std::integral<T> && requires (T t) { DoStore(std::make_unsigned_t<T>{}, nullptr); })
+  static char* Store(T value, char* buf) {
+    using UT = std::make_unsigned_t<T>;
+    static_assert(sizeof(UT) <= kMaxSize);
+    DoStore(static_cast<UT>(value), buf);
+    return buf + sizeof(UT);
+  }
+};
+
+template<class T>
+concept CopyProtocolInt = requires (const T& t) { CopyStoreInt::Store(t, nullptr); };
+
+class CopyController {
+  static constexpr size_t kNumOfAlwaysAvailableBytes = CopyStoreInt::kMaxSize * 2;
+
+ public:
+  template<size_t N>
+  requires(N > kNumOfAlwaysAvailableBytes)
+  CopyController(
+      PGconn* conn, std::span<char, N> buffer, std::string_view table, CopyOptions options)
+      : conn_(conn), buffer_(buffer), pos_(&buffer_.front()) {
+    const auto command = Format(
+        "COPY $0 FROM STDIN WITH (FORMAT BINARY$1)",
+        table,
+        options.rows_per_txn
+            ? Format(", ROWS_PER_TRANSACTION $0", options.rows_per_txn)
+            : std::string());
+    status_ = ResultToStatus(CheckResult(
+        PGResultPtr(PQexecParams(conn_, command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 0)),
+        command));
+    Write("PGCOPY\n\xff\r\n\0\0\0\0\0\0\0\0\0"sv);
+  }
+
+  Status Finalize() {
+    Write(static_cast<uint16_t>(0xFFFF));
+    RETURN_NOT_OK(DoFlush());
+    const auto res = PQputCopyEnd(conn_, nullptr);
+    SCHECK(res > 0, NetworkError, "Put copy end failed: $0", res);
+
+    PGResultPtr result(PQgetResult(conn_));
+    const auto status = PQresultStatus(result.get());
+    switch(status) {
+      case ExecStatusType::PGRES_COPY_BOTH:  [[fallthrough]];
+      case ExecStatusType::PGRES_COPY_IN:    [[fallthrough]];
+      case ExecStatusType::PGRES_COPY_OUT:   [[fallthrough]];
+      case ExecStatusType::PGRES_COMMAND_OK:
+        return Status::OK();
+
+      case ExecStatusType::PGRES_EMPTY_QUERY:      [[fallthrough]];
+      case ExecStatusType::PGRES_TUPLES_OK:        [[fallthrough]];
+      case ExecStatusType::PGRES_BAD_RESPONSE:     [[fallthrough]];
+      case ExecStatusType::PGRES_NONFATAL_ERROR:   [[fallthrough]];
+      case ExecStatusType::PGRES_FATAL_ERROR:      [[fallthrough]];
+      case ExecStatusType::PGRES_SINGLE_TUPLE:     [[fallthrough]];
+      case ExecStatusType::PGRES_PIPELINE_SYNC:    [[fallthrough]];
+      case ExecStatusType::PGRES_PIPELINE_ABORTED:
+        break;
+    }
+    return STATUS_FORMAT(
+        NetworkError,
+        "Copy end failed, status: $0, message: $1", status, GetPQErrorMessage(result.get()));
+  }
+
+ private:
+  friend class RowMakerImpl;
+
+  template<CopyProtocolInt T, CopyProtocolInt... Args>
+  void Write(T v1, Args... v2) {
+    static_assert(sizeof...(v2) < 2);
+    if (!status_.ok()) {
+      return;
+    }
+    DCHECK_GE(BytesLeft(), kNumOfAlwaysAvailableBytes);
+    pos_ = CopyStoreInt::Store(v1, pos_);
+    if constexpr (sizeof...(v2) == 1) {
+      pos_ = CopyStoreInt::Store(v2..., pos_);
+    }
+    Flush();
+  }
+
+  void Write(std::span<const char> buf) {
+    for (const auto* p = buf.data(), *end = buf.data() + buf.size(); status_.ok();) {
+      const auto count = std::min(BytesLeft(), static_cast<size_t>(end - p));
+      memcpy(pos_, p, count);
+      p += count;
+      pos_ += count;
+      if (p == end) {
+        break;
+      }
+      Flush();
+    }
+    Flush();
+  }
+
+  size_t BytesLeft() const {
+    return &buffer_.back() - pos_ + 1;
+  }
+
+  void Flush() {
+    if (status_.ok()) {
+      status_ = DoFlush(/* force_flush = */ false);
+    }
+  }
+
+  Status DoFlush(bool force_flush = true) {
+    const auto* begin = buffer_.data();
+    const auto len = pos_ - begin;
+    if ((len > 0 && force_flush) || len + kNumOfAlwaysAvailableBytes > buffer_.size()) {
+      pos_ = &buffer_.front();
+      const auto res = PQputCopyData(conn_, begin, narrow_cast<int>(len));
+      SCHECK(res >= 0, NetworkError, "Put copy data failed: $0", res);
+    }
+    return Status::OK();
+  }
+
+  PGconn* conn_;
+  std::span<char> buffer_;
+  char* pos_;
+  Status status_{Status::OK()};
+};
+
+template<class T>
+auto FieldSize(T value) {
+  return static_cast<uint32_t>(value);
+}
+
+void RowMakerImpl::Put(int32_t value) {
+  impl_.Write(FieldSize(4), value);
+}
+
+void RowMakerImpl::Put(int64_t value) {
+  impl_.Write(FieldSize(8), value);
+}
+
+void RowMakerImpl::Put(std::string_view value) {
+  impl_.Write(FieldSize(value.size()));
+  impl_.Write(value);
+}
+
+void RowMakerImpl::StartRow(uint16_t columns) {
+  impl_.Write(columns);
+}
+
+} // namespace libpq_utils::internal
 
 void PGConnClose::operator()(PGconn* conn) const {
   PQfinish(conn);
 }
-
-struct PGConn::CopyData {
-  static constexpr size_t kBufferSize = 2048;
-
-  Status error;
-  char * pos;
-  char buffer[kBufferSize];
-
-  void Start() {
-    pos = buffer;
-    error = Status::OK();
-  }
-
-  void WriteUInt16(uint16_t value) {
-    BigEndian::Store16(pos, value);
-    pos += 2;
-  }
-
-  void WriteUInt32(uint32_t value) {
-    BigEndian::Store32(pos, value);
-    pos += 4;
-  }
-
-  void WriteUInt64(uint64_t value) {
-    BigEndian::Store64(pos, value);
-    pos += 8;
-  }
-
-  void Write(const char* value, size_t len) {
-    memcpy(pos, value, len);
-    pos += len;
-  }
-
-  size_t left() const {
-    return buffer + kBufferSize - pos;
-  }
-};
 
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
@@ -383,10 +602,8 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     status = PQstatus(result.get());
     if (status == CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG ("
-                << conn_str_for_log
-                << "), time taken: "
-                << MonoDelta(CoarseMonoClock::Now() - start);
+      VLOG(1) << "Connected to PG (" << conn_str_for_log
+              << "), time taken: " << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
     if (status == CONNECTION_BAD) {
@@ -468,25 +685,20 @@ bool PGConn::IsBusy() {
   return PQisBusy(impl_.get()) == kIsBusy;
 }
 
-Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) {
-  auto status = PQresultStatus(result.get());
-  if (ExecStatusType::PGRES_TUPLES_OK != status && ExecStatusType::PGRES_COPY_IN != status) {
-    auto msg = GetPQErrorMessage(result.get());
-    return STATUS(NetworkError,
-                  Format("Fetch '$0' failed: $1, message: $2",
-                         command, status, msg),
-                  Slice() /* msg2 */,
-                  PgsqlError(GetSqlState(result.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
-  }
-  return result;
-}
-
-Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+Result<PGResultPtr> PGConn::Fetch(
+    const std::string& command, std::optional<PGResultFormat> data_format,
+    const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << command;
+  if (simple_query_protocol_) {
+    DCHECK(!data_format) << "data_format cannot be specified with simple query protocol";
+    DCHECK(params.empty()) << "Parameters passed but connection uses simple query protocol";
+    return CheckResult(PGResultPtr(PQexec(impl_.get(), command.c_str())), command);
+  }
+  auto format = data_format.value_or(PGResultFormat::kBinary);
   return CheckResult(
-      PGResultPtr(simple_query_protocol_
-          ? PQexec(impl_.get(), command.c_str())
-          : PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1)),
+      PGResultPtr(PQexecParams(
+          impl_.get(), command.c_str(), static_cast<int>(params.size()), nullptr,
+          params.data(), nullptr, nullptr, static_cast<int>(format))),
       command);
 }
 
@@ -563,7 +775,7 @@ Status PGConn::RollbackTransaction() {
 }
 
 Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
-  RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=true"));
+  RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=1"));
   Status s = Execute(ddl_to_fail);
   if (s.ok()) {
     return STATUS_FORMAT(InternalError,
@@ -594,121 +806,15 @@ Result<bool> PGConn::HasScanType(const std::string& query, const std::string exp
   return false;
 }
 
-Status PGConn::CopyBegin(const std::string& command) {
-  auto result = VERIFY_RESULT(CheckResult(
-      PGResultPtr(
-          PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 0)),
-      command));
-
-  if (!copy_data_) {
-    copy_data_.reset(new CopyData);
+Status PGConn::DoCopyFromStdin(
+    std::string_view table, const CopyOptions& options, const ControllerReceiver& receiver) {
+  if (!copy_buffer_) {
+    copy_buffer_ = std::make_unique<CopyBuffer>();
   }
-  copy_data_->Start();
-
-  static const char prefix[] = "PGCOPY\n\xff\r\n\0\0\0\0\0\0\0\0\0";
-  copy_data_->Write(prefix, sizeof(prefix) - 1);
-
-  return Status::OK();
-}
-
-bool PGConn::CopyEnsureBuffer(size_t len) {
-  if (!copy_data_->error.ok()) {
-    return false;
-  }
-  if (copy_data_->left() < len) {
-    return CopyFlushBuffer();
-  }
-  return true;
-}
-
-void PGConn::CopyStartRow(int16_t columns) {
-  if (!CopyEnsureBuffer(2)) {
-    return;
-  }
-  copy_data_->WriteUInt16(columns);
-}
-
-bool PGConn::CopyFlushBuffer() {
-  if (!copy_data_->error.ok()) {
-    return false;
-  }
-  ptrdiff_t len = copy_data_->pos - copy_data_->buffer;
-  if (len) {
-    int res = PQputCopyData(impl_.get(), copy_data_->buffer, narrow_cast<int>(len));
-    if (res < 0) {
-      copy_data_->error = STATUS_FORMAT(NetworkError, "Put copy data failed: $0", res);
-      return false;
-    }
-  }
-  copy_data_->Start();
-  return true;
-}
-
-void PGConn::CopyPutInt16(int16_t value) {
-  if (!CopyEnsureBuffer(6)) {
-    return;
-  }
-  copy_data_->WriteUInt32(2);
-  copy_data_->WriteUInt16(value);
-}
-
-void PGConn::CopyPutInt32(int32_t value) {
-  if (!CopyEnsureBuffer(8)) {
-    return;
-  }
-  copy_data_->WriteUInt32(4);
-  copy_data_->WriteUInt32(value);
-}
-
-void PGConn::CopyPutInt64(int64_t value) {
-  if (!CopyEnsureBuffer(12)) {
-    return;
-  }
-  copy_data_->WriteUInt32(8);
-  copy_data_->WriteUInt64(value);
-}
-
-void PGConn::CopyPut(const char* value, size_t len) {
-  if (!CopyEnsureBuffer(4)) {
-    return;
-  }
-  copy_data_->WriteUInt32(static_cast<uint32_t>(len));
-  for (;;) {
-    size_t left = copy_data_->left();
-    if (copy_data_->left() < len) {
-      copy_data_->Write(value, left);
-      value += left;
-      len -= left;
-      if (!CopyFlushBuffer()) {
-        return;
-      }
-    } else {
-      copy_data_->Write(value, len);
-      break;
-    }
-  }
-}
-
-Result<PGResultPtr> PGConn::CopyEnd() {
-  if (CopyEnsureBuffer(2)) {
-    copy_data_->WriteUInt16(static_cast<uint16_t>(-1));
-  }
-  if (!CopyFlushBuffer()) {
-    return copy_data_->error;
-  }
-  int res = PQputCopyEnd(impl_.get(), nullptr);
-  if (res <= 0) {
-    return STATUS_FORMAT(NetworkError, "Put copy end failed: $0", res);
-  }
-
-  PGResultPtr result(PQgetResult(impl_.get()));
-  auto status = PQresultStatus(result.get());
-  if (status == ExecStatusType::PGRES_COPY_BOTH || status == ExecStatusType::PGRES_COPY_IN ||
-      status == ExecStatusType::PGRES_COPY_OUT || status == ExecStatusType::PGRES_COMMAND_OK) {
-    return result;
-  }
-  auto msg = GetPQErrorMessage(result.get());
-  return STATUS_FORMAT(NetworkError, "Copy end failed, status: $0, message: $1", status, msg);
+  libpq_utils::internal::CopyController controller{
+      impl_.get(), std::span{*copy_buffer_}, table, options};
+  receiver(controller);
+  return controller.Finalize();
 }
 
 Result<std::string> ToString(const PGresult* result, int row, int column) {
@@ -750,34 +856,60 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
   return Format("Type not supported: $0", type);
 }
 
-// Escape literals in postgres (e.g. to make a libpq connection to a database named
-// `this->'\<-this`, use `dbname='this->\'\\<-this'`).
+// Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
+// like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
+// contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
+// interpreted correctly regardless of the standard_conforming_strings setting.
+// Examples:
+// - `this->'\<-this` -> `E'this->''\\<-this'`
+// - `this->'<-this` -> `'this->''<-this'`
 //
-// This should behave like `PQescapeLiteral` except that it doesn't need an existing connection
-// passed in.
+// This should behave like `PQescapeLiteral` except that it doesn't need an
+// existing connection passed in.
 std::string PqEscapeLiteral(const std::string& input) {
+  bool has_backslashes = input.find('\\') != std::string::npos;
   std::string output = input;
-  // Escape certain characters.
-  ReplaceAll(&output, "\\", "\\\\");
-  ReplaceAll(&output, "'", "\\'");
-  // Quote.
-  output.insert(0, 1, '\'');
+  if (has_backslashes) {
+    boost::algorithm::replace_all(output, "\\", "\\\\");
+    boost::algorithm::replace_all(output, "'", "''");
+    output.insert(0, "E'");
+  } else {
+    boost::algorithm::replace_all(output, "'", "''");
+    output.insert(0, 1, '\'');
+  }
   output.push_back('\'');
   return output;
 }
 
-// Escape identifiers in postgres (e.g. to create a database named `this->"\<-this`, use `CREATE
-// DATABASE "this->""\<-this"`).
+// Escape a string for use as a SQL identifier, i.e. a database, table, column, or role name that
+// appears in a SQL statement like `CREATE DATABASE "<escaped>"`.  Double quotes within the input
+// are doubled; the result is wrapped in double quotes.
+// Example: `this->"\<-this` -> `"this->""\<-this"`
 //
 // This should behave like `PQescapeIdentifier` except that it doesn't need an existing connection
 // passed in.
 std::string PqEscapeIdentifier(const std::string& input) {
   std::string output = input;
   // Escape certain characters.
-  ReplaceAll(&output, "\"", "\"\"");
+  boost::algorithm::replace_all(output, "\"", "\"\"");
   // Quote.
   output.insert(0, 1, '"');
   output.push_back('"');
+  return output;
+}
+
+// Escape a value for use in a libpq connection string (e.g. to make a
+// libpq connection to a database named `this->'\<-this`, use
+// `dbname='this->\'\\<-this'`).
+//
+// This should behave like `PQescapeStringConn` except that it doesn't need an existing connection
+// passed in.
+std::string PqEscapeStringConn(const std::string& input) {
+  std::string output = input;
+  boost::algorithm::replace_all(output, "\\", "\\\\");
+  boost::algorithm::replace_all(output, "'", "\\'");
+  output.insert(0, 1, '\'');
+  output.push_back('\'');
   return output;
 }
 
@@ -863,7 +995,8 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline) {
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    bool yb_auto_analyze) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -880,72 +1013,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .dbname = database_name,
        .user = "postgres",
        .password = UInt64ToString(postgres_auth_key),
-       .connect_timeout = connect_timeout});
+       .connect_timeout = connect_timeout,
+       .yb_auto_analyze = yb_auto_analyze});
 }
 
-namespace libpq_utils::internal {
-
-template<BasePGType T>
-Status GetValueHelper<T>::CheckType(const PGresult* result, int column) {
-  const auto pg_type = PQftype(result, column);
-  SCHECK(
-      IsValidType<T>(pg_type), Corruption,
-      "Unexpected type $0 of column #$1 ('$2')", pg_type, column, PQfname(result, column));
-  return Status::OK();
-}
-
-template<BasePGType T>
-GetValueResult<T> GetValueHelper<T>::Get(const PGresult* result, int row, int column) {
-  SCHECK(
-      (!PQgetisnull(result, row, column)),
-      Corruption, "Unexpected NULL value at row: $0, column: $1", row, column);
-
-  if constexpr (IsPGNonNeg<T>) {
-    const auto value = VERIFY_RESULT(GetValueHelper<typename T::Type>::Get(result, row, column));
-    SCHECK_GE(value, 0, Corruption, "Bad narrow cast");
-    return value;
-  } else if constexpr (IsPGFloatType<T>) { // NOLINT
-    using FloatType = typename FloatTraits<T>::FloatType;
-    using IntType = typename FloatTraits<T>::IntType;
-    static_assert(sizeof(FloatType) == sizeof(IntType), "Wrong sizes");
-    const auto value = VERIFY_RESULT(GetValueImpl<IntType>(result, row, column));
-    return *pointer_cast<const FloatType*>(&value);
-  } else if constexpr (IsPGIntType<T>) {
-    return GetValueImpl<std::make_unsigned_t<T>>(result, row, column);
-  } else if constexpr (std::is_same_v<T, MonoDelta>) { // NOLINT
-    return MonoDelta::FromMicroseconds(
-        VERIFY_RESULT(GetValueHelper<int64_t>::Get(result, row, column)));
-  } else {
-    return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
-  }
-}
-
-template struct GetValueHelper<int16_t>;
-template struct GetValueHelper<int32_t>;
-template struct GetValueHelper<int64_t>;
-template struct GetValueHelper<PGUint16>;
-template struct GetValueHelper<PGUint32>;
-template struct GetValueHelper<PGUint64>;
-template struct GetValueHelper<float>;
-template struct GetValueHelper<double>;
-template struct GetValueHelper<bool>;
-template struct GetValueHelper<std::string>;
-template struct GetValueHelper<char>;
-template struct GetValueHelper<PGOid>;
-template struct GetValueHelper<Uuid>;
-template struct GetValueHelper<MonoDelta>;
-
-FetchHelper<RowAsString>::RowsResult FetchHelper<RowAsString>::FetchRows(
-    Result<PGResultPtr>&& source) {
-  auto result = VERIFY_RESULT(std::move(source));
-  RowsType rows;
-  auto num_rows = PQntuples(result.get());
-  rows.reserve(num_rows);
-  for (decltype(num_rows) row = 0; row < num_rows; ++row) {
-    rows.push_back(VERIFY_RESULT(RowToString(result.get(), row, DefaultColumnSeparator())));
-  }
-  return rows;
-}
-
-} // namespace libpq_utils::internal
 } // namespace yb::pgwrapper

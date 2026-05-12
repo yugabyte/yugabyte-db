@@ -31,7 +31,9 @@ import {
   fetchProviderRunTimeConfigsResponse,
   getAlerts,
   getAlertsSuccess,
-  getAlertsFailure
+  getAlertsFailure,
+  fetchPerfAdvisorList,
+  fetchPerfAdvisorListResponse
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import {
@@ -106,6 +108,12 @@ const mapDispatchToProps = (dispatch) => {
     showEnablePerfAdvisorModal: () => {
       dispatch(openDialog('enablePerfAdvisorModal'));
     },
+    showEnableAdvancedObservabilityModal: () => {
+      dispatch(openDialog('enableAdvancedObservabilityModal'));
+    },
+    showDisableAdvancedObservabilityModal: () => {
+      dispatch(openDialog('disableAdvancedObservabilityModal'));
+    },
     showForceDeleteUniverseModal: () => {
       dispatch(openDialog('forceDeleteUniverseModal'));
     },
@@ -160,8 +168,16 @@ const mapDispatchToProps = (dispatch) => {
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
     },
+    showMultiTenancyModal: () => {
+      dispatch(openDialog('enableMultiTenancy'));
+    },
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
+    },
+    fetchPerfAdvisorList: () => {
+      dispatch(fetchPerfAdvisorList()).then((response) => {
+        dispatch(fetchPerfAdvisorListResponse(response.payload));
+      });
     },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
@@ -204,8 +220,8 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    getUniversePaRegistrationStatus: (paUuid, universeUuid) => {
-      return dispatch(getUniversePaRegistrationStatus(paUuid, universeUuid)).then((response) => {
+    getUniversePaRegistrationStatus: (universeUuid) => {
+      return dispatch(getUniversePaRegistrationStatus(universeUuid)).then((response) => {
         return dispatch(getUniversePaRegistrationStatusResponse(response.payload));
       });
     },

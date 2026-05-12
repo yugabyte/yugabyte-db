@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/validate.c
+ * src/commands/validate.c
  *
  * Implementation of the validate command.
  *
@@ -34,7 +34,7 @@ typedef struct
 	/* represents database name*/
 	const char *databaseName;
 
-	/* represents collection name*/
+	/* Indicates the name of a collection*/
 	const char *collectionName;
 
 	/* if full validation is required, currently a no-op*/
@@ -52,7 +52,7 @@ typedef struct
 	/* The namespace of the collection */
 	char *ns;
 
-	/* The total number of indexes in the collection */
+	/* The collection's total count of indexes */
 	int32 totalIndexes;
 
 	/* Details of each index along with it's validity */
@@ -89,13 +89,13 @@ command_validate(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errmsg("db name cannot be NULL")));
+		ereport(ERROR, (errmsg("Database name must not be NULL")));
 	}
 	validateSpec.databaseName = text_to_cstring(PG_GETARG_TEXT_P(0));
 
 	if (PG_ARGISNULL(1))
 	{
-		ereport(ERROR, (errmsg("Invalid namespace specified '%s'.",
+		ereport(ERROR, (errmsg("The provided namespace value '%s' is not valid.",
 							   validateSpec.databaseName)));
 	}
 
@@ -113,7 +113,8 @@ command_validate(PG_FUNCTION_ARGS)
 			if (bson_iter_type(&validateIter) == BSON_TYPE_DOCUMENT)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-								errmsg("collection name has invalid type object")));
+								errmsg(
+									"Collection name contains an invalid object type")));
 			}
 			EnsureTopLevelFieldType("validate", &validateIter, BSON_TYPE_UTF8);
 			validateSpec.collectionName = value->value.v_utf8.str;
@@ -135,7 +136,7 @@ command_validate(PG_FUNCTION_ARGS)
 	if (validateSpec.collectionName == NULL || strlen(validateSpec.collectionName) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Invalid namespace specified '%s.'",
+						errmsg("The specified namespace is invalid: '%s'.",
 							   validateSpec.databaseName)));
 	}
 
@@ -164,7 +165,7 @@ command_validate(PG_FUNCTION_ARGS)
 	if (collection == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND), errmsg(
-							"Collection '%s.%s' does not exist to validate.",
+							"The collection '%s.%s' cannot be validated because it does not exist.",
 							validateSpec.databaseName, validateSpec.collectionName)));
 	}
 
@@ -266,7 +267,7 @@ CheckIndisvalid(uint64 collectionId, ValidateResult *result)
 			HeapTuple tuple = tuptable->vals[row];
 
 			/* There are two columns in the result
-			 * 1. index_name: Mongo name of the index
+			 * 1. index_name: name of the index
 			 * 2. indisvalid: if the index is valid in pg_index
 			 */
 			int columnNumber = 1;

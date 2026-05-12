@@ -113,7 +113,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
-  Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+  Status ValidateWriteToCatalogTableAllowed(TableIdView table_id, bool is_forced_update) const;
 
   Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
@@ -135,12 +135,28 @@ class YsqlManager : public YsqlManagerIf {
       const PgTableAllOids& oids,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
+  Result<bool> GetPgIndexStatus(
+      PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+      const ReadHybridTime& read_time = ReadHybridTime()) const override;
+
   void RunBgTasks(const LeaderEpoch& epoch);
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
+
+  void StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
+
+  // Helper function to schedule the next iteration of the ddl post processing failed verification
+  // task.
+  void ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now = false);
+
+  // Background task that re-triggers DDL verification for YSQL DDL transactions in
+  // kDdlPostProcessingFailed state.
+  // Note: This function should only ever be called by
+  // StartDdlPostProcessingFailedVerificationRetriggerIfStopped().
+  void RetriggerDdlPostProcessingFailedVerificationPeriodically();
 
   void StartTablespaceBgTaskIfStopped();
 
@@ -159,6 +175,11 @@ class YsqlManager : public YsqlManagerIf {
 
   // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
   void RefreshPgCatalogVersionInfoPeriodically();
+
+  // Background task (and its helper functions) related to LISTEN/NOTIFY.
+  Status ListenNotifyBgTask();
+  Status CreateYbSystemDBIfNeeded();
+  Status CreateListenNotifyObjects();
 
   Master& master_;
   CatalogManager& catalog_manager_;
@@ -180,8 +201,18 @@ class YsqlManager : public YsqlManagerIf {
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
+  // Whether the periodic job to re-trigger DDL verification for kDdlPostProcessingFailed txns
+  // is running.
+  std::atomic<bool> ddl_post_processing_failed_verification_retrigger_running_{false};
+
+  rpc::ScheduledTaskTracker refresh_ysql_ddl_post_processing_failed_verification_task_;
+
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
+
+  std::atomic<bool> yb_system_db_created_ = {false};
+  std::atomic<bool> creating_listen_notify_objects_ = {false};
+  std::atomic<bool> created_listen_notify_objects_ = {false};
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };

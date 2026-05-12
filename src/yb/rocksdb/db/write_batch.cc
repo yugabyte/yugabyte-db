@@ -97,7 +97,7 @@ struct BatchContentClassifier : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status Frontiers(const UserFrontiers& range) override {
+  Status Frontiers(const yb::storage::UserFrontiers& range) override {
     content_flags |= ContentFlags::HAS_FRONTIERS;
     return Status::OK();
   }
@@ -166,7 +166,7 @@ struct SavePoint {
   size_t size;  // size of rep_
   uint32_t count;    // count of elements in rep_
   uint32_t content_flags;
-  const UserFrontiers* frontiers;
+  const yb::storage::UserFrontiers* frontiers;
 };
 
 struct SavePoints {
@@ -888,12 +888,10 @@ class MemTableInserter : public WriteBatch::Handler {
       std::string new_value;
       bool merge_success = false;
       {
-        StopWatchNano timer(Env::Default(), moptions->statistics != nullptr);
+        StopWatchNano timer(Env::Default(), moptions->statistics, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         merge_success = merge_operator->FullMerge(
             key, &get_value_slice, operands, &new_value, moptions->info_log);
-        RecordTick(moptions->statistics, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       }
 
       if (!merge_success) {
@@ -919,7 +917,7 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status Frontiers(const UserFrontiers& frontiers) override {
+  Status Frontiers(const yb::storage::UserFrontiers& frontiers) override {
     Status seek_status;
     if (!SeekToColumnFamily(0, &seek_status)) {
       return seek_status;

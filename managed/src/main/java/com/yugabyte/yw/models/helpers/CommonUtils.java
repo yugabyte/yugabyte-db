@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -55,6 +56,9 @@ import play.libs.Json;
 
 @Slf4j
 public class CommonUtils {
+
+  public static final String RESULT_SUCCESS = "success";
+  public static final String RESULT_FAILURE = "failure";
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
   public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
@@ -93,6 +97,9 @@ public class CommonUtils {
           "SAS_TOKEN",
           "REFRESH_TOKEN",
           "PASSWORD");
+  // Sensitive field exact names (case-insensitive). Used when a substring match would be too broad.
+  // For example, "token" should be masked but "authTokenIssueDate" should not.
+  private static final List<String> sensitiveFieldExactNames = Arrays.asList("TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(
@@ -198,6 +205,12 @@ public class CommonUtils {
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
+    }
+
+    // Exact-name matches: used when a substring would be too broad.
+    // e.g. "token" must match but "authTokenIssueDate" must not.
+    if (sensitiveFieldExactNames.contains(ucFieldname)) {
+      return true;
     }
 
     // Check if any of sensitiveFieldSubstrings are substrings in ucFieldname and mark as sensitive
@@ -853,6 +866,14 @@ public class CommonUtils {
     return randomLiveOrRemovedTServer;
   }
 
+  public static UniverseDefinitionTaskParams.ClusterType getClusterType(
+      Provider provider, Universe universe) {
+    String primaryUUIDStr = universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
+    return provider.getUuid().toString().equals(primaryUUIDStr)
+        ? UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        : UniverseDefinitionTaskParams.ClusterType.ASYNC;
+  }
+
   private static NodeDetails getARandomLiveOrToBeRemovedTServer(Collection<NodeDetails> nodes) {
     List<NodeDetails> tserverLiveNodes =
         nodes.stream()
@@ -967,5 +988,34 @@ public class CommonUtils {
       String pathToModify, String initialRoot, String finalRoot) {
     String regex = "^" + Pattern.quote(initialRoot);
     return pathToModify.replaceAll(regex, finalRoot);
+  }
+
+  public static Optional<String> getEnvBothCase(String var) {
+    String ret = System.getenv(var);
+    if (StringUtils.isBlank(ret)) {
+      ret = System.getenv(var.toUpperCase());
+      if (StringUtils.isBlank(ret)) {
+        ret = null;
+      }
+    }
+    return Optional.ofNullable(ret);
+  }
+
+  public static void logEnvVar(String name) {
+    Optional<String> value = getEnvBothCase(name);
+    if (value.isEmpty()) {
+      log.info("Environment variable '{}' is not set", name);
+    } else {
+      log.info("Environment variable '{}' is set to '{}'", name, value.get());
+    }
+  }
+
+  public static void logSystemProperty(String name) {
+    String value = System.getProperty(name);
+    if (value == null) {
+      log.info("System property '{}' is not set", name);
+    } else {
+      log.info("System property '{}' is set to '{}'", name, value);
+    }
   }
 }

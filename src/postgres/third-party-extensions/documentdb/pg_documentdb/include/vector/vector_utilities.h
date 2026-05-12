@@ -14,7 +14,7 @@
 #include <fmgr.h>
 
 #include "vector/vector_spec.h"
-
+#include "vector/vector_configs.h"
 
 /*
  * Type that holds data needed for
@@ -40,12 +40,16 @@ double EvaluateMetaSearchScore(pgbson *document);
 char * GenerateVectorIndexExprStr(const char *keyPath,
 								  const CosmosSearchOptions *searchOptions);
 
-Expr * GenerateVectorSortExpr(const char *queryVectorPath,
+Expr * GenerateVectorSortExpr(VectorSearchOptions *vectorSearchOptions,
 							  FuncExpr *vectorCastFunc, Relation indexRelation,
-							  Node *documentExpr, Node *vectorQuerySpecNode,
-							  bool exactSearch);
+							  Node *documentExpr, Node *vectorQuerySpecNode);
 
 bool IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
 						   FuncExpr **vectorExtractorFunc);
 
+Oid GetFullVectorOperatorId(VectorIndexDistanceMetric distanceMetric);
+
+bool IsHalfVectorCastFunction(FuncExpr *vectorCastFunc);
+
+bool IsPgvectorHalfVectorAvailable(void);
 #endif

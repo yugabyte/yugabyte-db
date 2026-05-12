@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.Materializer;
 import play.Environment;
@@ -34,22 +35,25 @@ import play.libs.ws.ahc.AhcWSClientConfigFactory;
 @Slf4j
 public class CustomWsClientFactory {
 
-  private final Materializer materializer;
+  @Getter private final Materializer materializer;
   private final Environment environment;
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   private final AtomicLong currentId = new AtomicLong();
   private final Map<Long, CustomWSClient> clients = new ConcurrentHashMap<>();
+  private final WSRequestLoggingFilter wsRequestLoggingFilter;
 
   @Inject
   public CustomWsClientFactory(
       ApplicationLifecycle lifecycle,
       Materializer materializer,
       Environment environment,
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      WSRequestLoggingFilter wsRequestLoggingFilter) {
     this.materializer = materializer;
     this.environment = environment;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.wsRequestLoggingFilter = wsRequestLoggingFilter;
     lifecycle.addStopHook(
         () -> {
           List<CustomWSClient> toClose = new ArrayList<>(clients.values());
@@ -83,6 +87,7 @@ public class CustomWsClientFactory {
     Long id = currentId.incrementAndGet();
     CustomWSClient result =
         new CustomWSClient(id, customWsClient, client -> clients.remove(client.getId()));
+    result.addFilter(wsRequestLoggingFilter);
     clients.put(id, result);
     return result;
   }

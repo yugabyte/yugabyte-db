@@ -54,7 +54,7 @@ const mapDispatchToProps = (dispatch) => {
     alertConfigs: (payload) => {
       return dispatch(alertConfigs(payload)).then((response) => {
         if (response.error) {
-          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
+          if (isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -64,7 +64,7 @@ const mapDispatchToProps = (dispatch) => {
     alertDestinations: () => {
       return dispatch(alertDestinations()).then((response) => {
         if (response.error) {
-          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
+          if (isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -74,7 +74,7 @@ const mapDispatchToProps = (dispatch) => {
     getTargetMetrics: (payload) => {
       return dispatch(getTargetMetrics(payload)).then((response) => {
         if (response.error) {
-          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
+          if (isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -111,7 +111,7 @@ const mapDispatchToProps = (dispatch) => {
     getAlertChannels: () => {
       return dispatch(getAlertChannels()).then((response) => {
         if (response.error) {
-          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
+          if (isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }

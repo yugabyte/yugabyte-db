@@ -8,6 +8,7 @@ menu:
     identifier: alterable-subprogram-attributes
     parent: subprogram-attributes
     weight: 20
+aliases:
 type: docs
 ---
 

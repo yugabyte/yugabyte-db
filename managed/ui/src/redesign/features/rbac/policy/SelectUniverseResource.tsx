@@ -23,7 +23,7 @@ import { RbacUserWithResources } from '../users/interface/Users';
 import Checked from '../../../assets/checkbox/Checked.svg';
 import UnChecked from '../../../assets/checkbox/UnChecked.svg';
 import Intermediate from '../../../assets/checkbox/Intermediate.svg';
-import { ReactComponent as Create } from '../../../assets/edit_pen.svg';
+import Create from '../../../assets/edit_pen.svg';
 
 type SelectUniverseResourceProps = {
   fieldIndex: number;
@@ -244,9 +244,9 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
                     checked={allowAll || hasUniverseCreatePerm}
                     onChange={(e) => setAllowAll(e.target.value)}
                     label={t('includeFutureUniverse')}
-                    icon={<img src={UnChecked} alt="unchecked" />}
-                    checkedIcon={<img src={Checked} alt="checked" />}
-                    indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
+                    icon={<UnChecked alt="unchecked" />}
+                    checkedIcon={<Checked alt="checked" />}
+                    indeterminateIcon={<Intermediate alt="intermediate" />}
                     disabled={selectedResources.length !== universeList.length || hasUniverseCreatePerm}
                   />
                 </Box>

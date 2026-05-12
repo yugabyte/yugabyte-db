@@ -56,11 +56,11 @@ Once all of the following conditions are met in the sliding window, full compact
 
 - Enough keys have been read ([auto_compact_min_obsolete_keys_found](../../reference/configuration/yb-tserver/#auto-compact-min-obsolete-keys-found)).
 
-While this feature is compatible with tables with TTL, YugabyteDB won't schedule compactions on tables with TTL if the [TTL file expiration](/preview/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is active.
+While this feature is compatible with tables with TTL, YugabyteDB won't schedule compactions on tables with TTL if the [TTL file expiration](/stable/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is active.
 
 ## Scheduled full compactions
 
- YugabyteDB allows full compactions overall data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../reference/configuration/yb-tserver#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../reference/configuration/yb-tserver#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well but is not compatible with the [TTL file expiration](/preview/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+ YugabyteDB allows full compactions overall data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../reference/configuration/yb-tserver#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../reference/configuration/yb-tserver#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well but is not compatible with the [TTL file expiration](/stable/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 ## Server-global memstore limit
 

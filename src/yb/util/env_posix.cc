@@ -371,6 +371,10 @@ class PosixWritableFile : public WritableFile {
       YB_LOG_FIRST_N(WARNING, 1) << "Simulating a filesystem without fallocate() support";
       return Status::OK();
     }
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0 &&
+                      implicit_cast<uint64_t>(FLAGS_TEST_simulate_free_space_bytes) < size)) {
+      return STATUS_IO_ERROR(filename_, ENOSPC);
+    }
     if (fallocate(fd_, 0, offset, size) < 0) {
       if (errno == EOPNOTSUPP) {
         YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
@@ -397,11 +401,11 @@ class PosixWritableFile : public WritableFile {
     // size_on_disk can be either pre_allocated_size_ or pre_allocated_size_ from
     // previous writer. If we've allocated more space than we used, truncate to the
     // actual size of the file and perform Sync().
-    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    off_t size_on_disk = lseek(fd_, 0, SEEK_END);
     if (size_on_disk < 0) {
        return STATUS_IO_ERROR(filename_, errno);
     }
-    if (filesize_ < size_on_disk) {
+    if (filesize_ < implicit_cast<size_t>(size_on_disk)) {
       if (ftruncate(fd_, filesize_) < 0) {
         s = STATUS_IO_ERROR(filename_, errno);
         pending_sync_ = true;
@@ -607,13 +611,13 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     }
     RETURN_NOT_OK(Sync());
     LOG(INFO) << "Closing file " << filename_ << " with " << block_ptr_vec_.size() << " blocks";
-    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    off_t size_on_disk = lseek(fd_, 0, SEEK_END);
     if (size_on_disk < 0) {
        return STATUS_IO_ERROR(filename_, errno);
     }
     // size_on_disk can be filesize_, pre_allocated_size_, or pre_allocated_size_
     // from other previous writer.
-    if (real_size_ < size_on_disk) {
+    if (real_size_ < implicit_cast<size_t>(size_on_disk)) {
       LOG(INFO) << filename_ << ": Truncating file from size: " << filesize_
                 << " to size: " << real_size_
                 << ". Preallocated size: " << pre_allocated_size_
@@ -1511,7 +1515,7 @@ class PosixEnv : public Env {
     if (sysinfo(&info) < 0) {
       return STATUS_IO_ERROR("sysinfo() failed", errno);
     }
-    LOG(INFO) << "Using memory limit from sysinfo(): " << info.totalram;
+    VLOG(1) << "Using memory limit from sysinfo(): " << info.totalram;
     *ram = info.totalram;
 
 #endif
@@ -1638,6 +1642,16 @@ class PosixFileFactory : public FileFactory {
       const std::string& fname, std::unique_ptr<SequentialFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewSequentialFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
+#if defined(__APPLE__)
+    // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+      result->reset(new yb::PosixSequentialFile(fname, fd, yb::FileSystemOptions::kDefault));
+      return Status::OK();
+    }
+#else
     FILE* f = fopen(fname.c_str(), "r");
     if (f == nullptr) {
       return STATUS_IO_ERROR(fname, errno);
@@ -1645,6 +1659,7 @@ class PosixFileFactory : public FileFactory {
       result->reset(new yb::PosixSequentialFile(fname, f, yb::FileSystemOptions::kDefault));
       return Status::OK();
     }
+#endif // defined(__APPLE__)
   }
 
   Status NewRandomAccessFile(const std::string& fname,
@@ -1737,7 +1752,7 @@ class PosixFileFactory : public FileFactory {
                                     std::unique_ptr<WritableFile>* result) {
     uint64_t file_size = 0;
     if (opts.mode == PosixEnv::OPEN_EXISTING) {
-      uint64_t lseek_result;
+      off_t lseek_result;
       if (opts.initial_offset.has_value()) {
         lseek_result = lseek(fd, opts.initial_offset.value(), SEEK_SET);
       } else {

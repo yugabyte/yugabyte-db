@@ -13,7 +13,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
@@ -60,6 +63,8 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
+import play.mvc.Result;
 
 public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase {
   private Customer customer;
@@ -155,6 +160,47 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
         .upgradeSoftware(captor.capture(), eq(customer), eq(universe));
     SoftwareUpgradeParams params = captor.getValue();
     assertEquals(upgradeRelease.getVersion(), params.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testV2UniverseUpgradeRunOnlyPrechecksTrue() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeDBVersion(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
+    req.setAllowRollback(true);
+    req.setVersion(upgradeRelease.getVersion());
+    req.setRunOnlyPrechecks(true);
+    YBATask resp =
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<SoftwareUpgradeParams> captor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeDBVersion(captor.capture(), eq(customer), eq(universe));
+    SoftwareUpgradeParams params = captor.getValue();
+    assertTrue("runOnlyPrechecks should be true", Boolean.TRUE.equals(params.runOnlyPrechecks));
+  }
+
+  @Test
+  public void testV2UniverseUpgradeRunOnlyPrechecksDefaultFalse() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeSoftware(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
+    req.setAllowRollback(false);
+    req.setVersion(upgradeRelease.getVersion());
+    YBATask resp =
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<SoftwareUpgradeParams> captor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeSoftware(captor.capture(), eq(customer), eq(universe));
+    SoftwareUpgradeParams params = captor.getValue();
+    assertFalse(
+        "runOnlyPrechecks should be false when not set",
+        Boolean.TRUE.equals(params.runOnlyPrechecks));
   }
 
   @Test
@@ -292,6 +338,35 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
   }
 
   @Test
+  public void testV2ResumeCanarySoftwareUpgradeRawApi() {
+    UUID pausedTaskUUID = UUID.randomUUID();
+    UUID newTaskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            eq(customer.getUuid()), eq(universe.getUniverseUUID()), eq(pausedTaskUUID)))
+        .thenReturn(newTaskUUID);
+
+    String path =
+        String.format(
+            "/api/v2/customers/%s/universes/%s/upgrade/software/resume-canary",
+            customer.getUuid(), universe.getUniverseUUID());
+    ObjectNode body = Json.newObject();
+    body.put("task_uuid", pausedTaskUUID.toString());
+
+    Result result = doRequestWithAuthTokenAndBody("POST", path, authToken, body);
+    // V2 Play codegen maps YBATask bodies with ok(json) (HTTP 200), not 202, despite OpenAPI 202.
+    assertEquals(200, result.status());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    // YBATask uses @JsonProperty snake_case in api.v2.models
+    assertEquals(newTaskUUID.toString(), json.get("task_uuid").asText());
+    assertEquals(universe.getUniverseUUID().toString(), json.get("resource_uuid").asText());
+
+    verify(mockUpgradeUniverseHandler)
+        .resumeCanarySoftwareUpgrade(
+            eq(customer.getUuid()), eq(universe.getUniverseUUID()), eq(pausedTaskUUID));
+  }
+
+  @Test
   public void testV2PrecheckBadRelease() throws ApiException {
     UniverseSoftwareUpgradePrecheckReq req = new UniverseSoftwareUpgradePrecheckReq();
     req.setYbSoftwareVersion("1.2.3.4-b76543");
@@ -304,9 +379,10 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
   }
 
   @Test
-  public void testV2PrecheckFinalize() throws ApiException {
+  public void testV2PrecheckFinalizeAndYsqlMajorUpgradeTrue() throws ApiException {
     SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
     response.setFinalizeRequired(true);
+    response.setYsqlMajorVersionUpgrade(true);
     when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
             eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
         .thenReturn(response);
@@ -315,12 +391,14 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     UniverseSoftwareUpgradePrecheckResp resp =
         apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
     assertTrue(resp.getFinalizeRequired());
+    assertTrue(resp.getYsqlMajorVersionUpgrade());
   }
 
   @Test
-  public void testV2PrecheckNoFinalize() throws ApiException {
+  public void testV2PrecheckFinalizeAndYsqlMajorUpgradeFalse() throws ApiException {
     SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
     response.setFinalizeRequired(false);
+    response.setYsqlMajorVersionUpgrade(false);
     when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
             eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
         .thenReturn(response);
@@ -329,6 +407,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     UniverseSoftwareUpgradePrecheckResp resp =
         apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
     assertFalse(resp.getFinalizeRequired());
+    assertFalse(resp.getYsqlMajorVersionUpgrade());
   }
 
   @Test

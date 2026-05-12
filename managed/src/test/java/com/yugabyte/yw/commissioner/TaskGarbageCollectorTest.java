@@ -6,8 +6,8 @@ import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_ERRO
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_RUNS;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.TASK_INFO_METRIC_NAME;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.YB_TASK_GC_GC_CHECK_INTERVAL;
-import static io.prometheus.client.CollectorRegistry.defaultRegistry;
-import static org.junit.Assert.assertEquals;
+import static com.yugabyte.yw.common.TestUtils.validateMetric;
+import static io.prometheus.metrics.model.registry.PrometheusRegistry.defaultRegistry;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -55,22 +55,15 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
       Double expectedErrors,
       Double expectedCustomerTaskGC,
       Double expectedTaskInfoGC) {
-    assertEquals(
-        expectedNumRuns, defaultRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_RUNS)));
-    assertEquals(
-        expectedErrors, defaultRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_ERRORS)));
-    assertEquals(
+    validateMetric(NUM_TASK_GC_RUNS, expectedNumRuns);
+    validateMetric(NUM_TASK_GC_ERRORS, expectedErrors);
+    validateMetric(
+        CUSTOMER_TASK_METRIC_NAME,
         expectedCustomerTaskGC,
-        defaultRegistry.getSampleValue(
-            getTotalCounterName(CUSTOMER_TASK_METRIC_NAME),
-            new String[] {CUSTOMER_UUID_LABEL},
-            new String[] {customerUuid.toString()}));
-    assertEquals(
-        expectedTaskInfoGC,
-        defaultRegistry.getSampleValue(
-            getTotalCounterName(TASK_INFO_METRIC_NAME),
-            new String[] {CUSTOMER_UUID_LABEL},
-            new String[] {customerUuid.toString()}));
+        CUSTOMER_UUID_LABEL,
+        customerUuid.toString());
+    validateMetric(
+        TASK_INFO_METRIC_NAME, expectedTaskInfoGC, CUSTOMER_UUID_LABEL, customerUuid.toString());
   }
 
   private final ObjectMapper mapper = new ObjectMapper();
@@ -219,9 +212,5 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 1.0, 1.0);
     assertFalse(TaskInfo.maybeGet(parentTask.getUuid()).isPresent());
     assertNull(CustomerTask.get(customerTask.getId()));
-  }
-
-  private String getTotalCounterName(String name) {
-    return name + "_total";
   }
 }

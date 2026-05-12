@@ -37,12 +37,16 @@
 // - Fixed parsing when thread names have spaces.
 #include "yb/util/os-util.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <fstream>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/util/errno.h"
+#include "yb/util/scope_exit.h"
 
 using std::ifstream;
 using std::istreambuf_iterator;
@@ -53,6 +57,38 @@ using strings::Split;
 using strings::Substitute;
 
 namespace yb {
+
+namespace {
+
+std::string GetProcfsThreadPath(int64_t tid, std::string_view config) {
+  // On Linux, threads ids and process ids are in the same namespace, so /proc/$TID/$CONF works. And
+  // this lets us get information for threads not under this process as well (e.g. child process
+  // threads).
+  return Format("/proc/$0/$1", tid, config);
+}
+
+} // namespace
+
+Result<std::string> ReadUnixConfigFromPath(const std::string& path, size_t max_length) {
+  VLOG(3) << "Read config path: " << path;
+  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
+  ScopeExit s([fd] { close(fd); });
+
+  std::string out(max_length + 1, '\0');
+  ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
+  if (static_cast<size_t>(bytes_read) > max_length) {
+    return STATUS_FORMAT(
+        IllegalState, "config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
+  }
+
+  if (bytes_read == 0) {
+    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
+  }
+
+  // Last byte is a newline, drop it.
+  out.resize(static_cast<size_t>(bytes_read - 1));
+  return out;
+}
 
 // Ensure that Impala compiles on earlier kernels. If the target kernel does not support
 // _SC_CLK_TCK, sysconf(_SC_CLK_TCK) will return -1.
@@ -116,17 +152,15 @@ Status GetThreadStats(int64_t tid, ThreadStats* stats) {
     return STATUS(NotSupported, "ThreadStats not supported");
   }
 
-  stringstream proc_path;
-  proc_path << "/proc/self/task/" << tid << "/stat";
-  ifstream proc_file(proc_path.str().c_str());
-  if (!proc_file.is_open()) {
-    return STATUS(IOError, "Could not open ifstream");
-  }
+  // Arbitrary and large enough.
+  constexpr size_t kMaxLength = 4096;
+  auto path = GetProcfsThreadPath(tid, "stat");
+  return ParseStat(
+      VERIFY_RESULT(ReadUnixConfigFromPath(path, kMaxLength)), /*name=*/nullptr, stats);
+}
 
-  string buffer((istreambuf_iterator<char>(proc_file)),
-      istreambuf_iterator<char>());
-
-  return ParseStat(buffer, nullptr, stats); // don't want the name
+Result<std::string> GetProcfsThreadName(int64_t tid) {
+  return ReadUnixConfigFromPath(GetProcfsThreadPath(tid, "comm"), kMaxProcfsThreadNameSize + 1);
 }
 
 Result<std::string> RunShellProcess(const string& cmd) {

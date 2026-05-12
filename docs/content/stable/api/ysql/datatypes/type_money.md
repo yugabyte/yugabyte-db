@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-money
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/datatypes/type_money
 type: docs
 ---
 

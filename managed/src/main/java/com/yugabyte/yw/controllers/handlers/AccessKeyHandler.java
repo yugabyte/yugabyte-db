@@ -27,6 +27,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Files.TemporaryFile;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
@@ -272,8 +273,14 @@ public class AccessKeyHandler {
     try {
       deleteFile(keyInfo.publicKey);
       deleteFile(keyInfo.privateKey);
-      deleteFile(keyInfo.vaultFile);
-      deleteFile(keyInfo.vaultPasswordFile);
+      // Allow deletion of old files.
+      if (StringUtils.isNotBlank(keyInfo.vaultFile)) {
+        deleteFile(keyInfo.vaultFile);
+      }
+      // Allow deletion of old files.
+      if (StringUtils.isNotBlank(keyInfo.vaultPasswordFile)) {
+        deleteFile(keyInfo.vaultPasswordFile);
+      }
     } catch (Exception e) {
       log.error("Failed to delete access key with error: ", e);
       throw new PlatformServiceException(

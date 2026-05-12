@@ -66,22 +66,22 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": [null, null, {"$
 
 -- $ifNull: should have at least 2 arguments
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": {}}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": "string"}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": false}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": []}}');
-ERROR:  $ifNull needs at least two arguments, had: 0
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 0.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": [null]}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": [{"$divide": [1, 0]}]}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 -- $ifNull: should honor nested expression errors, even if a not null expression is found
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": [null, "not null", {"$divide": [1, 0]}]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$ifNull": [null, "not null", {"$ifNull": [1]}]}}');
-ERROR:  $ifNull needs at least two arguments, had: 1
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 1.
 -- $cond: returns then when condition is true
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": [true, "then", "else"]}}');
   bson_dollar_project  
@@ -250,50 +250,50 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": {"$gt": [3,
 
 -- $cond: if is required
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"then": "then", "else": "$a"}}}');
-ERROR:  Missing 'if' parameter to $cond
+ERROR:  'if' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"else": "else", "then": "$a"}}}');
-ERROR:  Missing 'if' parameter to $cond
+ERROR:  'if' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"else": "else"}}}');
-ERROR:  Missing 'if' parameter to $cond
+ERROR:  'if' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {}}}');
-ERROR:  Missing 'if' parameter to $cond
+ERROR:  'if' parameter is missing in the $cond operator
 -- $cond: then is required
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": "if", "else": "$a"}}}');
-ERROR:  Missing 'then' parameter to $cond
+ERROR:  'then' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"else": "else", "if": "$a"}}}');
-ERROR:  Missing 'then' parameter to $cond
+ERROR:  'then' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": "$a"}}}');
-ERROR:  Missing 'then' parameter to $cond
+ERROR:  'then' parameter is missing in the $cond operator
 -- $cond: else is required
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": "if", "then": "$a"}}}');
-ERROR:  Missing 'else' parameter to $cond
+ERROR:  'else' parameter is missing in the $cond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"then": "then", "if": "$a"}}}');
-ERROR:  Missing 'else' parameter to $cond
+ERROR:  'else' parameter is missing in the $cond operator
 -- $cond: unknown argument
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": "then", "else": "$a", "foo": "blah"}}}');
-ERROR:  Unrecognized parameter to $cond: foo
+ERROR:  Unrecognized argument provided to operators $cond: foo
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"foo": "blah"}}}');
-ERROR:  Unrecognized parameter to $cond: foo
+ERROR:  Unrecognized argument provided to operators $cond: foo
 -- $cond: requires 3 arguments error
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": [false, "else"]}}');
-ERROR:  Expression $cond takes exactly 3 arguments. 2 were passed in.
+ERROR:  The expression $cond requires exactly 3 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": []}}');
-ERROR:  Expression $cond takes exactly 3 arguments. 0 were passed in.
+ERROR:  The expression $cond requires exactly 3 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": [true, true, true, true, true]}}');
-ERROR:  Expression $cond takes exactly 3 arguments. 5 were passed in.
+ERROR:  The expression $cond requires exactly 3 arguments, but 5 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": "str"}}');
-ERROR:  Expression $cond takes exactly 3 arguments. 1 were passed in.
+ERROR:  The expression $cond requires exactly 3 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": true}}');
-ERROR:  Expression $cond takes exactly 3 arguments. 1 were passed in.
+ERROR:  The expression $cond requires exactly 3 arguments, but 1 arguments were actually provided.
 -- $cond: nested expression errors honored even if result is not affected by it
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": [false, {"$divide": [1, 0]}, "else"]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": [true, "then", {"$divide": [1, 0]}]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, 0]}, "else": "else"}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, 0]}}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- $switch: returns expected branch
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}]}}}');
           bson_dollar_project          
@@ -365,58 +365,58 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"
 
 -- $switch: requires object argument
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": []}}');
-ERROR:  $switch requires an object as an argument, found: array
+ERROR:  The $switch expression requires an object as its argument, but instead received: array
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": true}}');
-ERROR:  $switch requires an object as an argument, found: bool
+ERROR:  The $switch expression requires an object as its argument, but instead received: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": "Str"}}');
-ERROR:  $switch requires an object as an argument, found: string
+ERROR:  The $switch expression requires an object as its argument, but instead received: string
 -- $switch: branches must be an array
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": {}}}}');
-ERROR:  $switch expected an array for 'branches', found: object
+ERROR:  $switch requires an array for 'branches', but received: object
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": "true"}}}');
-ERROR:  $switch expected an array for 'branches', found: string
+ERROR:  $switch requires an array for 'branches', but received: string
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": false}}}');
-ERROR:  $switch expected an array for 'branches', found: bool
+ERROR:  $switch requires an array for 'branches', but received: bool
 -- $switch: found an unknown argument
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [], "foo": "blah"}}}');
-ERROR:  $switch found an unknown argument: foo
+ERROR:  Unknown argument: foo
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"foo": "blah", "branches": {}}}}');
-ERROR:  $switch found an unknown argument: foo
+ERROR:  Unknown argument: foo
 -- $switch: requires at least one branch
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": []}}}');
-ERROR:  $switch requires at least one branch.
+ERROR:  $switch must contain at least one branch.
 -- $switch: default is required only when there is no matching branch
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}]}}}');
-ERROR:  $switch could not find a matching branch for an input, and no default was specified.
+ERROR:  The $switch operator failed to locate a matching branch for the provided input, and no default branch was defined.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}, {"case": null, "then": "it is null"}]}}}');
-ERROR:  $switch could not find a matching branch for an input, and no default was specified.
+ERROR:  The $switch operator failed to locate a matching branch for the provided input, and no default branch was defined.
 -- $switch: found unknown argument to a branch
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}, {"foo": "blah"}]}}}');
-ERROR:  $switch found an unknown argument to a branch: foo
+ERROR:  $switch encountered an unrecognized argument for a branch: foo
 -- $switch: branch requires a case expression
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}, {"then": "blah"}]}}}');
-ERROR:  $switch requires each branch have a 'case' expression
+ERROR:  The $switch requires that every branch must contain a valid 'case' expression.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}, {}]}}}');
-ERROR:  $switch requires each branch have a 'case' expression
+ERROR:  The $switch requires that every branch must contain a valid 'case' expression.
 -- $switch: branch requires a then expression
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "$b"}, {"case": "blah"}]}}}');
-ERROR:  $switch requires each branch have a 'then' expression
+ERROR:  The $switch requires that every branch must contain a valid 'then' expression.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false}]}}}');
-ERROR:  $switch requires each branch have a 'then' expression
+ERROR:  The $switch requires that every branch must contain a valid 'then' expression.
 -- Fails for constant error expressions
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": {"$ifNull": []}}]}}}');
-ERROR:  $ifNull needs at least two arguments, had: 0
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 0.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$ifNull": []}}}}');
-ERROR:  $ifNull needs at least two arguments, had: 0
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 0.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$ifNull": []}}}}');
-ERROR:  $ifNull needs at least two arguments, had: 0
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 0.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}], "default": {"$ifNull": []}}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}], "default": {"$ifNull": []}}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- Fail for non-constant error branch expressions (eg: paths) if that branch is matched
 SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": true, "then": {"$divide": [1, "$a"]}}]}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- Does not fail for non-constant error expressions (eg: paths) if a valid branch is found 
 SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": {"$divide": [1, "$a"]}}]}}}');
           bson_dollar_project          
@@ -426,6 +426,333 @@ SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches
 
 -- Does not fail for non-constant branch error expressions (eg: paths) if the default expression is matched.
 SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": {"$divide": [1, "$a"]}}], "default": "I am the default"}}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : "I am the default" }
+(1 row)
+
+-- short-circuit for non-constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": true, "then": "then", "else": "$a"}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": ["$a", 0]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+ERROR:  $range expression needs a numeric ending value, but a value of type missing was provided
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": "$a", "else": "else"}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "else" }
+(1 row)
+
+-- short-circuit test with all cases constant false and default (constant and non-constant)
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": false, "then": "second"}], "default": "default value"}}}');
+      bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : "default value" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 5}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": false, "then": "second"}], "default": {"$add": ["$a", 10]}}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "15" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": {"$divide": [1, 0]}}, {"case": false, "then": "second"}], "default": "default value"}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": false, "then": {"$divide": [1, "$a"]}}, {"case": false, "then": "second"}], "default": "default value"}}}');
+      bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : "default value" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": true, "then": "second"}], "default": {"$divide": [1, 1]}}}}');
+   bson_dollar_project   
+---------------------------------------------------------------------
+ { "result" : "second" }
+(1 row)
+
+-- enforce case order: only select a branch if branches above are all false irrespective of constant or not
+SELECT * FROM bson_dollar_project('{"a": true}', '{"result": {"$switch": {"branches": [{"case": "$a", "then": "first"}, {"case": false, "then": "second"}, {"case": true, "then": "third"}]}}}');
+  bson_dollar_project   
+---------------------------------------------------------------------
+ { "result" : "first" }
+(1 row)
+
+-- error: in constant evaluation
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, 0]}}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, 0]}, "else": "else" }}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 0]}, "else": {"$divide": [1, 0]} }}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+ERROR:  $range expression needs a numeric ending value, but a value of type missing was provided
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [{ "$arrayElemAt": [[], 0] }, 10 ]}   }}}');
+ERROR:  $range expression requires a numeric start value but encountered a value of type: missing
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, 2, { "$arrayElemAt": [[], 0] }]}   }}}');
+ERROR:  Expression $range needs a numeric step value, but received a value of type: missing
+-- no error: short-circuit
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, "$a"]}, "else": "else" }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "else" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 1]}, "else": {"$divide": [1, "$a"]} }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$cond": {"if": false, "then": {"$arrayElemAt": ["$a", 0]}, "else": {"$divide": [1, 1]} }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+-- TODO: must fail for undefined variables
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+-- $switch
+-- error: short-circuit for constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}]}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}], "default": "I am the default"}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$divide": [1, 0]}}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": true, "then": {"$ifNull": []}}]}}}');
+ERROR:  Expression $ifNull requires at least two provided arguments, but received only 0.
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": true, "then": {"$range": {"$arrayElemAt": [[], 0]}}}], "default": "I am the default"}}}');
+ERROR:  The expression $range requires no fewer than 2 arguments and no more than 3 arguments, but 1 arguments were actually provided.
+-- no error: short-circuit (constant evaluation after parse time)
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$divide": [1, "$a"]}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : "first branch is true" }
+(1 row)
+
+SELECT * FROM bson_dollar_project(
+  '{"a": 0}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          { "case": false, "then": { "$range": [{ "$arrayElemAt": ["$a", 0] }, 10] } },
+          { "case": true,  "then": "second branch is true" }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : "second branch is true" }
+(1 row)
+
+SELECT * FROM bson_dollar_project(
+  '{"a": 0}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          { "case": false, "then": { "$divide": [1, "$a"] } },
+          { "case": true,  "then": "second branch is true" }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : "second branch is true" }
+(1 row)
+
+SELECT * FROM bson_dollar_project(
+  '{"a": []}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          {
+            "case": { "$and": [ { "$gt": [5, 0] }, { "$lt": [5, 10] } ] },
+            "then": "first branch is true"
+          },
+          {
+            "case": true,
+            "then": { "$range": [{ "$arrayElemAt": ["$a", 0] }, 10] }
+          }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : "first branch is true" }
+(1 row)
+
+-- $cond
+-- short-circuit for non-constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": true, "then": "then", "else": "$a"}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": ["$a", 0]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+ERROR:  $range expression needs a numeric ending value, but a value of type missing was provided
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": "$a", "else": "else"}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "else" }
+(1 row)
+
+-- error: in constant evaluation
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, 0]}}}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, 0]}, "else": "else" }}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 0]}, "else": {"$divide": [1, 0]} }}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+ERROR:  $range expression needs a numeric ending value, but a value of type missing was provided
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [{ "$arrayElemAt": [[], 0] }, 10 ]}   }}}');
+ERROR:  $range expression requires a numeric start value but encountered a value of type: missing
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, 2, { "$arrayElemAt": [[], 0] }]}   }}}');
+ERROR:  Expression $range needs a numeric step value, but received a value of type: missing
+-- no error: short-circuit
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, "$a"]}, "else": "else" }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "else" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 1]}, "else": {"$divide": [1, "$a"]} }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$cond": {"if": false, "then": {"$arrayElemAt": ["$a", 0]}, "else": {"$divide": [1, 1]} }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+-- TODO: must fail for undefined variables
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$$a"]}}}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }}}');
+  bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : "then" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": {"$divide": [1, "$$a"]}}]}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : "first branch is true" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }], "default": "I am the default"}}}');
         bson_dollar_project        
 ---------------------------------------------------------------------
  { "result" : "I am the default" }

@@ -74,10 +74,10 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// Copy otel-collector.service
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		otelCollectorServiceContext,
-		filepath.Join(ServerTemplateSubpath, OtelCollectorService),
+		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
 		filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
 		h.username,
@@ -87,8 +87,13 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
-	// 4) stop the systemd-unit if it's running.
-	if err := module.StopSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
+	// 4) Stop and disable the systemd service
+	if err := module.DisableSystemdService(
+		ctx,
+		h.username,
+		OtelCollectorService,
+		"", // Don't remove the unit file - we need it for re-enabling later
+		h.logOut); err != nil {
 		return nil, err
 	}
 
@@ -99,9 +104,14 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
-	// 6) Start and enable the otel-collector service.
-	if err = module.StartSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
-		return nil, err
+	// 6) Start and enable the service only if config file exists
+	if h.param.GetOtelColConfigFile() != "" {
+		if err = module.StartSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
+			return nil, err
+		}
+		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
 }

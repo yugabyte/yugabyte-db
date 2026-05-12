@@ -89,7 +89,7 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
                                        false /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -128,8 +128,8 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, false /* is_region_local */, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;
@@ -232,8 +232,8 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, false /* is_region_local */, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;

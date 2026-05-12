@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_drop_user
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_drop_user/
 type: docs
 ---
 

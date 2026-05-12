@@ -20,7 +20,7 @@ import { getFailedTaskDetails, getSubTaskDetails } from './api';
 import { SubTaskInfo, Task, TaskState } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
 import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
-import LinkIcon from '../../../../assets/link.svg';
+import LinkIcon from '../../../../assets/link.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   root: {

@@ -39,6 +39,8 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final String tableId;
   private final long safeHybridTime;
   private final int walSegmentIndex;
+  // When set, overrides the tserver flag cdc_stream_records_threshold_size_bytes for this request.
+  private final Long getchangesRespMaxSizeBytes;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
@@ -57,6 +59,14 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
       byte[] key, int write_id, long time, boolean needSchemaInfo,
       CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime,
       int walSegmentIndex) {
+    this(table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, tableId, safeHybridTime, walSegmentIndex, null);
+  }
+
+  public GetChangesRequest(YBTable table, String streamId, String tabletId, long term, long index,
+      byte[] key, int write_id, long time, boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime,
+      int walSegmentIndex, Long getchangesRespMaxSizeBytes) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -70,6 +80,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.tableId = tableId;
     this.safeHybridTime = safeHybridTime;
     this.walSegmentIndex = walSegmentIndex;
+    this.getchangesRespMaxSizeBytes = getchangesRespMaxSizeBytes;
   }
 
   @Override
@@ -113,6 +124,10 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     }
 
     builder.setWalSegmentIndex(walSegmentIndex);
+
+    if (getchangesRespMaxSizeBytes != null) {
+      builder.setGetchangesRespMaxSizeBytes(getchangesRespMaxSizeBytes);
+    }
 
     return toChannelBuffer(header, builder.build());
   }

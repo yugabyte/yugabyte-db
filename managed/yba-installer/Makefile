@@ -32,18 +32,18 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.0.0-b5
+PERF_ADVISOR_VERSION ?= 1.0.0-b8
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
-PA_BINARY_URL := https://releases.yugabyte.com/perf-advisor/$(PA_BINARY_NAME)
+PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.5.0
+PROMETHEUS_VERSION ?= 3.10.0
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
-POSTGRES_VERSION ?= 14.19
+POSTGRES_VERSION ?= 14.22
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
@@ -66,7 +66,7 @@ echo:
 
 perf_advisor: ${PREREQS_DIR}/${PA_BINARY_NAME}
 ${PREREQS_DIR}/${PA_BINARY_NAME}:
-	curl -Lo $@ ${PG_BINARY_URL}
+	curl -Lo $@ ${PA_BINARY_URL}
 	@echo downloaded $@
 
 postgres: ${PREREQS_DIR}/${PG_BINARY_NAME}

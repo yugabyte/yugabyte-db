@@ -375,7 +375,7 @@ class WALReuseEncryptionTest : public EncryptionTest {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back("--reuse_unclosed_segment_threshold_bytes=524288");
     opts->extra_master_flags.push_back("--reuse_unclosed_segment_threshold_bytes=524288");
-    opts->extra_master_flags.push_back("--replication_factor=1");
+    opts->replication_factor = 1;
   }
 
   void TestEncryptWALDataAfterWALReuse(bool rotate_key);
@@ -441,7 +441,7 @@ class WALRolloverTest : public EncryptionTest {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back("--initial_log_segment_size_bytes=262144");
     opts->extra_tserver_flags.push_back("--save_index_into_wal_segments=true");
-    opts->extra_master_flags.push_back("--replication_factor=1");
+    opts->replication_factor = 1;
   }
 };
 

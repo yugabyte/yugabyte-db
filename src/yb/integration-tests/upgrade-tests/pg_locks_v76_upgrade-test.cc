@@ -54,8 +54,8 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // classid, objid, objsubid, during the upgrade.
   auto pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
-  ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, ExclusiveLock; "
-                             "NULL, NULL, NULL, ShareLock");
+  ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, ShareLock; "
+                             "NULL, NULL, NULL, ExclusiveLock");
   pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
@@ -67,8 +67,8 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // Check that advisory locks from pg_locks now includes the new columns after the upgrade.
   pg_locks_result = ASSERT_RESULT(conn2.FetchAllAsString(
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
-  ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock; "
-                             "2, 2, 2, ShareLock");
+  ASSERT_EQ(pg_locks_result, "2, 2, 2, ShareLock; "
+                             "0, 1, 1, ExclusiveLock");
   // Check that row locks from pg_locks still are NULL for the new columns.
   pg_locks_result = ASSERT_RESULT(conn2.FetchAllAsString(
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));

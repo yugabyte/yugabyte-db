@@ -16,7 +16,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 
 namespace yb {
 
@@ -67,7 +67,7 @@ Status ConsistentReadPoint::TrySetDeferredCurrentReadTime() {
   return Status::OK();
 }
 
-ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
+ReadHybridTime ConsistentReadPoint::GetReadTime(TabletIdView tablet) const {
   std::lock_guard lock(mutex_);
   ReadHybridTime read_time = read_time_;
   if (read_time) {
@@ -80,14 +80,14 @@ ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
   return read_time;
 }
 
-void ConsistentReadPoint::RestartRequired(const TabletId& tablet,
+void ConsistentReadPoint::RestartRequired(TabletIdView tablet,
                                           const ReadHybridTime& restart_time) {
   std::lock_guard lock(mutex_);
   RestartRequiredUnlocked(tablet, restart_time);
 }
 
 void ConsistentReadPoint::RestartRequiredUnlocked(
-    const TabletId& tablet, const ReadHybridTime& restart_time) {
+    TabletIdView tablet, const ReadHybridTime& restart_time) {
   LOG_IF(DFATAL, !read_time_) << "Unexpected restart without a read time set";
   restart_read_ht_.MakeAtLeast(restart_time.read);
   // We should inherit per-tablet restart time limits before restart, doing it lazily.
@@ -97,13 +97,13 @@ void ConsistentReadPoint::RestartRequiredUnlocked(
   UpdateLimitsMapUnlocked(tablet, restart_time.local_limit, &restarts_);
 }
 
-void ConsistentReadPoint::UpdateLocalLimit(const TabletId& tablet, HybridTime local_limit) {
+void ConsistentReadPoint::UpdateLocalLimit(TabletIdView tablet, HybridTime local_limit) {
   std::lock_guard lock(mutex_);
   UpdateLimitsMapUnlocked(tablet, local_limit, &local_limits_);
 }
 
 void ConsistentReadPoint::UpdateLimitsMapUnlocked(
-    const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) {
+    TabletIdView tablet, const HybridTime& local_limit, HybridTimeMap* map) {
   auto emplace_result = map->emplace(tablet, local_limit);
   bool inserted = emplace_result.second;
   if (!inserted) {
@@ -171,6 +171,15 @@ void ConsistentReadPoint::FinishChildTransactionResult(
 }
 
 void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
+  return DoApplyChildTransactionResult(result);
+}
+
+void ConsistentReadPoint::ApplyChildTransactionResult(const LWChildTransactionResultPB& result) {
+  return DoApplyChildTransactionResult(result);
+}
+
+template <class PB>
+void ConsistentReadPoint::DoApplyChildTransactionResult(const PB& result) {
   std::lock_guard lock(mutex_);
   if (result.has_used_read_time()) {
     LOG_IF(DFATAL, read_time_)
@@ -186,8 +195,10 @@ void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResu
     ReadHybridTime read_time;
     read_time.read = restart_read_ht;
     for (const auto& restart : result.read_restarts()) {
-      read_time.local_limit = HybridTime(restart.second);
-      RestartRequiredUnlocked(restart.first, read_time);
+      using rpc::map_util::ExtractKey;
+      using rpc::map_util::ExtractValue;
+      read_time.local_limit = HybridTime(ExtractValue(restart));
+      RestartRequiredUnlocked(ExtractKey(restart), read_time);
     }
   }
 }

@@ -107,7 +107,7 @@ TServer detected `$value` drive failure for universe `'$universe_name'`.
 
 ```promql
 count by (universe_uuid) (drive_fault{universe_uuid="__universeUuid__",
-export_type="tserver_export"}) {{ query_condition }} {{ query_threshold }}createForNewCustomer: true
+      export_type="tserver_export"}) {{ query_condition }} {{ query_threshold }}
 ```
 
 #### DB error logs

@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 public class CDCBaseClass extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(CDCBaseClass.class);
 
-  protected String CDC_BATCH_SIZE_GFLAG = "cdc_snapshot_batch_size";
+  protected String CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG = "cdc_snapshot_records_threshold_size_bytes";
   protected String CDC_INTENT_SIZE_GFLAG = "cdc_max_stream_intent_records";
   protected String CDC_ENABLE_CONSISTENT_RECORDS = "cdc_enable_consistent_records";
   protected String CDC_POPULATE_SAFEPOINT_RECORD = "cdc_populate_safepoint_record";

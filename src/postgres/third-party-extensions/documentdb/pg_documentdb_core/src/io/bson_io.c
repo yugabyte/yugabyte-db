@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/io/bson_io.c
+ * src/io/bson_io.c
  *
  * Implementation of the BSON type input and output functions and manipulating BSON.
  *
@@ -67,6 +67,7 @@ PG_FUNCTION_INFO_V1(bson_to_bytea);
 PG_FUNCTION_INFO_V1(bson_object_keys);
 PG_FUNCTION_INFO_V1(row_get_bson);
 PG_FUNCTION_INFO_V1(bson_repath_and_build);
+PG_FUNCTION_INFO_V1(bson_build_document);
 PG_FUNCTION_INFO_V1(bson_to_bson_hex);
 PG_FUNCTION_INFO_V1(bson_hex_to_bson);
 PG_FUNCTION_INFO_V1(bson_json_to_bson);
@@ -123,7 +124,7 @@ bson_in(PG_FUNCTION_ARGS)
 
 
 /*
- * Converts a bson to a hex string representation.
+ * Transforms a BSON object into its hexadecimal string format.
  */
 Datum
 bson_to_bson_hex(PG_FUNCTION_ARGS)
@@ -235,12 +236,13 @@ bson_get_value_text(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
 	char *path = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	bool quoteString = PG_NARGS() > 2 ? PG_GETARG_BOOL(2) : false;
 	bson_iter_t pathIterator;
 
 	if (PgbsonInitIteratorAtPath(document, path, &pathIterator))
 	{
 		const bson_value_t *value = bson_iter_value(&pathIterator);
-		const char *strRepr = BsonValueToJsonForLogging(value);
+		const char *strRepr = BsonValueToJsonForLoggingWithOptions(value, quoteString);
 		PG_RETURN_POINTER(cstring_to_text(strRepr));
 	}
 	else
@@ -295,12 +297,13 @@ row_get_bson(PG_FUNCTION_ARGS)
 	for (int i = 0; i < tupleDescriptor->natts; i++)
 	{
 		bool isnull;
-		if (tupleDescriptor->attrs[i].attisdropped)
+		FormData_pg_attribute *attr = TupleDescAttr(tupleDescriptor, i);
+		if (attr->attisdropped)
 		{
 			continue;
 		}
 
-		/* get the SQL value. */
+		/* Retrieve the SQL database value */
 		Datum fieldValue = heap_getattr(&tupleValue, i + 1, tupleDescriptor, &isnull);
 
 		if (isnull)
@@ -309,7 +312,7 @@ row_get_bson(PG_FUNCTION_ARGS)
 		}
 
 		/* get the field name. */
-		const char *fieldName = NameStr(tupleDescriptor->attrs[i].attname);
+		const char *fieldName = NameStr(attr->attname);
 		if (fieldName == NULL)
 		{
 			fieldName = "";
@@ -321,7 +324,7 @@ row_get_bson(PG_FUNCTION_ARGS)
 
 		/* convert the SQL Value and write it into the bson Writer. */
 		PgbsonElementWriterWriteSQLValue(&elementWriter, isnull, fieldValue,
-										 tupleDescriptor->attrs[i].atttypid);
+										 attr->atttypid);
 	}
 
 	ReleaseTupleDesc(tupleDescriptor);
@@ -398,8 +401,8 @@ bson_object_keys(PG_FUNCTION_ARGS)
  * If the value is an empty document, it is treated as an EOD value and is not written. For example:
  * ["l1", "l2"] [{"":x}, {}] becomes {"l1":x}
  */
-Datum
-bson_repath_and_build(PG_FUNCTION_ARGS)
+static Datum
+BsonRepathAndBuildCore(PG_FUNCTION_ARGS, bool isBuildDocument)
 {
 	Datum *args;
 	bool *nulls;
@@ -428,7 +431,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-					 errmsg("argument %d cannot be null", i + 1),
+					 errmsg("The specified argument %d must not be null", i + 1),
 					 errdetail("Object keys should be text.")));
 		}
 
@@ -436,7 +439,9 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-					 errmsg("argument %d must be a text", i)));
+					 errmsg(
+						 "Invalid type: expected a text type field, but received %s instead",
+						 format_type_be(types[i]))));
 		}
 
 		text *pathText = DatumGetTextP(args[i]);
@@ -444,12 +449,20 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		int len = VARSIZE_ANY_EXHDR(pathText);
 		StringView pathView = { .length = len, .string = path };
 
-		if (pathView.length == 0 || StringViewStartsWith(&pathView, '$'))
+		if (pathView.length == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40236),
+							errmsg(
+								"Cannot use %.*s as a field name. empty paths are not allowed.",
+								len, path)));
+		}
+		else if (!isBuildDocument && StringViewStartsWith(&pathView, '$'))
 		{
 			/* We don't support dollar prefixed-paths here */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40236),
-							errmsg("The field name %.*s cannot be an operator name",
-								   len, path)));
+							errmsg(
+								"Cannot use %.*s as a field name. Dollar prefixed paths are not allowed.",
+								len, path)));
 		}
 
 		if (nulls[i + 1])
@@ -462,20 +475,38 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 			pgbsonelement elem;
 			pgbson *pbson = DatumGetPgBson(args[i + 1]);
 
-			if (IsPgbsonEmptyDocument(pbson))
+			if (isBuildDocument)
 			{
-				/* We treat empty document as EOD values and these values should just not be written */
-				continue;
-			}
-
-			if (TryGetSinglePgbsonElementFromPgbson(pbson, &elem))
-			{
-				PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
+				/* in the build document path, we write the bson as is
+				 * with the exception of a bson with no path and a single value
+				 */
+				if (TryGetSinglePgbsonElementFromPgbson(pbson, &elem) &&
+					elem.pathLength == 0)
+				{
+					PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
+				}
+				else
+				{
+					PgbsonWriterAppendDocument(&writer, path, len, pbson);
+				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								(errmsg("Expecting a single element value"))));
+				if (IsPgbsonEmptyDocument(pbson))
+				{
+					/* We treat empty document as EOD values and these values should just not be written */
+					continue;
+				}
+
+				if (TryGetSinglePgbsonElementFromPgbson(pbson, &elem))
+				{
+					PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
+				}
+				else
+				{
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+									(errmsg("Expecting only one element value"))));
+				}
 			}
 		}
 		else
@@ -492,11 +523,27 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 }
 
 
+Datum
+bson_repath_and_build(PG_FUNCTION_ARGS)
+{
+	bool isBuildDocument = false;
+	return BsonRepathAndBuildCore(fcinfo, isBuildDocument);
+}
+
+
+Datum
+bson_build_document(PG_FUNCTION_ARGS)
+{
+	bool isBuildDocument = true;
+	return BsonRepathAndBuildCore(fcinfo, isBuildDocument);
+}
+
+
 inline static void
 WriteBsonSqlValue(Datum fieldValue, pgbson_element_writer *writer)
 {
 	/* extract the bson. */
-	pgbson *nestedBson = (pgbson *) DatumGetPointer(fieldValue);
+	pgbson *nestedBson = DatumGetPgBson(fieldValue);
 
 	/* if it's a single value bson ({ "": <value> }) */
 	/* then write the *value* as a child element. */
@@ -541,12 +588,14 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 		bool *val_is_null_marker;
 		int val_count;
 
-		bool arrayByVal = false;
-		int elementLength = -1;
 		Oid arrayElementType = ARR_ELEMTYPE(val_array);
+		bool arrayByVal = false;
+		int16 elementLength = -1;
+		char typAlign;
+		get_typlenbyvalalign(arrayElementType, &elementLength, &arrayByVal, &typAlign);
 		deconstruct_array(val_array,
 						  arrayElementType, elementLength, arrayByVal,
-						  TYPALIGN_INT, &val_datums, &val_is_null_marker,
+						  typAlign, &val_datums, &val_is_null_marker,
 						  &val_count);
 
 		pgbson_array_writer arrayWriter;
@@ -675,7 +724,7 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 												 &fieldBsonValue.value.v_decimal128))
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-									errmsg("Invalid numeric value %s", numStr)));
+									errmsg("Invalid number value %s", numStr)));
 				}
 
 				bool isFixedInteger = IsDecimal128AFixedInteger(&fieldBsonValue);
@@ -712,7 +761,8 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 			}
 
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-								"Type oid not supported %d", fieldTypeId)));
+								"Data type oid is currently unsupported %d",
+								fieldTypeId)));
 		}
 	}
 }

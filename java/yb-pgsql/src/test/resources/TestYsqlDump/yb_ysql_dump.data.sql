@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2.29.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.29.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -521,6 +521,7 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
     CONSTRAINT hash_tbl_pk_with_include_clause_pkey PRIMARY KEY((k1, k2) HASH) INCLUDE (v)
 )
 SPLIT INTO 8 TABLETS;
+ALTER TABLE public.hash_tbl_pk_with_include_clause SET (yb_presplit='8');
 
 
 \if :use_roles
@@ -919,8 +920,7 @@ CREATE TABLE public.part_uniq_const (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-PARTITION BY RANGE (v1)
-SPLIT INTO 1 TABLETS;
+PARTITION BY RANGE (v1);
 
 
 \if :use_roles
@@ -1073,6 +1073,7 @@ CREATE TABLE public.pre_split_range (
     CONSTRAINT pre_split_range_pkey PRIMARY KEY(customer_id ASC)
 )
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
+ALTER TABLE public.pre_split_range SET (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))');
 
 
 \if :use_roles
@@ -1108,6 +1109,7 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
     CONSTRAINT range_tbl_pk_with_include_clause_pkey PRIMARY KEY(k1 ASC, k2 ASC) INCLUDE (v)
 )
 SPLIT AT VALUES ((1, '1'), (100, '100'));
+ALTER TABLE public.range_tbl_pk_with_include_clause SET (yb_presplit='((1, ''1''), (100, ''100''))');
 
 
 \if :use_roles
@@ -1148,6 +1150,69 @@ CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
 \if :use_roles
     ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
 \endif
+
+--
+-- Name: range_test; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16764'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16763'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16762'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16762'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16766'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16766'::pg_catalog.oid);
+
+CREATE TABLE public.range_test (
+    id integer NOT NULL,
+    num_range int4range,
+    CONSTRAINT range_test_pkey PRIMARY KEY((id) HASH)
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.range_test OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16761'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16761'::pg_catalog.oid);
+
+CREATE SEQUENCE public.range_test_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+\if :use_roles
+    ALTER TABLE public.range_test_id_seq OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
+--
+
+ALTER SEQUENCE public.range_test_id_seq OWNED BY public.range_test.id;
+
 
 --
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2017,6 +2082,7 @@ CREATE TABLE public.th1 (
     c double precision
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.th1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -2052,6 +2118,7 @@ CREATE TABLE public.th2 (
     CONSTRAINT th2_pkey PRIMARY KEY((a) HASH, b ASC)
 )
 SPLIT INTO 3 TABLETS;
+ALTER TABLE public.th2 SET (yb_presplit='3');
 
 
 \if :use_roles
@@ -2087,6 +2154,7 @@ CREATE TABLE public.th3 (
     CONSTRAINT th3_pkey PRIMARY KEY((a, b) HASH)
 )
 SPLIT INTO 4 TABLETS;
+ALTER TABLE public.th3 SET (yb_presplit='4');
 
 
 \if :use_roles
@@ -2122,6 +2190,7 @@ CREATE TABLE public.tr1 (
     CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
 )
 SPLIT AT VALUES ((1), (100));
+ALTER TABLE public.tr1 SET (yb_presplit='((1), (100))');
 
 
 \if :use_roles
@@ -2156,7 +2225,8 @@ CREATE TABLE public.tr2 (
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
 )
-SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12));
+SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
+ALTER TABLE public.tr2 SET (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))');
 
 
 \if :use_roles
@@ -2222,6 +2292,13 @@ ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_
 --
 
 ALTER TABLE ONLY hint_plan.hints ALTER COLUMN id SET DEFAULT nextval('hint_plan.hints_id_seq'::regclass);
+
+
+--
+-- Name: range_test id; Type: DEFAULT; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.range_test ALTER COLUMN id SET DEFAULT nextval('public.range_test_id_seq'::regclass);
 
 
 --
@@ -2379,6 +2456,24 @@ COPY public.range_tbl_pk_with_include_clause (k2, v, k1) FROM stdin;
 --
 
 COPY public.range_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) FROM stdin;
+\.
+
+
+--
+-- Data for Name: range_test; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.range_test (id, num_range) FROM stdin;
+5	empty
+1	[1,11)
+6	[30,101)
+7	[50,61)
+9	[80,86)
+10	[90,101)
+4	[25,26)
+2	[2,6)
+8	[70,76)
+3	[15,21)
 \.
 
 
@@ -2637,6 +2732,13 @@ COPY public.uaccount (pguser, seclv) FROM stdin;
 --
 
 SELECT pg_catalog.setval('hint_plan.hints_id_seq', 1, false);
+
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
+--
+
+SELECT pg_catalog.setval('public.range_test_id_seq', 10, true);
 
 
 --
@@ -2902,6 +3004,45 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
 	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_test; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'relpages', '0'::integer,
+	'reltuples', '10'::real,
+	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'attname', 'id',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2,3,4,5,6,7,8,9,10}'::text,
+	'correlation', '0.018181818'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'attname', 'num_range',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '13'::integer,
+	'n_distinct', '-1'::real,
+	'range_length_histogram', '{1,4,6,6,6,10,11,11,71}'::text,
+	'range_empty_frac', '0.1'::real,
+	'range_bounds_histogram', '{"[1,6)","[2,11)","[15,21)","[25,26)","[30,61)","[50,76)","[70,86)","[80,101)","[90,101)"}'::text
 );
 
 
@@ -3361,6 +3502,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16560'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16560'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+ALTER INDEX public.c1 SET (yb_presplit='((''foo''), (''qux''))');
 
 ALTER TABLE ONLY public.p1
     ADD CONSTRAINT c1 UNIQUE USING INDEX c1;
@@ -3376,6 +3518,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16567'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16567'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
+ALTER INDEX public.c2 SET (yb_presplit='10');
 
 ALTER TABLE ONLY public.p2
     ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
@@ -3554,6 +3697,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16539'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16539'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
+ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
 
 
 --
@@ -3566,6 +3710,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16540'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16540'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
+ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
 
 
 --
@@ -3577,7 +3722,8 @@ CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) S
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16542'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16542'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
+CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
+ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))');
 
 
 --
@@ -3590,6 +3736,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16541'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16541'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
+ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
 
 
 --
@@ -3779,6 +3926,16 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
+-- Name: TABLE range_test; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+GRANT SELECT ON TABLE public.range_test TO PUBLIC;
+GRANT UPDATE ON TABLE public.range_test TO rls_user;
 \endif
 
 
@@ -4244,6 +4401,20 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relname', 'range_tbl_pk_with_multiple_included_columns_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_test_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '10'::real,
 	'relallvisible', '0'::integer
 );
 

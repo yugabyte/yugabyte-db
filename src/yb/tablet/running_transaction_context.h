@@ -76,10 +76,6 @@ class RunningTransactionContext {
       const TransactionId& id, RemoveReason reason, MinRunningNotifier* min_running_notifier,
       const Status& expected_deadlock_status) = 0;
 
-  virtual void NotifyAbortedTransactionIncrement(const TransactionId& id) = 0;
-
-  virtual void NotifyAbortedTransactionDecrement(const TransactionId& id) = 0;
-
   int64_t NextRequestIdUnlocked() {
     return ++request_serial_;
   }
@@ -97,6 +93,9 @@ class RunningTransactionContext {
 
   virtual bool Closing() const = 0;
 
+  virtual FastModeTransactionScope CreateFastModeTransactionScope(
+      const TransactionMetadata& metadata) = 0;
+
  protected:
   friend class RunningTransaction;
 
@@ -109,6 +108,19 @@ class RunningTransactionContext {
   // Used only in tests.
   Delayer delayer_;
 };
+
+// Wraps a callback so it only executes while the weak_ptr target is alive.
+// The locked shared_ptr is held for the callback's duration, preventing destruction mid-callback.
+template <class Callback>
+auto GuardedByWeak(std::weak_ptr<void> weak, Callback&& callback) {
+  return [weak = std::move(weak), callback = std::forward<Callback>(callback)](auto&&... args) {
+    auto guard = weak.lock();
+    if (!guard) {
+      return;
+    }
+    callback(std::forward<decltype(args)>(args)...);
+  };
+}
 
 } // namespace tablet
 } // namespace yb

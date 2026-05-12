@@ -1,0 +1,4 @@
+# contrib/postgres_fdw/yb_gv_schedule
+# Global views regression tests
+
+test: yb.orig.global_views

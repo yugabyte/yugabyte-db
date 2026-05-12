@@ -875,7 +875,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
     99
 (1 row)
 
--- In case preliminary check might happen, pushdown should be avoided.
+-- In case YB recheck might happen, pushdown should be avoided.
 \set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
 :explain :query; :query;
                               QUERY PLAN                              
@@ -969,14 +969,16 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 -- tests using run_ss_ios cannot use a plain index scan (so they also cannot use a bitmap index scan)
 -- adding a hint would just re-test sequential scan
+-- TODO(#31195): update EXPLAIN outputs having constant = constant.
 \set run_ss_ios ':explain :query; :explain :ss :query; :explain :ios :query; :ss :query; :ios :query;'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -989,8 +991,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  count 
 -------
@@ -1004,12 +1007,13 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -1022,8 +1026,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  count 
 -------
@@ -1037,12 +1042,13 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -1055,8 +1061,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  count | count 
 -------+-------
@@ -1071,12 +1078,13 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -- Verify MAX/MIN respect NULL values.
 \set query 'SELECT MAX(a), MIN(a) FROM ybaggtest2'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -1089,8 +1097,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  max | min 
 -----+-----
@@ -1105,12 +1114,13 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -- Verify SUM/MAX/MIN work as expected with constant arguments.
 \set query 'SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -1123,8 +1133,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  sum | max | min 
 -----+-----+-----
@@ -1138,12 +1149,13 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 \set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
 :run_ss_ios;
-           QUERY PLAN            
----------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
            QUERY PLAN            
 ---------------------------------
@@ -1156,8 +1168,9 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
  sum | max | min 
 -----+-----+-----
@@ -1172,13 +1185,14 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -- Verify IS NULL, IS NOT NULL quals.
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
 :run_ss_ios;
-             QUERY PLAN              
--------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Storage Filter: (a IS NULL)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
              QUERY PLAN              
 -------------------------------------
@@ -1192,9 +1206,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Storage Filter: (a IS NULL)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
  count 
 -------
@@ -1208,13 +1223,14 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
 :run_ss_ios;
-               QUERY PLAN                
------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on ybaggtest2
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
                QUERY PLAN                
 -----------------------------------------
@@ -1228,9 +1244,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Index Cond: ((1) = 1)
          Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
  count 
 -------

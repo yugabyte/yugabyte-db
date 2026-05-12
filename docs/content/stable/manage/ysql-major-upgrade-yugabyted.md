@@ -58,6 +58,10 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
     CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
     ```
 
+- If you have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the major upgrade is either finalized or rolled back.
+
+- Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
@@ -72,6 +76,8 @@ Use the `upgrade check_version_compatibility` command to make sure your cluster 
 ```output
 output: ✅ Clusters are compatible for upgrade.
 ```
+
+If the precheck flags any extensions as being incompatible, drop the extensions and run the precheck again. You can re-enable them after the upgrade is finalized.
 
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Backup](../../reference/configuration/yugabyted/#backup).
@@ -104,11 +110,11 @@ Stopped yugabyted using config /net/dev-server-hsunder/share/yugabyte-data/node1
 
 ```output
 Starting yugabyted...
-✅ Upgrade status successfully verified   
-✅ YugabyteDB Started                  
+✅ Upgrade status successfully verified
+✅ YugabyteDB Started
 ✅ Node joined a running cluster with UUID 5dd3bda3-43a9-48fd-9c16-8399378fed12
-✅ UI ready         
-✅ Data placement constraint successfully verified                 
+✅ UI ready
+✅ Data placement constraint successfully verified
 
 +---------------------------------------------------------------------------------------------------+
 |                                               yugabyted                                           |
@@ -136,7 +142,7 @@ Upgrade the YSQL catalog. You can run this command from any node.
 ```
 
 ```output
-✅ YSQL catalog upgrade successful.   
+✅ YSQL catalog upgrade successful.
 
 +----------------------------------------------------+
 |                     yugabyted                      |
@@ -171,11 +177,11 @@ Restart nodes with the flag `ysql_yb_major_version_upgrade_compatibility=11` so 
 
 ```output
 Starting yugabyted...
-✅ Upgrade status successfully verified   
-✅ YugabyteDB Started                  
+✅ Upgrade status successfully verified
+✅ YugabyteDB Started
 ✅ Node joined a running cluster with UUID 5dd3bda3-43a9-48fd-9c16-8399378fed12
-✅ UI ready         
-✅ Data placement constraint successfully verified                 
+✅ UI ready
+✅ Data placement constraint successfully verified
 
 +---------------------------------------------------------------------------------------------------+
 |                                               yugabyted                                           |

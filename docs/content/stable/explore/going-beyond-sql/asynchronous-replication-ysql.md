@@ -4,6 +4,12 @@ headerTitle: xCluster - Native asynchronous replication
 linkTitle: xCluster - Asynchronous replication
 description: Multi-region deployment using asynchronous replication across multiple data centers.
 headContent: Asynchronous replication between independent YugabyteDB universes
+aliases:
+  - /stable/explore/two-data-centers-linux/
+  - /stable/explore/two-data-centers/macos/
+  - /stable/explore/multi-region-deployments/asynchronous-replication-ysql/
+  - /stable/explore/going-beyond-sql/asynchronous-replication-ycql/
+  - /stable/explore/multi-region-deployments/asynchronous-replication-ycql/
 menu:
   stable:
     identifier: asynchronous-replication-ysql
@@ -12,7 +18,7 @@ menu:
 type: docs
 ---
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. A cross-cluster (xCluster) deployment provides high throughput asynchronous replication across two data centers or cloud regions.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. A cross-universe (xCluster) deployment provides high throughput asynchronous replication across two data centers or cloud regions.
 
 xCluster provides the following benefits:
 

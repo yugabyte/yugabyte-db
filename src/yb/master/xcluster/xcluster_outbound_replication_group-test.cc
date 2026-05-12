@@ -256,7 +256,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       namespace_tables[namespace_id].push_back(table_info);
     }
 
-    if (IsTableEligibleForXClusterReplication(*table_info)) {
+    if (IsTableEligibleForXClusterReplication(*table_info, UseAutomaticMode())) {
       RETURN_NOT_OK(AddTableToXClusterSourceTask(*table_info));
     }
 
@@ -327,7 +327,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             std::vector<TableDesignator> table_designators;
             for (const auto& table_info : tables) {
-              if (IsTableEligibleForXClusterReplication(*table_info)) {
+              if (IsTableEligibleForXClusterReplication(*table_info, UseAutomaticMode())) {
                 table_designators.emplace_back(table_info);
               }
             }

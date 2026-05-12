@@ -67,9 +67,6 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg15_completed, kLocalPersisted,
     "Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this "
     "manually.");
 
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
-    "Enable the infra required for Auto Analyze");
-
 namespace yb {
 
 bool IsYsqlMajorVersionUpgradeInProgress() {

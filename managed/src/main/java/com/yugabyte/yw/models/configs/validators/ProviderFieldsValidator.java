@@ -24,7 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public abstract class ProviderFieldsValidator extends BaseBeanValidator {
 
-  private static final long PROCESS_WAIT_TIMEOUT_MILLIS = 1000L;
+  private static final long PROCESS_WAIT_TIMEOUT_MILLIS = 5000L;
 
   private final RuntimeConfGetter runtimeConfGetter;
 
@@ -53,7 +53,7 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
         String ntpServer = ntpServers.get(i);
         if (!StringUtils.isEmpty(ntpServer)) {
-          Process process = Runtime.getRuntime().exec("ping -c 1 " + ntpServer);
+          Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
           process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
           if (process.exitValue() != 0) {
             throw new PlatformServiceException(

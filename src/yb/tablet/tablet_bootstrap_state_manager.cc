@@ -27,31 +27,30 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/logging.h"
 
 namespace yb::tablet {
 
-TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs):
-    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
+namespace {
 
-TabletBootstrapState::TabletBootstrapState(TabletBootstrapState&& rhs):
-    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
+// For historical reasons, the name of the tablet bootstrap state file is retryable_requests
+// (it used to be solely for retryable requests, but was extended to contain other state like
+// hybrid time filter for transaction loader, and the file name was left the same for backwards
+// compatibility).
+constexpr auto kTabletBootstrapStateFileName = "retryable_requests";
+constexpr auto kTabletBootstrapStateNewFileName = "retryable_requests.NEW";
 
-void TabletBootstrapState::operator=(TabletBootstrapState&& rhs) {
-  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
-}
+} // namespace
 
-void TabletBootstrapState::CopyFrom(const TabletBootstrapState& rhs) {
-  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
-}
+TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs)
+    : min_replay_txn_first_write_ht_(rhs.min_replay_txn_first_write_ht_.load()) {}
 
 void TabletBootstrapState::ToPB(consensus::TabletBootstrapStatePB* pb) const {
-  pb->set_min_replay_txn_start_ht(min_replay_txn_start_ht_.load().ToUint64());
+  pb->set_min_replay_txn_first_write_ht(min_replay_txn_first_write_ht_.load().ToUint64());
 }
 
 void TabletBootstrapState::FromPB(const consensus::TabletBootstrapStatePB& pb) {
-  min_replay_txn_start_ht_.store(
-      pb.has_min_replay_txn_start_ht() ? HybridTime(pb.min_replay_txn_start_ht())
-                                       : HybridTime::kInvalid);
+  min_replay_txn_first_write_ht_.store(HybridTime::FromPB(pb.min_replay_txn_first_write_ht()));
 }
 
 TabletBootstrapStateManager::TabletBootstrapStateManager() { }
@@ -97,10 +96,10 @@ Status TabletBootstrapStateManager::SaveToDisk(
   if (tablet) {
     participant = tablet->transaction_participant();
     if (participant) {
-      auto start_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
+      auto first_write_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
           max_replicated_op_id));
-      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_start_ht = " << start_ht;
-      bootstrap_state.SetMinReplayTxnStartTime(start_ht);
+      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_first_write_ht = " << first_write_ht;
+      bootstrap_state.SetMinReplayTxnFirstWriteTime(first_write_ht);
     }
   }
 
@@ -109,7 +108,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   bootstrap_state.ToPB(&pb);
 
   auto path = NewFilePath();
-  LOG_WITH_PREFIX(INFO) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
+  LOG_WITH_PREFIX(DETAIL) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
   auto* env = fs_manager()->env();
   SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
@@ -120,7 +119,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   if (has_file_on_disk_) {
     RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
   }
-  LOG_WITH_PREFIX(INFO) << "Renaming " << NewFileName() << " to " << FileName();
+  LOG_WITH_PREFIX(DETAIL) << "Renaming " << NewFileName() << " to " << FileName();
   RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
   has_file_on_disk_ = true;
   RETURN_NOT_OK(env->SyncDir(dir_));
@@ -191,6 +190,14 @@ Status TabletBootstrapStateManager::DoInit() {
   }
   has_file_on_disk_ = has_new || has_current;
   return env->SyncDir(dir_);
+}
+
+std::string_view TabletBootstrapStateManager::FileName() {
+  return kTabletBootstrapStateFileName;
+}
+
+std::string_view TabletBootstrapStateManager::NewFileName() {
+  return kTabletBootstrapStateNewFileName;
 }
 
 } // namespace yb::tablet

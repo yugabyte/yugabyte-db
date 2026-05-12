@@ -24,6 +24,11 @@ mx-central-1:
   latitude: 20.5888
   longitude: -100.3899
   availabilty_zones: [mx-central-1a, mx-central-1b, mx-central-1c]
+me-central-1:
+  name: Middle East (UAE)
+  latitude: 25.2048
+  longitude: 55.2708
+  availabilty_zones: [me-central-1a, me-central-1b, me-central-1c]
 eu-west-1:
   name: Europe (Ireland)
   latitude: 53.412910

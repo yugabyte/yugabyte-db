@@ -66,10 +66,10 @@ static const uint64_t kResetTTL = 0;
 
 // kUseDefaultTTL indicates that column TTL expiration should defer to table TTL expiration.
 // It should always be overwritten by any explicit value (set to kInitial).
-static const HybridTime kUseDefaultTTL(HybridTime::kInitial);
+inline constexpr HybridTime kUseDefaultTTL(HybridTime::kInitial);
 
 // kNoExpiration indicates that a file should not be expired.
 // It should always dominate any explicit expiration time (set to kMax).
-static const HybridTime kNoExpiration(HybridTime::kMax);
+inline constexpr HybridTime kNoExpiration(HybridTime::kMax);
 
 }  // namespace yb::dockv

@@ -4,6 +4,11 @@ headerTitle: Schedule universe backups
 linkTitle: Schedule data backups
 description: Use YugabyteDB Anywhere to create scheduled backups of universe data.
 headContent: Create backup schedules to regularly back up universe data
+aliases:
+  - /stable/back-up-restore-universes/schedule-data-backups/ycql/
+  - /stable/back-up-restore-universes/schedule-data-backups/ysql/
+  - /stable/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/
+  - /stable/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ycql/
 menu:
   stable_yugabyte-platform:
     identifier: schedule-data-backups
@@ -33,6 +38,8 @@ Before scheduling a backup of your universe data, create a policy, as follows:
     For YSQL, you have a additional **Advanced Configuration** option to include **Backup tablespace information** (enabled by default). If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
     For YCQL, you can choose to back up all tables or a selection of tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up, and click **Confirm**.
+
+1. To back up database roles (YSQL only), choose the **Backup global roles** option.
 
     When finished, click **Next**.
 

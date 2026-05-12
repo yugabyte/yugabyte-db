@@ -338,8 +338,7 @@ class Slice {
 };
 
 inline bool operator==(Slice x, Slice y) {
-  return ((x.size() == y.size()) &&
-          (Slice::MemEqual(x.data(), y.data(), x.size())));
+  return x.size() == y.size() && Slice::MemEqual(x.data(), y.data(), x.size());
 }
 
 inline bool operator!=(Slice x, Slice y) {

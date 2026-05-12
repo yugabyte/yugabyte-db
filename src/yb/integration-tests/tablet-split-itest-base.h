@@ -37,7 +37,7 @@
 
 namespace yb {
 
-class TestWorkload;
+class TestYcqlWorkload;
 
 namespace client {
 
@@ -48,7 +48,7 @@ class SnapshotTestUtil;
 void DumpTableLocations(
     master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
 
-void DumpWorkloadStats(const TestWorkload& workload);
+void DumpWorkloadStats(const TestYcqlWorkload& workload);
 
 Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
 
@@ -177,7 +177,14 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<master::SplitTabletResponsePB> SendMasterRpcSyncSplitTablet(const TabletId& tablet_id);
 
+  Result<TabletId> SplitSingleTablet(const std::vector<docdb::DocKeyHash>& split_hash_codes);
+
   Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
+
+  Result<TabletId> SplitTabletAndValidate(
+      const std::vector<docdb::DocKeyHash>& split_hash_codes,
+      size_t num_rows,
+      bool parent_tablet_protected_from_deletion = false);
 
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,
@@ -214,7 +221,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // `num_rows` and nothing else.
   // If num_replicas_online is 0, uses replication factor.
   Status CheckPostSplitTabletReplicasData(
-      size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
+      size_t num_rows, size_t num_active_tablets = kDefaultNumSplitParts,
+      size_t num_replicas_online = 0);
 
   Status WaitForTableNumActiveLeadersPeers(size_t expected_leaders);
 

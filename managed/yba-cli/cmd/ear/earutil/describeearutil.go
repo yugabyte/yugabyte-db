@@ -24,7 +24,7 @@ func DescribeEARValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -53,15 +53,14 @@ func DescribeEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	kmsConfigsMap, response, err := authAPI.ListKMSConfigs().Execute()
 	if err != nil {
 		callSite := "EAR"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Describe")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Describe")
 	}
 
 	var r []util.KMSConfig
-	if strings.TrimSpace(earName) != "" {
+	if !util.IsEmptyString(earName) {
 		for _, kmsConfig := range kmsConfigsMap {
 			k, err := util.ConvertToKMSConfig(kmsConfig)
 			if err != nil {

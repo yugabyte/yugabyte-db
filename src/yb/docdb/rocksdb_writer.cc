@@ -23,6 +23,7 @@
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/kv_debug.h"
@@ -61,8 +62,7 @@ DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
 
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
@@ -72,6 +72,35 @@ using dockv::ValueEntryTypeAsChar;
 namespace {
 
 constexpr char kPostApplyMetadataMarker = 0;
+
+void DumpIntentsRecordForTransaction(rocksdb::DB* intents_db, const TransactionId& transaction_id,
+                                     SchemaPackingProvider* schema_packing_provider = nullptr) {
+  DumpIntentsContext context(transaction_id, intents_db, schema_packing_provider);
+  IntentsWriter intents_writer(
+      /* start_key = */ Slice(),
+      /* file_filter_ht = */ HybridTime::kInvalid,
+      intents_db,
+      &context,
+      /* ignore_metadata = */ false,
+      /* key_to_apply = */ Slice());
+
+  // Create a dummy handler since we're only reading/logging, not writing
+  class DummyHandler : public rocksdb::DirectWriteHandler {
+   public:
+    std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
+      return std::make_pair(Slice(), Slice());
+    }
+    void SingleDelete(const Slice& key) override {
+    }
+  };
+
+  DummyHandler dummy_handler;
+  Status status = intents_writer.Apply(dummy_handler);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to dump intents for transaction: " << transaction_id
+                 << ", error: " << status;
+  }
+}
 
 // Slice parts with the number of slices fixed at compile time.
 template <int N>
@@ -258,6 +287,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
     yb::LWTransactionMetadataPB data_copy(&metadata_to_store_->arena(), *metadata_to_store_);
     // We use hybrid time only for backward compatibility, actually wall time is required.
     data_copy.set_metadata_write_time(GetCurrentTimeMicros());
+    data_copy.set_first_write_ht(hybrid_time_.ToUint64());
     auto value = data_copy.SerializeAsString();
     Slice value_slice(value);
     handler.Put(key, SliceParts(&value_slice, 1));
@@ -400,6 +430,16 @@ Status TransactionalWriter::operator()(
     DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
   }
 
+  if (is_top_level_key && intent_value.empty() &&
+      intent_types.Test(dockv::IntentType::kStrongWrite)) {
+    auto msg = Format("The top level key with strong write lock and empty value, expect "
+        "serializable level and skip_prefix_locks is enabled. "
+        "skip_prefix_locks: $0, isolation_level: $1, key: $2, intent_types: $3",
+        skip_prefix_locks_, isolation_level_, key->ToString(), intent_types);
+    RSTATUS_DCHECK_EQ(isolation_level_, SERIALIZABLE_ISOLATION, InvalidArgument, msg);
+    RSTATUS_DCHECK_EQ(skip_prefix_locks_, dockv::SkipPrefixLocks::kTrue, InvalidArgument, msg);
+  }
+
   std::array<Slice, 7> value = {{
       Slice(&transaction_value_type, 1),
       transaction_id_.AsSlice(),
@@ -529,6 +569,19 @@ IntentsWriterContext::IntentsWriterContext(
           : FLAGS_txn_max_apply_batch_records) {
 }
 
+IntentsWriterContextBase::IntentsWriterContextBase(
+    const TransactionId& transaction_id,
+    IgnoreMaxApplyLimit ignore_max_apply_limit,
+    rocksdb::DB* intents_db,
+    const KeyBounds* key_bounds,
+    HybridTime file_filter_ht)
+    : IntentsWriterContext(transaction_id, ignore_max_apply_limit),
+      intent_iter_(CreateRocksDBIterator(
+          intents_db, key_bounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
+          CreateIntentHybridTimeFileFilter(file_filter_ht), /* iterate_upper_bound = */ nullptr,
+          rocksdb::CacheRestartBlockKeys::kFalse)) {
+}
+
 IntentsWriter::IntentsWriter(const Slice& start_key,
                              HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
@@ -620,11 +673,12 @@ ApplyIntentsContext::ApplyIntentsContext(
     SchemaPackingProvider& schema_packing_provider,
     ConsensusFrontiers& frontiers,
     rocksdb::DB* intents_db,
-    const DocVectorIndexesPtr& vector_indexes,
+    DocVectorIndexesPtr vector_indexes,
     const docdb::StorageSet& apply_to_storages,
     ApplyIntentsContextCompleteListener complete_listener)
       // TODO(vector_index) Add support for large transactions.
-    : IntentsWriterContext(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr)),
+    : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr),
+          intents_db, key_bounds, file_filter_ht),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       tablet_id_(tablet_id),
       apply_state_(apply_state),
@@ -638,17 +692,11 @@ ApplyIntentsContext::ApplyIntentsContext(
       log_ht_(log_ht),
       apply_op_id_(apply_op_id),
       key_bounds_(key_bounds),
-      vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
-      intent_iter_(CreateRocksDBIterator(
-          intents_db, key_bounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
-          CreateIntentHybridTimeFileFilter(file_filter_ht), /* iterate_upper_bound = */ nullptr,
-          rocksdb::CacheRestartBlockKeys::kFalse)),
-      complete_listener_(std::move(complete_listener)) {
-  if (vector_indexes_) {
-    vector_index_batches_.resize(vector_indexes_->size());
-  }
-}
+      vector_indexes_updater_(std::move(vector_indexes), schema_packing_provider, frontiers_,
+          apply_to_storages, commit_ht, write_id_),
+      complete_listener_(std::move(complete_listener)),
+      intents_db_(intents_db) {}
 
 Result<bool> ApplyIntentsContext::StoreApplyState(
     const Slice& key, rocksdb::DirectWriteHandler& handler) {
@@ -713,17 +761,26 @@ Result<bool> ApplyIntentsContext::Entry(
     const Slice transaction_id_slice = transaction_id().AsSlice();
     auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
         intent_iter_.value(), &transaction_id_slice));
+    // Dump the intents to log before crashing
+    if (decoded_value.write_id < write_id_) {
+      DumpIntentsRecordForTransaction(intents_db_, transaction_id(), &schema_packing_provider());
 
-    // Write id should match to one that were calculated during append of intents.
-    // Doing it just for sanity check.
-    RSTATUS_DCHECK_GE(
-        decoded_value.write_id, write_id_,
-        Corruption,
-        Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
-               write_id_,
-               decoded_value.write_id,
-               intent_iter_.value().ToDebugHexString()));
+      // Write id should match to one that were calculated during append of intents.
+      // Doing it just for sanity check.
+      RSTATUS_DCHECK(
+          false,
+          Corruption,
+          Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
+                 write_id_,
+                 decoded_value.write_id,
+                 intent_iter_.value().ToDebugHexString()));
+    }
+
     write_id_ = decoded_value.write_id;
+
+    if (dockv::IsTopLevelIntentKey(intent.doc_path) && decoded_value.body.empty()) {
+      return false;
+    }
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
     if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
@@ -761,9 +818,7 @@ Result<bool> ApplyIntentsContext::Entry(
       handler.Put(key_parts, value_parts);
     }
 
-    if (vector_indexes_) {
-      RETURN_NOT_OK(ProcessVectorIndexes(handler, intent.doc_path, decoded_value.body));
-    }
+    RETURN_NOT_OK(vector_indexes_updater_.Feed(handler, intent.doc_path, decoded_value.body));
 
     ++write_id_;
     RegisterRecord();
@@ -778,115 +833,6 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-Status ApplyIntentsContext::ProcessVectorIndexes(
-    rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
-  if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
-    return Status::OK();
-  }
-
-  auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
-  if (sizes.doc_key_size < key.size()) {
-    auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
-    if (entry_type == KeyEntryType::kColumnId) {
-      auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
-          key.WithoutPrefix(sizes.doc_key_size + 1)));
-      // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
-      bool need_reverse_entry = apply_to_storages_.TestRegularDB();
-      for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-        const auto& vector_index = *(*vector_indexes_)[i];
-        auto table_key_prefix = vector_index.indexed_table_key_prefix();
-        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
-            commit_ht_ > vector_index.hybrid_time()) {
-          if (ApplyToVectorIndex(i)) {
-            vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
-              .value = ValueBuffer(value.WithoutPrefix(1)),
-            });
-          }
-          if (need_reverse_entry) {
-            auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
-            DocVectorIndex::ApplyReverseEntry(
-                handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
-            need_reverse_entry = false;
-          }
-        }
-      }
-    } else {
-      LOG_IF(DFATAL, entry_type != KeyEntryType::kSystemColumnId)
-          << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
-    }
-  } else {
-    auto packed_row_version = dockv::GetPackedRowVersion(value);
-    RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
-                   "Full row with non packed value: $0 -> $1",
-                   key.ToDebugHexString(), value.ToDebugHexString());
-    switch (*packed_row_version) {
-      case dockv::PackedRowVersion::kV1:
-        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(
-            handler, sizes.prefix_size, key, value);
-      case dockv::PackedRowVersion::kV2:
-        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(
-            handler, sizes.prefix_size, key, value);
-    }
-    FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
-  }
-  return Status::OK();
-}
-
-template <class Decoder>
-Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
-    rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value) {
-  value.consume_byte();
-
-  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
-
-  auto table_key_prefix = key.Prefix(prefix_size);
-  if (schema_packing_version_ != schema_version ||
-      schema_packing_table_prefix_.AsSlice() != table_key_prefix) {
-    auto packing = VERIFY_RESULT(prefix_size
-        ? schema_packing_provider_.ColocationPacking(
-              BigEndian::Load32(key.data() + 1), schema_version, HybridTime::kMax)
-        : schema_packing_provider_.CotablePacking(
-              Uuid::Nil(), schema_version, HybridTime::kMax));
-    schema_packing_ = packing.schema_packing;
-    schema_packing_version_ = schema_version;
-    schema_packing_table_prefix_.Assign(table_key_prefix);
-  }
-  Decoder decoder(*schema_packing_, value.data());
-
-  boost::dynamic_bitset<> columns_added_to_vector_index;
-  for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-    const auto& vector_index = *(*vector_indexes_)[i];
-    auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
-    if (table_key_prefix != vector_index_table_key_prefix ||
-        commit_ht_ <= vector_index.hybrid_time()) {
-      continue;
-    }
-    auto column_value = decoder.FetchValue(vector_index.column_id());
-    if (column_value.IsNull()) {
-      VLOG_WITH_FUNC(3) << "Ignoring null vector value for key '" << key.ToDebugHexString() << "'";
-      continue;
-    }
-
-    auto ybctid = key.WithoutPrefix(table_key_prefix.size());
-    if (ApplyToVectorIndex(i)) {
-      vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
-        .value = ValueBuffer(column_value->WithoutPrefix(1)),
-      });
-    }
-
-    if (apply_to_storages_.TestRegularDB()) {
-      size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
-      columns_added_to_vector_index.resize(
-          std::max(columns_added_to_vector_index.size(), column_index + 1));
-      if (!columns_added_to_vector_index.test_set(column_index)) {
-        DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
-      }
-    }
-  }
-  return Status::OK();
-}
-
 Status ApplyIntentsContext::Complete(
     rocksdb::DirectWriteHandler& handler, bool transaction_finished) {
   if (transaction_finished) {
@@ -896,14 +842,7 @@ Status ApplyIntentsContext::Complete(
       PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
     }
   }
-  if (vector_indexes_) {
-    DocHybridTime write_time { commit_ht_, write_id_ };
-    for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
-      if (!vector_index_batches_[i].empty()) {
-        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(vector_index_batches_[i], frontiers_));
-      }
-    }
-  }
+  RETURN_NOT_OK(vector_indexes_updater_.Complete());
   FlushSchemaVersion();
   if (complete_listener_) {
     complete_listener_(frontiers_);
@@ -994,9 +933,9 @@ void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
     return;
   }
   frontiers_.Smallest().UpdateSchemaVersion(
-      schema_version_table_, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
+      schema_version_table_, min_schema_version_, storage::UpdateUserValueType::kSmallest);
   frontiers_.Largest().UpdateSchemaVersion(
-      schema_version_table_, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
+      schema_version_table_, max_schema_version_, storage::UpdateUserValueType::kLargest);
   min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 }
@@ -1094,12 +1033,14 @@ struct ExternalTxnApplyStateData {
 NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers)
+    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
+    const DocVectorIndexesPtr& vector_indexes)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
       batch_hybrid_time_(batch_hybrid_time),
-      intents_write_batch_(intents_write_batch) {
+      intents_write_batch_(intents_write_batch),
+      vector_indexes_(vector_indexes) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1123,7 +1064,7 @@ Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
 }  // namespace
 
 Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
-    const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
+    Slice original_input_value, ExternalTxnApplyStateData& apply_data,
     rocksdb::DirectWriteHandler& regular_write_handler) {
   bool can_delete_entire_batch = true;
   auto input_value = original_input_value;
@@ -1145,10 +1086,14 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     input_value.remove_prefix(sizeof(SubTransactionId));
     RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
   }
-  if (apply_data->aborted_subtransactions.Test(subtransaction_id)) {
+  if (apply_data.aborted_subtransactions.Test(subtransaction_id)) {
     // Skip applying provisional writes that belong to subtransactions that got aborted.
     return can_delete_entire_batch;
   }
+
+  VectorIndexesUpdater vector_indexes_updater(
+      vector_indexes_, schema_packing_provider_, frontiers_, StorageSet::All(),
+      apply_data.commit_ht, apply_data.write_id, /* xcluster_target= */ true);
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (key_size == 0) {
@@ -1166,9 +1111,9 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     auto output_value = input_value.Prefix(value_size);
     input_value.remove_prefix(value_size);
 
-    if (!VERIFY_RESULT(apply_data->IsWithinBounds(output_key))) {
+    if (!VERIFY_RESULT(apply_data.IsWithinBounds(output_key))) {
       VLOG(1) << "Skipping APPLY of external intent with key: " << output_key.ToDebugHexString()
-              << " since it is outside of filter range: " << apply_data->filter_range.ToString();
+              << " since it is outside of filter range: " << apply_data.filter_range.ToString();
       // Skip this entry. Ensure that we don't delete this batch, as another apply will need this
       // skipped intent.
       can_delete_entire_batch = false;
@@ -1179,16 +1124,40 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
 
     std::array<Slice, 2> key_parts = {{
         output_key,
-        doc_ht_buffer.EncodeWithValueType(apply_data->commit_ht, apply_data->write_id),
+        doc_ht_buffer.EncodeWithValueType(apply_data.commit_ht, apply_data.write_id),
     }};
     std::array<Slice, 1> value_parts = {{
         output_value,
     }};
     regular_write_handler.Put(key_parts, value_parts);
-    ++apply_data->write_id;
+    RETURN_NOT_OK(vector_indexes_updater.Feed(regular_write_handler, output_key, output_value));
+    ++apply_data.write_id;
 
     // Update min/max schema version.
     RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
+  }
+  RETURN_NOT_OK(vector_indexes_updater.Complete());
+
+  // Remaining bytes after the key-value terminator are delete_vector_ids appended by
+  // xCluster consumer. Tombstone each old vector ID's reverse mapping.
+  if (!input_value.empty()) {
+    RSTATUS_DCHECK_EQ(
+        input_value.size() % vector_index::VectorId::StaticSize(), 0, Corruption,
+        Format("Wrong size of delete_vector_ids in external intents: $0",
+               input_value.ToDebugHexString()));
+    DocHybridTimeBuffer ht_buf;
+    auto encoded_write_time = ht_buf.EncodeWithValueType(
+        DocHybridTime(apply_data.commit_ht, apply_data.write_id));
+    char tombstone = dockv::ValueEntryTypeAsChar::kTombstone;
+    Slice tombstone_value(&tombstone, 1);
+    while (!input_value.empty()) {
+      auto id = input_value.Prefix(vector_index::VectorId::StaticSize());
+      regular_write_handler.Put(
+          dockv::DocVectorKeyAsParts(id, encoded_write_time), {&tombstone_value, 1});
+      input_value.RemovePrefix(vector_index::VectorId::StaticSize());
+      ++apply_data.write_id;
+    }
+    frontiers_.Largest().SetHasVectorDeletion();
   }
 
   return can_delete_entire_batch;
@@ -1197,11 +1166,12 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
 Status NonTransactionalBatchWriter::PrepareApplyExternalIntents(
-    ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler& handler) {
+    ExternalTxnApplyState& apply_external_transactions,
+    rocksdb::DirectWriteHandler& handler) {
   KeyBytes key_prefix;
   KeyBytes key_upperbound;
 
-  for (auto& [transaction_id, apply_data] : *apply_external_transactions) {
+  for (auto& [transaction_id, apply_data] : apply_external_transactions) {
     key_prefix.Clear();
     key_prefix.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
     key_prefix.AppendRawBytes(transaction_id.AsSlice());
@@ -1221,7 +1191,7 @@ Status NonTransactionalBatchWriter::PrepareApplyExternalIntents(
       // Returns whether or not we filtered out any intents, if we did then do not delete as a later
       // apply (with a different filter) might still need it.
       bool can_delete_entire_batch = VERIFY_RESULT(
-          PrepareApplyExternalIntentsBatch(intents_db_iter_.value(), &apply_data, handler));
+          PrepareApplyExternalIntentsBatch(intents_db_iter_.value(), apply_data, handler));
 
       if (can_delete_entire_batch) {
         intents_write_batch_->SingleDelete(input_key);
@@ -1236,8 +1206,8 @@ Status NonTransactionalBatchWriter::PrepareApplyExternalIntents(
 }
 
 Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
-    const yb::docdb::LWKeyValuePairPB& kv_pair, ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::DirectWriteHandler& regular_write_handler, IntraTxnWriteId* write_id) {
+    const LWKeyValuePairPB& kv_pair, ExternalTxnApplyState& apply_external_transactions,
+    rocksdb::DirectWriteHandler& regular_write_handler, IntraTxnWriteId& write_id) {
   SCHECK(!kv_pair.key().empty(), InvalidArgument, "Write pair key cannot be empty.");
   SCHECK(!kv_pair.value().empty(), InvalidArgument, "Write pair value cannot be empty.");
 
@@ -1259,10 +1229,10 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
   Slice key = kv_pair.key();
   key.consume_byte();
   auto txn_id = VERIFY_RESULT(DecodeTransactionId(&key));
-  auto it = apply_external_transactions->find(txn_id);
-  if (it != apply_external_transactions->end()) {
+  auto it = apply_external_transactions.find(txn_id);
+  if (it != apply_external_transactions.end()) {
     // The same write operation could contain external intents and instruct us to apply them.
-    RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(key_value, &it->second, regular_write_handler));
+    RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(key_value, it->second, regular_write_handler));
     return false;
   }
 
@@ -1279,12 +1249,12 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
   dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
   std::array<Slice, 2> key_parts = {{
       Slice(kv_pair.key()),
-      doc_ht_buffer.EncodeWithValueType(batch_hybrid_time_, *write_id),
+      doc_ht_buffer.EncodeWithValueType(batch_hybrid_time_, write_id),
   }};
   key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
   constexpr size_t kNumValueParts = 1;
   intents_write_batch_->Put(key_parts, {&key_value, kNumValueParts});
-  ++(*write_id);
+  ++write_id;
 
   return false;
 }
@@ -1293,14 +1263,14 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
-    RETURN_NOT_OK(PrepareApplyExternalIntents(&apply_external_transactions, handler));
+    RETURN_NOT_OK(PrepareApplyExternalIntents(apply_external_transactions, handler));
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
   IntraTxnWriteId write_id = 0;
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
-            write_pair, &apply_external_transactions, handler, &write_id))) {
+            write_pair, apply_external_transactions, handler, write_id))) {
       HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
@@ -1310,5 +1280,199 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   return Status::OK();
 }
 
-}  // namespace docdb
-} // namespace yb
+DumpIntentsContext::DumpIntentsContext(
+    const TransactionId& transaction_id,
+    rocksdb::DB* intents_db,
+    SchemaPackingProvider* schema_packing_provider)
+    : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit::kTrue,
+                                   intents_db, &KeyBounds::kNoBounds, HybridTime::kInvalid),
+      schema_packing_provider_(schema_packing_provider) {
+}
+
+void DumpIntentsContext::Start(const std::optional<Slice>& first_key) {
+  LOG(INFO) << "Dumping intents for transaction: " << transaction_id();
+}
+
+Result<bool> DumpIntentsContext::Entry(const Slice& reverse_index_key,
+                                       const Slice& reverse_index_value, bool metadata,
+                                       rocksdb::DirectWriteHandler& handler) {
+  auto dump_record = [this](const Slice& key, const Slice& val) {
+    LOG(INFO) << "Intent record " << ++intent_count_ << ". "
+              << docdb::EntryToString(key, val, schema_packing_provider_, StorageDbType::kIntents);
+  };
+  dump_record(reverse_index_key, reverse_index_value);
+
+  if (metadata) {
+    return false;
+  }
+
+  intent_iter_.Seek(reverse_index_value);
+  if (!intent_iter_.Valid() || intent_iter_.key() != reverse_index_value) {
+    LOG(WARNING) << "Missing intent: " << reverse_index_value.ToDebugHexString();
+    return false;
+  }
+
+  dump_record(intent_iter_.key(), intent_iter_.value());
+  return false;
+}
+
+Status DumpIntentsContext::DeleteVectorIds(
+    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+  return Status::OK();
+}
+
+Status DumpIntentsContext::Complete(rocksdb::DirectWriteHandler& handler,
+                                    bool transaction_finished) {
+  LOG(INFO) << "Finished dumping intents for transaction: " << transaction_id()
+            << ", total records: " << intent_count_
+            << ", transaction finished: " << transaction_finished;
+  return Status::OK();
+}
+
+VectorIndexesUpdater::VectorIndexesUpdater(
+    DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
+    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
+    std::reference_wrapper<IntraTxnWriteId> write_id, bool xcluster_target)
+    : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
+      frontiers_(frontiers),
+      apply_to_storages_(apply_to_storages), commit_ht_(commit_ht), write_id_(write_id),
+      xcluster_target_(xcluster_target) {
+  if (indexes_) {
+    batches_.resize(indexes_->size());
+  }
+}
+
+bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
+    const DocVectorIndex& vector_index) const {
+  return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
+}
+
+Status VectorIndexesUpdater::Feed(
+    rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
+  if (!indexes_ || value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+    return Status::OK();
+  }
+
+  auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
+  if (sizes.doc_key_size < key.size()) {
+    auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
+    if (entry_type == KeyEntryType::kColumnId) {
+      auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
+          key.WithoutPrefix(sizes.doc_key_size + 1)));
+      // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
+      bool need_reverse_entry = apply_to_storages_.TestRegularDB();
+      for (size_t i = 0; i != indexes_->size(); ++i) {
+        const auto& vector_index = *(*indexes_)[i];
+        auto table_key_prefix = vector_index.indexed_table_key_prefix();
+        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
+            IntentApplyShouldUpdateVectorIndex(vector_index)) {
+          if (ApplyToVectorIndex(i)) {
+            batches_[i].push_back(DocVectorIndexInsertEntry {
+              .value = ValueBuffer(value.WithoutPrefix(1)),
+            });
+          }
+          if (need_reverse_entry) {
+            auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
+            DocVectorIndex::ApplyReverseEntry(
+                handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
+            need_reverse_entry = false;
+          }
+        }
+      }
+    } else {
+      LOG_IF(DFATAL, entry_type != KeyEntryType::kSystemColumnId)
+          << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
+    }
+  } else {
+    auto packed_row_version = dockv::GetPackedRowVersion(value);
+    RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
+                   "Full row with non packed value: $0 -> $1",
+                   key.ToDebugHexString(), value.ToDebugHexString());
+    switch (*packed_row_version) {
+      case dockv::PackedRowVersion::kV1:
+        return FeedPackedRow<dockv::PackedRowDecoderV1>(
+            handler, sizes.prefix_size, key, value);
+      case dockv::PackedRowVersion::kV2:
+        return FeedPackedRow<dockv::PackedRowDecoderV2>(
+            handler, sizes.prefix_size, key, value);
+    }
+    FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
+  }
+  return Status::OK();
+}
+
+template <class Decoder>
+Status VectorIndexesUpdater::FeedPackedRow(
+    rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value) {
+  value.consume_byte();
+
+  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
+
+  auto table_key_prefix = key.Prefix(prefix_size);
+  if (schema_packing_version_ != schema_version ||
+      schema_packing_table_prefix_.AsSlice() != table_key_prefix) {
+    auto packing = VERIFY_RESULT(prefix_size
+        ? schema_packing_provider_.ColocationPacking(
+              BigEndian::Load32(key.data() + 1), schema_version, HybridTime::kMax)
+        : schema_packing_provider_.CotablePacking(
+              Uuid::Nil(), schema_version, HybridTime::kMax));
+    schema_packing_ = packing.schema_packing;
+    schema_packing_version_ = schema_version;
+    schema_packing_table_prefix_.Assign(table_key_prefix);
+  }
+  Decoder decoder(*schema_packing_, value.data());
+  auto prev_index_column_id = kInvalidColumnId;
+  decltype(decoder.FetchValue(indexes_->front()->column_id())) column_value({});
+
+
+  boost::dynamic_bitset<> columns_added_to_vector_index;
+  for (size_t i = 0; i != indexes_->size(); ++i) {
+    const auto& vector_index = *(*indexes_)[i];
+    auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
+    if (table_key_prefix != vector_index_table_key_prefix ||
+        !IntentApplyShouldUpdateVectorIndex(vector_index)) {
+      continue;
+    }
+    if (vector_index.column_id() != prev_index_column_id) {
+      prev_index_column_id = vector_index.column_id();
+      column_value = decoder.FetchValue(prev_index_column_id);
+    }
+    if (column_value.IsNull()) {
+      VLOG_WITH_FUNC(3) << "Ignoring null vector value for key '" << key.ToDebugHexString() << "'";
+      continue;
+    }
+
+    auto ybctid = key.WithoutPrefix(table_key_prefix.size());
+    if (ApplyToVectorIndex(i)) {
+      batches_[i].push_back(DocVectorIndexInsertEntry {
+        .value = ValueBuffer(column_value->WithoutPrefix(
+            std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1)),
+      });
+    }
+
+    if (apply_to_storages_.TestRegularDB()) {
+      size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
+      columns_added_to_vector_index.resize(
+          std::max(columns_added_to_vector_index.size(), column_index + 1));
+      if (!columns_added_to_vector_index.test_set(column_index)) {
+        DocVectorIndex::ApplyReverseEntry(
+            handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status VectorIndexesUpdater::Complete() {
+  if (!indexes_) {
+    return Status::OK();
+  }
+  for (size_t i = 0; i != batches_.size(); ++i) {
+    if (!batches_[i].empty()) {
+      RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], frontiers_));
+    }
+  }
+  return Status::OK();
+}
+
+} // namespace yb::docdb

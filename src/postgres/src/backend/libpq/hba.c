@@ -96,6 +96,9 @@ static const char *const HardcodedHbaLines[] =
  * NOTE: the IdentLine structs can contain pre-compiled regular expressions
  * that live outside the memory context. Before destroying or resetting the
  * memory context, they need to be explicitly free'd.
+ *
+ * YB: Ident mapping is also used in YCQL. When used in YCQL, this lives in the
+ * ycql_jwt_ident_memctx_ memory context.
  */
 static List *parsed_ident_lines = NIL;
 static MemoryContext parsed_ident_context = NULL;
@@ -2486,9 +2489,11 @@ check_hba(hbaPort *port)
  * On a false result, caller will take care of reporting a FATAL error in case
  * this is the initial startup.  If it happens on reload, we just keep running
  * with the old data.
+ *
+ *  YB: When yb_validate_conf_file is supplied, only validate, do not apply.
  */
 bool
-load_hba(void)
+load_hba(const char *yb_validate_conf_file)
 {
 	FILE	   *file;
 	List	   *hba_lines = NIL;
@@ -2499,30 +2504,37 @@ load_hba(void)
 	MemoryContext oldcxt;
 	MemoryContext hbacxt;
 
-	file = AllocateFile(HbaFileName, "r");
+	const char *yb_filename = yb_validate_conf_file
+		? yb_validate_conf_file : HbaFileName;
+	int			yb_elevel = yb_validate_conf_file ? ERROR : LOG;
+
+	Assert(!yb_validate_conf_file || IsUnderPostmaster);
+	file = AllocateFile(yb_filename, "r");
 	if (file == NULL)
 	{
-		ereport(LOG,
+		ereport(yb_elevel,
 				(errcode_for_file_access(),
 				 errmsg("could not open configuration file \"%s\": %m",
-						HbaFileName)));
+						yb_filename)));
 		return false;
 	}
 
-	linecxt = tokenize_auth_file(HbaFileName, file, &hba_lines, LOG);
+	linecxt = tokenize_auth_file(yb_filename, file, &hba_lines, yb_elevel);
 	FreeFile(file);
 
 	/* YB: Add hardcoded hba config lines in front of user-defined ones. */
 	List	   *hba_lines_hardcoded = NIL;
 
 	oldcxt = MemoryContextSwitchTo(linecxt);
-	yb_tokenize_hardcoded(&hba_lines_hardcoded, LOG);
+	yb_tokenize_hardcoded(&hba_lines_hardcoded, yb_elevel);
 	hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* Now parse all the lines */
-	Assert(PostmasterContext);
-	hbacxt = AllocSetContextCreate(PostmasterContext,
+	MemoryContext yb_parent_cxt = yb_validate_conf_file
+		? CurrentMemoryContext : PostmasterContext;
+	Assert(yb_parent_cxt);
+	hbacxt = AllocSetContextCreate(yb_parent_cxt,
 								   "hba parser context",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(hbacxt);
@@ -2538,7 +2550,7 @@ load_hba(void)
 			continue;
 		}
 
-		if ((newline = parse_hba_line(tok_line, LOG)) == NULL)
+		if ((newline = parse_hba_line(tok_line, yb_elevel)) == NULL)
 		{
 			/* Parse error; remember there's trouble */
 			ok = false;
@@ -2561,10 +2573,10 @@ load_hba(void)
 	 */
 	if (ok && new_parsed_lines == NIL)
 	{
-		ereport(LOG,
+		ereport(yb_elevel,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("configuration file \"%s\" contains no entries",
-						HbaFileName)));
+						yb_filename)));
 		ok = false;
 	}
 
@@ -2572,11 +2584,11 @@ load_hba(void)
 	MemoryContextDelete(linecxt);
 	MemoryContextSwitchTo(oldcxt);
 
-	if (!ok)
+	if (!ok || yb_validate_conf_file)
 	{
-		/* File contained one or more errors, so bail out */
 		MemoryContextDelete(hbacxt);
-		return false;
+		/* YB: Return early if asked only to validate */
+		return ok;
 	}
 
 	/* Loaded new file successfully, replace the one we use */
@@ -2873,9 +2885,12 @@ check_usermap(const char *usermap_name,
  * the contents.
  *
  * This works the same as load_hba(), but for the user config file.
+ *
+ * YB: When yb_validate_conf_file is supplied, only validate, do not apply.
  */
 bool
-load_ident(void)
+load_ident(MemoryContext yb_ident_context,
+		   const char *yb_validate_conf_file)
 {
 	FILE	   *file;
 	List	   *ident_lines = NIL;
@@ -2888,26 +2903,41 @@ load_ident(void)
 	MemoryContext ident_context;
 	IdentLine  *newline;
 
-	file = AllocateFile(IdentFileName, "r");
+	Assert(!yb_validate_conf_file || IsUnderPostmaster);
+	const char *yb_filename = yb_validate_conf_file
+		? yb_validate_conf_file : IdentFileName;
+	int			yb_elevel = yb_validate_conf_file ? ERROR : LOG;
+
+	file = AllocateFile(yb_filename, "r");
 	if (file == NULL)
 	{
 		/* not fatal ... we just won't do any special ident maps */
-		ereport(LOG,
+		ereport(yb_elevel,
 				(errcode_for_file_access(),
 				 errmsg("could not open usermap file \"%s\": %m",
-						IdentFileName)));
+						yb_filename)));
 		return false;
 	}
 
-	linecxt = tokenize_auth_file(IdentFileName, file, &ident_lines, LOG);
+	linecxt = tokenize_auth_file(yb_filename, file, &ident_lines, yb_elevel);
 	FreeFile(file);
 
-	/* Now parse all the lines */
-	Assert(PostmasterContext);
-	ident_context = AllocSetContextCreate(PostmasterContext,
-										  "ident parser context",
-										  ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(ident_context);
+	/*
+	 * Now parse all the lines
+	 *
+	 * YB: yb_ident_context is non-null when called from YCQL.
+	 */
+	if (yb_ident_context)
+		oldcxt = MemoryContextSwitchTo(yb_ident_context);
+	else
+	{
+		Assert(PostmasterContext);
+		ident_context = AllocSetContextCreate(PostmasterContext,
+											  "ident parser context",
+											  ALLOCSET_SMALL_SIZES);
+		oldcxt = MemoryContextSwitchTo(ident_context);
+	}
+
 	foreach(line_cell, ident_lines)
 	{
 		TokenizedAuthLine *tok_line = (TokenizedAuthLine *) lfirst(line_cell);
@@ -2919,7 +2949,7 @@ load_ident(void)
 			continue;
 		}
 
-		if ((newline = parse_ident_line(tok_line, LOG)) == NULL)
+		if ((newline = parse_ident_line(tok_line, yb_elevel)) == NULL)
 		{
 			/* Parse error; remember there's trouble */
 			ok = false;
@@ -2939,12 +2969,14 @@ load_ident(void)
 	MemoryContextDelete(linecxt);
 	MemoryContextSwitchTo(oldcxt);
 
-	if (!ok)
+	if (!ok || yb_validate_conf_file)
 	{
 		/*
 		 * File contained one or more errors, so bail out, first being careful
 		 * to clean up whatever we allocated.  Most stuff will go away via
 		 * MemoryContextDelete, but we have to clean up regexes explicitly.
+		 *
+		 * YB: Cleanup and return in validation mode.
 		 */
 		foreach(parsed_line_cell, new_parsed_lines)
 		{
@@ -2952,8 +2984,13 @@ load_ident(void)
 			if (newline->ident_user[0] == '/')
 				pg_regfree(&newline->re);
 		}
-		MemoryContextDelete(ident_context);
-		return false;
+
+		/*
+		 * YB: ident_context is unused when yb_ident_context is passed as param.
+		 */
+		if (!yb_ident_context)
+			MemoryContextDelete(ident_context);
+		return ok;
 	}
 
 	/* Loaded new file successfully, replace the one we use */
@@ -2969,7 +3006,14 @@ load_ident(void)
 	if (parsed_ident_context != NULL)
 		MemoryContextDelete(parsed_ident_context);
 
-	parsed_ident_context = ident_context;
+	/*
+	 * YB: ident_context is unused when yb_ident_context is passed as param.
+	 * In such cases, the parsed_ident_lines are allocated in the
+	 * yb_ident_context and the responsibility of managing the context is left
+	 * to the caller.
+	 */
+	if (!yb_ident_context)
+		parsed_ident_context = ident_context;
 	parsed_ident_lines = new_parsed_lines;
 
 	return true;

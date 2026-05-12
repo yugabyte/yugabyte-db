@@ -97,9 +97,11 @@ struct NODISCARD_CLASS FlushStatus {
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   explicit YBSession(
-      YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock = nullptr);
+      YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock = nullptr,
+      const ThreadSafeArenaPtr& arena = {});
   explicit YBSession(
-      YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock = nullptr);
+      YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock = nullptr,
+      const ThreadSafeArenaPtr& arena = {});
 
   ~YBSession();
 
@@ -123,6 +125,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void SetTimeout(MonoDelta delta);
 
   void SetDeadline(CoarseTimePoint deadline);
+
+  void SetPoolTag(rpc::ThreadPoolTag tag);
 
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
@@ -238,6 +242,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta);
 
+  void ResetArena(const ThreadSafeArenaPtr& arena = {});
+
+  const ThreadSafeArenaPtr& arena();
+
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;
     client::YBClient* client;
@@ -247,6 +255,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     bool force_consistent_read = false;
     RejectionScoreSourcePtr rejection_score_source;
     int64_t leader_term = OpId::kUnknownTerm;
+    ThreadSafeArenaPtr arena;
 
     ConsistentReadPoint* read_point() const;
   };
@@ -255,7 +264,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   friend class YBClient;
   friend class internal::Batcher;
 
-  YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock);
+  YBSession(
+      YBClient* client, const scoped_refptr<ClockBase>& clock, const ThreadSafeArenaPtr& arena);
 
   internal::Batcher& Batcher();
 
@@ -281,6 +291,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // current time + session timeout.
   CoarseTimePoint deadline_;
   MonoDelta timeout_;
+
+  rpc::ThreadPoolTag pool_tag_ = 0;
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 

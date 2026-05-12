@@ -16,7 +16,7 @@ type: docs
 
 Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events.
 
-ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH queries, you need to enable [YSQL](../../../api/ysql/).
+ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues.
 
 Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 
@@ -25,6 +25,12 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a query taking longer than usual to execute?
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
+
+{{< note title="YSQL must be enabled" >}}
+
+To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe. For more information, refer to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash).
+
+{{< /note >}}
 
 ## Configuration and usage
 
@@ -76,14 +82,14 @@ ORDER BY
  -1970690938654296136 | TServer              | Raft_WaitingForReplication         | RPCWait         |   194
  -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |    18
  -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |     5
- -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |  1023
+ -1970690938654296136 | YSQL                 | OnCpu_Active                       | Cpu             |  1023
                     0 | TServer              | OnCpu_Passive                      | Cpu             |    10
                     0 | TServer              | OnCpu_Active                       | Cpu             |     9
   6107501747146929242 | TServer              | OnCpu_Active                       | Cpu             |   208
   6107501747146929242 | TServer              | RocksDB_NewIterator                | DiskIO          |     5
   6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
   6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
-  6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
+  6107501747146929242 | YSQL                 | OnCpu_Active                       | Cpu             |   285
   6107501747146929242 | YSQL                 | TableRead                          | RPCWait         |   658
   6107501747146929242 | YSQL                 | CatalogRead                        | RPCWait         |     1
 ```
@@ -130,7 +136,7 @@ ORDER BY
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  1359
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Rpc_Done                                 | WaitOnCondition |     5
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | LockedBatchEntry_Lock                    | WaitOnCondition |   141
- UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | QueryProcessing                          | Cpu             |  1929
+ UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | OnCpu_Active                             | Cpu             |  1929
 ```
 
 ### Detect a hot shard
@@ -186,7 +192,7 @@ ORDER BY
  219fd39bafee44a |     3
 ```
 
-You can join with `yb_local_tablets` to get more information about the table type, table_name, and partition keys. As the `wait_event_aux` has only the first 15 characters of the `tablet_id` as a string, you have to join with only the first 15 characters from `yb_local_tablets`.
+You can join with `yb_local_tablets` to get more information about the table type, table name, and partition keys. As the `wait_event_aux` has only the first 15 characters of the `tablet_id` as a string, you have to join with only the first 15 characters from `yb_local_tablets`.
 
 ```sql
 SELECT
@@ -308,4 +314,60 @@ GROUP BY
  127.0.0.3:56475 |    53
  127.0.0.3:56485 |    18
  127.0.0.3:56479 | 10997
+```
+
+### Augment ASH with topology information
+
+By joining ASH with [yb_servers()](../../going-beyond-sql/cluster-topology/), you can augment ASH views with information about the location of the nodes involved, including the IP address, cloud, region, and zone.
+
+The `yb_servers()` function returns a list of all the nodes in your cluster and their location, and includes a `uuid` column with the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
+
+Note that because these columns have different data types, (`top_level_node_id` is type UUID, while the `uuid` column of `yb_servers()` is type text), you need to cast the text to UUID to perform the join.
+
+For example:
+
+```sql
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    top_level_node_id,
+    host,
+    port,
+    cloud,
+    region,
+    zone,
+    COUNT(*)
+FROM
+    yb_active_session_history
+JOIN
+    pg_stat_statements
+ON
+    query_id = queryid
+JOIN
+    yb_servers()
+ON
+    top_level_node_id = uuid::uuid
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query,
+    top_level_node_id,
+    host,
+    port,
+    cloud,
+    region,
+    zone;
+```
+
+```output
+                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count
+----------------------------------------------------+--------------------------------------+-----------+------+-------+---------+------------+-------
+ COMMIT                                             | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ ANALYZE "public"."postgresqlkeyvalue"              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |    44
+ SET extra_float_digits = 3                         | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ SHOW yb_disable_auto_analyze                       | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
+ SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |  1450
+ BEGIN                                              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ SET application_name = 'PostgreSQL JDBC Driver'    | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
+ SELECT reltuples FROM pg_class WHERE relfilenode = | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+(8 rows)
 ```

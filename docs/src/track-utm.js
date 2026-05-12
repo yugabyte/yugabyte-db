@@ -1,74 +1,7 @@
+import { getCookie, setCookie } from 'browser-cookie-utils';
+import { getQueryParams } from 'browser-query-utils';
+
 (function () {
-  /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function getCookie(cname) {
-    const splittedCookie = document.cookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      const cookiePair = splittedCookie[fetchCookie].split('=');
-      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
-        matchedCookie = decodeURIComponent(cookiePair[1]);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
-
-  /**
-   * Get Query Parameters from the URL and set them in object.
-   *
-   * return object
-   */
-  function getQueryParams(url) {
-    const params = {};
-    const queryString = url.split('?')[1];
-
-    let paramsArray;
-    if (queryString) {
-      paramsArray = queryString.split('&');
-      paramsArray.forEach((param) => {
-        const splittedParam = param.split('=');
-        if (splittedParam[0] && splittedParam[1]) {
-          params[splittedParam[0]] = splittedParam[1];
-        }
-      });
-    }
-
-    return params;
-  }
-
-  /**
-   * Set cookie.
-   */
-  function setCookie(name, value, monthToLive) {
-    let cookie = `${name}=${encodeURIComponent(value)}`;
-    let saveFor = monthToLive;
-
-    if (typeof monthToLive !== 'number') {
-      saveFor = 3;
-    }
-
-    cookie += `; max-age=${(saveFor * 30 * (24 * 60 * 60))}`;
-    if (window.location.hostname.indexOf('.yugabyte.com') !== -1) {
-      cookie += '; domain=.yugabyte.com';
-    }
-
-    cookie += '; path=/';
-    cookie += '; secure=true';
-    document.cookie = cookie;
-  }
-
   const availableUTMs = {};
   let utmCondition = false;
 
@@ -83,13 +16,19 @@
     // Create Cookie for UTM parameters.
     Object.keys(keyValuePairs).forEach((property) => {
       if (property.indexOf('utm_') === 0 && keyValuePairs[property] !== '') {
-        setCookie(property, keyValuePairs[property], 1);
+        setCookie(property, keyValuePairs[property], {
+          timeToLive: 1,
+          unit: 'month'
+        });
         setUTMs = true;
       }
     });
 
     if (setUTMs) {
-      setCookie('utm_check', true, 1);
+      setCookie('utm_check', true, {
+        timeToLive: 1,
+        unit: 'month'
+      });
     }
   }
 

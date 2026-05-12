@@ -45,9 +45,12 @@ typedef struct {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(
+YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config,
+    YbcPgExecStatsState *session_stats, bool is_binary_upgrade);
+
+void YBCSetupPgBackendCgroup(YbcPgOid dboid);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -57,8 +60,6 @@ void YBCInterruptPgGate();
 void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
-
-YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 void YBCPgIncrementIndexRecheckCount();
 
@@ -88,6 +89,12 @@ YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
+// Get cluster replication info
+const YbcReplicationInfo *YBCGetClusterReplicationInfo();
+
+// Update the snapshot cluster configuration if needed
+void YBCRefreshClusterReplicationInfo();
+
 // Set global catalog_version to the local tserver's catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
@@ -101,10 +108,6 @@ YbcStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
-// Return true if the pg_yb_catalog_version table has been updated to
-// have one row per database.
-YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
-
 YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
@@ -112,6 +115,9 @@ YbcStatus YBCGetTserverCatalogMessageLists(
 YbcStatus YBCPgSetTserverCatalogMessageList(
     YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
     const YbcCatalogMessageList *message_list);
+
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode);
 
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
@@ -207,14 +213,12 @@ YbcStatus YBCPgIsDatabaseColocated(const YbcPgOid database_oid, bool *colocated,
 YbcStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called);
 
 YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -224,7 +228,6 @@ YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
 YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped);
@@ -232,7 +235,6 @@ YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
 YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
                                 int64_t seq_oid,
                                 uint64_t ysql_catalog_version,
-                                bool is_db_catalog_version_mode,
                                 uint32_t fetch_count,
                                 int64_t inc_by,
                                 int64_t min_value,
@@ -244,7 +246,6 @@ YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
 YbcStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called);
 
@@ -407,9 +408,6 @@ YbcStatus YBCPgSetDBCatalogCacheVersion(YbcPgStatement handle,
                                         YbcPgOid db_oid,
                                         uint64_t version);
 YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid);
-#ifndef NDEBUG
-void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
-#endif
 
 YbcStatus YBCPgTableExists(const YbcPgOid database_oid,
                            const YbcPgOid table_relfilenode_oid,
@@ -495,7 +493,8 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // This function is for specifying the selected or returned expressions.
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index);
 
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
@@ -530,8 +529,8 @@ YbcStatus YbPgDmlAppendColumnRef(
 //     of the same allocated statement.
 //
 //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
-//   - BindColumn() can only be used for primary-key columns.
-//   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+//   - BindColumn() can only be used for key columns.
+//   - This bind-column function is used to bind the key column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
 //
@@ -567,15 +566,18 @@ YbcStatus YBCPgDmlBindBounds(
     uint64_t upper_bound_ybctid, bool upper_bound_inclusive);
 
 // For parallel scan only, limit fetch to specified range of ybctids
-YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
-                            const char *lower_bound, size_t lower_bound_len,
-                            const char *upper_bound, size_t upper_bound_len);
+YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
+                                     const char *lower_bound, size_t lower_bound_len,
+                                     const char *upper_bound, size_t upper_bound_len);
 
 YbcStatus YBCPgDmlAddRowUpperBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);
 
 YbcStatus YBCPgDmlAddRowLowerBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);
+
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle);
@@ -602,6 +604,15 @@ YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_coun
 // This function returns the tuple id (ybctid) of a Postgres tuple.
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *ybctid);
 
+// Decode primary key column values by calling DecodePKColumnsFromBasectid.
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs);
+
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
 //   - Not yet
@@ -617,12 +628,12 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *yb
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
-YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context);
+YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -631,9 +642,10 @@ YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
 
 YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more);
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle);
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params);
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows);
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 
@@ -641,15 +653,15 @@ YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, dou
 YbcStatus YBCPgNewInsertBlock(
     YbcPgOid database_oid,
     YbcPgOid table_oid,
-    bool is_region_local,
+    YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTableLocalityInfo locality_info,
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
@@ -662,18 +674,18 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 // UPDATE ------------------------------------------------------------------------------------------
 YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTableLocalityInfo locality_info,
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTableLocalityInfo locality_info,
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
 
@@ -682,9 +694,9 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YbcStatus YBCPgNewTruncateColocated(YbcPgOid database_oid,
                                     YbcPgOid table_relfilenode_oid,
-                                    bool is_region_local,
-                                    YbcPgStatement *handle,
-                                    YbcPgTransactionSetting transaction_setting);
+                                    YbcPgTableLocalityInfo locality_info,
+                                    YbcPgTransactionSetting transaction_setting,
+                                    YbcPgStatement *handle);
 
 YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle);
 
@@ -692,7 +704,7 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle);
 YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -731,7 +743,7 @@ YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 YbcStatus YBCPgBeginTransaction(int64_t start_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
-YbcStatus YBCPgResetTransactionReadPoint();
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
@@ -742,6 +754,7 @@ YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable);
+void YBCPgSetClampUncertaintyWindow(bool clamp);
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
@@ -760,11 +773,14 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
+bool YBCIsLegacyModeForCatalogOps();
 
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
 // also check whether the current set of tservers can satisfy the requested placement.
-YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
+YbcStatus YBCPgValidatePlacements(
+    const char *live_placement_info, const char *read_placement_info,
+    bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -825,16 +841,16 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
 YbcStatus YBCForeignKeyReferenceExists(
-    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local, bool* res);
+    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
-    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info,
     bool is_deferred_trigger);
 void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams *params, bool is_region_local);
+    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -857,9 +873,12 @@ void YBCInitFlags();
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.
-void YBCSetTimeout(int timeout_ms, void* extra);
+void YBCSetTimeout(int timeout_ms);
+void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
+
+void YBCCheckForInterrupts();
 
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
@@ -898,9 +917,9 @@ YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
 
 YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **tablet_servers, size_t* numservers);
 
-YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_relfilenode_oids, YbcPgOid* database_oids,
-                                      uint64_t** backfill_statuses,
-                                      int num_indexes);
+YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_oids,
+                                      uint64_t* num_rows_read_from_table,
+                                      double* num_rows_backfilled, int num_indexes);
 
 void YBCStartSysTablePrefetchingNoCache();
 
@@ -954,6 +973,8 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
 
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries);
+
 YbcStatus YBCPgListReplicationSlots(
     YbcReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
 
@@ -999,11 +1020,17 @@ YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid,
+    const YbcPgKeyValue* key_values, size_t num_values,
+    const char** tablet_id);
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
 
 YbcReadPointHandle YBCPgGetCurrentReadPoint();
+YbcReadPointHandle YBCPgGetMaxReadPoint();
 YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
@@ -1030,7 +1057,9 @@ YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapsho
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will
@@ -1043,13 +1072,37 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress();
 bool YBCIsBinaryUpgrade();
 void YBCSetBinaryUpgrade(bool value);
 
-void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid);
-void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
-
 YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
 YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
 
 YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
+
+YbcFlushDebugContext YBCMakeFlushDebugContextBeginSubTxn(uint32_t id, const char *name);
+YbcFlushDebugContext YBCMakeFlushDebugContextEndSubTxn(uint32_t id);
+YbcFlushDebugContext YBCMakeFlushDebugContextGetTxnSnapshot();
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInSqlFunc(
+    uint64_t cmd, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchablePlStmt(
+    const char *stmt_name, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
+    const char *cmd_name, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
+    uint64_t tuples_processed, const char *table_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
+YbcStatus YBCQueryAutoAnalyze(
+    YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+
+// ---------------------------------------------------------------------------
+// PgGlobalViewRead: scan interface for federated YugabyteDB global views.
+// ---------------------------------------------------------------------------
+
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
+void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query);
+void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
+bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus
 }  // extern "C"

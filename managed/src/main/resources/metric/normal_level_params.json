@@ -17,7 +17,7 @@
     "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
     "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+",
     "|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers",
-    "|xcluster_consumer_replication_error_count"
+    "|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure"
   ],
   "show_help": "false"
 }

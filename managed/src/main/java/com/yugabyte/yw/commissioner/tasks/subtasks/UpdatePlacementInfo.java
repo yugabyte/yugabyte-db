@@ -94,9 +94,11 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
         ModifyUniverseConfig.mapToCloudInfoPB(
             primaryCluster.placementInfo,
             (az, cloudInfo) -> {
-              List<CloudInfoPB> list =
-                  rankings.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
-              list.add(cloudInfo);
+              if (az.leaderPreference > 0) {
+                List<CloudInfoPB> list =
+                    rankings.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                list.add(cloudInfo);
+              }
             });
         client.setPreferredZones(rankings);
       }
@@ -129,7 +131,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
     public static void generatePlacementInfoPB(
         PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
-      PlacementInfo placementInfo = cluster.placementInfo;
+      PlacementInfo placementInfo = cluster.getOverallPlacement();
       mapToCloudInfoPB(
           placementInfo,
           (placementAz, ccb) -> {
@@ -193,7 +195,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
           getTargetClusterState(
               universe.getUniverseDetails().getPrimaryCluster(), targetClusterStates);
 
-      PlacementInfo placementInfo = primaryCluster.placementInfo;
+      PlacementInfo placementInfo = primaryCluster.getOverallPlacement();
       generatePlacementInfoPB(placementInfoPB, primaryCluster);
 
       List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();

@@ -8,11 +8,13 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -42,6 +44,7 @@ import org.apache.commons.collections4.CollectionUtils;
 public class ProviderValidator extends BaseBeanValidator {
 
   private final Map<String, ProviderFieldsValidator> providerValidatorMap = new HashMap<>();
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public ProviderValidator(
@@ -49,9 +52,11 @@ public class ProviderValidator extends BaseBeanValidator {
       AWSCloudImpl awsCloudImpl,
       GCPCloudImpl gcpCloudImpl,
       KubernetesManagerFactory kubernetesManagerFactory,
+      GCPProjectApiClientFactory gcpClientFactory,
       RuntimeConfGetter runtimeConfGetter,
       ConfigHelper configHelper) {
     super(beanValidator);
+    this.runtimeConfGetter = runtimeConfGetter;
     this.providerValidatorMap.put(
         CloudType.aws.toString(),
         new AWSProviderValidator(beanValidator, awsCloudImpl, runtimeConfGetter));
@@ -66,7 +71,7 @@ public class ProviderValidator extends BaseBeanValidator {
         new AzureProviderValidator(runtimeConfGetter, beanValidator, configHelper));
     this.providerValidatorMap.put(
         CloudType.gcp.toString(),
-        new GCPProviderValidator(beanValidator, runtimeConfGetter, gcpCloudImpl));
+        new GCPProviderValidator(beanValidator, runtimeConfGetter, gcpCloudImpl, gcpClientFactory));
   }
 
   public void validateAvailabiltyZone(
@@ -75,6 +80,13 @@ public class ProviderValidator extends BaseBeanValidator {
       log.debug("Skipping AZ validation because there are no regions specified");
       return;
     }
+    boolean allowExistingDuplicateAz =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowExistingDuplicateAz);
+    List<AvailabilityZone> requestedZones =
+        requestedProvider.getRegions().stream()
+            .filter(r -> CollectionUtils.isNotEmpty(r.getZones()))
+            .flatMap(r -> r.getZones().stream())
+            .collect(Collectors.toList());
     // Get all the existing zones from the existing provider.
     Map<UUID, AvailabilityZone> existingZones =
         existingProvider == null
@@ -82,20 +94,31 @@ public class ProviderValidator extends BaseBeanValidator {
             : existingProvider.getAllRegions().stream()
                 .flatMap(r -> r.getAllZones().stream())
                 .collect(Collectors.toMap(AvailabilityZone::getUuid, Function.identity()));
-    List<AvailabilityZone> requestedZones =
-        requestedProvider.getRegions().stream()
-            .filter(r -> CollectionUtils.isNotEmpty(r.getZones()))
-            .flatMap(r -> r.getZones().stream())
-            .collect(Collectors.toList());
     List<AvailabilityZone> modifiedOrAddedZones = new ArrayList<>();
+    Set<String> requestedAddedZoneCodes = new HashSet<>();
     for (AvailabilityZone az : requestedZones) {
-      AvailabilityZone existingAz = az.getUuid() == null ? null : existingZones.get(az.getUuid());
-      if (existingAz == null) {
-        // AZ is added.
-        modifiedOrAddedZones.add(az);
-      } else if (!existingAz.getCode().equals(az.getCode())) {
-        // AZ code is modified.
-        modifiedOrAddedZones.add(az);
+      if (allowExistingDuplicateAz) {
+        // Existing AZ duplicates are allowed, but newly added AZs must be unique.
+        // AZ UUID is needed to detect if it is new or old.
+        AvailabilityZone existingAz = az.getUuid() == null ? null : existingZones.get(az.getUuid());
+        if (existingAz == null) {
+          // AZ is added.
+          modifiedOrAddedZones.add(az);
+        } else if (!existingAz.getCode().equals(az.getCode())) {
+          // AZ code is modified.
+          modifiedOrAddedZones.add(az);
+        }
+      } else {
+        // No duplicate is allowed at all.
+        if (requestedAddedZoneCodes.contains(az.getCode())) {
+          String errMsg =
+              String.format(
+                  "Duplicate AZ code %s. AZ code must be unique for a provider", az.getCode());
+          log.error(errMsg);
+          throw new PlatformServiceException(BAD_REQUEST, errMsg);
+        } else {
+          requestedAddedZoneCodes.add(az.getCode());
+        }
       }
     }
     validateAvailabiltyZone(modifiedOrAddedZones, existingProvider);
@@ -122,6 +145,7 @@ public class ProviderValidator extends BaseBeanValidator {
             ? new HashSet<>()
             : existingProvider.getAllRegions().stream()
                 .flatMap(r -> r.getAllZones().stream())
+                .filter(z -> z.isActive()) // Excluding deleted (they are handled)
                 .filter(az -> !modifiedOrAddedZoneUuids.contains(az.getUuid()))
                 .map(AvailabilityZone::getCode)
                 .collect(Collectors.toCollection(HashSet::new));
@@ -129,7 +153,9 @@ public class ProviderValidator extends BaseBeanValidator {
       if (existingZoneCodes.contains(newZone.getCode())) {
         String errMsg =
             String.format(
-                "Duplicate AZ code %s. AZ code must be unique for a provider", newZone.getCode());
+                "Duplicate AZ code %s. AZ code must be unique for a provider. Make sure to set"
+                    + " 'uuid' field for the existing AZs",
+                newZone.getCode());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
@@ -146,8 +172,11 @@ public class ProviderValidator extends BaseBeanValidator {
         providerFieldsValidator.validate(requestedProvider);
       }
     } catch (RuntimeException e) {
+      log.error("Failed to validate provider payload", e);
       if (!(e instanceof PlatformServiceException)) {
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to validate provider payload. Please check for malformed or incorrect fields");
       }
       throw e;
     }

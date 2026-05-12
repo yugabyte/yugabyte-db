@@ -68,7 +68,7 @@ public class ApiUtils {
         userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
         universeDetails.nodeDetailsSet = new HashSet<>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
@@ -167,7 +167,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+        universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         universeDetails.setEnableYbc(enableYbc);
@@ -196,6 +196,9 @@ public class ApiUtils {
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();
             node.azUuid = azUUIDList.get(azIndex);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+            node.cloudInfo.region = az.getRegion().getCode();
+            node.cloudInfo.az = az.getName();
           }
           if (userIntent.dedicatedNodes) {
             node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
@@ -213,6 +216,9 @@ public class ApiUtils {
             if (azUUIDList != null) {
               int azIndex = (idx - 1) % azUUIDList.size();
               node.azUuid = azUUIDList.get(azIndex);
+              AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+              node.cloudInfo.region = az.getRegion().getCode();
+              node.cloudInfo.az = az.getName();
             }
             universeDetails.nodeDetailsSet.add(node);
           }
@@ -256,7 +262,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+        universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         PlacementCloud placementCloud = placementInfo.cloudList.get(0);
@@ -330,7 +336,7 @@ public class ApiUtils {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UniverseDefinitionTaskParams.Cluster readReplica =
-          universeDetails.upsertCluster(userIntent, placementInfo, UUID.randomUUID());
+          universeDetails.upsertCluster(userIntent, null, placementInfo, UUID.randomUUID());
       int currentNodes = universeDetails.nodeDetailsSet.size();
       for (int idx = currentNodes + 1; idx <= currentNodes + userIntent.numNodes; idx++) {
         NodeDetails node = getDummyNodeDetails(idx, NodeState.Live, false);
@@ -381,7 +387,7 @@ public class ApiUtils {
           node.placementUuid = primaryCluster.uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
@@ -408,7 +414,7 @@ public class ApiUtils {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true, enableYSQL);
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
@@ -435,7 +441,7 @@ public class ApiUtils {
               });
       PlacementInfoUtil.SelectMastersResult selectMastersResult =
           PlacementInfoUtil.selectMasters(
-              null, universe.getNodes(), null, true, universe.getUniverseDetails().clusters);
+              null, universe.getNodes(), n -> true, true, universe.getUniverseDetails().clusters);
       AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());
       AtomicInteger cnt = new AtomicInteger();
       selectMastersResult.addedMasters.forEach(
@@ -463,7 +469,7 @@ public class ApiUtils {
             getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid);
         node.azUuid = azUUID;
         universeDetails.nodeDetailsSet.add(node);
-        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universeDetails.upsertPrimaryCluster(userIntent, null, pi);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -483,7 +489,7 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet.addAll(
             getDummyNodeDetailSet(
                 universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
-        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universeDetails.upsertPrimaryCluster(userIntent, null, pi);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -500,6 +506,16 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
+        List<UUID> azUuids =
+            userIntent.regionList == null
+                ? Collections.emptyList()
+                : userIntent.regionList.stream()
+                    .flatMap(
+                        uuid ->
+                            Region.getOrBadRequest(uuid).getAllZones().stream()
+                                .filter(AvailabilityZone::isActive))
+                    .map(az -> az.getUuid())
+                    .toList();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node =
               getDummyNodeDetails(
@@ -509,11 +525,11 @@ public class ApiUtils {
           node.placementUuid = primaryClusterUUID;
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
-
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         node.placementUuid = primaryClusterUUID;
+
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
 
@@ -522,11 +538,18 @@ public class ApiUtils {
             getDummyNodeDetailSet(readonlyClusterUUID, 0, readOnlyNodes);
         for (NodeDetails roNode : readReplicaNodesSet) {
           roNode.state = NodeState.Live;
+          roNode.cloudInfo.cloud = userIntent.providerType.name();
         }
 
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
-        universeDetails.upsertCluster(userIntent, null, readonlyClusterUUID);
-
+        universeDetails.upsertCluster(userIntent, null, null, readonlyClusterUUID);
+        int azIdx = 0;
+        for (NodeDetails nodeDetails : universeDetails.nodeDetailsSet) {
+          if (azUuids.size() > azIdx) {
+            nodeDetails.azUuid = azUuids.get(azIdx);
+            azIdx = (azIdx + 1) % azUuids.size();
+          }
+        }
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -551,7 +574,7 @@ public class ApiUtils {
           }
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
       }
@@ -711,7 +734,12 @@ public class ApiUtils {
       boolean isMultiAz) {
     NodeDetails node =
         KubernetesUtil.getKubernetesNodeName(
-            partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
+            partition,
+            zone,
+            isMaster ? ServerType.MASTER : ServerType.TSERVER,
+            isMultiAz,
+            false,
+            0);
     node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;

@@ -1,5 +1,5 @@
 import { MenuItem } from '@material-ui/core';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { YBSelect, YBSelectProps } from '../redesign/components/YBSelect/YBSelect';
 
 // More on how to set up stories at: https://storybook.js.org/docs/react/writing-stories/introduction#default-export

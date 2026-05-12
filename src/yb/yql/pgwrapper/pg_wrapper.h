@@ -76,6 +76,7 @@ class PgWrapper : public ProcessWrapper {
 
   Status ReloadConfig() override;
   Status UpdateAndReloadConfig() override;
+  void Shutdown() override;
 
   // Calls initdb if the data directory does not exist, or if the tablet server is transitioning
   // from one major PG version to another. (The data directory's version must match the PG major
@@ -96,6 +97,8 @@ class PgWrapper : public ProcessWrapper {
   void PrepareSharedMemoryNegotiation(PgWrapperContext* server);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
+
+  static std::string GetPostgresExecutablePath();
 
   struct PgUpgradeParams {
     std::string ysql_user_name;
@@ -146,7 +149,6 @@ class PgWrapper : public ProcessWrapper {
   // Creates a directory name "<conf_.data_dir>_<version>".
   std::string MakeVersionedDataDir(int32_t version);
 
-  static std::string GetPostgresExecutablePath();
   static std::string GetPostgresSuppressionsPath();
   static std::string GetPostgresLibPath();
   static std::string GetPostgresThirdPartyLibPath();
@@ -183,6 +185,13 @@ class PgSupervisor : public ProcessSupervisor {
   Status UpdateAndReloadConfig();
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
 
+  // Writes all PG config files (GUC, HBA, ident) into tmp_dir using the given CSV overrides
+  // and returns the paths to the generated files. The real postgresql.conf is copied from
+  // data_dir so that WritePostgresConfig can read it as a base.
+  Result<PgConfigPaths> WritePgConfigFiles(
+      const std::string& tmp_dir, const std::string& ysql_pg_conf_csv,
+      const std::string& hba_conf_csv, const std::string& ident_conf_csv);
+
   // Get the shared memory key to be used by ysql connection manager to publish stats
   key_t GetYsqlConnManagerStatsShmkey();
 
@@ -203,6 +212,11 @@ class PgSupervisor : public ProcessSupervisor {
     return "PostgreSQL";
   }
 };
+
+// Formats a gflag value for use in postgresql.conf.
+// String-type flags are single-quoted (with internal quotes escaped), unless already quoted.
+// Non-string-type flags are returned as-is.
+std::string FormatPgGFlagValue(const std::string& value, const std::string& type);
 
 }  // namespace pgwrapper
 }  // namespace yb

@@ -141,7 +141,7 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
-          cluster.placementInfo,
+          cluster.getOverallPlacement(),
           false /*isReadOnlyCluster*/);
       // Helm upgrade to modify gflag secret
       upgradePodsNonRestart(

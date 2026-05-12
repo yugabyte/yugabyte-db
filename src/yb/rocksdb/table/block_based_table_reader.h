@@ -195,7 +195,7 @@ class BlockBasedTable : public TableReader {
 
   const ImmutableCFOptions& ioptions();
 
-  yb::Result<std::string> GetMiddleKey() override;
+  yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
   yb::Result<uint32_t> TEST_GetBlockNumRestarts(
       const ReadOptions& ro, const Slice index_value, BlockType block_type);
@@ -224,8 +224,8 @@ class BlockBasedTable : public TableReader {
   class IndexIteratorHolder;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
-  Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
-      BlockHandle* filter_block_handle) const;
+  Status GetFixedSizeFilterBlockHandle(
+      const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const;
 
   // Returns key to be added to filter or verified against filter based on internal_key.
   Slice GetFilterKeyFromInternalKey(Slice internal_key) const;
@@ -306,10 +306,10 @@ class BlockBasedTable : public TableReader {
   // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
   // a corresponding block (data block or lower level index block). Updates and returns input_iter
   // if the one is specified, or returns a new iterator.
-  InternalIterator* NewBlockIterator(
+  BlockIter* NewBlockIterator(
       const ReadOptions& ro, const Slice index_value, BlockType block_type,
       BlockIter* input_iter = nullptr);
-  InternalIterator* NewBlockIterator(
+  BlockIter* NewBlockIterator(
       const ReadOptions& ro, CachableEntry<Block>* block, BlockType block_type,
       BlockIter* input_iter);
 
@@ -359,6 +359,11 @@ class BlockBasedTable : public TableReader {
   template <typename IndexIteratorType>
   void RegisterCleanupForIndexIterator(
       const CachableEntry<IndexReader>& index_reader_entry, IndexIteratorType* iter);
+
+  // Returns approximate middle key from the index, starting from the lower bound key if provided.
+  // Key from the index might not match any key actually written to SST file, because keys could be
+  // shortened and substituted before them are written into the index (see ShortenedIndexBuilder).
+  yb::Result<std::string> GetIndexMiddleKey(Slice lower_bound_internal_key);
 };
 
 }  // namespace rocksdb

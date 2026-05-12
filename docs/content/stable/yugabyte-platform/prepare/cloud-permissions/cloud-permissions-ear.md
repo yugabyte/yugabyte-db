@@ -112,6 +112,9 @@ Before defining a KMS configuration with YugabyteDB Anywhere, you need to create
 
 - Set the vault permission model as Vault access policy.
 - Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key.
+- If you [assigned a managed identity](../cloud-permissions-yba/) to the Azure VM hosting YugabyteDB Anywhere, choose the identity as the principal for the vault. Later when [creating the KMS configuration](../../../security/create-kms-config/azure-kms/), you can use the managed identity credentials to authenticate instead of using a client secret.
+
+    For information on using managed identities in Azure, refer to [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) in the Azure documentation.
 
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 

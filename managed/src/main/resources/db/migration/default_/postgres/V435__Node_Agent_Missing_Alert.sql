@@ -1,0 +1,21 @@
+-- Copyright (c) YugabyteDB, Inc.
+
+ -- Node Agent Missing
+ insert into alert_configuration
+  (uuid, customer_uuid, name, description, create_time, target_type, target, thresholds, threshold_unit, template, active, default_destination)
+select
+  gen_random_uuid(),
+  uuid,
+  'Node Agent Server Missing',
+  'Node Agent server has been missing for more than 1 minute',
+  current_timestamp,
+  'UNIVERSE',
+  '{"all":true}',
+  '{"SEVERE":{"condition":"GREATER_THAN", "threshold":0.0}}',
+  'COUNT',
+  'NODE_AGENT_MISSING',
+  true,
+  true
+from customer;
+
+select create_universe_alert_definitions('Node Agent Server Missing');

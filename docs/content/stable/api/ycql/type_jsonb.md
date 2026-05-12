@@ -7,6 +7,8 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1470
+aliases:
+  - /stable/api/ycql/type_jsonb
 type: docs
 ---
 
@@ -241,6 +243,6 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 ## See also
 
-- [Explore JSON documents](../../../explore/ycql-language/jsonb-ycql)
+- [Explore JSON documents](../../../explore/ycql-language/jsonb-ycql/)
 - [Data types](..#data-types)
 - [Secondary indexes with JSONB](../../../explore/ycql-language/indexes-constraints/secondary-indexes-with-jsonb-ycql/)

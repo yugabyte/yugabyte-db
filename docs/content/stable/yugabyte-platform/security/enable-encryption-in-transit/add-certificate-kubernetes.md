@@ -69,6 +69,26 @@ tls:
 
 When configured, YugabyteDB Anywhere sets the common name to the name of the service created for the pod, and adds common name to the certificate request sent to cert-manager.
 
+### Configurable common names
+
+You can configure a custom common name suffix for cert-manager certificates using the following helm override:
+
+```yml
+tls:
+  certManager:
+    certificates:
+      commonNameRequired: true
+      commonNameSuffix: "yugabyte.com"
+```
+
+## Rotate certificates in cert-manager
+
+cert-manager monitors certificates and automatically renews them before expiration, based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
+
+To rotate certificates for a universe, after certificates are renewed in cert-manager, perform a rolling restart of your universe (**Actions > Initiate Rolling Restart**).
+
+Note that, if you are using cert-manager for a universe, rotating node-to-node root certificates is not currently supported. To rotate these certificates, contact {{% support-platform %}}.
+
 ## Troubleshoot
 
 If you encounter problems, you should verify the name of Issuer or ClusterIssuer in the Kubernetes cluster, as well as ensure that the Kubernetes cluster is in Ready state. You can use the following commands:

@@ -646,13 +646,10 @@ static bool SaveValue(void* arg, const char* entry) {
           assert(merge_operator);
           bool merge_success = false;
           {
-            StopWatchNano timer(s->env_, s->statistics != nullptr);
+            StopWatchNano timer(s->env_, s->statistics, MERGE_OPERATION_TOTAL_TIME);
             PERF_TIMER_GUARD(merge_operator_time_nanos);
             merge_success = merge_operator->FullMerge(
-                s->key->user_key(), &v, merge_context->GetOperands(), s->value,
-                s->logger);
-            RecordTick(s->statistics, MERGE_OPERATION_TOTAL_TIME,
-                       timer.ElapsedNanos());
+                s->key->user_key(), &v, merge_context->GetOperands(), s->value, s->logger);
           }
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);
@@ -675,13 +672,10 @@ static bool SaveValue(void* arg, const char* entry) {
           *(s->status) = Status::OK();
           bool merge_success = false;
           {
-            StopWatchNano timer(s->env_, s->statistics != nullptr);
+            StopWatchNano timer(s->env_, s->statistics, MERGE_OPERATION_TOTAL_TIME);
             PERF_TIMER_GUARD(merge_operator_time_nanos);
             merge_success = merge_operator->FullMerge(
-                s->key->user_key(), nullptr, merge_context->GetOperands(),
-                s->value, s->logger);
-            RecordTick(s->statistics, MERGE_OPERATION_TOTAL_TIME,
-                       timer.ElapsedNanos());
+                s->key->user_key(), nullptr, merge_context->GetOperands(), s->value, s->logger);
           }
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);
@@ -936,20 +930,34 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   return num_successive_merges;
 }
 
-UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
+const yb::storage::UserFrontiers* MemTable::Frontiers() const {
+  CHECK(immutable_.load());
+  return frontiers_.get();
+}
+
+yb::storage::UserFrontierPtr MemTable::GetFrontier(yb::storage::UpdateUserValueType type) const {
   std::lock_guard l(frontiers_mutex_);
   if (!frontiers_) {
     return nullptr;
   }
 
   switch (type) {
-    case UpdateUserValueType::kSmallest:
+    case yb::storage::UpdateUserValueType::kSmallest:
       return frontiers_->Smallest().Clone();
-    case UpdateUserValueType::kLargest:
+    case yb::storage::UpdateUserValueType::kLargest:
       return frontiers_->Largest().Clone();
   }
 
-  FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
+  FATAL_INVALID_ENUM_VALUE(yb::storage::UpdateUserValueType, type);
+}
+
+UserFrontierRange MemTable::GetFrontiers() const {
+  std::lock_guard l(frontiers_mutex_);
+  if (!frontiers_) {
+    return UserFrontierRange{};
+  }
+
+  return UserFrontierRange{frontiers_->Smallest().Clone(), frontiers_->Largest().Clone()};
 }
 
 void MemTableRep::Get(const LookupKey& k, void* callback_args,

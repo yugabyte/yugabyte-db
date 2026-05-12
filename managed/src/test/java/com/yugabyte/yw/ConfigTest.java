@@ -94,10 +94,7 @@ public class ConfigTest {
   // - The path exist in both configs but the values do not match
   // @Test
   @Parameters({
-    "test.replicated.params.conf, replicated.expected.conf, envRepl",
     "test.helm.params.conf, helm.expected.conf, envHelm",
-    "test.yugabundle.conf, yugabundle.expected.conf, envYugabundle",
-    "application.yugabyted.conf, yugabyted.expected.conf, envYugabyted",
     "application.test.conf, test.expected.conf, envTest",
     "application.conf, dev.expected.conf, envDev",
   })

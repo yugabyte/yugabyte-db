@@ -30,11 +30,7 @@ var listKeyInfoCmd = &cobra.Command{
 
 		r, response, err := authAPI.ListKeyInfo().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Runtime Configuration Key Info", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Runtime Configuration Key Info", "List")
 		}
 
 		scopeType, err := cmd.Flags().GetString("type")

@@ -65,7 +65,7 @@ To create an AWS provider:
 
 1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-220.png)
+    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-2024.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
@@ -103,7 +103,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 - **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/)), and provide your AWS Access Key ID and Secret Access Key.
 - **Use IAM Role from this YBA host's instance** - Provision the YBA VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YBA VM in the **EC2** tab. This option is only available if YBA is installed on AWS.
 
-**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/preview/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 
@@ -138,6 +138,8 @@ To add your own machine images to the catalog:
 1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
 
 1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+
+1. To configure instances so that the [Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) _requires_ IMDSv2, select the **Use IMDSv2** option (recommended). If **Use IMDSv2** is not selected, the service accepts both IMDSv1 and IMDSv2 requests.
 
 1. Click **Add Linux Version**.
 
@@ -213,7 +215,7 @@ You have an option to provide the following:
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems.
 
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/stable/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
 #### Limitations
 

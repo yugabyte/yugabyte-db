@@ -23,13 +23,9 @@ import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { convertToISODateString, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const reactWidgets = require('react-widgets');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const momentLocalizer = require('react-widgets-moment');
-require('react-widgets/dist/css/react-widgets.css');
-
-const { DateTimePicker } = reactWidgets;
+import { DateTimePicker } from 'react-widgets';
+import momentLocalizer from 'react-widgets-moment';
+import 'react-widgets/dist/css/react-widgets.css';
 momentLocalizer(moment);
 
 interface CreateMaintenanceWindowProps {

@@ -24,4 +24,4 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION __API_SCHEMA_V2__.drop_database(text,__CORE_SCHEMA_V2__.bson)
-    IS 'drop a mongo database';
+    IS 'drops a logical document database';

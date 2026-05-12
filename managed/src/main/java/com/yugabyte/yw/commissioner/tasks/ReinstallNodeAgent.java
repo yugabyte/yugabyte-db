@@ -91,11 +91,11 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
         // Check if user systemd is possible.
         createRunEnableLingerTask(universe, nodeDetails, shellContext);
         // Check if root systemd is managing yb-node-agent.service.
+        // Command outputs "not-found" if it is not found else, it returns "loaded".
+        // It always exits with 0 status code.
         List<String> cmd =
             ImmutableList.of(
-                "bash",
-                "-c",
-                "systemctl list-unit-files yb-node-agent.service || echo 'NOT_FOUND'");
+                "systemctl", "show", "-p", "LoadState", "--value", "yb-node-agent.service");
         createRunNodeCommandTask(
             universe,
             nodeDetails,
@@ -103,7 +103,7 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
             (n, r) -> {
               String output =
                   r.processErrors("Failed to run command " + cmd).extractRunCommandOutput();
-              if (!output.contains("NOT_FOUND")) {
+              if (output.contains("loaded")) {
                 throw new RuntimeException(
                     "Root systemd is already managing node agent. Only user systemd is supported");
               }

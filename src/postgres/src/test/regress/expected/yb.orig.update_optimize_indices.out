@@ -586,8 +586,8 @@ CREATE INDEX NONCONCURRENTLY non_number_type_table_text_geom_ip ON non_number_ty
 ERROR:  data type line has no default operator class for access method "lsm"
 HINT:  You must specify an operator class for the index or define a default operator class for the data type.
 CREATE INDEX NONCONCURRENTLY non_number_type_table_uuid_enum ON non_number_type_table(uuidcol ASC, enumcol DESC);
-INSERT INTO non_number_type_table VALUES('1999-01-08 04:05:06 -8:00', 'varchar1', 'charpad', 'I am batman', '{1, 2, 3}'::line, '1.2.3.0/24'::cidr, '********-****-4***-****-************'::uuid, 'happy'::mood_type);
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'January 8 04:05:06 1999 PST', varcharcol = 'varchar1', charcol = 'charpad', textcol = 'I am not batman :(', linecol = '{1, 2, 3}'::line, ipcol = '1.2.3'::cidr, uuidcol = '********-****-4***-****-************'::uuid, enumcol = 'happy' WHERE tscol = 'January 8 07:05:06 1999 EST';
+INSERT INTO non_number_type_table VALUES('1999-01-08 04:05:06 -8:00', 'varchar1', 'charpad', 'I am batman', '{1, 2, 3}'::line, '1.2.3.0/24'::cidr, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, 'happy'::mood_type);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'January 8 04:05:06 1999 PST', varcharcol = 'varchar1', charcol = 'charpad', textcol = 'I am not batman :(', linecol = '{1, 2, 3}'::line, ipcol = '1.2.3'::cidr, uuidcol = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, enumcol = 'happy' WHERE tscol = 'January 8 07:05:06 1999 EST';
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Update on non_number_type_table (actual rows=0 loops=1)

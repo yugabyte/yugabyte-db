@@ -37,8 +37,13 @@
 #include "catalog/pg_opfamily_d.h"
 #include "catalog/pg_policy_d.h"
 #include "catalog/pg_proc_d.h"
+#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_namespace_d.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_rel_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_ts_config_d.h"
 #include "catalog/pg_ts_config_map_d.h"
@@ -54,15 +59,17 @@
 #include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
 #include "tcop/cmdtag.h"
+#include "utils/builtins.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
 
-#define DDL_END_OBJID_COLUMN_ID		  1
-#define DDL_END_COMMAND_TAG_COLUMN_ID 2
-#define DDL_END_SCHEMA_NAME_COLUMN_ID 3
-#define DDL_END_COMMAND_COLUMN_ID     4
+#define DDL_END_CLASSID_COLUMN_ID	  1
+#define DDL_END_OBJID_COLUMN_ID		  2
+#define DDL_END_COMMAND_TAG_COLUMN_ID 3
+#define DDL_END_SCHEMA_NAME_COLUMN_ID 4
+#define DDL_END_COMMAND_COLUMN_ID     5
 
 #define SQL_DROP_CLASS_ID_COLUMN_ID	     1
 #define SQL_DROP_IS_TEMP_COLUMN_ID	     2
@@ -74,6 +81,15 @@
 #define TABLE_REWRITE_OBJID_COLUMN_ID 1
 
 static List *rewritten_table_oid_list = NIL;
+
+/* DDLs ignored for replication. */
+#define IGNORED_DDL_LIST \
+	X(CMDTAG_ALTER_PUBLICATION) \
+	X(CMDTAG_ALTER_SUBSCRIPTION) \
+	X(CMDTAG_CREATE_PUBLICATION) \
+	X(CMDTAG_CREATE_SUBSCRIPTION) \
+	X(CMDTAG_DROP_PUBLICATION) \
+	X(CMDTAG_DROP_SUBSCRIPTION)
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -110,6 +126,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_DOMAIN) \
 	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
+	X(CMDTAG_ALTER_MATERIALIZED_VIEW) \
 	X(CMDTAG_ALTER_OPERATOR) \
 	X(CMDTAG_ALTER_OPERATOR_CLASS) \
 	X(CMDTAG_ALTER_OPERATOR_FAMILY) \
@@ -163,6 +180,7 @@ static List *rewritten_table_oid_list = NIL;
 typedef struct YbNewRelMapEntry
 {
 	char	   *name;
+	char	   *namespace;
 	Oid			relfile_oid;
 	Oid			colocation_id;
 	bool		is_index;
@@ -214,6 +232,21 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag)
 	return false;
 }
 
+static bool
+IsIgnoredDdlCommand(CommandTag command_tag)
+{
+	switch (command_tag)
+	{
+#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+			IGNORED_DDL_LIST
+#undef X
+		default:
+			return false;
+	}
+
+	return false;
+}
+
 bool
 IsPassThroughDdlSupported(const char *command_tag_name)
 {
@@ -240,6 +273,32 @@ IsSequence(Oid rel_oid)
 }
 
 void
+ReplicateAssociatedIndexes(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+{
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	if (IsIndex(rel))
+	{
+		/* Avoid recursion by only going table->index not also index->table. */
+		RelationClose(rel);
+		return;
+	}
+
+	List	   *indexes = RelationGetIndexList(rel);
+	ListCell   *cell;
+
+	foreach(cell, indexes)
+	{
+		Oid index_oid = lfirst_oid(cell);
+
+		ShouldReplicateNewRelation(index_oid, new_rel_list, is_table_rewrite);
+	}
+
+	RelationClose(rel);
+}
+
+void
 ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
 {
 	List	   *children = find_inheritance_children(rel_oid, NoLock);
@@ -257,10 +316,15 @@ bool
 ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_rewrite,
 							  bool include_inheritance_children)
 {
+	char       *name;
+	Oid         namespace_oid;
+	char       *namespace;
 	Relation	rel = RelationIdGetRelation(rel_oid);
-
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	name = RelationGetRelationName(rel);
+	namespace_oid = RelationGetNamespace(rel);
+	namespace = get_namespace_name(namespace_oid);
 
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
@@ -275,17 +339,38 @@ ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_re
 		return true;
 	}
 
-	/* Add the new relation to the list of relations to replicate. */
-	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
+	/*
+	 * Add the new relation to the list of relations to replicate if not already
+	 * present.
+	 */
+	ListCell *cell;
+	bool found = false;
+	foreach (cell, *new_rel_list)
+	{
+		YbNewRelMapEntry *existing_entry = (YbNewRelMapEntry *) lfirst(cell);
+		if (!strcmp(existing_entry->name, name) &&
+			!strcmp(existing_entry->namespace, namespace))
+		{
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+		YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 
-	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
-	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
-	new_rel_entry->is_index = IsIndex(rel);
+		new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
+		new_rel_entry->namespace = pstrdup(namespace);
+		new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
+		new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
+		new_rel_entry->is_index = IsIndex(rel);
 
-	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+		*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+	}
 
 	RelationClose(rel);
+
+	ReplicateAssociatedIndexes(rel_oid, new_rel_list, is_table_rewrite);
 
 	if (include_inheritance_children)
 		ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
@@ -395,13 +480,6 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 
 			switch (subcmd->subtype)
 			{
-				case AT_AlterColumnType:
-					{
-						if (is_table_rewrite)
-							elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not "
-								 "supported\n");
-						break;
-					}
 				case AT_AddIndex:
 				case AT_ReAddIndex:
 					{
@@ -433,8 +511,9 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	appendStringInfo(&query_buf,
 					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
-					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
-					 rewritten_table_name, schema_name);
+					 "WHERE i.tablename = %s AND i.schemaname = %s;",
+					 quote_literal_cstr(rewritten_table_name),
+					 quote_literal_cstr(schema_name));
 
 	/*
 	 * Preserve current state of SPI_processed and SPI_tuptable because they
@@ -479,6 +558,7 @@ ProcessNewRelationsList(JsonbParseState *state, List **rel_list)
 
 		(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 		AddStringJsonEntry(state, "rel_name", entry->name);
+		AddStringJsonEntry(state, "rel_namespace", entry->namespace);
 		AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
 		if (entry->colocation_id)
 			AddNumericJsonEntry(state, "colocation_id", entry->colocation_id);
@@ -588,6 +668,7 @@ AddTypeInfo(Oid pg_type_oid, char *schema, List **type_info_list)
 
 typedef struct YbCommandInfo
 {
+	Oid			class_id;
 	Oid			oid;
 	char	   *command_tag_name;
 	char	   *schema;			/* may be NULL */
@@ -601,8 +682,8 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					 "SELECT objid, command_tag, schema_name, command FROM "
-					 "pg_catalog.pg_event_trigger_ddl_commands()");
+					 "SELECT classid, objid, command_tag, schema_name, command "
+					 "FROM pg_catalog.pg_event_trigger_ddl_commands()");
 	int			exec_res = SPI_execute(query_buf.data,
 									   true,	/* readonly */
 									   0);	/* tcount */
@@ -629,7 +710,13 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE
 			&& command_tag != CMDTAG_ALTER_DEFAULT_PRIVILEGES)
 		{
+			info->class_id = SPI_GetOid(spi_tuple, DDL_END_CLASSID_COLUMN_ID);
 			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
+		}
+		else
+		{
+			info->class_id = InvalidOid;
+			info->oid = InvalidOid;
 		}
 		info->schema = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 		info->command = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
@@ -714,6 +801,36 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
+void
+PushVariable(JsonbParseState *state, char *guc_name)
+{
+	char *value = GetConfigOptionByName(guc_name, NULL, false);
+	if (!value)
+		return;
+
+	AddStringJsonEntry(state, guc_name, value);
+}
+
+void
+PushVariableMap(JsonbParseState *state)
+{
+	AddJsonKey(state, "variables");
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	/*----------
+	 * To maximize safety, we always record the session variables.
+	 *
+	 * This protects us against the source and target clusters having
+	 * different defaults and changes of which DDLs use these variables.
+	 *----------
+	 */
+#define X(name) PushVariable(state, name);
+#include "xcluster_ddl_replication_gucs.def"
+#undef X
+
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -732,7 +849,6 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List	   *sequence_info_list = NIL;
 	List	   *type_info_list = NIL;
 	bool		found_temp = false;
-	bool		found_matview = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -748,18 +864,24 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
 		char	   *schema = info->schema;
 
-		/*
-		 * The below works for objects with names but not nameless parts.
-		 * TODO(#25885): add code to handle nameless parts.
-		 */
 		bool		is_temporary_object = IsTempSchema(schema);
-
+		/*
+		 * The above works for most objects, but in a few cases Postgres does
+		 * not provide the schema; we thus have to handle those separately here.
+		 */
+		if (info->class_id == PolicyRelationId)
+			is_temporary_object = IsTemporaryPolicy(info->oid);
+		else if (info->class_id == TriggerRelationId)
+			is_temporary_object = IsTemporaryTrigger(info->oid);
+		else if (info->class_id == RewriteRelationId)
+			is_temporary_object = IsTemporaryRule(info->oid);
 		found_temp |= is_temporary_object;
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
 			command_tag == CMDTAG_CREATE_INDEX ||
 			command_tag == CMDTAG_CREATE_TABLE_AS ||
-			command_tag == CMDTAG_SELECT_INTO)
+			command_tag == CMDTAG_SELECT_INTO ||
+			command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
@@ -795,18 +917,6 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 list_member_oid(rewritten_table_oid_list, obj_id))
 		{
-			/*
-			 * Verify if the command is ALTER COLUMN TYPE, which is currently
-			 * unsupported.
-			 * TODO(yyan): Unblock ALTER COLUMN TYPE table rewrite after
-			 * resolving issue #24007.
-			 */
-			CollectedCommand *cmd = info->command;
-
-			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									 /* is_table_rewrite */ true,
-									is_temporary_object);
-
 			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
 
 			/*
@@ -843,15 +953,23 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			if (!is_temporary_object)
 				should_replicate_ddl |=
 					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
-
 		}
-		else if (IsMatViewCommand(command_tag))
+		else if (command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW)
 		{
-			found_matview = true;
+			/* Refresh is a table rewrite. */
+			should_replicate_ddl |=
+				ShouldReplicateNewRelation(obj_id, &new_rel_list,
+										   /* is_table_rewrite= */ true);
+			const char *schema_name = info->schema;
+			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
 			should_replicate_ddl = !is_temporary_object;
+		}
+		else if (IsIgnoredDdlCommand(command_tag))
+		{
+			continue;
 		}
 		else
 		{
@@ -860,19 +978,17 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (should_replicate_ddl)
+	if (should_replicate_ddl && found_temp)
 	{
-		if (found_temp)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-					 errdetail("%s", kManualReplicationErrorMsg)));
-
-		if (found_matview)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported mix of materialized view and other DDL commands"),
-					 errdetail("%s", kManualReplicationErrorMsg)));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported mix of temporary and permanent objects"),
+				 errdetail("This database is being replicated using xCluster "
+							 "automatic mode, which does not support DDLs "
+							 "that simultaneously use both temporary and "
+							 "permanent objects."),
+				 errhint("Using multiple commands, manipulate the temporary "
+						 "objects separately from the permanent ones.")));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -883,6 +999,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	PushEnumLabelMap(state, "enum_label_info", enum_label_list);
 	PushNameToOidMap(state, "sequence_info", sequence_info_list);
 	PushNameToOidMap(state, "type_info", type_info_list);
+
+	/*
+	 * Record session variables that are known to meaningfully affect the DDL
+	 * execution.
+	 */
+	PushVariableMap(state);
 
 	return should_replicate_ddl;
 }
@@ -924,12 +1046,6 @@ ProcessSourceEventTriggerTableRewrite()
 bool
 ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 {
-	/*
-	 * Matview related DDLs are not replicated.
-	 */
-	if (IsMatViewCommand(tag))
-		return false;
-
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
@@ -942,12 +1058,12 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
+	bool		found_temp = false;
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
 	 */
 	bool		should_replicate_ddl = false;
-	bool		found_temp = false;
 
 	for (int row = 0; row < SPI_processed; row++)
 	{
@@ -966,6 +1082,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 		if (is_temp)
 		{
 			found_temp = true;
+			/* Postgres does not support temporary materialized views. */
 			continue;
 		}
 
@@ -1002,6 +1119,17 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			/*
+			 * Ignore logical replication objects (not replicated via xCluster).
+			 * Note: Schema-level publications (PublicationNamespaceRelationId)
+			 * and SUBSCRIPTION are not supported yet in YB.
+			 */
+			case PublicationRelationId:
+			case PublicationRelRelationId:
+			case PublicationNamespaceRelationId:
+			case SubscriptionRelationId:
+			case SubscriptionRelRelationId:
+				continue;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,
@@ -1012,7 +1140,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 														  SQL_DROP_OBJECT_NAME_COLUMN_ID);
 
 					elog(ERROR,
-						 "Unsupported Drop DDL for xCluster replicated DB: %s "
+						 "unsupported Drop DDL for xCluster replicated DB: %s "
 						 "(class_id: %d), object_name: %s.%s\n%s",
 						 object_type, class_id, schema_name, object_name,
 						 kManualReplicationErrorMsg);
@@ -1023,9 +1151,13 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 	if (found_temp && should_replicate_ddl)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported DROP command, found mix of "
-						"temporary and persisted objects in DDL command"),
-				 errdetail("%s", kManualReplicationErrorMsg)));
+				 errmsg("cannot drop temporary and permanent objects in one command"),
+				 errdetail("This database is being replicated using xCluster "
+						   "automatic mode, which does not support DDLs "
+						   "that simultaneously drop both temporary and "
+						   "permanent objects."),
+				 errhint("Drop the temporary objects separately from the "
+						 "permanent ones using multiple commands.")));
 
 	return should_replicate_ddl;
 }

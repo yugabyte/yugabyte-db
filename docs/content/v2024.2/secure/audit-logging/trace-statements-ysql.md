@@ -39,11 +39,11 @@ To log the appropriate session information, you need to set the following config
 
     The parameters are similar to that of PostgreSQL, with the addition of H, C, R, and Z to add host, cloud, region, and zone information relevant to distributed systems. You can also add `%U` and `%N` to add the cluster UUID, and node and cluster name respectively.
 
-    For information on setting server options in YugabyteDB, refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
+    For information on setting server options in YugabyteDB, refer to [PostgreSQL configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
 
 ## Review logs
 
-Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](/preview/troubleshoot/nodes/check-logs/).
+Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For more information on logs, refer to [Understand YugabyteDB logging](../../../explore/observability/logging/).
 
 ## Example session
 
@@ -209,4 +209,4 @@ timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 
 ## Next steps
 
-Use the pgaudit extension to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).
+Use the pgaudit extension to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql/).

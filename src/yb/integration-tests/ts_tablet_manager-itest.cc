@@ -124,7 +124,7 @@ class TsTabletManagerITest : public YBTest {
 
 void TsTabletManagerITest::SetUp() {
   // We don't need the transaction status table to be created.
-  SetAtomicFlag(false, &FLAGS_enable_ysql);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
   YBTest::SetUp();
 
   MessengerBuilder bld("client");

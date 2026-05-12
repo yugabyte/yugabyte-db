@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/table_properties_constants.h"
 #include "yb/common/typedefs.h"
@@ -30,7 +31,7 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::PTExprToPBValidated(const PTExprPtr& expr,
-                                     QLExpressionPB *expr_pb) {
+                                     QLExpressionMsg *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
   if (expr_pb->has_value() && IsNull(expr_pb->value())) {
     return exec_context_->Error(expr, "Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
@@ -38,9 +39,9 @@ Status Executor::PTExprToPBValidated(const PTExprPtr& expr,
   return Status::OK();
 }
 
-Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
   if (tnode->user_timestamp_usec() != nullptr) {
-    QLExpressionPB timestamp_pb;
+    LWQLExpressionPB timestamp_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPBValidated(tnode->user_timestamp_usec(), &timestamp_pb));
 
     // This should be ensured by checks before getting here.
@@ -57,9 +58,9 @@ Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   return Status::OK();
 }
 
-Status Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
   if (tnode->ttl_seconds() != nullptr) {
-    QLExpressionPB ttl_pb;
+    LWQLExpressionPB ttl_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPBValidated(tnode->ttl_seconds(), &ttl_pb));
 
     // this should be ensured by checks before getting here

@@ -16,8 +16,8 @@ import {
   PerfRecommendationData
 } from '../../redesign/utils/dtos';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
-import TraingleDownIcon from './images/traingle-down.svg';
-import TraingleUpIcon from './images/traingle-up.svg';
+import TraingleDownIcon from './images/traingle-down.svg?img';
+import TraingleUpIcon from './images/traingle-up.svg?img';
 import { useStyles } from './RecommendationStyles';
 
 interface RecommendationProps {

@@ -28,9 +28,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM list_partitioned WHERE yb_is_local_table(table
  Append
    ->  Seq Scan on lp_bc_local list_partitioned_1
          Filter: yb_is_local_table(tableoid)
-   ->  Seq Scan on lp_gh_local list_partitioned_2
+   ->  Seq Scan on lp_gh_local list_partitioned_3
          Filter: yb_is_local_table(tableoid)
-   ->  Seq Scan on lp_default_local list_partitioned_3
+   ->  Seq Scan on lp_default_local list_partitioned_4
          Filter: yb_is_local_table(tableoid)
 (7 rows)
 
@@ -48,7 +48,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM hash_partitioned WHERE yb_is_local_table(table
  Append
    ->  Seq Scan on hp0_local hash_partitioned_1
          Filter: yb_is_local_table(tableoid)
-   ->  Seq Scan on hp2_1_local hash_partitioned_2
+   ->  Seq Scan on hp2_1_local hash_partitioned_3
          Filter: yb_is_local_table(tableoid)
 (5 rows)
 
@@ -67,9 +67,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned WHERE yb_is_local_table(tabl
                       QUERY PLAN                      
 ------------------------------------------------------
  Append
-   ->  Seq Scan on rp_5_10_local range_partitioned_1
+   ->  Seq Scan on rp_5_10_local range_partitioned_2
          Filter: yb_is_local_table(tableoid)
-   ->  Seq Scan on rp_15_20_local range_partitioned_2
+   ->  Seq Scan on rp_15_20_local range_partitioned_3
          Filter: yb_is_local_table(tableoid)
 (5 rows)
 
@@ -86,16 +86,16 @@ EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned INNER JOIN hash_partitioned 
          ->  Append
                ->  Seq Scan on hp0_local hash_partitioned_1
                      Filter: yb_is_local_table(tableoid)
-               ->  Seq Scan on hp2_1_local hash_partitioned_2
+               ->  Seq Scan on hp2_1_local hash_partitioned_3
                      Filter: yb_is_local_table(tableoid)
    ->  Sort
          Sort Key: range_partitioned.partkey
          ->  Append
-               ->  Seq Scan on rp_1_5_notbsp range_partitioned_1
-               ->  Seq Scan on rp_5_10_local range_partitioned_2
-               ->  Seq Scan on rp_10_15_remote range_partitioned_3
-               ->  Seq Scan on rp_15_20_local range_partitioned_4
-               ->  Seq Scan on rp_default_remote range_partitioned_5
+               ->  Seq Scan on rp_1_5_notbsp range_partitioned_2
+               ->  Seq Scan on rp_5_10_local range_partitioned_3
+               ->  Seq Scan on rp_10_15_remote range_partitioned_4
+               ->  Seq Scan on rp_15_20_local range_partitioned_5
+               ->  Seq Scan on rp_default_remote range_partitioned_6
 (17 rows)
 
 -- TODO (deepthi): The following query should prune out the local partition but it does not.
@@ -104,15 +104,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned WHERE NOT yb_is_local_table(
                        QUERY PLAN                        
 ---------------------------------------------------------
  Append
-   ->  Seq Scan on rp_1_5_notbsp range_partitioned_1
+   ->  Seq Scan on rp_1_5_notbsp range_partitioned_2
          Filter: (NOT yb_is_local_table(tableoid))
-   ->  Seq Scan on rp_5_10_local range_partitioned_2
+   ->  Seq Scan on rp_5_10_local range_partitioned_3
          Filter: (NOT yb_is_local_table(tableoid))
-   ->  Seq Scan on rp_10_15_remote range_partitioned_3
+   ->  Seq Scan on rp_10_15_remote range_partitioned_4
          Filter: (NOT yb_is_local_table(tableoid))
-   ->  Seq Scan on rp_15_20_local range_partitioned_4
+   ->  Seq Scan on rp_15_20_local range_partitioned_5
          Filter: (NOT yb_is_local_table(tableoid))
-   ->  Seq Scan on rp_default_remote range_partitioned_5
+   ->  Seq Scan on rp_default_remote range_partitioned_6
          Filter: (NOT yb_is_local_table(tableoid))
 (11 rows)
 
@@ -127,10 +127,10 @@ EXPLAIN (COSTS OFF) SELECT partvalue FROM range_partitioned WHERE yb_is_local_ta
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Append
-   ->  Index Scan using rp_5_10_local_partvalue_idx on rp_5_10_local range_partitioned_1
+   ->  Index Scan using rp_5_10_local_partvalue_idx on rp_5_10_local range_partitioned_2
          Index Cond: (partvalue = 5)
          Filter: yb_is_local_table(tableoid)
-   ->  Index Scan using rp_15_20_local_partvalue_idx on rp_15_20_local range_partitioned_2
+   ->  Index Scan using rp_15_20_local_partvalue_idx on rp_15_20_local range_partitioned_3
          Index Cond: (partvalue = 5)
          Filter: yb_is_local_table(tableoid)
 (7 rows)
@@ -141,12 +141,12 @@ EXPLAIN (COSTS OFF) UPDATE range_partitioned SET partvalue = 5 WHERE yb_is_local
                          QUERY PLAN                         
 ------------------------------------------------------------
  Update on range_partitioned
-   Update on rp_5_10_local range_partitioned_1
-   Update on rp_15_20_local range_partitioned_2
+   Update on rp_5_10_local range_partitioned_2
+   Update on rp_15_20_local range_partitioned_3
    ->  Append
-         ->  Seq Scan on rp_5_10_local range_partitioned_1
+         ->  Seq Scan on rp_5_10_local range_partitioned_2
                Filter: yb_is_local_table(tableoid)
-         ->  Seq Scan on rp_15_20_local range_partitioned_2
+         ->  Seq Scan on rp_15_20_local range_partitioned_3
                Filter: yb_is_local_table(tableoid)
 (8 rows)
 
@@ -155,14 +155,14 @@ EXPLAIN (COSTS OFF) UPDATE list_partitioned SET partkey = 5 WHERE yb_is_local_ta
 -------------------------------------------------------------
  Update on list_partitioned
    Update on lp_bc_local list_partitioned_1
-   Update on lp_gh_local list_partitioned_2
-   Update on lp_default_local list_partitioned_3
+   Update on lp_gh_local list_partitioned_3
+   Update on lp_default_local list_partitioned_4
    ->  Append
          ->  Seq Scan on lp_bc_local list_partitioned_1
                Filter: yb_is_local_table(tableoid)
-         ->  Seq Scan on lp_gh_local list_partitioned_2
+         ->  Seq Scan on lp_gh_local list_partitioned_3
                Filter: yb_is_local_table(tableoid)
-         ->  Seq Scan on lp_default_local list_partitioned_3
+         ->  Seq Scan on lp_default_local list_partitioned_4
                Filter: yb_is_local_table(tableoid)
 (11 rows)
 
@@ -171,11 +171,11 @@ EXPLAIN (COSTS OFF) UPDATE hash_partitioned SET partkey = 5 WHERE yb_is_local_ta
 --------------------------------------------------------
  Update on hash_partitioned
    Update on hp0_local hash_partitioned_1
-   Update on hp2_1_local hash_partitioned_2
+   Update on hp2_1_local hash_partitioned_3
    ->  Append
          ->  Seq Scan on hp0_local hash_partitioned_1
                Filter: yb_is_local_table(tableoid)
-         ->  Seq Scan on hp2_1_local hash_partitioned_2
+         ->  Seq Scan on hp2_1_local hash_partitioned_3
                Filter: yb_is_local_table(tableoid)
 (8 rows)
 
@@ -205,16 +205,16 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tab
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local_table(tableoid);
                QUERY PLAN                
 -----------------------------------------
- Seq Scan on multikey3_local multikey
+ Seq Scan on multikey3_local multikey_1
    Storage Filter: ((b < 1) AND (a = 2))
    Filter: yb_is_local_table(tableoid)
 (3 rows)
 
 -- Query with null check.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE b is null AND yb_is_local_table(tableoid);
-                 QUERY PLAN                  
----------------------------------------------
- Seq Scan on multikey_default_local multikey
+                  QUERY PLAN                   
+-----------------------------------------------
+ Seq Scan on multikey_default_local multikey_1
    Storage Filter: (b IS NULL)
    Filter: yb_is_local_table(tableoid)
 (3 rows)
@@ -238,10 +238,10 @@ SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_
                     QUERY PLAN                     
 ---------------------------------------------------
  Merge Join
-   Merge Cond: (t1.a = t2.b)
+   Merge Cond: (t1_1.a = t2.b)
    ->  Sort
-         Sort Key: t1.a
-         ->  Seq Scan on prt1_p2_local t1
+         Sort Key: t1_1.a
+         ->  Seq Scan on prt1_p2_local t1_1
                Storage Filter: (a < 450)
                Filter: yb_is_local_table(tableoid)
    ->  Sort
@@ -266,10 +266,10 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
                         QUERY PLAN                        
 ----------------------------------------------------------
  Incremental Sort
-   Sort Key: prt1.a, prt2.b
+   Sort Key: prt1.a, prt2_1.b
    Presorted Key: prt1.a
    ->  Merge Left Join
-         Merge Cond: (prt1.a = prt2.b)
+         Merge Cond: (prt1.a = prt2_1.b)
          ->  Sort
                Sort Key: prt1.a
                ->  Append
@@ -278,8 +278,8 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
                      ->  Seq Scan on prt1_p2_local prt1_2
                            Storage Filter: (a < 450)
          ->  Sort
-               Sort Key: prt2.b
-               ->  Seq Scan on prt2_p2_local prt2
+               Sort Key: prt2_1.b
+               ->  Seq Scan on prt2_p2_local prt2_1
                      Filter: yb_is_local_table(tableoid)
 (16 rows)
 
@@ -317,12 +317,12 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid
                         QUERY PLAN                        
 ----------------------------------------------------------
  Sort
-   Sort Key: prt1.a, prt2.b
+   Sort Key: prt1_1.a, prt2.b
    ->  Merge Full Join
-         Merge Cond: (prt1.a = prt2.b)
+         Merge Cond: (prt1_1.a = prt2.b)
          ->  Sort
-               Sort Key: prt1.a
-               ->  Seq Scan on prt1_p2_local prt1
+               Sort Key: prt1_1.a
+               ->  Seq Scan on prt1_p2_local prt1_1
                      Filter: yb_is_local_table(tableoid)
          ->  Sort
                Sort Key: prt2.b
@@ -365,15 +365,15 @@ SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t2.b FROM prt2 t2 WHERE yb_is_loc
  Sort
    Sort Key: t1.a
    ->  Hash Join
-         Hash Cond: (t1.a = t2.b)
+         Hash Cond: (t1.a = t2_1.b)
          ->  Append
                ->  Seq Scan on prt1_p1 t1_1
                ->  Seq Scan on prt1_p2_local t1_2
                ->  Seq Scan on prt1_p3 t1_3
          ->  Hash
                ->  HashAggregate
-                     Group Key: t2.b
-                     ->  Seq Scan on prt2_p2_local t2
+                     Group Key: t2_1.b
+                     ->  Seq Scan on prt2_p2_local t2_1
                            Filter: yb_is_local_table(tableoid)
 (13 rows)
 

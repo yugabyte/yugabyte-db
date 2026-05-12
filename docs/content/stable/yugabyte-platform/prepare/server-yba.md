@@ -62,7 +62,7 @@ Installation requires a license file. To obtain your license, contact your sales
 
 ### Python for YugabyteDB Anywhere
 
-Python v3.10 to v3.11 must be pre-installed.
+Python v3.10 to v3.12 (v2025.2.2.0 and later) or v3.10 to v3.11 (V2025.2.0-2025.2.1) must be pre-installed.
 
 Both python and python3 must symbolically link to Python 3. One way to achieve this is to use alternatives. For example:
 
@@ -83,9 +83,9 @@ python3 -V
 
 ### Permissions
 
-You need sudo root permissions for installation for production use. (Without sudo root permissions, you can install YBA for non-production use.)
+YBA Installer supports installation using sudo, and [non-sudo installation](../../install-yugabyte-platform/install-software/installer/#non-sudo-installation).
 
-If your sudo permissions are limited, add the following commands to the sudoers file:
+If you are using sudo and your sudo permissions are limited, add the following commands to the sudoers file:
 
 ```sh
 /usr/bin/yba-ctl clean
@@ -119,6 +119,6 @@ If your sudo permissions are limited, add the following commands to the sudoers 
 
 Where path-to-yba-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
 
-### High availability deployments
+## High availability deployments
 
 If you plan to deploy YBA in active-passive [high-availability](../../administer-yugabyte-platform/high-availability/) mode, you need two VMs (identical in hardware and software); one for the active YBA instance, and another for the standby YBA instance.

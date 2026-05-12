@@ -6,6 +6,7 @@ import {
   AccessKeysField,
   ARNField,
   ConnectionPoolingField,
+  MultiTenancyField,
   DBVersionField,
   DeploymentPortsField,
   IPV6Field,
@@ -40,6 +41,11 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isConnectionPoolEnabled =
     runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
+    )?.value === 'true';
+
+  const isMultiTenancyAllowed =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ALLOW_MULTI_TENANCY_TEST_UI
     )?.value === 'true';
 
   // If use_ansible_provisioning is false, YNP is going to do the provisioning and YNP does not support cron based universes
@@ -93,6 +99,13 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           <ConnectionPoolingField disabled={!isCreateMode} />
         </Box>
       )}
+      {isPrimary &&
+        isMultiTenancyAllowed &&
+        provider.code !== CloudType.kubernetes && (
+          <Box display="flex" width="100%" mt={2.5}>
+            <MultiTenancyField disabled={!isCreateMode} />
+          </Box>
+        )}
       {provider.code !== CloudType.kubernetes && (
         <>
           {!isCreatePrimary && (

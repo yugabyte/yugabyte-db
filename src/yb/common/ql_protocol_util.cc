@@ -13,7 +13,7 @@
 
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -31,29 +31,53 @@ QLValuePB* QLPrepareColumn(QLWriteRequestPB* req, int column_id) {
   return column_value->mutable_expr()->mutable_value();
 }
 
+LWQLValuePB* QLPrepareColumn(LWQLWriteRequestPB* req, int column_id) {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  return column_value->mutable_expr()->mutable_value();
+}
+
 QLValuePB* QLPrepareCondition(QLConditionPB* condition, int column_id, QLOperator op) {
   condition->add_operands()->set_column_id(column_id);
   condition->set_op(op);
   return condition->add_operands()->mutable_value();
 }
 
-#define QL_PROTOCOL_TYPE_DEFINITIONS_IMPL(name, lname, type) \
+LWQLValuePB* QLPrepareCondition(LWQLConditionPB* condition, int column_id, QLOperator op) {
+  condition->add_operands()->set_column_id(column_id);
+  condition->set_op(op);
+  return condition->add_operands()->mutable_value();
+}
+
+#define QL_PROTOCOL_TYPE_DEFINITIONS_IMPL(name, lname, type, pb_set, lw_set) \
 void PP_CAT3(QLAdd, name, ColumnValue)( \
     QLWriteRequestPB* req, int column_id, type value) { \
-  QLPrepareColumn(req, column_id)->PP_CAT3(set_, lname, _value)(value); \
+  QLPrepareColumn(req, column_id)->PP_CAT3(pb_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLSet, name, Expression)(QLExpressionPB* expr, type value) { \
-  expr->mutable_value()->PP_CAT3(set_, lname, _value)(value); \
+  expr->mutable_value()->PP_CAT3(pb_set, lname, _value)(value); \
+} \
+void PP_CAT3(QLSet, name, Expression)(LWQLExpressionPB* expr, type value) { \
+  expr->mutable_value()->PP_CAT3(lw_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLSet, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value) { \
-  QLPrepareCondition(condition, column_id, op)->PP_CAT3(set_, lname, _value)(value); \
+  QLPrepareCondition(condition, column_id, op)->PP_CAT3(pb_set, lname, _value)(value); \
+} \
+void PP_CAT3(QLSet, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value) { \
+  QLPrepareCondition(condition, column_id, op)->PP_CAT3(lw_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLAdd, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value) { \
+  PP_CAT3(QLSet, name, Condition)( \
+    condition->add_operands()->mutable_condition(), column_id, op, value); \
+} \
+void PP_CAT3(QLAdd, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value) { \
   PP_CAT3(QLSet, name, Condition)( \
     condition->add_operands()->mutable_condition(), column_id, op, value); \
 } \
@@ -88,7 +112,7 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
   }
 }
 
-bool RequireReadForExpressions(const QLWriteRequestPB& request) {
+bool RequireReadForExpressions(const QLWriteRequestMsg& request) {
   // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
   // involves an expresion with a column reference. If the IF clause contains a condition that
   // involves a column reference, the column will be included in "column_refs". However, we cannot
@@ -103,13 +127,13 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
 // (e.g. range delete) -- it affects all rows within a hash key that match the where clause.
 // Note: If target columns are given this could just be e.g. a delete targeting a static column
 // which can also omit the range portion -- Analyzer will check these restrictions.
-bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
+bool IsRangeOperation(const QLWriteRequestMsg& request, const Schema& schema) {
   return implicit_cast<size_t>(request.range_column_values().size()) <
              schema.num_range_key_columns() &&
          request.column_values().empty();
 }
 
-bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
+bool RequireRead(const QLWriteRequestMsg& request, const Schema& schema) {
   // In case of a user supplied timestamp, we need a read (and hence appropriate locks for read
   // modify write) but it is at the docdb level on a per key basis instead of a QL read of the
   // latest row.

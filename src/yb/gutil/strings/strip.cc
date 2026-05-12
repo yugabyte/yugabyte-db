@@ -134,10 +134,10 @@ void StripWhiteSpace(string* str) {
 
   // Strip off trailing whitespace.
   size_t last = str_length - 1;
-  while (last >= 0 && ascii_isspace((*str)[last])) {
+  while (ascii_isspace((*str)[last])) {
     --last;
   }
-  if (last != (str_length - 1) && last >= 0) {
+  if (last != str_length - 1) {
     str->erase(last + 1, string::npos);
   }
 }

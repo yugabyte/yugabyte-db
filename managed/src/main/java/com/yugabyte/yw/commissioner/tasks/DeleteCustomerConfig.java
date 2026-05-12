@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -40,18 +39,15 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private static final String S3 = Util.S3;
   private static final String NFS = Util.NFS;
 
-  private final BackupHelper backupHelper;
   private final CloudUtilFactory cloudUtilFactory;
   private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public DeleteCustomerConfig(
       BaseTaskDependencies baseTaskDependencies,
-      BackupHelper backupHelper,
       CloudUtilFactory cloudUtilFactory,
       RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
-    this.backupHelper = backupHelper;
     this.cloudUtilFactory = cloudUtilFactory;
     this.runtimeConfGetter = runtimeConfGetter;
   }

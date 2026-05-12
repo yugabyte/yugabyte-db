@@ -571,6 +571,10 @@ public class UsersController extends AuthenticatedController {
               customerUUID));
     }
 
+    if (formData.getNewUniverseUiEnabled() != null) {
+      user.setNewUniverseUiEnabled(formData.getNewUniverseUiEnabled());
+    }
+
     if (useNewAuthz) {
       // Timezone validation for new RBAC.
       // No explicit validation required as the API is already authorized with the required

@@ -5,10 +5,10 @@ import moment from 'moment';
 import copy from 'copy-to-clipboard';
 
 import { ContinuousBackup } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { ReactComponent as TrashIcon } from '../../assets/trashbin.svg';
-import { ReactComponent as PenIcon } from '../../assets/pen.svg';
-import { ReactComponent as CopyIcon } from '../../assets/copy.svg';
-import { ReactComponent as ErrorIcon } from '../../assets/error-circle.svg';
+import TrashIcon from '../../assets/trashbin.svg';
+import PenIcon from '../../assets/pen.svg';
+import CopyIcon from '../../assets/copy.svg';
+import ErrorIcon from '../../assets/error-circle.svg';
 import { YBButton } from '../../components';
 import {
   ConfigureContinuousBackupModal,
@@ -17,6 +17,8 @@ import {
 import { useFormatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
 import { getIsLastPlatformBackupOld } from './utils';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 
 interface ContinuousBackupCardProps {
   continuousBackupConfig: ContinuousBackup;
@@ -127,14 +129,18 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
       <div className={classes.cardHeader}>
         <Typography variant="h5">{t('title')}</Typography>
         <div className={classes.cardActionsContainer}>
-          <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
-            <PenIcon className={classes.icon} />
-            <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
-          </YBButton>
-          <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
-            <TrashIcon className={classes.icon} />
-            <Typography variant="body2">{t('button.remove')}</Typography>
-          </YBButton>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
+              <PenIcon className={classes.icon} />
+              <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
+            </YBButton>
+          </RbacValidator>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.DELETE_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
+              <TrashIcon className={classes.icon} />
+              <Typography variant="body2">{t('button.remove')}</Typography>
+            </YBButton>
+          </RbacValidator>
         </div>
       </div>
       <div className={classes.cardBody}>

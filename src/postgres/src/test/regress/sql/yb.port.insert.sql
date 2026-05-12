@@ -38,7 +38,7 @@ select col1, col2, char_length(col3) from inserttest;
 drop table inserttest;
 
 --
--- tuple larger than fillfactor
+-- tuple larger than fillfactor -- YB table
 --
 CREATE TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
 ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;

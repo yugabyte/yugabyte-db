@@ -30,7 +30,7 @@ import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUt
 import { PASSWORD_REGEX, TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { dbSettingStyles } from './DBSettingStyles';
 //icons
-import InfoMessageIcon from '../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../assets/info-message.svg?img';
 
 interface EnableYCQLModalProps {
   open: boolean;

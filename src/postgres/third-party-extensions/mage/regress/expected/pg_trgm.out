@@ -1,0 +1,120 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path=ag_catalog;
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- Should error out
+SELECT * FROM cypher('graph', $$ RETURN show_trgm("hello") $$) AS (n agtype);
+ERROR:  function show_trgm does not exist
+LINE 1: SELECT * FROM cypher('graph', $$ RETURN show_trgm("hello") $...
+                                       ^
+HINT:  If the function is from an external extension, make sure the extension is installed and the function is in the search path.
+-- Create the extension in the public schema
+CREATE EXTENSION pg_trgm SCHEMA public;
+-- Should error out
+SELECT * FROM cypher('graph', $$ RETURN show_trgm("hello") $$) AS (n agtype);
+ERROR:  function show_trgm does not exist
+LINE 1: SELECT * FROM cypher('graph', $$ RETURN show_trgm("hello") $...
+                                       ^
+HINT:  If the function is from an external extension, make sure the extension is installed and the function is in the search path.
+-- Should work
+SET search_path=ag_catalog, public;
+SELECT * FROM cypher('graph', $$ CREATE (:Person {name: "Jane"}),
+                                        (:Person {name: "John"}),
+                                        (:Person {name: "Jone"}),
+                                        (:Person {name: "Jack"}),
+                                        (:Person {name: "Jax"}),
+                                        (:Person {name: "Jake"}),
+                                        (:Person {name: "Julie"}),
+                                        (:Person {name: "Julius"}),
+                                        (:Person {name: "Jill"}),
+                                        (:Person {name: "Jillie"}),
+                                        (:Person {name: "Julian"})
+$$) AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return show_trgm(p.name) $$) AS (n text[]);
+                  n                  
+-------------------------------------
+ {"  j"," ja",ane,jan,"ne "}
+ {"  j"," jo","hn ",joh,ohn}
+ {"  j"," jo",jon,"ne ",one}
+ {"  j"," ja",ack,"ck ",jac}
+ {"  j"," ja","ax ",jax}
+ {"  j"," ja",ake,jak,"ke "}
+ {"  j"," ju","ie ",jul,lie,uli}
+ {"  j"," ju",ius,jul,liu,uli,"us "}
+ {"  j"," ji",ill,jil,"ll "}
+ {"  j"," ji","ie ",ill,jil,lie,lli}
+ {"  j"," ju","an ",ian,jul,lia,uli}
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) with p, similarity(p.name, "Jon") as sim return p.name, sim ORDER BY sim DESC $$) AS (n agtype, s real);
+    n     |     s      
+----------+------------
+ "Jone"   |        0.5
+ "John"   |  0.2857143
+ "Jax"    | 0.14285715
+ "Jane"   |      0.125
+ "Jack"   |      0.125
+ "Jake"   |      0.125
+ "Jill"   |      0.125
+ "Julie"  | 0.11111111
+ "Julius" |        0.1
+ "Julian" |        0.1
+ "Jillie" |        0.1
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) with p, word_similarity(p.name, "Jon") as sim return p.name, sim ORDER BY sim DESC $$) AS (n agtype, s real);
+    n     |     s      
+----------+------------
+ "Jone"   |        0.6
+ "John"   |        0.4
+ "Jax"    |       0.25
+ "Jane"   |        0.2
+ "Jack"   |        0.2
+ "Jake"   |        0.2
+ "Jill"   |        0.2
+ "Julie"  | 0.16666667
+ "Julius" | 0.14285715
+ "Julian" | 0.14285715
+ "Jillie" | 0.14285715
+(11 rows)
+
+-- Clean up
+SELECT drop_graph('graph', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph."Person"
+NOTICE:  graph "graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+DROP EXTENSION pg_trgm CASCADE;

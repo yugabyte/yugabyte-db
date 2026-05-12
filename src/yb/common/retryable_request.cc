@@ -13,14 +13,7 @@
 
 #include "yb/common/retryable_request.h"
 
-#include "yb/util/result.h"
-
 namespace yb {
-
-const std::string kMinRunningRequestIdCategoryName = "min running request ID";
-
-StatusCategoryRegisterer min_running_request_id_category_registerer(
-    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
 
 YB_STRONGLY_TYPED_UUID_IMPL(ClientId);
 

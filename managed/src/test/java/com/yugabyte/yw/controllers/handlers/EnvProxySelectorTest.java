@@ -46,6 +46,13 @@ public class EnvProxySelectorTest extends UniverseControllerTestBase {
     assertEquals(ImmutableList.of(Proxy.NO_PROXY), proxySelector.select(new URI(urlStr)));
   }
 
+  private void assertHttpProxy(ProxySelector proxySelector, String urlStr)
+      throws URISyntaxException {
+    assertEquals(
+        ImmutableList.of(EnvProxySelector.toProxy(new URI(MY_HTTP_PROXY))),
+        proxySelector.select(new URI(urlStr)));
+  }
+
   @Test
   public void testHttp() throws URISyntaxException {
     testHttp("http_proxy");
@@ -125,6 +132,23 @@ public class EnvProxySelectorTest extends UniverseControllerTestBase {
   @Test
   public void testIllegalArgForNoScheme() throws Exception {
     assertFailsWithIAE(new URI(null, "/test", null));
+  }
+
+  @Test
+  public void testNoProxy() throws URISyntaxException {
+    String noProxy = ".test.com,10.20.30.0/24,1.2.3.4,2001:db8::/32";
+    EnvProxySelector envProxySelector =
+        new EnvProxySelector(
+            Functions.forMap(
+                ImmutableMap.of("no_proxy", noProxy, "http_proxy", MY_HTTP_PROXY), null));
+    assertEquals(new URI(MY_HTTP_PROXY), envProxySelector.httpProxy.get());
+    assertFalse(envProxySelector.httpsProxy.isPresent());
+    assertNoProxy(envProxySelector, "http://10.20.30.1");
+    assertHttpProxy(envProxySelector, "http://10.20.31.1");
+    assertNoProxy(envProxySelector, "http://s1.test.com");
+    assertNoProxy(envProxySelector, "http://[2001:db8:ff:1:987:65ff:ff01:1234]");
+    assertHttpProxy(envProxySelector, "http://[2001:db7:ff:1:987:65ff:ff01:1234]");
+    assertHttpProxy(envProxySelector, "http://s1.test1.com");
   }
 
   private static void assertFailsWithIAE(final URI uri) {

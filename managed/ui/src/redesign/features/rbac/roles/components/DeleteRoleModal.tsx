@@ -18,7 +18,7 @@ import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { deleteRole } from '../../api';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { Role } from '../IRoles';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 type DeleteRoleProps = {
   open: boolean;

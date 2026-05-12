@@ -109,8 +109,9 @@ class Compaction {
       VersionStorageInfo* input_version, const MutableCFOptions& mutable_cf_options,
       std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
       uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
-      std::vector<FileMetaData*> grandparents, Logger* info_log, bool manual_compaction = false,
-      double score = -1, bool deletion_compaction = false,
+      std::vector<FileMetaData*> grandparents, const yb::MemTrackerPtr& mem_tracker,
+      Logger* info_log, bool manual_compaction = false, double score = -1,
+      bool deletion_compaction = false,
       CompactionReason compaction_reason = CompactionReason::kUnknown,
       SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
           SkipCorruptDataBlocksUnsafe::kFalse);
@@ -308,8 +309,9 @@ class Compaction {
       VersionStorageInfo* input_version, const MutableCFOptions& mutable_cf_options,
       std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
       uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
-      std::vector<FileMetaData*> grandparents, bool manual_compaction, double score,
-      bool deletion_compaction, CompactionReason compaction_reason,
+      std::vector<FileMetaData*> grandparents, const yb::MemTrackerPtr& mem_tracker,
+      bool manual_compaction, double score, bool deletion_compaction,
+      CompactionReason compaction_reason,
       SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
   // mark (or clear) all files that are being compacted

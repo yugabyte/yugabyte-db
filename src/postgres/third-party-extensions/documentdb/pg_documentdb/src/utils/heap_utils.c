@@ -38,7 +38,7 @@ AllocateHeap(int64_t capacity, HeapComparator comparator)
 
 
 /*
- * Pushes the value to the heap.
+ * Stores the provided value into the heap memory.
  */
 void
 PushToHeap(BinaryHeap *heap, const bson_value_t *value)

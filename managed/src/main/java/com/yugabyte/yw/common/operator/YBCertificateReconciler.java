@@ -16,6 +16,7 @@ import io.yugabyte.operator.v1alpha1.YBCertificateStatus;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.security.PrivateKey;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
@@ -43,6 +44,20 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   private final String namespace;
   private final OperatorUtils operatorUtils;
   private final RuntimeConfGetter runtimeConfGetter;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The current certificate resource being reconciled, for associating secret dependencies.
+  private KubernetesResourceDetails currentReconcileResource;
+  private UUID currentLocalInstanceUuid;
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public YBCertificateReconciler(
       SharedIndexInformer<YBCertificate> cmInformer,
@@ -82,6 +97,12 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
   @Override
   public void onAdd(YBCertificate certificate) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(certificate);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(certificate, currentLocalInstanceUuid);
+    currentReconcileResource = resourceDetails;
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     log.info("Adding YBCertificate: {}", certificate.getMetadata().getName());
 
     try {
@@ -108,6 +129,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     // Create the certificate
     String configUUID = createCertificate(certificate, cuuid);
 
+    OperatorUtils.maybeAddYbaResourceId(certificate, UUID.fromString(configUUID), resourceClient);
+
     updateStatus(certificate, true, configUUID, "Certificate created successfully");
     log.info(
         "Successfully created YBCertificate {} with UUID: {}",
@@ -129,6 +152,11 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
       // Query YBA database to check if certificate with this label already exists
       CertificateInfo existingCert = CertificateInfo.get(customerUUID, certificateName);
+
+      // Ensure we have the YBA resource ID annotation.
+      if (existingCert != null) {
+        OperatorUtils.maybeAddYbaResourceId(certificate, existingCert.getUuid(), resourceClient);
+      }
       return existingCert != null;
     } catch (Exception e) {
       log.warn(
@@ -247,6 +275,9 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   @Override
   public void onUpdate(YBCertificate oldCertificate, YBCertificate newCertificate) {
     log.info("Updating YBCertificate: {}", newCertificate.getMetadata().getName());
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newCertificate, currentLocalInstanceUuid);
 
     try {
       processCertificateCreation(newCertificate);
@@ -263,6 +294,11 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   @Override
   public void onDelete(YBCertificate certificate, boolean deletedFinalStateUnknown) {
     log.info("Deleting YBCertificate: {}", certificate.getMetadata().getName());
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(certificate);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
+    log.info("Untracked certificate {} and orphaned dependencies: {}", resourceDetails, orphaned);
 
     try {
       processCertificateDeletion(certificate);
@@ -370,7 +406,13 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     if (certificate.getSpec().getCertificateSecretRef() != null) {
       String secretName = certificate.getSpec().getCertificateSecretRef().getName();
       String secretNamespace = getSecretNamespace(certificate);
-      return operatorUtils.getAndParseSecretForKey(secretName, secretNamespace, key);
+      return operatorUtils.getAndParseSecretForKey(
+          secretName,
+          secretNamespace,
+          key,
+          resourceTracker,
+          currentReconcileResource,
+          currentLocalInstanceUuid);
     }
     return null;
   }

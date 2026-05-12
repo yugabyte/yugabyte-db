@@ -63,13 +63,7 @@ var deleteRoleBindingCmd = &cobra.Command{
 
 		rUsersResponse, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"RBAC: Role Binding",
-				"Add - List Users",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role Binding", "Add - List Users")
 		}
 
 		rUsers := make([]ybaclient.UserWithFeatures, 0)
@@ -137,8 +131,7 @@ var deleteRoleBindingCmd = &cobra.Command{
 			RoleBindingFormData(req).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role Binding", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role Binding", "Delete")
 		}
 		roleBindingsCtx := formatter.Context{
 			Command: "list",

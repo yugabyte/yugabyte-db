@@ -1,3 +1,4 @@
+.PHONY: all clean install check check-minimal check-regress build-sql generate_errors_file generate_external_error_mapping_file clean-sql trim_installed_data_files citus-indent analysis
 EXTENSION = documentdb_core
 MODULE_big = pg_$(EXTENSION)
 
@@ -65,12 +66,20 @@ build-sql: $(generated_sql_files)
 
 generate_errors_file: $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h $(OSS_SRC_DIR)/documentdb_errors.csv
 
-all: generate_errors_file
+generate_external_error_mapping_file: generate_errors_file $(DOCDB_CORE_DIR)include/utils/external_error_mapping.csv 
+
+all: generate_external_error_mapping_file
 
 $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv
 	mkdir -p $(DOCDB_CORE_DIR)/build
 	mkdir -p $(DOCDB_CORE_DIR)/include/utils
 	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h $(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt documentdb
+
+$(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt: $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h
+
+$(DOCDB_CORE_DIR)include/utils/external_error_mapping.csv: $(OSS_SRC_DIR)/scripts/generate_external_error_mapping_file.sh $(OSS_SRC_DIR)/error_mappings.csv $(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt
+	$(OSS_SRC_DIR)/scripts/generate_external_error_mapping_file.sh $(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt $(OSS_SRC_DIR)/error_mappings.csv \
+		$(DOCDB_CORE_DIR)include/utils/external_error_mapping.csv 
 
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)

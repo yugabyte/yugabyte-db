@@ -270,6 +270,7 @@ extern PGDLLIMPORT int log_parameter_max_length;
 extern PGDLLIMPORT int log_parameter_max_length_on_error;
 extern PGDLLIMPORT int log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;
+extern PGDLLIMPORT int yb_log_min_backtraces;
 extern PGDLLIMPORT int client_min_messages;
 extern PGDLLIMPORT int log_min_duration_sample;
 extern PGDLLIMPORT int log_min_duration_statement;
@@ -315,6 +316,15 @@ extern PGDLLIMPORT int yb_test_index_check_num_batches_per_snapshot;
 
 extern PGDLLIMPORT bool yb_enable_planner_trace;
 extern PGDLLIMPORT char *yb_hinted_uids;
+extern PGDLLIMPORT bool yb_enable_derived_equalities;
+extern PGDLLIMPORT bool yb_enable_listen_notify;
+extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
+extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
+extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
+extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
+extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
+extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
+extern PGDLLIMPORT bool yb_enable_mage;
 
 /*
  * Functions exported by guc.c
@@ -410,7 +420,9 @@ extern bool check_GUC_name_for_parameter_acl(const char *name);
 extern void InitializeGUCOptions(void);
 extern void InitializeWalConsistencyChecking(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
-extern void ResetAllOptions(void);
+extern void ResetAllOptions();
+extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
+extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void AtStart_GUC(void);
 extern int	NewGUCNestLevel(void);
 extern void AtEOXact_GUC(bool isCommit, int nestLevel);

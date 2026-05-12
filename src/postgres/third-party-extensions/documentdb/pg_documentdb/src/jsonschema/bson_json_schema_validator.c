@@ -46,6 +46,8 @@ static bool ValidateBsonValueNumeric(const bson_value_t *value,
 									 const SchemaNode *node);
 static bool ValidateBsonValueArray(const bson_value_t *value,
 								   const SchemaNode *node);
+static bool ValidateBsonValueBinary(const bson_value_t *value,
+									const SchemaNode *node);
 
 static BsonTypeFlags GetBsonValueTypeFlag(bson_type_t type);
 static void FreeListOfDocKvLists(List *list);
@@ -60,6 +62,8 @@ static List * GetSortedListOfKeyValuePairs(const bson_value_t *value);
 
 static bool IsBsonArrayUnique(const bson_value_t *value, bool ignoreKeyOrderInObject);
 
+extern bool EnableSchemaEnforcementForCSFLE;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -67,7 +71,7 @@ static bool IsBsonArrayUnique(const bson_value_t *value, bool ignoreKeyOrderInOb
 PG_FUNCTION_INFO_V1(bson_dollar_json_schema);
 
 /*
- * implements the Mongo's $jsonSchema operator functionality
+ * implements the $jsonSchema operator functionality
  * in the runtime. It generates a Json Schema Tree (and store it in cache),
  * then validates the given document against the Json Schema Tree.
  */
@@ -86,7 +90,7 @@ bson_dollar_json_schema(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-				 errmsg("$jsonSchema must be an object")));
+				 errmsg("$jsonSchema must be of object type")));
 	}
 
 	BsonValueInitIterator(&(element.bsonValue), &schemaIter);
@@ -148,6 +152,11 @@ ValidateBsonValueAgainstSchemaTree(const bson_value_t *value, const
 	{
 		return false;
 	}
+	if (node->validationFlags.binary && EnableSchemaEnforcementForCSFLE &&
+		!ValidateBsonValueBinary(value, node))
+	{
+		return false;
+	}
 
 	return true;
 }
@@ -198,6 +207,30 @@ ValidateBsonValueObject(const bson_value_t *value, const SchemaNode *node)
 		return true;
 	}
 
+	HTAB *hashTableForRequired = NULL;
+	bool isRequiredValid = false;
+	int requiredCount = 0;
+
+	/* required */
+	if (node->validationFlags.object & ObjectValidationTypes_Required)
+	{
+		isRequiredValid = true;
+		requiredCount = 0;
+		hashTableForRequired = CreateStringViewHashSet();
+		bson_iter_t iter;
+		BsonValueInitIterator(node->validations.object->required, &iter);
+		while (bson_iter_next(&iter))
+		{
+			const char *field = bson_iter_utf8(&iter, NULL);
+			StringView fieldValue = {
+				.string = field,
+				.length = strlen(field)
+			};
+			hash_search(hashTableForRequired, &fieldValue, HASH_ENTER, NULL);
+			requiredCount++;
+		}
+	}
+
 	bson_iter_t iter;
 	BsonValueInitIterator(value, &iter);
 	while (bson_iter_next(&iter))
@@ -213,6 +246,30 @@ ValidateBsonValueObject(const bson_value_t *value, const SchemaNode *node)
 			{
 				return false;
 			}
+		}
+
+		/* required validation */
+		if (isRequiredValid)
+		{
+			bool found = false;
+			StringView fieldView = {
+				.string = field,
+				.length = strlen(field)
+			};
+			hash_search(hashTableForRequired, &fieldView, HASH_REMOVE, &found);
+			if (found)
+			{
+				requiredCount--;
+			}
+		}
+	}
+
+	if (isRequiredValid)
+	{
+		hash_destroy(hashTableForRequired);
+		if (requiredCount > 0)
+		{
+			return false;
 		}
 	}
 
@@ -455,6 +512,39 @@ ValidateBsonValueArray(const bson_value_t *value, const SchemaNode *node)
 					}
 				} while (bson_iter_next(&arrayIter));
 			}
+		}
+	}
+
+	return true;
+}
+
+
+/*
+ * Validate given bson value against given Json Schema tree / sub-tree for
+ * Binary validations set:
+ * encrypt
+ * it's for CSFLE only, the field must be encrypted and subtype must be BSON_SUBTYPE_ENCRYPTED
+ */
+static bool
+ValidateBsonValueBinary(const bson_value_t *value, const SchemaNode *node)
+{
+	if (!EnableSchemaEnforcementForCSFLE)
+	{
+		return true;
+	}
+
+	if (value->value_type != BSON_TYPE_BINARY)
+	{
+		return false;
+	}
+
+	uint16_t flags = node->validationFlags.binary;
+	if (flags & BinaryValidationTypes_Encrypt)
+	{
+		/* encrypt - need to check if the value is encrypted bson */
+		if (value->value.v_binary.subtype != BSON_SUBTYPE_ENCRYPTED)
+		{
+			return false;
 		}
 	}
 

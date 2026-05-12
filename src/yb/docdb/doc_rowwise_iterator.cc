@@ -170,7 +170,8 @@ Status DocRowwiseIterator::Init(
   CheckInitOnce();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
-  VLOG(2) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
+  VLOG(2) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD")
+          << ", read operation data: " << read_operation_data_.ToString();
 
   auto bounds = doc_spec.bounds();
   VLOG(2) << "DocKey Bounds " << DocKey::DebugSliceToString(bounds.lower.AsSlice()) << ", "
@@ -489,7 +490,7 @@ const dockv::SchemaPackingStorage& DocRowwiseIterator::schema_packing_storage() 
 
 Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_key) const {
   if (!doc_read_context_.schema().has_colocation_id() ||
-      !GetAtomicFlag(&FLAGS_enable_colocated_table_tombstone_cache)) {
+      !FLAGS_enable_colocated_table_tombstone_cache) {
     return docdb::GetTableTombstoneTime(
         root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
   }
@@ -748,15 +749,15 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
     first_iteration = false;
 
-    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
-    row_key = row_key_.AsSlice();
-
-    if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+    if (has_bound_key_ && is_forward_scan_ == (key_data.key.compare(bound_key_) >= 0)) {
       VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
               << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
+
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
+    row_key = row_key_.AsSlice();
 
     VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(row_key);
 
@@ -887,18 +888,6 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   CHECK_NE(doc_mode_, DocMode::kFlat) << "Flat doc mode not supported yet";
   const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
-}
-
-Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
-  db_iter_->UpdateFilterKey(key);
-  db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
-  auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
-
-  // TODO(vector_index): as opposite to compare the key, the better approach would be to
-  // set db_iter_ upper bound (and restore it on leaving the scope, refer to
-  // IntentAwareIteratorUpperboundScope) to return from Seek prematurely, avoiding unnecessary
-  // nexts and seeks in some edge cases.
-  return fetch_result.key == key ? fetch_result.value : Slice();
 }
 
 }  // namespace yb::docdb

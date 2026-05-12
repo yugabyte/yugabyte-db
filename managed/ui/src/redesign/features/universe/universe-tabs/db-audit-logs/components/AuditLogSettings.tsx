@@ -33,6 +33,8 @@ import {
 } from '../utils/types';
 import { TP_FRIENDLY_NAMES } from '../../../../export-telemetry/constants';
 import { YSQL_AUDIT_CLASSES, YSQL_LOG_LEVEL_OPTIONS } from '../utils/constants';
+import { getIsLogsExportSupported } from '@app/redesign/features/export-telemetry/utils';
+
 //RBAC
 import { hasNecessaryPerm } from '../../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
@@ -41,13 +43,9 @@ import { RBAC_ERR_MSG_NO_PERM } from '../../../../rbac/common/validator/Validato
 //styles
 import { auditLogStyles } from '../utils/AuditLogStyles';
 //icons
-import TreeIcon from '../../../../../assets/tree.svg';
-import AddCircleIcon from '../.././../../../assets/add-circle.svg';
-import InfoMessageIcon from '../../../../../assets/info-message.svg';
-import {
-  getIsLogsExportSupported,
-  getIsMetricsExportSupported
-} from '@app/redesign/features/export-telemetry/utils';
+import TreeIcon from '../../../../../assets/tree.svg?img';
+import AddCircleIcon from '../.././../../../assets/add-circle.svg?img';
+import InfoMessageIcon from '../../../../../assets/info-message.svg?img';
 
 interface AuditLogSettingProps {
   open: boolean;

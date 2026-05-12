@@ -31,6 +31,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, xcluster_print_write_request, false,
@@ -47,13 +48,16 @@ using yb::tserver::WriteResponsePB;
 namespace yb::rpc::xcluster {
 
 namespace {
-std::string WriteRequestPBToString(const WriteRequestPB &req) {
+
+template <class PB>
+std::string WriteRequestPBToString(const PB& req) {
   if (FLAGS_TEST_xcluster_print_write_request) {
     return req.ShortDebugString();
   }
 
   return "WriteRequestPB";
 }
+
 }  // namespace
 
 class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::TabletRpc {
@@ -97,8 +101,8 @@ class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::
 
   void Failed(const Status &status) override {}
 
-  const TabletServerErrorPB *response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  client::TabletServerErrorPtr response_error() const override {
+    return client::TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
  private:
@@ -140,7 +144,8 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   XClusterWriteRpc(
       CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
-      const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+      const std::shared_ptr<client::YBTable> &table, client::YBClient *client,
+      std::shared_ptr<tserver::WriteRequestMsg> req,
       XClusterWriteCallback callback, bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
@@ -148,8 +153,10 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
             use_local_tserver /* local_tserver_only */, false /* consistent_prefix */, client, this,
             this, tablet, table, mutable_retrier(), trace_.get()),
         callback_(std::move(callback)),
-        table_(table) {
-    req_.Swap(req);
+        table_(table),
+        arena_(ThreadSafeArenaPtr(req, &req->arena())),
+        req_(*req),
+        resp_(arena_->ArenaObjectFactory()) {
   }
 
   virtual ~XClusterWriteRpc() { CHECK(called_); }
@@ -176,8 +183,8 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void Abort() override { rpc::Rpc::Abort(); }
 
-  const TabletServerErrorPB *response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  client::TabletServerErrorPtr response_error() const override {
+    return client::TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
   bool RefreshMetaCacheWithResponse() override {
@@ -202,7 +209,7 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
         std::bind(&XClusterWriteRpc::Finished, this, Status::OK()));
   }
 
-  const std::string &tablet_id() const { return req_.tablet_id(); }
+  std::string_view tablet_id() const { return req_.tablet_id(); }
 
   std::string ToString() const override {
     return Format("XClusterWriteRpc: $0, retrier: $1", WriteRequestPBToString(req_), retrier());
@@ -211,7 +218,7 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   void InvokeCallback(const Status &status) {
     if (!called_) {
       called_ = true;
-      callback_(status, std::move(resp_));
+      callback_(status, std::shared_ptr<tserver::LWWriteResponsePB>(arena_, &resp_));
     } else {
       LOG(WARNING) << "Multiple invocation of XClusterWriteRpc: " << status.ToString() << " : "
                    << WriteRequestPBToString(req_);
@@ -221,21 +228,24 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   void InvokeAsync(
       TabletServerServiceProxy *proxy, rpc::RpcController *controller,
       rpc::ResponseCallback callback) {
+    resp_.Clear();
     proxy->WriteAsync(req_, &resp_, controller, std::move(callback));
   }
 
   TracePtr trace_;
   client::internal::TabletInvoker invoker_;
-  WriteRequestPB req_;
-  WriteResponsePB resp_;
   XClusterWriteCallback callback_;
   bool called_ = false;
   const std::shared_ptr<client::YBTable> table_;
+  ThreadSafeArenaPtr arena_;
+  tserver::LWWriteRequestPB& req_;
+  tserver::LWWriteResponsePB& resp_;
 };
 
 rpc::RpcCommandPtr CreateXClusterWriteRpc(
     CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
-    const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+    const std::shared_ptr<client::YBTable> &table, client::YBClient *client,
+    std::shared_ptr<tserver::WriteRequestMsg> req,
     XClusterWriteCallback callback, bool use_local_tserver) {
   return std::make_shared<XClusterWriteRpc>(
       deadline, tablet, table, client, req, std::move(callback), use_local_tserver);
@@ -276,7 +286,7 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void Abort() override { rpc::Rpc::Abort(); }
 
-  const tserver::TabletServerErrorPB *response_error() const override {
+  client::TabletServerErrorPtr response_error() const override {
     // Clear the contents of last_error_, since this function is invoked again on retry.
     last_error_.Clear();
 
@@ -303,13 +313,13 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
-            return &last_error_;
+            return client::TabletServerErrorPtr(&last_error_);
           case cdc::CDCErrorPB::LEADER_NOT_READY:
             last_error_.set_code(tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
-            return &last_error_;
+            return client::TabletServerErrorPtr(&last_error_);
           // TS.STALE_FOLLOWER => pattern not used.
           default:
             break;

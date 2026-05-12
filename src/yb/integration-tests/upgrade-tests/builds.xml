@@ -54,4 +54,22 @@ darwin_release_arm64
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-b33-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
+  <build version="2025.1.1.0">
+    <build_number>b73</build_number>
+    <linux_debug_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-8b5afcdf1e5fd7528330249b734f92e99dfebc78-debug-clang19-centos-x86_64.tar.gz
+    </linux_debug_x86>
+    <linux_release_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-b73-linux-x86_64.tar.gz
+    </linux_release_x86>
+    <linux_release_aarch64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-b73-linux-aarch64.tar.gz
+    </linux_release_aarch64>
+    <darwin_debug_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-8b5afcdf1e5fd7528330249b734f92e99dfebc78-debug-clang-darwin-arm64.tar.gz
+    </darwin_debug_arm64>
+    <darwin_release_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-b73-darwin-arm64.tar.gz
+    </darwin_release_arm64>
+  </build>
 </builds>

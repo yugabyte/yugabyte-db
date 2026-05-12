@@ -30,7 +30,9 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/util/cql_pg_util.h"
 #include "yb/util/format.h"
+#include "yb/util/jwt_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -40,6 +42,9 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 using namespace std::literals;
 
@@ -105,6 +110,9 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(ycql_enable_stat_statements);
+DECLARE_bool(ycql_use_jwt_auth);
+DECLARE_string(ycql_jwt_users_to_skip_csv);
+DECLARE_string(ycql_ident_conf_csv);
 
 DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
     "If enabled, setting TRACING ON in cqlsh will cause "
@@ -153,6 +161,7 @@ constexpr const char* const kCassandraPasswordAuthenticator =
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
+extern const char* const kJwtIdentMapName;
 
 using namespace yb::ql; // NOLINT
 
@@ -264,7 +273,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
-  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+  if (FLAGS_ycql_enable_tracing_flag && request_->trace_requested()) {
     call_->EnsureTraceCreated();
     call_->trace()->set_end_to_end_traces_requested(true);
   }
@@ -279,6 +288,7 @@ void CQLProcessor::Release() {
   request_ = nullptr;
   stmts_.clear();
   parse_trees_.clear();
+  batch_query_id_.clear();
   SetCurrentSession(nullptr);
   is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(nullptr);
@@ -308,20 +318,32 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   MonoTime response_done = MonoTime::Now();
   cql_metrics_->time_to_process_request_->Increment(
       response_done.GetDeltaSince(parse_begin_).ToMicroseconds());
-  if (request_ != nullptr) {
-    cql_metrics_->time_to_execute_cql_request_->Increment(
-        response_begin.GetDeltaSince(execute_begin_).ToMicroseconds());
-  }
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
-  if (FLAGS_ycql_enable_stat_statements) {
-    const IsPrepare is_prepare(request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE);
-    const string query_id = (is_prepare ? GetPrepQueryId() : GetUnprepQueryId());
-    if (!query_id.empty()) {
-      service_impl_->UpdateStmtCounters(
-          query_id, response_done.GetDeltaSince(execute_begin_).ToSeconds()*1000.,
-          is_prepare);
+  if (request_) {
+    cql_metrics_->time_to_execute_cql_request_->Increment(
+        response_begin.GetDeltaSince(execute_begin_).ToMicroseconds());
+    if (FLAGS_ycql_enable_stat_statements) {
+      StmtType stmt_type = StmtType::kUnprepared;
+      string query_id;
+      switch (request_->opcode()) {
+        case ql::CQLMessage::Opcode::EXECUTE:
+          stmt_type = StmtType::kPrepared;
+          query_id = GetPrepQueryId();
+          break;
+        case ql::CQLMessage::Opcode::BATCH:
+          stmt_type = StmtType::kBatch;
+          query_id = GetBatchQueryId();
+          break;
+        default:
+          query_id = GetUnprepQueryId();
+          break;
+      }
+      if (!query_id.empty()) {
+        service_impl_->UpdateStmtCounters(
+            query_id, response_done.GetDeltaSince(execute_begin_).ToSeconds() * 1000., stmt_type);
+      }
     }
   }
 
@@ -421,7 +443,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
-  VLOG(1) << "Generated Query Id = " << query_id;
+  VLOG(1) << "Generated Query Id = " << b2a_hex(query_id);
   UpdateAshQueryId(query_id);
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
@@ -430,7 +452,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
-      query_id, req.query(), &ql_env_, IsPrepare::kTrue);
+      query_id, req.query(), &ql_env_, StmtType::kPrepared);
   PreparedResult::UniPtr result;
   Status s = stmt->Prepare(this, service_impl_->stmts_mem_tracker(),
                            /*internal=*/false, &result);
@@ -450,7 +472,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   }
 
   if (!s.ok()) {
-    service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
+    service_impl_->DeleteStatement(stmt, StmtType::kPrepared);
     return ProcessError(s, stmt->query_id());
   }
 
@@ -488,7 +510,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   UpdateAshQueryId(query_id);
   // Allocates space to unprepared statements in the cache.
   const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
-      query_id, req.query(), &ql_env_, IsPrepare::kFalse);
+      query_id, req.query(), &ql_env_, StmtType::kUnprepared);
 
   const auto op_code = RunAsync(req.query(), req.params(), statement_executed_cb_);
 
@@ -497,7 +519,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   // after the execution the keyspace changes, consequently the query id changes. So its entry in
   // the unprepared_stmts_map_ becomes stale. So, the corresponding entry is deleted from the cache.
   if(stmt && op_code == TreeNodeOpcode::kPTUseKeyspace) {
-    service_impl_->DeleteStatement(stmt, IsPrepare::kFalse);
+    service_impl_->DeleteStatement(stmt, StmtType::kUnprepared);
   }
   return nullptr;
 }
@@ -516,11 +538,13 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   }
 
   unique_ptr<CQLResponse> result;
+  std::vector<string> child_query_texts;
+  child_query_texts.reserve(req.queries().size());
+  bool batch_all_prepared = true;
   // For each query in the batch, look up the query id if it is a prepared statement, or prepare the
   // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
-      UpdateAshQueryId(b2a_hex(query.query_id));
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
       if (!stmt_res.ok()) {
@@ -534,10 +558,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
         result = ProcessError(parse_tree.status(), query.query_id);
         break;
       }
+      child_query_texts.push_back((*stmt_res)->text());
       batch.emplace_back(*parse_tree, query.params);
     } else {
-      UpdateAshQueryId(ToString(std::to_underlying(
-          ash::FixedQueryId::kQueryIdForUncomputedQueryId)));
+      batch_all_prepared = false;
       VLOG(1) << "BATCH QUERY " << query.query;
       ParseTree::UniPtr parse_tree;
       s = Prepare(query.query, &parse_tree);
@@ -545,6 +569,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
         result = ProcessError(s);
         break;
       }
+      child_query_texts.push_back(query.query);
       batch.emplace_back(*parse_tree, query.params);
       parse_trees_.insert(std::move(parse_tree));
     }
@@ -558,6 +583,17 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
     }
     return result;
   }
+
+  string batch_text;
+  batch_query_id_ = CQLStatement::GetBatchQueryId(
+      ql_env_.CurrentKeyspace(), child_query_texts, &batch_text);
+  // ASH query id is only set on the successful path; failed batches return above
+  // without an ASH id, matching the pre-existing behavior for failed requests.
+  UpdateAshQueryId(batch_query_id_);
+  // Batch LRU entry for UpdateStmtCounters; queryid/text exist only after the child loop.
+  // (void): we only need the cache insert; execution uses `batch` below, not this returned handle.
+  (void)service_impl_->AllocateStatement(
+      batch_query_id_, batch_text, &ql_env_, StmtType::kBatch, batch_all_prepared);
 
   ExecuteAsync(batch, statement_executed_cb_);
 
@@ -585,7 +621,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
                 << salted_hash_result;
     }
   }
-  UpdateAshQueryId(ToString(std::to_underlying(
+  UpdateAshQueryId(yb::ToString(std::to_underlying(
       ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, /*internal=*/true).ok()) {
@@ -632,6 +668,9 @@ void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::Shar
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessError(
     const Status& s, std::optional<CQLMessage::QueryId> query_id) {
+  VLOG_WITH_FUNC(2)
+      << "status: " << s << ", query: " << (query_id ? b2a_hex(*query_id) : "<NONE>")
+      << ", retry count: " << retry_count_;
   if (s.IsQLError()) {
     ErrorCode ql_errcode = GetErrorCode(s);
     if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT || ql_errcode == ErrorCode::STALE_METADATA) {
@@ -640,7 +679,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(
       // we found.
       for (auto stmt : stmts_) {
         if (stmt->stale()) {
-          service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
+          service_impl_->DeleteStatement(stmt, StmtType::kPrepared);
         }
         if (stmt->unprepared() || stmt->stale()) {
           query_id = stmt->query_id();
@@ -924,6 +963,47 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
   return true;
 }
 
+Result<bool> CheckJWTAuth(
+    const ql::AuthResponseRequest::AuthQueryParameters& params, const std::string& jwks,
+    const std::string& matching_claim_key,
+    const std::vector<std::string>& allowed_issuers,
+    const std::vector<std::string>& allowed_audience,
+    const YbgMemoryContext& ident_memctx) {
+  VLOG(4) << "Attempting JWT Authentication";
+
+  std::vector<std::string> identity_claims;
+  auto s = util::ValidateJWT(
+      params.password, jwks, matching_claim_key, allowed_issuers, allowed_audience,
+      &identity_claims);
+  if (!s.ok()) {
+    return s.CloneAndPrepend("JWT token validation failed");
+  }
+
+  // Validate identity of the IDP user vs the YCQL user.
+  // There are two cases depending on the value of jwt_matching_claim_key:
+  // 1. Single entry identity such as "sub", "email" etc. In such cases identity_claims will have a
+  // single entry and it must match the YCQL username exactly.
+  // 2. Multiple entry identity such as "groups" or "roles". In such cases identity_claims can be
+  // have multiple entries and the identity match will be successful if at least one entry matches
+  // with the YCQL username.
+  bool match = false;
+  bool use_ident_mapping = !FLAGS_ycql_ident_conf_csv.empty();
+  ScopedSetMemoryContext set_memctx(ident_memctx);
+  for (const auto& idp_identity : identity_claims) {
+    VLOG(5) << "Matching YCQL user with IDP identity: " << idp_identity;
+    PG_RETURN_NOT_OK(YbgCheckUsermap(
+      use_ident_mapping ? kJwtIdentMapName : nullptr, params.username.c_str(),
+        idp_identity.c_str(), false /* case_insensitive */, &match));
+    if (match) {
+      LOG(INFO) << "JWT identity match successful";
+      return true;
+    }
+  }
+
+  VLOG(4) << "JWT identity check failed";
+  return false;
+}
+
 static bool UserIn(const std::string& username, const std::string& users_to_skip) {
   size_t comma_index = 0;
   size_t prev_comma_index = -1;
@@ -952,7 +1032,27 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
   unique_ptr<CQLResponse> response = nullptr;
   bool authenticated = false;
 
-  if (FLAGS_ycql_use_ldap && !UserIn(params.username, FLAGS_ycql_ldap_users_to_skip_csv)) {
+  if (FLAGS_ycql_use_jwt_auth && !UserIn(params.username, FLAGS_ycql_jwt_users_to_skip_csv)) {
+    Result<bool> jwt_auth_result = CheckJWTAuth(
+        params, service_impl_->GetJwtJwks(), service_impl_->GetJwtMatchingClaimKey(),
+        service_impl_->GetJwtAllowedIssuers(), service_impl_->GetJwtAllowedAudience(),
+        service_impl_->GetJwtIdentMemCtx());
+    if (!jwt_auth_result.ok()) {
+      return make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::SERVER_ERROR,
+          "Failed to authenticate using JWT auth: " + jwt_auth_result.status().ToString());
+    } else if (!*jwt_auth_result) {
+      response = make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+          "Failed to authenticate using JWT: Provided username '" + params.username +
+          "' and/or token are incorrect");
+    } else {
+      authenticated = true;
+      call_->ql_session()->set_current_role_name(params.username);
+      response = make_unique<AuthSuccessResponse>(*request_,
+                                                  "" /* this does not matter */);
+    }
+  } else if (FLAGS_ycql_use_ldap && !UserIn(params.username, FLAGS_ycql_ldap_users_to_skip_csv)) {
     Result<bool> ldap_auth_result = CheckLDAPAuth(req.params());
     if (!ldap_auth_result.ok()) {
       return make_unique<ErrorResponse>(

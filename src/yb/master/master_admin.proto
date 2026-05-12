@@ -124,6 +124,7 @@ message IsInitDbDoneResponsePB {
 
 message SplitTabletRequestPB {
   required bytes tablet_id = 1;
+  optional int32 split_factor = 2;
 }
 
 message SplitTabletResponsePB {
@@ -367,7 +368,9 @@ service MasterAdmin {
   rpc AccessYsqlBackendsManagerTestRegister(AccessYsqlBackendsManagerTestRegisterRequestPB)
       returns (AccessYsqlBackendsManagerTestRegisterResponsePB);
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
-      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB) {
+        option (yb.rpc.send_metadata) = true;
+  }
 
   rpc DumpSysCatalogEntries(DumpSysCatalogEntriesRequestPB)
       returns (DumpSysCatalogEntriesResponsePB);

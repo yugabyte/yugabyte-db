@@ -1178,8 +1178,8 @@ insert into minmaxtest2 values(15), (16);
 insert into minmaxtest3 values(17), (18);
 explain (costs off)
   select min(f1), max(f1) from minmaxtest;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Result
    InitPlan 1 (returns $0)
      ->  Limit
@@ -1196,13 +1196,13 @@ explain (costs off)
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_2_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_3_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_4_1
 (23 rows)
 
 select min(f1), max(f1) from minmaxtest;
@@ -1214,8 +1214,8 @@ select min(f1), max(f1) from minmaxtest;
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
 /*+ Set(enable_hashagg off) */ explain (costs off) -- YB: disable hashagg to get the same plan as PG
   select distinct min(f1), max(f1) from minmaxtest;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Unique
    InitPlan 1 (returns $0)
      ->  Limit
@@ -1232,13 +1232,13 @@ select min(f1), max(f1) from minmaxtest;
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_2_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_3_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_4_1
    ->  Sort
          Sort Key: ($0), ($1)
          ->  Result
@@ -2545,20 +2545,25 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                                                    QUERY PLAN                                                                     
----------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
    Output: variance(tenk1.unique1), sum((tenk1.unique1)::bigint), regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
-   ->  Append
-         ->  Seq Scan on public.tenk1
-               Output: tenk1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_1
-               Output: tenk1_1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_2
-               Output: tenk1_2.unique1
-         ->  Seq Scan on public.tenk1 tenk1_3
-               Output: tenk1_3.unique1
-(11 rows)
+   ->  Gather
+         Output: (PARTIAL variance(tenk1.unique1)), (PARTIAL sum((tenk1.unique1)::bigint)), (PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision))
+         Workers Planned: 3
+         ->  Partial Aggregate
+               Output: PARTIAL variance(tenk1.unique1), PARTIAL sum((tenk1.unique1)::bigint), PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
+               ->  Parallel Append
+                     ->  Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
 
 SELECT variance(unique1::int4), sum(unique1::int8), regr_count(unique1::float8, unique1::float8)
 FROM (SELECT * FROM tenk1
@@ -2579,20 +2584,25 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Aggregate
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
    Output: variance((tenk1.unique1)::bigint), avg((tenk1.unique1)::numeric)
-   ->  Append
-         ->  Seq Scan on public.tenk1
-               Output: tenk1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_1
-               Output: tenk1_1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_2
-               Output: tenk1_2.unique1
-         ->  Seq Scan on public.tenk1 tenk1_3
-               Output: tenk1_3.unique1
-(11 rows)
+   ->  Gather
+         Output: (PARTIAL variance((tenk1.unique1)::bigint)), (PARTIAL avg((tenk1.unique1)::numeric))
+         Workers Planned: 3
+         ->  Partial Aggregate
+               Output: PARTIAL variance((tenk1.unique1)::bigint), PARTIAL avg((tenk1.unique1)::numeric)
+               ->  Parallel Append
+                     ->  Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
 
 SELECT variance(unique1::int8), avg(unique1::numeric)
 FROM (SELECT * FROM tenk1

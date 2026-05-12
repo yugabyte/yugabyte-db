@@ -32,6 +32,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -48,6 +49,7 @@ DECLARE_bool(enable_ysql);
 
 using namespace std::literals;
 
+using yb::docdb::DocDBTableLocksConflictMatrixTest;
 using yb::docdb::IntentTypeSetAdd;
 using yb::docdb::LockState;
 using yb::docdb::ObjectLockFastpathLockType;
@@ -67,6 +69,7 @@ constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
+constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
@@ -96,10 +99,12 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelations(
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
       const std::vector<TableLockType>& lock_types,
-      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr) {
+      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr,
+      TransactionId bg_txn = TransactionId::Nil()) {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
+    req.set_status_tablet(kDefaultTestStatusTabletId);
     for (size_t i = 0; i < relation_ids.size(); i++) {
       auto* lock = req.add_object_locks();
       lock->set_database_oid(database_id);
@@ -109,6 +114,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_lock_type(lock_types[i]);
     }
     req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    if (!bg_txn.IsNil()) {
+      req.set_background_transaction_id(bg_txn.data(), bg_txn.size());
+    }
     Synchronizer synchronizer;
     lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
     RETURN_NOT_OK(synchronizer.Wait());
@@ -116,8 +124,14 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       return Status::OK();
     }
     auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    for (auto& lock_batch_entry : res.lock_batch) {
-      (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+    bool is_lock_redundant = std::ranges::all_of(res.lock_batch, [&](auto lock_batch_entry) {
+      return docdb::LockStateContains(
+          (*state_map)[lock_batch_entry.key], IntentTypeSetAdd(lock_batch_entry.intent_types));
+    });
+    if (!is_lock_redundant) {
+      for (auto& lock_batch_entry : res.lock_batch) {
+        (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+      }
     }
     return Status::OK();
   }
@@ -125,22 +139,23 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelation(
       const ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
       TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max(),
-      LockStateMap* state_map = nullptr) {
-    return LockRelations(owner, database_id, {relation_id}, {lock_type}, deadline, state_map);
+      LockStateMap* state_map = nullptr, TransactionId bg_txn = TransactionId::Nil()) {
+    return LockRelations(
+        owner, database_id, {relation_id}, {lock_type}, deadline, state_map, bg_txn);
   }
 
   Status ReleaseLocksForSubtxn(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
     owner.PopulateReleaseRequest(&req, false /* release all locks */);
-    return lm_->ReleaseObjectLocks(req, deadline);
+    return ResultToStatus(lm_->ReleaseObjectLocks(req, deadline));
   }
 
   Status ReleaseLocksForOwner(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
     owner.PopulateReleaseRequest(&req);
-    return lm_->ReleaseObjectLocks(req, deadline);
+    return ResultToStatus(lm_->ReleaseObjectLocks(req, deadline));
   }
 
   Result<bool> LockRelationPgFastpath(
@@ -162,6 +177,22 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
 
   size_t WaitingLocksSize() {
     return lm_->TEST_WaitingLocksSize();
+  }
+
+  bool DoesLockTypeContainLock(TableLockType a, TableLockType b) {
+    auto entries1 = docdb::GetEntriesForLockType(a);
+    auto entries2 = docdb::GetEntriesForLockType(b);
+    for (auto& [key2, intent_type2] : entries2) {
+      bool contains = std::ranges::any_of(entries1, [&](auto key_and_intent) {
+        return key_and_intent.first == key2 &&
+               docdb::LockStateContains(IntentTypeSetAdd(key_and_intent.second),
+                                        IntentTypeSetAdd(intent_type2));
+      });
+      if (!contains) {
+        return false;
+      }
+    }
+    return true;
   }
 
   tserver::TSLocalLockManager* lm_;
@@ -201,6 +232,33 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathConflictMatrix) {
+  google::SetVLOGLevel("object_lock_shared*", 1);
+  auto inner_txn = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
+    auto outer_lock = TableLockType(l);
+    auto outer_entries = docdb::GetEntriesForLockType(outer_lock);
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, outer_lock));
+    for (auto fastpath_lock : docdb::ObjectLockFastpathLockTypeList()) {
+      auto inner_lock = FastpathLockTypeToTableLockType(fastpath_lock);
+      auto inner_entries = docdb::GetEntriesForLockType(inner_lock);
+      LOG(INFO) << "Checking fastpath for " << TableLockType_Name(inner_lock)
+                << " with existing lock " << TableLockType_Name(outer_lock);
+      auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(outer_entries, inner_entries));
+      auto lock_acquired = ASSERT_RESULT(LockRelationPgFastpath(
+          inner_txn.tag(), kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock));
+      ASSERT_TRUE(is_conflicting ^ lock_acquired)
+          << "lock type " << TableLockType_Name(outer_lock)
+          << ", " << TableLockType_Name(inner_lock)
+          << " - is_conflicting: " << is_conflicting
+          << ", fastpath_lock_acquired: " << lock_acquired;
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    }
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
@@ -482,7 +540,7 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
       auto lock_type_2 = TableLockType(l2);
       auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
       const auto is_conflicting = ASSERT_RESULT(
-          docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 
       if (is_conflicting) {
         SyncPoint::GetInstance()->LoadDependency({
@@ -590,6 +648,103 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResetsStateDuringShutdown) {
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "Object Lock Manager shutting down");
 }
+
+// Below test asserts that waiters are resumed despite other active waiters being amidst resumption
+// when they aren't conflicting with the in progress set.
+// - txn1 holds ACCESS_EXCLUSIVE lock
+// - txn2, txn3 & txn4 wait for EXCLUSIVE, ROW_EXCLUSIVE & ACCESS_SHARE respectively on the same key
+// - txn1 finishes, releasing just txn2, the EXCLUSIVE waiter
+// - txn2 acquires EXCLUSIVE lock on the same key for another subtxn, and then releases it
+//   signaling the wait-queue
+// - Both txn3 & txn4 are resumed from the queue, txn4 (ACCESS_SHARE) is purposefully held back from
+//   acquiring the locks for asserting the signaling mechanism.
+// - Now txn3 re-enters the wait-queue since it conflicts with EXCLUSIVE
+// - txn2 finishes, signaling the wait-queue.
+// - txn3 is now resumed despite non-zero waiters_in_resuming_state because it is non-conflicting
+TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  google::SetVLOGLevel("object_lock_manager*", 1);
+
+  const size_t kTotalNumWaiters = 3;
+  const size_t kNumExclusiveWaiters = 1;
+  const size_t kNumRowExclusiveWaiters = 1;
+  const size_t kNumAccessShareWaiters = 1;
+  ASSERT_EQ(kTotalNumWaiters,
+            kNumExclusiveWaiters + kNumRowExclusiveWaiters + kNumAccessShareWaiters);
+
+  std::atomic<bool> hold_waiter_being_resumed{false};
+  std::atomic<uint32_t> resumed_waiters{0};
+  std::vector<std::future<Status>> status_futures;
+  status_futures.reserve(kTotalNumWaiters);
+  std::vector<ObjectLockOwner> lock_owners;
+  lock_owners.reserve(kTotalNumWaiters);
+  for (size_t i = 0 ; i < kTotalNumWaiters; i++) {
+    lock_owners.push_back(ObjectLockOwner{TransactionId::GenerateRandom(), 1});
+  }
+  auto add_waiter_fn = [&](TableLockType lock_type, size_t idx) {
+    auto log_waiter = StringWaiterLogSink("added to wait-queue on");
+    status_futures.push_back(std::async(std::launch::async, [&]() {
+      return LockRelation(
+          lock_owners[idx], kDatabase1, kObject1,
+          lock_type, CoarseMonoClock::Now() + 60s);
+    }));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(5 * kTimeMultiplier)));
+  };
+
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "WaiterEntry::Resume", [&](void* arg) {
+        ++resumed_waiters;
+        auto txn_id = *(static_cast<TransactionId*>(arg));
+        while (hold_waiter_being_resumed && txn_id == lock_owners[2].txn_id) {
+          SleepFor(100ms);
+          LOG(INFO) << "Waiting for hold_waiter_being_resumed to be set to false";
+        }
+      });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  add_waiter_fn(TableLockType::EXCLUSIVE, 0);
+  add_waiter_fn(TableLockType::ROW_EXCLUSIVE, 1);
+  add_waiter_fn(TableLockType::ACCESS_SHARE, 2);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1, CoarseTimePoint::max()));
+  ASSERT_OK(WaitFor([&]() {
+    return resumed_waiters >= kNumExclusiveWaiters;
+  }, 5s * kTimeMultiplier, "Expected 1 waiter to be scheduled for resumption"));
+  ASSERT_OK(status_futures[0].get());
+  ASSERT_OK(LockRelation(
+      ObjectLockOwner{lock_owners[0].txn_id, 2}, kDatabase1, kObject1,
+      TableLockType::EXCLUSIVE, CoarseMonoClock::Now() + 60s));
+
+  hold_waiter_being_resumed = true;
+  {
+    auto log_waiter = StringWaiterLogSink("added to wait-queue on");
+    ASSERT_OK(ReleaseLocksForSubtxn(
+        ObjectLockOwner{lock_owners[0].txn_id, 2}, CoarseTimePoint::max()));
+    ASSERT_OK(WaitFor([&]() {
+      return resumed_waiters >= kTotalNumWaiters;
+    }, 5s * kTimeMultiplier, "Expected 2 more waiters to be scheduled for resumption"));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  }
+
+  auto log_waiter =
+      StringWaiterLogSink("Resuming waiter despite active waiters since they don't conflict");
+  const auto old_resumed_waiters_count = resumed_waiters.load();
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[0], CoarseTimePoint::max()));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  ASSERT_OK(WaitFor([&]() {
+    return resumed_waiters >= old_resumed_waiters_count + 1;
+  }, 5s * kTimeMultiplier, "Expected another waiter to be scheduled for resumption"));
+  ASSERT_OK(WaitFor([&]() {
+    return status_futures[1].wait_for(0s) == std::future_status::ready;
+  }, 5s * kTimeMultiplier, "Expected ROW_EXCLUSIVE waiter to have been resumed"));
+
+  hold_waiter_being_resumed = false;
+  ASSERT_OK(status_futures[2].get());
+  ASSERT_OK(status_futures[1].get());
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[1], CoarseTimePoint::max()));
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[2], CoarseTimePoint::max()));
+}
 #endif
 
 TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
@@ -623,12 +778,66 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
+TEST_F(TSLocalLockManagerTest, RedundadntLockBecomesNoOp) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      bool is_inner_lock_redundant = DoesLockTypeContainLock(lock_type_1, lock_type_2);
+      auto deadline = CoarseMonoClock::Now() + 60s;
+      LOG(INFO) << "Checking " << TableLockType_Name(lock_type_1)
+                << ", " << TableLockType_Name(lock_type_2);
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1, deadline));
+      auto log_waiter = is_inner_lock_redundant
+          ? RegexWaiterLogSink(".*Ignoring redundant acquire.*")
+          : RegexWaiterLogSink(".*Locking key :.*with existing state:.*");
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_2, deadline));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    }
+  }
+}
+
+TEST_F(TSLocalLockManagerTest, TestConflictsWithBgTxnAreIgnored) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    auto entries1 = docdb::GetEntriesForLockType(lock_type_1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
+      const auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+      if (!is_conflicting) {
+        continue;
+      }
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_1, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn1, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn2.txn_id));
+
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+      ASSERT_EQ(GrantedLocksSize(), 0);
+      ASSERT_EQ(WaitingLocksSize(), 0);
+    }
+  }
+}
+
 class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
  public:
   void BeforeSharedMemorySetup() override {
     DdlLockEntriesPB entries;
     auto* lock_request = entries.mutable_lock_entries()->Add();
     lock_request->set_txn_id(kTxn1.txn_id.data(), kTxn1.txn_id.size());
+    lock_request->set_status_tablet(kDefaultTestStatusTabletId);
     lock_request->set_subtxn_id(kTxn1.subtxn_id);
     auto* lock = lock_request->mutable_object_locks()->Add();
     lock->set_database_oid(kDatabase1);

@@ -3,7 +3,10 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -15,17 +18,23 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.EditSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
 @Abortable
+@Retryable
 public class UpdatePitrConfig extends UniverseTaskBase {
 
   private static long MAX_WAIT_TIME_MS = TimeUnit.MINUTES.toMillis(2);
   private static long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected UpdatePitrConfig(BaseTaskDependencies baseTaskDependencies) {
+  protected UpdatePitrConfig(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -52,6 +61,9 @@ public class UpdatePitrConfig extends UniverseTaskBase {
 
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams().pitrConfigUUID);
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (taskParams().getKubernetesResourceDetails() != null) {
+      pitrConfig.setKubernetesResourceDetails(taskParams().getKubernetesResourceDetails());
+    }
 
     try (YBClient client = ybService.getUniverseClient(universe)) {
       ListSnapshotSchedulesResponse scheduleListResp =
@@ -108,9 +120,14 @@ public class UpdatePitrConfig extends UniverseTaskBase {
 
       log.debug("Successfully updated pitr config with uuid {}", pitrConfig.getUuid());
     } catch (Exception e) {
+      pitrConfig.setState(State.FAILED);
+      kubernetesStatus.updatePitrConfigStatus(pitrConfig, getName(), getUserTaskUUID());
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     }
+
+    pitrConfig.setState(State.COMPLETE);
+    kubernetesStatus.updatePitrConfigStatus(pitrConfig, getName(), getUserTaskUUID());
 
     log.info("Completed {}", getName());
   }

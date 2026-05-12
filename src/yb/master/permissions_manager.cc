@@ -92,7 +92,7 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   LockGuard lock(mutex_);
 
   bool userExists = (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr);
-  if (GetAtomicFlag(&FLAGS_ycql_allow_cassandra_drop)) {
+  if (FLAGS_ycql_allow_cassandra_drop) {
     bool userAlreadyCreated =
         security_config_->LockForRead()->pb.security_config().cassandra_user_created();
 
@@ -134,7 +134,7 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash, kBcryptHashSize),
                                 true, true, term, false /* Don't increment the roles version */);
   if (PREDICT_TRUE(s.ok())) {
-    if (GetAtomicFlag(&FLAGS_ycql_allow_cassandra_drop)) {
+    if (FLAGS_ycql_allow_cassandra_drop) {
       auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
       l.mutable_data()->pb.mutable_security_config()->set_cassandra_user_created(true);
       RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(term, security_config_));

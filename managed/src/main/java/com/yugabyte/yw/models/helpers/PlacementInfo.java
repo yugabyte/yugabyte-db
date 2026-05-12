@@ -4,13 +4,16 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.yugabyte.yw.common.utils.Pair;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
@@ -26,10 +29,14 @@ public class PlacementInfo {
     @ApiModelProperty public String code;
     // The list of region in this cloud we want to place data in.
     @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<>();
+
     // UUID of default region. For universes with more AZs than RF, the default
     // placement for user tables will be RF AZs in the default region. This is
     // commonly encountered in geo-partitioning use cases.
-    @ApiModelProperty public UUID defaultRegion;
+    /**
+     * @deprecated Instead use default GeoPartition
+     */
+    @Deprecated @ApiModelProperty public UUID defaultRegion;
 
     @Override
     public String toString() {
@@ -86,9 +93,18 @@ public class PlacementInfo {
     @ApiModelProperty public boolean isAffinitized;
     // The Load Balancer id.
     @ApiModelProperty public String lbName;
-    // Priority of zone (for leaders placement). Values have to be contiguous non-zero integers.
+    // Priority of zone (for leaders placement). Values have to be non-negative contiguous integers.
+    // Zero means not prioritized.
     // Multiple zones can have the same value. A lower value indicates higher zone priority.
     @ApiModelProperty public int leaderPreference;
+
+    // Start index of tserver statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int tsStsIndex = 0;
+
+    // Start index of master statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int masterStsIndex = 0;
 
     @Override
     public String toString() {
@@ -112,9 +128,41 @@ public class PlacementInfo {
         .flatMap(region -> region.azList.stream());
   }
 
+  public static class PlacementAZInfo {
+    public final PlacementAZ placementAZ;
+    public final PlacementRegion region;
+    public final PlacementCloud cloud;
+
+    public PlacementAZInfo(PlacementAZ placementAZ, PlacementRegion region, PlacementCloud cloud) {
+      this.placementAZ = placementAZ;
+      this.region = region;
+      this.cloud = cloud;
+    }
+  }
+
+  @JsonIgnore
+  public Stream<PlacementAZInfo> azInfoStream() {
+    return cloudList.stream()
+        .flatMap(cloud -> cloud.regionList.stream().map(r -> new Pair<>(r, cloud)))
+        .flatMap(
+            r ->
+                r.getFirst().azList.stream()
+                    .map(az -> new PlacementAZInfo(az, r.getFirst(), r.getSecond())));
+  }
+
+  @JsonIgnore
+  public Set<UUID> getAllAZUUIDs() {
+    return azStream().map(az -> az.uuid).collect(Collectors.toSet());
+  }
+
   @JsonIgnore
   public PlacementAZ findByAZUUID(UUID azUUID) {
     return azStream().filter(az -> Objects.equals(azUUID, az.uuid)).findFirst().orElse(null);
+  }
+
+  @JsonIgnore
+  public PlacementAZ findByAZCode(String azCode) {
+    return azStream().filter(az -> StringUtils.equals(azCode, az.name)).findFirst().orElse(null);
   }
 
   @Override

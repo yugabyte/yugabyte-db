@@ -41,7 +41,12 @@ properties:
   provider_spec:
     $ref: "./ClusterProviderSpec.yaml"
   placement_spec:
+    description: Overall placement for cluster.
     $ref: "./ClusterPlacementSpec.yaml"
+  partitions_spec:
+    type: array
+    items:
+      $ref: "./ClusterPartitionSpec.yaml"
   use_spot_instance:
     description: Whether to use spot instances for nodes in aws/gcp. Used in dev/test environments.
     type: boolean

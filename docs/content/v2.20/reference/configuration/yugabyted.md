@@ -382,7 +382,7 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 
 ### demo
 
-Use the `yugabyted demo` command to use the demo [Northwind sample dataset](../../../sample-data/northwind/) with YugabyteDB.
+Use the `yugabyted demo` command to use the demo [Northwind sample dataset](/stable/develop/sample-data/northwind/) with YugabyteDB.
 
 #### Syntax
 
@@ -399,7 +399,7 @@ The following sub-commands are available for the `yugabyted demo` command:
 
 #### connect
 
-Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
+Use the `yugabyted demo connect` sub-command to load the [Northwind sample dataset](/stable/develop/sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
 
 #### destroy
 
@@ -439,7 +439,7 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) workloads in your local environment.
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
@@ -512,9 +512,6 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 --read_replica *read_replica_node*
 : Use this flag to start a read replica node.
-
---enable_pg_parity_early_access *PostgreSQL-compatibilty*
-: Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
 
 #### Advanced flags
 
@@ -1061,7 +1058,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster in Docker
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/stable/quick-start/docker/).
 
 The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 
@@ -1076,21 +1073,21 @@ docker network create yb-network
 docker run -d --name yugabytedb-node1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="v2.20" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="v2.20" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="v2.20" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -1388,7 +1385,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
       --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base-dir` flag.
+1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base_dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 

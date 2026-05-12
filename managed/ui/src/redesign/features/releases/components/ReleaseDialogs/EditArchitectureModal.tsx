@@ -32,7 +32,7 @@ import {
   REFETCH_URL_METADATA_MS
 } from '../../helpers/constants';
 
-import KubernetesLogo from '../../../../../redesign/assets/kubernetes.svg';
+import KubernetesLogo from '../../../../../redesign/assets/kubernetes.svg?img';
 
 interface EditArchitectureModalProps {
   data: Releases;

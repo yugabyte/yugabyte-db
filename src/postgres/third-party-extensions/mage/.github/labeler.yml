@@ -1,0 +1,17 @@
+PG11:
+- base-branch: 'PG11'
+
+PG12:
+- base-branch: 'PG12'
+
+PG13:
+- base-branch: 'PG13'
+
+PG14:
+- base-branch: 'PG14'
+
+PG15:
+- base-branch: 'PG15'
+
+master:
+- base-branch: 'master'

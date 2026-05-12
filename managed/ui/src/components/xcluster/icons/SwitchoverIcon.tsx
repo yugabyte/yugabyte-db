@@ -1,5 +1,5 @@
 import { useTheme } from '@material-ui/core';
-import { ReactComponent as SwitchoverIconSvg } from '../../../redesign/assets/switchover.svg';
+import SwitchoverIconSvg from '../../../redesign/assets/switchover.svg';
 
 interface SwitchoverIconProps {
   isDisabled?: boolean;

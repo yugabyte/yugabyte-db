@@ -22,8 +22,8 @@ import { UnavailableUniverseStates } from '../../../../redesign/helpers/constant
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
-import { ReactComponent as SelectedIcon } from '../../../../redesign/assets/circle-selected.svg';
-import { ReactComponent as UnselectedIcon } from '../../../../redesign/assets/circle-empty.svg';
+import SelectedIcon from '../../../../redesign/assets/circle-selected.svg';
+import UnselectedIcon from '../../../../redesign/assets/circle-empty.svg';
 import { getXClusterConfig } from '../utils';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import {

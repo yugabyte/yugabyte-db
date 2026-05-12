@@ -343,6 +343,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 	WRITE_INT_FIELD(yb_num_referenced_relations);
+	WRITE_UINT64_FIELD(ybPlanId);
 }
 
 /*
@@ -382,6 +383,9 @@ _outScanInfo(StringInfo str, const Scan *node)
 	_outPlanInfo(str, (const Plan *) node);
 
 	WRITE_UINT_FIELD(scanrelid);
+
+	/* YB */
+	WRITE_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -634,6 +638,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
 	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_INT_FIELD(yb_num_decoded_pk_cols);
 }
 
 static void
@@ -1069,6 +1074,9 @@ _outHash(StringInfo str, const Hash *node)
 	WRITE_INT_FIELD(skewColumn);
 	WRITE_BOOL_FIELD(skewInherit);
 	WRITE_FLOAT_FIELD(rows_total, "%.0f");
+
+	/* YB */
+	WRITE_STRING_FIELD(ybSkewTableName);
 }
 
 static void
@@ -4092,6 +4100,37 @@ _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *nod
 	WRITE_BITMAPSET_FIELD(matrix.data);
 }
 
+static void
+_outYbMergeScanInfo(StringInfo str, const YbMergeScanInfo *node)
+{
+	WRITE_NODE_TYPE("YBMERGESCANINFO");
+
+	WRITE_NODE_FIELD(saop_cols);
+	WRITE_NODE_FIELD(sort_cols);
+}
+
+static void
+_outYbMergeScanSaopColInfo(StringInfo str, const YbMergeScanSaopColInfo *node)
+{
+	WRITE_NODE_TYPE("YBMERGESCANSAOPCOLINFO");
+
+	WRITE_NODE_FIELD(saop);
+	WRITE_INT_FIELD(indexcol);
+	WRITE_INT_FIELD(num_elems);
+}
+
+static void
+_outYbSortInfo(StringInfo str, const YbSortInfo *node)
+{
+	WRITE_NODE_TYPE("YBSORTINFO");
+
+	WRITE_INT_FIELD(numCols);
+	WRITE_ATTRNUMBER_ARRAY(sortColIdx, node->numCols);
+	WRITE_OID_ARRAY(sortOperators, node->numCols);
+	WRITE_OID_ARRAY(collations, node->numCols);
+	WRITE_BOOL_ARRAY(nullsFirst, node->numCols);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4818,6 +4857,9 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
+			case T_YbPartitionPruneStepFuncOp:
+				_outYbPartitionPruneStepFuncOp(str, obj);
+				break;
 			case T_YbExprColrefDesc:
 				_outYbExprColrefDesc(str, obj);
 				break;
@@ -4826,6 +4868,15 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_YbUpdateAffectedEntities:
 				_outYbUpdateAffectedEntities(str, obj);
+				break;
+			case T_YbMergeScanInfo:
+				_outYbMergeScanInfo(str, obj);
+				break;
+			case T_YbMergeScanSaopColInfo:
+				_outYbMergeScanSaopColInfo(str, obj);
+				break;
+			case T_YbSortInfo:
+				_outYbSortInfo(str, obj);
 				break;
 
 			default:

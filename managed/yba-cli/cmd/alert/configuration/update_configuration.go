@@ -32,7 +32,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No name specified to update alert policy\n",
@@ -57,13 +57,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 			).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Update - List Alert Configurations",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Update - List Alert Configurations")
 		}
 		for _, alertConfig := range alertConfigs {
 			if strings.Compare(alertConfig.GetName(), name) == 0 {
@@ -72,7 +66,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(existingAlertConfig.GetUuid())) == 0 {
+		if util.IsEmptyString(existingAlertConfig.GetUuid()) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"Alert policy with name: "+name+" not found\n",
@@ -83,7 +77,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(newName)) != 0 {
+		if !util.IsEmptyString(newName) {
 			logrus.Debug("Updating alert policy name\n")
 			existingAlertConfig.SetName(newName)
 		}
@@ -92,7 +86,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(description)) != 0 {
+		if !util.IsEmptyString(description) {
 			logrus.Debug("Updating alert policy description\n")
 			existingAlertConfig.SetDescription(description)
 		}
@@ -104,12 +98,12 @@ var updateConfigurationAlertCmd = &cobra.Command{
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			targets := existingAlertConfig.GetTarget()
-			if len(strings.TrimSpace(targetUUIDsString)) > 0 {
+			if !util.IsEmptyString(targetUUIDsString) {
 				targetUUIDs := strings.Split(targetUUIDsString, ",")
 				logrus.Debug("Updating alert policy target uuids\n")
 				targets.SetAll(false)
 				targets.SetUuids(targetUUIDs)
-			} else if len(strings.TrimSpace(targetUUIDsString)) == 0 {
+			} else if util.IsEmptyString(targetUUIDsString) {
 				logrus.Debug("Updating alert policy target to all\n")
 				targets.SetAll(true)
 				targets.SetUuids([]string{})
@@ -145,7 +139,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(destinationType)) > 0 {
+		if !util.IsEmptyString(destinationType) {
 			switch destinationType {
 			case "no":
 				destinationType = util.NoDestinationAlertConfigurationDestinationType
@@ -175,13 +169,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		}
 		rList, response, err := authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Update - List Alert Destinations",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Update - List Alert Destinations")
 		}
 		if len(destination) != 0 {
 			for _, r := range rList {
@@ -217,7 +205,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(state)) > 0 {
+		if !util.IsEmptyString(state) {
 			active := false
 			state = strings.ToUpper(state)
 			if state == util.EnableOpType {
@@ -231,21 +219,20 @@ var updateConfigurationAlertCmd = &cobra.Command{
 			UpdateAlertConfigurationRequest(existingAlertConfig).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Update",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Update")
 		}
 
-		alertConfigUUID := r.GetUuid()
+		alertConfig := util.CheckAndDereference(
+			r,
+			fmt.Sprintf("An error occurred while updating alert policy %s", name),
+		)
 
-		if len(strings.TrimSpace(alertConfigUUID)) == 0 {
+		alertConfigUUID := alertConfig.GetUuid()
+
+		if util.IsEmptyString(alertConfigUUID) {
 			logrus.Fatal(formatter.Colorize(
 				fmt.Sprintf(
-					"An error occurred while adding alert policy %s\n",
+					"An error occurred while updating alert policy %s\n",
 					name),
 				formatter.RedColor))
 		}
@@ -257,7 +244,7 @@ var updateConfigurationAlertCmd = &cobra.Command{
 		populateAlertDestinationAndTemplates(authAPI, "Update")
 
 		alerts := make([]ybaclient.AlertConfiguration, 0)
-		alerts = append(alerts, r)
+		alerts = append(alerts, alertConfig)
 		alertCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,

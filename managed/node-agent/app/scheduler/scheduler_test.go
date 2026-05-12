@@ -22,14 +22,10 @@ func TestScheduler(t *testing.T) {
 	})
 	count := 0
 	maxCount := 3
-loop:
-	for {
-		select {
-		case <-ch:
-			count++
-			if count >= maxCount {
-				break loop
-			}
+	for range ch {
+		count++
+		if count >= maxCount {
+			break
 		}
 	}
 	elapasedTime := time.Since(start)

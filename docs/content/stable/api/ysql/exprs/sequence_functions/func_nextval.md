@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-exprs-nextval
     parent: sequence-functions
+aliases:
+  - /stable/api/ysql/exprs/func_nextval
 type: docs
 ---
 

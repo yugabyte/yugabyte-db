@@ -6,23 +6,23 @@ SET documentdb.next_collection_index_id TO 3140;
 
 
 -- collection agnostic with no pipeline should work and return 0 rows.
-SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');
+SELECT document from bson_aggregation_pipeline('agnosticTests', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 100, "lsid" : { "id" : { "$binary" : { "base64": "AAAAAA==", "subType" : "04" } } }, "$db" : "agnosticTests" }');
 
 
 -- $document tests
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [] } ], "cursor": {}}');
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [] } ], "cursor": {}}');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }], "cursor": {} }');
 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": { "$isArray": "a" } }, { "b": 2 } ] }], "cursor": {}}');
-EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": { "$isArray": "field1" } }, { "field2": 20 } ] }], "cursor": {}}');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }], "cursor": {} }');
 
-EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }, { "$addFields": { "b": 1 } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }, { "$addFields": { "field2": 30 } } ], "cursor": {} }');
 
 -- error cases
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": null }], "cursor": {} }');
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": "String Value" }], "cursor": {} }');
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": {} }], "cursor": {}}');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": null }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": "String Value" }], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": {} }], "cursor": {}}');
 
 
 -- bugfix scenario:
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [{ "$documents": [ { "playerId": "PlayerA", "gameId": "G1", "score": 1 } ] }, { "$group": { "_id": "$gameId", "firstFiveScores": { "$firstN": { "input": "$score", "n": 5 } } } } ] }');
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [{ "$documents": [ { "userId": "User1", "sessionId": "S1", "points": 100 } ] }, { "$group": { "_id": "$sessionId", "firstFivePoints": { "$firstN": { "input": "$points", "n": 5 } } } } ] }');

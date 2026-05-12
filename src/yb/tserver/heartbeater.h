@@ -75,7 +75,7 @@ class Heartbeater {
   void operator=(const Heartbeater& other) = delete;
 
   Status Start();
-  Status Stop();
+  void Shutdown();
 
   // Trigger a heartbeat as soon as possible, even if the normal
   // heartbeat interval has not expired.

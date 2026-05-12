@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
@@ -25,17 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
 
-  private final AutoFlagUtil autoFlagUtil;
-  private final GFlagsValidation gFlagsValidation;
-
   @Inject
-  protected CheckXUniverseAutoFlags(
-      BaseTaskDependencies baseTaskDependencies,
-      GFlagsValidation gFlagsValidation,
-      AutoFlagUtil autoFlagUtil) {
+  protected CheckXUniverseAutoFlags(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.gFlagsValidation = gFlagsValidation;
-    this.autoFlagUtil = autoFlagUtil;
   }
 
   public static class Params extends ServerSubTaskParams {

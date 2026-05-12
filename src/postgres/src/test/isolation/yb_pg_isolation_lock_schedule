@@ -3,5 +3,6 @@ test: yb.port.deadlock-hard
 test: yb.port.deadlock-soft
 test: yb.port.deadlock-soft-2
 test: create-trigger
-# TODO(#26792): Enable the test once we add support for honoring lock_timeout.
-# test: timeouts
+# TODO(#29549): Port row-level lock timeout tests once lock_timeout is supported for row-level locks.
+test: yb.port.timeouts
+test: yb.port.partition-drop-index-locking

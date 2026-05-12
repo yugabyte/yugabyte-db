@@ -16,7 +16,7 @@ PGFILEDESC = "PL/pgSQL - procedural language"
 NAME= plpgsql
 
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
-SHLIB_LINK = $(filter -lintl, $(LIBS))
+SHLIB_LINK = $(filter -lintl, $(LIBS)) -L$(YB_BUILD_ROOT)/lib -lyb_pggate
 rpath =
 
 OBJS = \

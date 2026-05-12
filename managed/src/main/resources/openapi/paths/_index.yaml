@@ -203,7 +203,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -244,7 +244,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -295,7 +295,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -324,7 +324,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -365,7 +365,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -406,7 +406,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -731,7 +731,7 @@
           path: customers
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}':
   parameters:
     - name: cUUID
@@ -885,6 +885,49 @@
           sourceType: REQUEST_BODY
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListUniverses
+    summary: List universes
+    description: |
+      Returns universes for the specified customer
+      WARNING: This is a preview API that could change.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniversePagedReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/UniversePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/clusters':
   parameters:
@@ -1334,6 +1377,58 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software/resume-canary':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: resumeCanarySoftwareUpgrade
+    summary: Resume canary software upgrade
+    description: Queues a task to resume a paused canary software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseResumeCanaryUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeSoftware
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck':
   parameters:
     - name: cUUID
@@ -1700,7 +1795,49 @@
           path: universes
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
+  delete:
+    operationId: rollbackDetachUniverse
+    summary: Rollback detach universe
+    description: |
+      Invoke this from the YBA that should reclaim ownership of a universe that is currently in a detached
+      state (ie. if this API has been invoked on the universe POST /customers/{cUUID}/universes/{uniUUID}/detach,
+      on that YBA instance). A Universe can be managed only by a single instance of YBA at any time. So,
+      for cases where the universe was attached to another YBA
+      (ie. using POST /customers/{cUUID}/universes/{uniUUID}/attach), only isForceRollback=true
+      can be used to rollback the detach operation in such case.
+    tags:
+      - Universe
+    parameters:
+      - name: isForceRollback
+        in: query
+        description: Force rollback without checking current owner or detached state.
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        description: Successfully rolled back detach universe operation
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: RollbackDetach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: update
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach':
   parameters:
     - name: cUUID
@@ -1747,7 +1884,7 @@
           sourceType: endpoint
     x-yba-api-multipart: true
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach-detach-metadata':
   parameters:
     - name: cUUID
@@ -1791,7 +1928,7 @@
           path: universes
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/query-log-config':
   parameters:
     - name: cUUID
@@ -1891,7 +2028,490 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: configureExportTelemetryConfig
+    summary: Configure export telemetry configs (unified API)
+    description: |
+      Configure all telemetry export configs (audit logs, query logs, metrics) for a universe
+      in a single idempotent API. Replaces the separate audit_log_config, query-log-config,
+      and metrics-export-config APIs.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/ExportTelemetryConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ConfigureExportTelemetryConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/operator-import':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniverse
+    summary: Import universe to operator
+    description: Import universe to operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: OperatorImportUniverse
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniversePrecheck
+    summary: Precheck universe import to operator
+    description: Run precheck to ensure the universe can be imported to the operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '200':
+        description: Successfully prechecked universe import to operator.
+      '400':
+        description: Universe and its related resources are not in a valid state to be imported to the operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/run-script':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: runScript
+    summary: Run a script on database nodes
+    description: |
+      Execute a bash script on one or more nodes in the universe. The script can be provided
+      inline as content or as a path to a file on the YugabyteDB Anywhere node. Results including stdout,
+      stderr, and exit codes are returned for each node.
+
+      This API requires the runtime configuration `yb.node_script.enabled` to be set to true
+      for the universe.
+
+      **Important**: Scripts are executed remotely on database nodes via SSH or Node Agent. Once a
+      script starts executing on a node, it cannot be cancelled remotely. If this API times out or
+      fails while waiting for results, scripts that have already started may continue running on
+      the remote nodes until completion. For this reason, scripts should ideally be:
+      - **Short-lived**: Avoid long-running operations
+      - **Idempotent**: Safe to run multiple times if retried
+      - **Self-terminating**: Include appropriate timeouts within the script itself
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/RunScriptReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/RunScriptResp.yaml"
+      '400':
+        description: Invalid input or feature not enabled
+      '403':
+        description: Feature not enabled for this universe
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: createFileCollection
+    summary: Collect files from database nodes
+    description: |
+      Collect specified files from one or more nodes in the universe. Files can be collected
+      by specifying individual file paths or directory paths. The files are packaged into a
+      tar.gz archive on each database node.
+
+      This API requires the runtime configuration `yb.node_script.enabled` to be set to true
+      for the universe.
+
+      **Important**: The response includes `collection_uuid` which can be used with the
+      download and cleanup endpoints. The tar files are stored on the database nodes and
+      can be downloaded using GET /file-collections/{collectionUUID}/download.
+
+      **Security**: This API is restricted to localhost access only. It can only be called from
+      the same machine where YugabyteDB Anywhere is running.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/CollectFilesReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CollectFilesResp.yaml"
+      '400':
+        description: Invalid input or feature not enabled
+      '403':
+        description: Feature not enabled for this universe or not accessed from localhost
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: CreateFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: collectionUUID
+      in: path
+      description: Collection UUID returned by create file collection API
+      schema:
+        type: string
+        format: uuid
+      required: true
+  get:
+    operationId: downloadFileCollection
+    summary: Download collected files
+    description: |
+      Download previously collected files from database nodes. Use the collection_uuid
+      returned by the create file collection API (POST /file-collections) to identify
+      which files to download.
+
+      This API downloads the tar.gz archives from each database node and streams them
+      back to the client as a combined archive.
+
+      **Note**: By default, this API does NOT have localhost restriction and can be
+      called from any authorized client. However, if cleanup_db_nodes_after=true is specified,
+      localhost restriction applies since it modifies files on database nodes.
+    tags:
+      - Universe
+    parameters:
+      - name: cleanup_db_nodes_after
+        in: query
+        description: |
+          If true, automatically delete the collected files from DB nodes after successful download.
+          This is equivalent to calling DELETE /file-collections/{collectionUUID} with
+          delete_from_db_nodes=true after the download completes.
+          Default is false (files remain on DB nodes until explicitly deleted).
+          **Security**: When this is set to true, localhost restriction applies.
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        description: Binary tar.gz archive containing all collected files
+        content:
+          application/gzip:
+            schema:
+              type: string
+              format: binary
+      '400':
+        description: Collection not found or already cleaned up
+      '403':
+        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost'
+      '404':
+        description: Collection not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DownloadFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: DEBUG
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: collectionUUID
+      in: path
+      description: Collection UUID returned by create file collection API
+      schema:
+        type: string
+        format: uuid
+      required: true
+  delete:
+    operationId: deleteFileCollection
+    summary: Delete collected files from database nodes and/or YBA
+    description: |
+      Delete tar archives created by the create file collection API. By default, this only
+      deletes files from DB nodes. Use `delete_from_yba=true` to also remove downloaded
+      files from YBA local storage.
+
+      Use this API when you are done downloading the collected files and want to free up
+      disk space on the database nodes and/or YBA server.
+
+      **Security**: This API can only be called from localhost (the YBA server itself).
+      This restriction exists because it modifies files on database nodes.
+    tags:
+      - Universe
+    parameters:
+      - name: delete_from_db_nodes
+        in: query
+        description: Whether to delete tar files from database nodes
+        schema:
+          type: boolean
+          default: true
+        required: false
+      - name: delete_from_yba
+        in: query
+        description: Whether to delete downloaded files from YBA local storage
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        $ref: "../components/responses/CleanupCollectionResp.yaml"
+      '400':
+        description: Collection not found or already cleaned up
+      '403':
+        description: API not called from localhost or feature not enabled
+      '404':
+        description: Collection not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DeleteFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: resizeNodes
+    summary: Resize nodes in YBDB Universe.
+    description: |
+      Update the nodes' size. Size can include the instance type and number/size of disks, in
+      addition to updating related gflags and cgroups to match the resize.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseResizeNodesReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ResizeNode
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

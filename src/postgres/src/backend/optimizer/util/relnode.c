@@ -298,6 +298,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->ybHintAlias = NULL;
 	rel->ybBlockId = 0;
 	rel->ybRoot = root;
+	rel->ybRelationName = NULL;
 
 	/*
 	 * Pass assorted information down the inheritance hierarchy.
@@ -405,12 +406,19 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 
 	if (IsYugaByteEnabled())
 	{
-		if (rte->ybHintAlias != NULL)
+		rte->ybScannedObjectName = rel->ybRelationName;
+		if (rte->ybHintAlias != NULL && rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
 		{
 			/*
 			 * This code path is taken when we have an INSERT, UPDATE, DELETE, or MERGE statement
 			 * and have already processed the target RTE (when PlannerGlobal instance was allocated
 			 * standard_planner()). Just place the information on 'rel'.
+			 *
+			 * However, for rels the are of kind RELOPT_OTHER_MEMBER_REL, e.g. children in an inheritance
+			 * hierarchy, or an individual partition of a partitioned table, we do not want to take
+			 * this path and use the hint alias but rather generate a unique one. For these cases,
+			 * PG assigns the same alias to the children as the one used for the parent, which makes
+			 * hint generation incorrect and makes hinting individual partitions/children impossible.
 			 */
 			rel->ybHintAlias = rte->ybHintAlias;
 			rel->ybBlockId = root->ybBlockId;
@@ -431,6 +439,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			 * Assign a unique id to the rel.
 			 */
 			rel->ybUniqueBaseId = ++(glob->ybBaseRelCnt);
+			rte->ybUniqueBaseId = rel->ybUniqueBaseId;
 
 			/*
 			 * Start with the existing rel alias.
@@ -814,6 +823,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->ybHintAlias = NULL;
 	joinrel->ybBlockId = 0;
 	joinrel->ybRoot = root;
+	joinrel->ybRelationName = NULL;
 
 	/* Compute information relevant to the foreign relations. */
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
@@ -1387,6 +1397,7 @@ fetch_upper_rel(PlannerInfo *root, UpperRelationKind kind, Relids relids)
 	upperrel->ybHintAlias = NULL;
 	upperrel->ybBlockId = 0;
 	upperrel->ybRoot = root;
+	upperrel->ybRelationName = NULL;
 
 	root->upper_rels[kind] = lappend(root->upper_rels[kind], upperrel);
 

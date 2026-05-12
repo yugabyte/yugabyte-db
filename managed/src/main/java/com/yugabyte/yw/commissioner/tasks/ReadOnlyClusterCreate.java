@@ -70,12 +70,16 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     Cluster cluster = taskParams().getReadOnlyClusters().get(0);
     universe
         .getUniverseDetails()
-        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+        .upsertCluster(
+            cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     updateTaskDetailsInDB(taskParams());
   }
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = null;
     try {
@@ -115,7 +119,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
-          false /* do validation of gflags */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;
@@ -146,8 +150,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Start ybc process on all the nodes
       if (taskParams().isEnableYbc()) {
-        createStartYbcProcessTasks(
-            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(newTservers);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }

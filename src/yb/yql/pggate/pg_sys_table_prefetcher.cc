@@ -34,6 +34,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
@@ -210,6 +211,22 @@ void AddTargetColumn(LWPgsqlReadRequestPB* req, const PgColumn& column) {
   }
 }
 
+auto TemporaryClearInsignificantFields(LWPgsqlReadRequestPB& req) {
+  const auto stmt_id = req.has_stmt_id() ? std::optional(req.stmt_id()) : std::nullopt;
+  req.clear_stmt_id();
+  const auto metrics_capture =
+    req.has_metrics_capture() ? std::optional(req.metrics_capture()) : std::nullopt;
+  req.clear_metrics_capture();
+  return ScopeExit([&req, stmt_id, metrics_capture] () {
+    if (stmt_id) {
+      req.set_stmt_id(*stmt_id);
+    }
+    if (metrics_capture) {
+      req.set_metrics_capture(*metrics_capture);
+    }
+  });
+}
+
 using google::protobuf::io::CodedOutputStream;
 
 template<class PB>
@@ -265,15 +282,8 @@ class VersionInfoWriter {
   out = WritePBWithSize(out, read_time_pb ? &*read_time_pb : nullptr);
   for (const auto& o : ops) {
     auto& req = o.operation->read_request();
-    std::optional<uint64_t> stmt_id;
-    if (req.has_stmt_id()) {
-      stmt_id = req.stmt_id();
-      req.clear_stmt_id();
-    }
-    out = WritePBWithSize(out, &o.operation->read_request());
-    if (stmt_id) {
-      req.set_stmt_id(*stmt_id);
-    }
+    auto fields_restorer = TemporaryClearInsignificantFields(req);
+    out = WritePBWithSize(out, &req);
   }
   const auto actual_size = out - start;
   DCHECK_LE(actual_size, total_size);
@@ -319,13 +329,15 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 }
 
 Result<rpc::CallResponsePtr> Run(
-    yb::ThreadSafeArena* arena, PgSession* session,
-    const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  PgDocResponse response(VERIFY_RESULT(options.caching_info
-      ? session->RunAsync(
+    yb::ThreadSafeArena* arena, PgSession* session, const std::vector<OperationInfo>& ops,
+    const PrefetcherOptions& options) {
+  PgDocResponse response(
+      VERIFY_RESULT(session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
-          BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
+          options.caching_info
+              ? std::optional(BuildCacheOptions(
+                  arena, session->catalog_read_time(), ops, *options.caching_info))
+              : std::nullopt)),
       {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
@@ -374,10 +386,11 @@ class Loader {
         table->schema().table_properties().is_ysql_catalog_table(),
         InternalError,
         Format("$0 $1 is not a catalog table", item.table_id, table->table_name().table_name()));
-    // System tables are not region local.
+    // System tables has empty (default) table locality.
     op_info_.emplace_back(
-        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */,
-                                     session_->metrics().metrics_capture()),
+        ArenaMakeShared<PgsqlReadOp>(
+            arena_, &*arena_, *table, YbcPgTableLocalityInfo{},
+            session_->metrics().metrics_capture()),
         table, index);
     auto& info = op_info_.back();
     auto& req = info.operation->read_request();
@@ -404,7 +417,6 @@ class Loader {
           index_req.dup_table_id(index->relfilenode_id().GetYbTableId());
           SetupPaging(&index_req);
           AddTargetColumn(&index_req, column);
-          info.index_targets.push_back(column.id());
           break;
         }
       }

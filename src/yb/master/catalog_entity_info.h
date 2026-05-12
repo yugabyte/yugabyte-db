@@ -49,6 +49,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
@@ -90,6 +91,10 @@ struct ExternalTableSnapshotData {
   // tables' schemas and schema versions are added to the target tablet's superblock when applying
   // the clone_op.
   std::optional<int> new_table_schema_version = std::nullopt;
+  // When false, skip old DocDB vs new DocDB schema equality checks at import time for this table.
+  // This is set to false for YSQL tables that were undergoing DDL verification at backup time
+  // (i.e. the SysTablesEntryPB has ysql_ddl_txn_verifier_state).
+  bool validate_schema = true;
 };
 using ExternalTableSnapshotDataMap = std::unordered_map<TableId, ExternalTableSnapshotData>;
 
@@ -606,6 +611,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return SysTablesEntryPB_State_Name(pb.state());
   }
 
+  const std::string& hide_state_name() const {
+    return SysTablesEntryPB_HideState_Name(pb.hide_state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 
@@ -661,6 +670,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
   bool is_deleted() const;
   bool is_hidden() const;
+  bool started_hiding() const;
   bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
@@ -706,10 +716,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_matview() const;
 
   // Return the table's ID. Does not require synchronization.
-  virtual const std::string& id() const override { return table_id_; }
+  virtual const TableId& id() const override { return table_id_; }
 
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
-  std::string indexed_table_id() const;
+  TableId indexed_table_id() const;
 
   bool is_index() const {
     return !indexed_table_id().empty();
@@ -766,9 +776,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // new_tablet's partition should be the remainder of old_tablet's original partition.
   // This should only be used for transaction status tables, where the partition ranges
   // are not actually used.
-  void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
-                                        const dockv::Partition& partition,
-                                        const TabletInfoPtr& new_tablet);
+  Result<TabletInfo::WriteLock> AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
+                                                                 const dockv::Partition& partition,
+                                                                 const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
   Status ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
@@ -819,7 +829,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
-  std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
+
+  // Get TableIds of all or a specific type of indexes.
+  TableIds GetIndexIds() const;
+  TableIds GetVectorIndexIds() const;
 
   // Returns true if all tablets of the table are deleted.
   Result<bool> AreAllTabletsDeleted() const;
@@ -872,7 +885,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
-  bool UsesTablespacesForPlacement() const;
+  bool TableTypeUsesTablespacesForPlacement() const;
 
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
@@ -916,6 +929,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
 
+  std::vector<std::pair<int, TransactionId>> GetDdlTxnsWaitingForSchemaVersion() const;
+
   void AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
       int schema_version, const TransactionId& txn) EXCLUDES(lock_);
 
@@ -925,10 +940,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsUserCreated() const;
   bool IsUserTable() const;
   bool IsUserIndex() const;
+  bool HasUserSpecifiedPrimaryKey() const;
 
   bool IsUserCreated(const ReadLock& lock) const;
   bool IsUserTable(const ReadLock& lock) const;
   bool IsUserIndex(const ReadLock& lock) const;
+  bool HasUserSpecifiedPrimaryKey(const ReadLock& lock) const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -1138,7 +1155,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   virtual const std::string& id() const override { return ts_uuid_; }
 
   Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl)
+      EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
@@ -1300,7 +1318,7 @@ auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry
 
 struct SplitTabletIds {
   const TabletId& source;
-  const std::pair<const TabletId&, const TabletId&> children;
+  const std::vector<TabletId>& children;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(source, children);
@@ -1316,6 +1334,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
 
   const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_id() const {
     return pb.unqualified_table_id();
+  }
+
+  const google::protobuf::RepeatedPtrField<std::string>& dropped_table_id() const {
+    return pb.dropped_table_id();
   }
 
   const NamespaceId& namespace_id() const {
@@ -1368,6 +1390,10 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
 
   bool IsDynamicTableAdditionDisabled() const;
+
+  bool IsTablesWithoutPrimaryKeyAllowed() const;
+
+  bool DetectPublicationChangesImplicitly() const;
 
   std::string ToString() const override;
 
@@ -1630,6 +1656,12 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 };
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+// Instantiates a new tablet without any write locks or starting mutation.
+// If tablet_id is not specified, generates a new id via GenerateObjectId().
+TabletInfoPtr MakeUnlockedTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id = TabletId());
 
 // Leaves the tablet "write locked" with the new info in the "dirty" state field.
 TabletInfoPtr MakeTabletInfo(

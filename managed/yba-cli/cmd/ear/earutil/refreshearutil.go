@@ -24,7 +24,7 @@ func RefreshEARValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -39,7 +39,7 @@ func RefreshEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	earCode = strings.ToUpper(earCode)
 
 	callSite := "EAR"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 
@@ -57,12 +57,11 @@ func RefreshEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 
 	kmsConfigsMap, response, err := authAPI.ListKMSConfigs().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Refresh")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Refresh")
 	}
 
 	var r []util.KMSConfig
-	if strings.TrimSpace(earName) != "" {
+	if !util.IsEmptyString(earName) {
 		for _, kmsConfig := range kmsConfigsMap {
 			k, err := util.ConvertToKMSConfig(kmsConfig)
 			if err != nil {
@@ -83,7 +82,7 @@ func RefreshEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 
 	if len(r) < 1 {
 		errMessage := ""
-		if len(strings.TrimSpace(earCode)) == 0 {
+		if util.IsEmptyString(earCode) {
 			errMessage = fmt.Sprintf("No configurations with name: %s found\n", earName)
 		} else {
 			errMessage = fmt.Sprintf(
@@ -102,8 +101,7 @@ func RefreshEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 
 	rRefresh, response, err := authAPI.RefreshKMSConfig(earUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Refresh")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Refresh")
 	}
 
 	if rRefresh.GetSuccess() {

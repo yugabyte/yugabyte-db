@@ -434,6 +434,10 @@ vacuum(List *relations, VacuumParams *params,
 	 * only processing one relation.  For multiple relations when not within a
 	 * transaction block, and also in an autovacuum worker, use own
 	 * transactions so we can release locks sooner.
+	 *
+	 * YB: For concurrent DDL, it is better to commit transactions separately even
+	 * in a single relation case to release the AccessShareLock on the relation that
+	 * we hold now. When we support PG initiated unlock in #29945, we don't need this modification.
 	 */
 	if (params->options & VACOPT_VACUUM)
 		use_own_xacts = true;
@@ -444,7 +448,7 @@ vacuum(List *relations, VacuumParams *params,
 			use_own_xacts = true;
 		else if (in_outer_xact)
 			use_own_xacts = false;
-		else if (list_length(relations) > 1)
+		else if (!YBCIsLegacyModeForCatalogOps() || list_length(relations) > 1)
 			use_own_xacts = true;
 		else
 			use_own_xacts = false;

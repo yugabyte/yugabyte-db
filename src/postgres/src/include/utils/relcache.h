@@ -17,6 +17,9 @@
 #include "access/tupdesc.h"
 #include "nodes/bitmapset.h"
 
+/* YB includes */
+#include "nodes/parsenodes.h"
+
 
 /*
  * Name of relcache init file(s), used to speed up backend startup
@@ -114,7 +117,8 @@ extern Relation RelationBuildLocalRelation(const char *relname,
  * Routines to manage assignment of new relfilenode to a relation
  */
 extern void RelationSetNewRelfilenode(Relation relation, char persistence,
-									  bool yb_copy_split_options);
+									  bool yb_copy_split_options,
+									  YbOptSplit *preserved_index_split_options);
 extern void RelationAssumeNewRelfilenode(Relation relation);
 
 /*
@@ -170,5 +174,9 @@ extern bool YbSharedRelationIdNeedsGlobalImpact(Oid relationId);
 extern Relation YbRelationIdCacheLookup(Oid relid);
 
 extern long YbGetRelCachePreloads(void);
+extern long YbGetRelCacheInitFileRevalidated(void);
+extern long YbGetRelCacheInitFileRevalidationFailed(void);
+
+extern void YbPrefetchRequiredData(bool preload_rel_cache);
 
 #endif							/* RELCACHE_H */

@@ -12,7 +12,7 @@ import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 import { RedirectToStorageConfigConfigurationModal } from './RedirectToStorageConfigConfigurationModal';
 import { getStorageConfigs } from './utils';
-import { ReactComponent as AddIcon } from '../../assets/add.svg';
+import AddIcon from '../../assets/add.svg';
 
 export interface BackupStorageConfigReactSelectOption {
   value: string;

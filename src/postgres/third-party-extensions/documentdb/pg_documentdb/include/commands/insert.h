@@ -20,10 +20,6 @@ bool InsertDocument(uint64 collectionId, const char *shardTableName, int64 shard
 
 bool InsertOrReplaceDocument(uint64 collectionId, const char *shardTableName, int64
 							 shardKeyValue,
-							 pgbson *objectId, pgbson *document);
-
-bool InsertDocumentToTempCollection(MongoCollection *collection, int64 shardKeyValue,
-									pgbson *document);
-bool TryInsertOne(MongoCollection *collection, pgbson *document, int64 shardKeyHash, bool
-				  sameSourceAndTarget, WriteError *writeError);
+							 pgbson *objectId, pgbson *document,
+							 const bson_value_t *updateSpecValue);
 #endif

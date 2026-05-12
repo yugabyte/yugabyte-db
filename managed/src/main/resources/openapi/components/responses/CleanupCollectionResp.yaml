@@ -1,0 +1,6 @@
+x-yba-api-visibility: internal
+description: Cleanup successful
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/CleanupCollectionInfo.yaml"

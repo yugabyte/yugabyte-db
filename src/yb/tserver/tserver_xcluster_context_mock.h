@@ -33,14 +33,14 @@ namespace tserver {
 class MockTserverXClusterContext : public TserverXClusterContextIf {
  public:
   MOCK_METHOD(
-      (Result<std::optional<HybridTime>>), GetSafeTime, (const NamespaceId& namespace_id),
+      (Result<std::optional<HybridTime>>), GetSafeTime, (NamespaceIdView namespace_id),
       (const, override));
 
   MOCK_METHOD(
-      XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (const NamespaceId& namespace_id),
+      XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (NamespaceIdView namespace_id),
       (const, override));
 
-  MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId& namespace_id), (const, override));
+  MOCK_METHOD(bool, IsReadOnlyMode, (NamespaceIdView namespace_id), (const, override));
   MOCK_METHOD(
       bool, IsTargetAndInAutomaticMode, (const NamespaceId& namespace_id), (const, override));
 

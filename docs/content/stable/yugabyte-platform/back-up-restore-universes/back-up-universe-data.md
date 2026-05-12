@@ -4,6 +4,9 @@ headerTitle: Back up universe data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data.
 headContent: Create full and incremental backups
+aliases:
+  - /stable/yugabyte-platform/back-up-restore-universes/back-up-universe-data/ycql/
+  - /stable/yugabyte-platform/back-up-restore-universes/back-up-universe-data/ysql/
 menu:
   stable_yugabyte-platform:
     parent: back-up-restore-universes
@@ -32,7 +35,7 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. Navigate to the universe and select **Backups**, then click **Backup now**.
 
-    ![Backup](/images/yp/create-backup-ysql-2.20.png)
+    ![Backup](/images/yp/create-backup-ysql-20252.png)
 
 1. Select the API type for the backup.
 
@@ -47,6 +50,8 @@ The universe **Backups** page allows you to create new backups that start immedi
     If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+
+1. To back up database roles (YSQL only), choose the **Backup global roles** option.
 
 1. Click **Backup**.
 
@@ -82,7 +87,13 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 ## Configure backup performance parameters
 
-If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can manage the speed of backup and restore operations by configuring resource throttling.
+You can manage the speed of backup and restore operations and their impact on database performance by configuring the following parameters:
+
+- Parallel uploads per node. Number of parallel uploads/downloads of tablets per node. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
+- Buffers per upload per node. Number of buffers used to read from disk and upload/download for a single tablet. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
+- Disk read/write bytes per second (in MB/s). You can rate-limit disk throughput during backup upload and restore download to reduce impact on cluster operations. The minimum value is 1 MB/s. To allow backup and restore to use as much throughput as they can (that is, no disk-based throttling), enter a value of 0 (the default).
+
+Choose values that balance backup and restore speed with impact on production. Too high a value can consume disk IO that the database needs; too low a value can make backups and restores run longer. This is especially important when using incremental backups.
 
 To configure throttle parameters:
 
@@ -90,9 +101,9 @@ To configure throttle parameters:
 
 1. Click **Advanced** and choose **Configure Throttle Parameters** to display the **Configure Resource Throttling** dialog.
 
-    ![Throttle](/images/yp/backup-restore-throttle.png)
+    ![Throttle](/images/yp/backup-restore-throttle-2025-2.png)
 
-1. For faster backups and restores, enter higher values. For lower impact on database performance, enter lower values.
+1. Set resource parameters for backups and restores.
 
 1. Click **Save**.
 
@@ -107,7 +118,8 @@ YugabyteDB Anywhere universe backups are stored using the following folder struc
 ```output
 <storage-address>
   /sub-directories
-    /<universe-uuid>
+    /<univ_name>_<universe-uuid>
+     /<database-name>
       /<backup-series-name>-<backup-series-uuid>
         /<backup-type>
           /<creation-time>
@@ -119,7 +131,8 @@ For example:
 ```output
 s3://user_bucket
   /some/sub/folders
-    /univ-a85b5b01-6e0b-4a24-b088-478dafff94e4
+    /universe-name_a85b5b01-6e0b-4a24-b088-478dafff94e4
+     /database1_name
       /ybc_backup-92317948b8e444ba150616bf182a061
         /incremental
           /20204-01-04T12: 11: 03
@@ -130,7 +143,8 @@ s3://user_bucket
 | :-------- | :---------- |
 | Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. |
 | Sub-directories | The path of the sub-folders (if any) in a bucket. |
-| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder, or any of its contents. |
+| Universe name and UUID | The name of the universe and UUID that was backed up. You can move this folder to a different location, but to successfully restore, do not modify this folder, or any of its contents. |
+| Database or Keyspace name | The name of the Database or Keyspace that was backed up. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |

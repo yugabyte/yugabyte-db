@@ -536,13 +536,20 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     RETURN_NOT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ true));
     auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
     EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
+    const auto split_factor = cluster_->GetSplitFactor();
     for (const auto& tablet_id : tablet_ids) {
       RETURN_NOT_OK(catalog_mgr->SplitTablet(
-          tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal()));
+          tablet_id, master::ManualSplit::kTrue, split_factor,
+          catalog_mgr->GetLeaderEpochInternal()));
     }
-    size_t expected_non_split_tablets = cur_num_tablets * 2;
+    size_t expected_non_split_tablets = cur_num_tablets * split_factor;
+    // TODO(nway-tsplit): The formula `cur_num_tablets * split_factor - 1` only works when
+    // split_factor = 2. For split_factor > 2, refactor to pass the current parent tablet count as
+    // an argument and return the child tablet count, enabling tests to track tablet counts
+    // correctly across multiple splits.
+    EXPECT_EQ(split_factor, kDefaultNumSplitParts);
     size_t expected_split_tablets = parent_tablet_protected_from_deletion
-                                    ? cur_num_tablets * 2 - 1
+                                    ? cur_num_tablets * split_factor - 1
                                     : 0;
     return WaitForTabletSplitCompletion(expected_non_split_tablets, expected_split_tablets);
   }

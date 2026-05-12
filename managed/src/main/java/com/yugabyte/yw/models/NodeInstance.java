@@ -7,6 +7,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -56,6 +58,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -157,8 +160,17 @@ public class NodeInstance extends Model {
   private NodeInstanceData nodeDetails;
 
   public void setDetails(NodeInstanceData details) {
-    this.nodeDetails = details;
-    this.nodeDetailsJson = Json.stringify(Json.toJson(this.nodeDetails));
+    JsonNode nodeDetailsJsonNode = Json.toJson(details);
+    if (nodeDetailsJsonNode != null && nodeDetailsJsonNode.isObject()) {
+      // Remove nodeConfigs if it is present but keep the original method argument intact.
+      if (((ObjectNode) nodeDetailsJsonNode).remove("nodeConfigs") == null) {
+        // Field nodeConfigs is not present.
+        this.nodeDetails = details;
+      } else {
+        this.nodeDetails = Json.fromJson(nodeDetailsJsonNode, NodeInstanceData.class);
+      }
+    }
+    this.nodeDetailsJson = Json.stringify(nodeDetailsJsonNode);
   }
 
   public NodeInstanceData getDetails() {
@@ -269,6 +281,10 @@ public class NodeInstance extends Model {
   }
 
   public static List<NodeInstance> listByCustomer(UUID customerUUID) {
+    return listByCustomer(customerUUID, null /* nodeIp */);
+  }
+
+  public static List<NodeInstance> listByCustomer(UUID customerUUID, @Nullable String nodeIp) {
     String nodeQuery =
         "select DISTINCT n.*"
             + " from node_instance n, availability_zone az, region r, provider p, customer c"
@@ -276,6 +292,9 @@ public class NodeInstance extends Model {
             + " r.provider_uuid = p.uuid and c.uuid = '"
             + customerUUID
             + "'";
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeQuery += " and n.node_details_json::jsonb->>'ip' = '" + nodeIp + "'";
+    }
     RawSql rawSql =
         RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
     Query<NodeInstance> query = DB.find(NodeInstance.class);
@@ -290,13 +309,11 @@ public class NodeInstance extends Model {
       return Collections.emptyList();
     }
     Universe universe = optUniverse.get();
-    UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
     Set<UUID> nodeUUIDS =
         universe.getNodes().stream().map(NodeDetails::getNodeUuid).collect(Collectors.toSet());
-    List<NodeInstance> nodeInstances = NodeInstance.listByProvider(providerUUID);
     List<NodeInstance> filteredInstances =
-        nodeInstances.stream()
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAllProviderUUIDs().stream()
+            .flatMap(providerUUID -> NodeInstance.listByProvider(providerUUID).stream())
             .filter(instance -> nodeUUIDS.contains(instance.getNodeUuid()))
             .collect(Collectors.toList());
 

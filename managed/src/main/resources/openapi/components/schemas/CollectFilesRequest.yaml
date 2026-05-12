@@ -1,0 +1,11 @@
+title: CollectFilesRequest
+description: Request body for collecting files from database nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  collection_options:
+    $ref: "./FileCollectionOptions.yaml"
+  nodes:
+    $ref: "./NodeSelection.yaml"
+required:
+  - collection_options

@@ -23,7 +23,6 @@ q2 AS (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested
 SELECT q1.document, q2.document FROM q1, q2 WHERE q1.document->>'state' = q2.document->>'state';
 
 -- with the GUC off nested fails, but basic works
-set documentdb.allowNestedAggregationFunctionInQueries to off;
 SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}');
 SELECT document FROM (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}')) basequery;
 WITH q1 AS (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}')),

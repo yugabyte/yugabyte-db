@@ -1,9 +1,16 @@
-import { FC, useContext } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useFormContext } from 'react-hook-form';
+import { FC } from 'react';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
-import { YBInput, YBLabel, YBSelect, mui } from '@yugabyte-ui-library/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
+import {
+  YBInput,
+  YBLabel,
+  YBSelect,
+  YBHelper,
+  YBHelperVariants,
+  mui
+} from '@yugabyte-ui-library/core';
 import { IsOsPatchingEnabled } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import {
   getThroughputByStorageType,
@@ -17,16 +24,14 @@ import {
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { StorageType, CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import { parsePositiveIntegerInput } from '@app/redesign/features-v2/universe/create-universe/helpers/instanceNumericInput';
 
 const menuProps = {
   anchorOrigin: {
@@ -41,11 +46,21 @@ const menuProps = {
 
 interface StorageTypeFieldProps {
   disabled: boolean;
+  provider?: ProviderType;
 }
 
-const { Box, MenuItem } = mui;
+const { Box, MenuItem, Link, styled } = mui;
 
-export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
+const StyledLink = styled(Link)(({ theme }) => ({
+  color: theme.palette.warning[900],
+  textDecorationColor: theme.palette.warning[900],
+  '&:hover': {
+    color: theme.palette.warning[900],
+    textDecoration: 'underline'
+  }
+}));
+
+export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider }) => {
   const { t } = useTranslation();
 
   //fetch run time configs
@@ -55,11 +70,6 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
 
   // watchers
   const { watch, setValue } = useFormContext<InstanceSettingProps>();
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = watch(DEVICE_INFO_FIELD);
   const masterFieldValue = watch(MASTER_DEVICE_INFO_FIELD);
   const instanceType = watch(INSTANCE_TYPE_FIELD);
@@ -136,7 +146,9 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
     if (!storageType || !volumeSize) return;
     const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
     const minDiskIops = getMinDiskIops(storageType, volumeSize);
-    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, Number(value)));
+    const defaultIops = getIopsByStorageType(storageType) ?? (minDiskIops > 0 ? minDiskIops : 1);
+    const parsed = parsePositiveIntegerInput(String(value), defaultIops, maxDiskIops);
+    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, parsed));
     setValue(DEVICE_INFO_FIELD, { ...fieldValue, diskIops });
     setValue(MASTER_DEVICE_INFO_FIELD, {
       ...masterFieldValue,
@@ -148,7 +160,11 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
     if (!fieldValue || !masterFieldValue) return;
     const { storageType, diskIops } = fieldValue;
     if (!diskIops || !storageType) return;
-    const throughput = getThroughputByIops(Number(value), diskIops, storageType);
+    const defaultThroughput =
+      getThroughputByStorageType(storageType) ??
+      (fieldValue.throughput && fieldValue.throughput > 0 ? fieldValue.throughput : 125);
+    const numeric = parsePositiveIntegerInput(String(value), defaultThroughput);
+    const throughput = getThroughputByIops(numeric, diskIops, storageType);
     setValue(DEVICE_INFO_FIELD, { ...fieldValue, throughput });
     setValue(MASTER_DEVICE_INFO_FIELD, {
       ...masterFieldValue,
@@ -157,38 +173,81 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
   };
 
   const renderStorageType = () => {
-    if (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code))
+    if (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) {
+      const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;
+      const isHyperdisk =
+        fieldValue?.storageType === StorageType.Hyperdisk_Balanced ||
+        fieldValue?.storageType === StorageType.Hyperdisk_Extreme;
+
       return (
-        <Box display="flex" sx={{ width: 198 }}>
-          <YBSelect
-            label={
-              provider?.code === CloudType.aws
-                ? t('universeForm.instanceConfig.ebs')
-                : t('universeForm.instanceConfig.ssd')
-            }
-            fullWidth
-            disabled={disableStorageType || disabled}
-            value={storageType}
-            slotProps={{
-              htmlInput: {
-                min: 1,
-                'data-testid': 'StorageTypeField-Common-StorageTypeSelect'
+        <Box display="flex" flexDirection="column">
+          <Box sx={{ width: 198 }}>
+            <YBSelect
+              label={
+                provider?.code === CloudType.aws
+                  ? t('createUniverseV2.instanceSettings.ebs')
+                  : t('createUniverseV2.instanceSettings.ssd')
               }
-            }}
-            onChange={(event) =>
-              onStorageTypeChanged((event?.target.value as unknown) as StorageType)
-            }
-            dataTestId="StorageTypeField-Common-StorageTypeSelect"
-            menuProps={menuProps}
-          >
-            {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
-              <MenuItem key={item.value} value={item.value}>
-                {item.label}
-              </MenuItem>
-            ))}
-          </YBSelect>
+              fullWidth
+              disabled={disableStorageType || disabled}
+              value={storageType}
+              slotProps={{
+                htmlInput: {
+                  min: 1,
+                  'data-testid': 'StorageTypeField-Common-StorageTypeSelect'
+                }
+              }}
+              onChange={(event) =>
+                onStorageTypeChanged(event?.target.value as unknown as StorageType)
+              }
+              dataTestId="StorageTypeField-Common-StorageTypeSelect"
+              menuProps={menuProps}
+            >
+              {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
+                <MenuItem key={item.value} value={item.value}>
+                  {item.label}
+                </MenuItem>
+              ))}
+            </YBSelect>
+          </Box>
+          {isHyperdisk && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                <Trans>
+                  {t('createUniverseV2.instanceSettings.hyperdiskStorageHelper')}
+                  <StyledLink
+                    underline="always"
+                    href="https://docs.yugabyte.com/stable/deploy/checklist/#disks"
+                    target="_blank"
+                  ></StyledLink>
+                </Trans>
+              </YBHelper>
+            </Box>
+          )}
+          {isPremiumV2Storage && !isHyperdisk && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                {t('createUniverseV2.instanceSettings.premiumv2StorageHelper')}
+              </YBHelper>
+            </Box>
+          )}
+          {provider?.code === CloudType.gcp && fieldValue?.storageType === StorageType.Scratch && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                <Trans>
+                  {t('createUniverseV2.instanceSettings.ephemeralStorageWarning')}
+                  <StyledLink
+                    underline="always"
+                    href="https://docs.yugabyte.com/stable/deploy/checklist/#ephemeral-disks"
+                    target="_blank"
+                  ></StyledLink>
+                </Trans>
+              </YBHelper>
+            </Box>
+          )}
         </Box>
       );
+    }
 
     return null;
   };
@@ -198,6 +257,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
       fieldValue?.storageType &&
       ![
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS,
@@ -211,7 +271,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
       <Box display="flex" sx={{ width: 198 }} mt={2}>
         <Box flex={1}>
           <YBInput
-            label={t('universeForm.instanceConfig.provisionedIopsPerNode')}
+            label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             type="number"
             fullWidth
             slotProps={{
@@ -245,7 +305,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box display="flex" width="100%">
@@ -271,7 +331,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
               marginBottom: 8
             })}
           >
-            {t('universeForm.instanceConfig.throughputUnit')}
+            {t('createUniverseV2.instanceSettings.throughputUnit')}
           </Box>
         </Box>
       </Box>

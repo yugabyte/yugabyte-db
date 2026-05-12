@@ -210,7 +210,7 @@ static const size_t kBlockTrailerSize = 5;
 class TrackedAllocation {
  public:
   TrackedAllocation();
-  TrackedAllocation(std::unique_ptr<char[]>&& data, size_t size,
+  TrackedAllocation(std::unique_ptr<const char[]>&& data, size_t size,
                     std::shared_ptr<yb::MemTracker> mem_tracker);
   TrackedAllocation(TrackedAllocation&& other) = default;
 
@@ -218,11 +218,11 @@ class TrackedAllocation {
 
   ~TrackedAllocation();
 
-  char* get() const {
+  const char* get() const {
     return holder_.get();
   }
  private:
-  std::unique_ptr<char[]> holder_;
+  std::unique_ptr<const char[]> holder_;
   size_t size_;
   std::shared_ptr<yb::MemTracker> mem_tracker_;
 };

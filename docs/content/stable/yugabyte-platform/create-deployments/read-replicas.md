@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Deploy read replicas" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../deploy/multi-dc/read-replica-clusters/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/managed-read-replica/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/managed-read-replica/" >}}
 {{< /page-finder/head >}}
 
 If your user base is geographically distributed, you can add a read replica cluster to the universe to improve read latency in regions that are far from your primary region.

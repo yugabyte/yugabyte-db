@@ -21,7 +21,7 @@ import { NODE_AGENT_PREREQ_DOCS_URL } from '../../../NodeAgent/constants';
 import { YBBanner, YBBannerVariant } from '../../../../../components/common/descriptors';
 import { YBExternalLink } from '../../../../components/YBLink/YBExternalLink';
 import { YBErrorIndicator, YBLoading } from '../../../../../components/common/indicators';
-import { ReactComponent as CheckIcon } from '../../../../assets/check-white.svg';
+import CheckIcon from '../../../../assets/check-white.svg';
 
 import toastStyles from '../../../../../redesign/styles/toastStyles.module.scss';
 

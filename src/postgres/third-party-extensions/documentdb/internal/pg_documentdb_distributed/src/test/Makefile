@@ -6,4 +6,10 @@ check-regress:
 check-dist-minimal:
 	$(MAKE) -C regress $@
 
+installcheck:
+	$(MAKE) -C regress installcheck
+
+installcheck-minimal:
+	$(MAKE) -C regress $@
+
 all: check-regress

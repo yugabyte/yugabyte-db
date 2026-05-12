@@ -225,7 +225,7 @@ TEST_F(NetUtilTest, YB_DISABLE_TEST_ON_MACOS(TestChronyc)) {
   ASSERT_STR_CONTAINS(tracking_lines[1], "Skew");
 
   vector<string> sourcestats_lines;
-  TryRunChronycSourcestats(&sourcestats_lines);
+  TryRunChronycSourceInfo(&sourcestats_lines);
   ASSERT_GE(sourcestats_lines[1].size(), 2);
   ASSERT_STR_CONTAINS(sourcestats_lines[1], "Freq Skew");
   ASSERT_STR_CONTAINS(sourcestats_lines[1], "Offset");

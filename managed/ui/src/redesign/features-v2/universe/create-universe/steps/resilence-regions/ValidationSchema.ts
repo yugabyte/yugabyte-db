@@ -6,7 +6,7 @@ import {
   ResilienceFormMode,
   ResilienceType
 } from './dtos';
-import { getFaultToleranceNeeded, getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 import { SINGLE_AVAILABILITY_ZONE } from '../../fields/FieldNames';
 
 export const ResilienceAndRegionsSchema = (t: TFunction) => {
@@ -23,48 +23,91 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
       const { path, createError } = this;
       const {
         regions,
-        replicationFactor,
+        resilienceFactor,
         faultToleranceType,
         resilienceFormMode,
         resilienceType
       } = this.parent as ResilienceAndRegionsProps;
+
       if (resilienceType === ResilienceType.SINGLE_NODE) {
         return true;
       }
       if (resilienceFormMode !== ResilienceFormMode.GUIDED) {
         return true;
       }
+      const fieldErrors: Yup.ValidationError[] = [];
+
       switch (faultToleranceType) {
         case FaultToleranceType.NONE:
           return true;
         case FaultToleranceType.REGION_LEVEL: {
-          const faultToleranceNeeded = getFaultToleranceNeeded(replicationFactor);
+          const faultToleranceNeeded = getFaultToleranceNeeded(resilienceFactor);
           if (faultToleranceNeeded === regions.length) {
             return true;
           }
-          return createError({ message: 'errMsg.regionErr', path });
+          const regionCountMessage =
+            regions.length > faultToleranceNeeded
+              ? 'errMsg.regionErrExceeds'
+              : 'errMsg.regionErrTooFew';
+          fieldErrors.push(
+            createError({
+              message: regionCountMessage,
+              path
+            }),
+            createError({
+              message: t('errMsg.regionFieldRegionsFew', {
+                required_regions: faultToleranceNeeded
+              }),
+              path: 'regions'
+            })
+          );
+          break;
         }
         case FaultToleranceType.AZ_LEVEL: {
-          const faultToleranceNeeded = getFaultToleranceNeededForAZ(replicationFactor);
+          const faultToleranceNeeded = getFaultToleranceNeeded(resilienceFactor);
           const azCount = regions.reduce((acc, region) => {
             return acc + region.zones.length;
           }, 0);
-
+          // Too many regions for AZ-level RF (1 AZ/region max): must not return true early
+          // when azCount already meets the minimum, or azErrMany would never surface.
           if (regions.length > faultToleranceNeeded) {
-            return createError({ message: 'errMsg.azErrMany', path });
+            fieldErrors.push(createError({ message: 'errMsg.azErrMany', path }));
           }
-          if (faultToleranceNeeded <= azCount) {
-            return true;
+          if (azCount < faultToleranceNeeded) {
+            fieldErrors.push(createError({ message: 'errMsg.azErrFew', path }));
+            fieldErrors.push(
+              createError({
+                message: t('errMsg.regionFieldAzFew', {
+                  az_needed: faultToleranceNeeded,
+                  available_az: azCount
+                }),
+                path: 'regions'
+              })
+            );
           }
-          return createError({ message: 'errMsg.azErrFew', path });
+          break;
         }
         case FaultToleranceType.NODE_LEVEL: {
           if (regions.length > 1) {
-            return createError({ message: 'errMsg.nodeErr', path });
+            fieldErrors.push(createError({ message: 'errMsg.nodeErr', path }));
+            break;
           }
           return true;
         }
       }
+
+      const error = new Yup.ValidationError(
+        fieldErrors.map((e) => e.message),
+        'errors',
+        path
+      );
+
+      error.inner = fieldErrors;
+
+      if (fieldErrors.length > 0) {
+        throw error;
+      }
+      return true;
     })
   } as any);
 };

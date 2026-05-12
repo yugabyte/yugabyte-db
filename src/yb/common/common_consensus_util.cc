@@ -32,36 +32,53 @@
 
 #include "yb/common/common_consensus_util.h"
 
+#include "yb/consensus/metadata.messages.h"
+
 namespace yb::consensus {
 
-bool IsRaftConfigMember(const std::string& tserver_uuid, const RaftConfigPB& config) {
-  for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.permanent_uuid() == tserver_uuid) {
-      return true;
+namespace {
+
+template <class PB>
+auto* FindPeer(std::string_view tserver_uuid, const PB& config) {
+  for (const auto& peer : config.peers()) {
+    if (std::string_view(peer.permanent_uuid()) == tserver_uuid) {
+      return &peer;
     }
   }
-  return false;
+  return static_cast<decltype(&*config.peers().begin())>(nullptr);
 }
 
-bool IsRaftConfigVoter(const std::string& tserver_uuid, const RaftConfigPB& config) {
-  for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.permanent_uuid() == tserver_uuid) {
-      return peer.member_type() == PeerMemberType::VOTER;
-    }
-  }
-  return false;
+} // namespace
+
+bool IsRaftConfigMember(std::string_view tserver_uuid, const RaftConfigPB& config) {
+  return FindPeer(tserver_uuid, config) != nullptr;
 }
 
-PeerRole GetConsensusRole(const std::string& permanent_uuid, const ConsensusStatePB& cstate) {
-  if (cstate.leader_uuid() == permanent_uuid) {
+bool IsRaftConfigMember(std::string_view tserver_uuid, const LWRaftConfigPB& config) {
+  return FindPeer(tserver_uuid, config) != nullptr;
+}
+
+bool IsRaftConfigVoter(std::string_view tserver_uuid, const RaftConfigPB& config) {
+  auto peer = FindPeer(tserver_uuid, config);
+  return peer && peer->member_type() == PeerMemberType::VOTER;
+}
+
+bool IsRaftConfigVoter(std::string_view tserver_uuid, const LWRaftConfigPB& config) {
+  auto peer = FindPeer(tserver_uuid, config);
+  return peer && peer->member_type() == PeerMemberType::VOTER;
+}
+
+template <class PB>
+PeerRole DoGetConsensusRole(std::string_view permanent_uuid, const PB& cstate) {
+  if (std::string_view(cstate.leader_uuid()) == permanent_uuid) {
     if (IsRaftConfigVoter(permanent_uuid, cstate.config())) {
       return PeerRole::LEADER;
     }
     return PeerRole::NON_PARTICIPANT;
   }
 
-  for (const RaftPeerPB& peer : cstate.config().peers()) {
-    if (peer.permanent_uuid() == permanent_uuid) {
+  for (const auto& peer : cstate.config().peers()) {
+    if (std::string_view(peer.permanent_uuid()) == permanent_uuid) {
       switch (peer.member_type()) {
         case PeerMemberType::VOTER:
           return PeerRole::FOLLOWER;
@@ -80,6 +97,14 @@ PeerRole GetConsensusRole(const std::string& permanent_uuid, const ConsensusStat
     }
   }
   return PeerRole::NON_PARTICIPANT;
+}
+
+PeerRole GetConsensusRole(std::string_view permanent_uuid, const ConsensusStatePB& cstate) {
+  return DoGetConsensusRole(permanent_uuid, cstate);
+}
+
+PeerRole GetConsensusRole(std::string_view permanent_uuid, const LWConsensusStatePB& cstate) {
+  return DoGetConsensusRole(permanent_uuid, cstate);
 }
 
 }  // namespace yb::consensus

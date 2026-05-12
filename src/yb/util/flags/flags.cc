@@ -69,7 +69,7 @@ using std::endl;
 using std::string;
 using std::unordered_set;
 using std::vector;
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 // Because every binary initializes its flags here, we use it as a convenient place
 // to offer some global flags as well.
@@ -655,6 +655,17 @@ void RegisterGlobalFlagsCallbacksOnce() {
   });
 }
 
+// Flag descriptions are surfaced in the YugabyteDB documentation portal, which renders them as
+// single-line text. Embedded newlines break that rendering, so reject them at startup.
+void ValidateFlagDescriptions(const std::vector<google::CommandLineFlagInfo>& flag_infos) {
+  for (const auto& flag_info : flag_infos) {
+    LOG_IF(FATAL, flag_info.description.find('\n') != std::string::npos)
+        << "Flag '" << flag_info.name
+        << "' description contains a newline character, which is not allowed. "
+        << "Description: " << flag_info.description;
+  }
+}
+
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   RegisterGlobalFlagsCallbacksOnce();
   CHECK_OK(LoadFlagsAllowlist());
@@ -662,6 +673,8 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   {
     std::vector<google::CommandLineFlagInfo> flag_infos;
     google::GetAllFlags(&flag_infos);
+
+    ValidateFlagDescriptions(flag_infos);
 
     // gFlags have one hard-coded static default value in all programs that include the file
     // where it was defined. Programs that need custom defaults set the flag at runtime before the

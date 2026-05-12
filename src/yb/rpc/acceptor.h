@@ -33,13 +33,12 @@
 #pragma once
 
 #include <mutex>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #undef EV_ERROR
 #include <ev++.h> // NOLINT
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -47,6 +46,7 @@
 
 namespace yb {
 
+class Cgroup;
 class Counter;
 class MetricEntity;
 class Socket;
@@ -55,13 +55,13 @@ class Thread;
 namespace rpc {
 
 // Take ownership of the socket via Socket::Release
-typedef std::function<void(Socket *new_socket, const Endpoint& remote)> NewSocketHandler;
+using NewSocketHandler = std::function<void(Socket*, const Endpoint&)>;
 
 // A acceptor that calls accept() to create new connections.
 class Acceptor {
  public:
-  // Create a new acceptor pool.
-  Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler);
+  Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler,
+           Cgroup* cgroup = nullptr);
   ~Acceptor();
 
   // Setup acceptor to listen address.
@@ -95,6 +95,9 @@ class Acceptor {
   bool closing_ = false;
   ev::dynamic_loop loop_;
   ev::async async_;
+#ifdef __linux__
+  Cgroup* cgroup_ = nullptr;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(Acceptor);
 };

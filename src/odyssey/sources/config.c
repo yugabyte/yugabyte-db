@@ -66,17 +66,37 @@ void od_config_init(od_config_t *config)
 	config->yb_ysql_max_connections = 300;
 	config->yb_optimized_session_parameters = true;
 	config->yb_max_pools = YSQL_CONN_MGR_MAX_POOLS;
+	config->yb_enable_prep_stmt_close = true;
 	config->TEST_yb_auth_delay_ms = 0;
+	config->yb_max_prepared_statements = 0;
+	config->yb_tcmalloc_gc_interval = 300;
+	config->yb_enable_parse_queue_tracking = true;
 
 	od_list_init(&config->listen);
 }
 
 void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 {
+	/* YB: These are not thread safe, just kept here for ease of merge */
 	current_config->client_max_set = new_config->client_max_set;
 	current_config->client_max = new_config->client_max;
 	current_config->client_max_routing = new_config->client_max_routing;
 	current_config->server_login_retry = new_config->server_login_retry;
+
+	/* YB: Update log flags on config reload as well */
+	current_config->log_debug = new_config->log_debug;
+	current_config->log_query = new_config->log_query;
+	current_config->log_session = new_config->log_session;
+	current_config->log_stats = new_config->log_stats;
+	current_config->log_config = new_config->log_config;
+
+	/* YB: Other flags update */
+	current_config->yb_max_prepared_statements =
+		new_config->yb_max_prepared_statements;
+	current_config->yb_tcmalloc_gc_interval =
+		new_config->yb_tcmalloc_gc_interval;
+	current_config->yb_enable_parse_queue_tracking =
+		new_config->yb_enable_parse_queue_tracking;
 }
 
 static void od_config_listen_free(od_config_listen_t *);
@@ -350,12 +370,36 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_optimized_session_parameters %s",
 	       od_config_yes_no(config->yb_optimized_session_parameters));
-	
-	od_log(logger, "config", NULL, NULL, "yb_max_pools     %s",
-	       od_config_yes_no(config->yb_max_pools));
+
+	od_log(logger, "config", NULL, NULL, "yb_max_pools     %d",
+	       config->yb_max_pools);
+
+	od_log(logger, "config", NULL, NULL, "yb_enable_prep_stmt_close %s",
+	       od_config_yes_no(config->yb_enable_prep_stmt_close));
+
+	od_log(logger, "config", NULL, NULL, "yb_tcmalloc_gc_interval     %d",
+	       config->yb_tcmalloc_gc_interval);
 
 	od_log(logger, "config", NULL, NULL, "TEST_yb_auth_delay_ms     %d",
 	       config->TEST_yb_auth_delay_ms);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_alter_guc_adoption_strategy     %s",
+	       yb_od_alter_guc_adoption_strategy_keywords
+		       [config->yb_alter_guc_adoption_strategy]
+			       .name);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_alter_guc_stale_backend_ttl_ms     %d",
+	       config->yb_alter_guc_stale_backend_ttl_ms);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_max_prepared_statements     %d",
+	       config->yb_max_prepared_statements);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_enable_parse_queue_tracking %s",
+	       od_config_yes_no(config->yb_enable_parse_queue_tracking));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

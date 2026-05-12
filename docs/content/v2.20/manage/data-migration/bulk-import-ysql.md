@@ -79,7 +79,7 @@ While loading data that is exported from another RDBMS, the source data set may 
 ## Import PostgreSQL data
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [import schema](/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/preview/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/stable/yugabyte-voyager/). To learn more, refer to the [import schema](/stable/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/stable/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
 {{< /tip >}}
 
 ### Import data from CSV files
@@ -221,7 +221,7 @@ Use a PLPGSQL function to do the following:
         ORDER BY 3 DESC;
     ```
 
-The following example shows the output of running the previous example on the [Northwind](../../../sample-data/northwind/#about-the-northwind-sample-database) database.
+The following example shows the output of running the previous example on the [Northwind](/stable/develop/sample-data/northwind/#about-the-northwind-sample-database) database.
 
 ```sql
 example=# SELECT cnt_rows(table_schema, table_name)

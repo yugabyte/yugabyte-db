@@ -91,19 +91,19 @@ func parseroleResourceDefinitionString(roleResourceDefinitionString string) Role
 		val := kvp[1]
 		switch key {
 		case "role-uuid":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				roleResourceDefinition.RoleUUID = val
 			} else {
 				providerutil.ValueNotFoundForKeyError(key)
 			}
 		case "resource-type":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				roleResourceDefinition.ResourceType = strings.ToUpper(val)
 			} else {
 				providerutil.ValueNotFoundForKeyError(key)
 			}
 		case "allow-all":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				var err error
 				roleResourceDefinition.AllowAll, err = strconv.ParseBool(val)
 				if err != nil {
@@ -118,7 +118,7 @@ func parseroleResourceDefinitionString(roleResourceDefinitionString string) Role
 				providerutil.ValueNotFoundForKeyError(key)
 			}
 		case "resource-uuid":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				resourceUUIDs := strings.Split(val, ",")
 				for i := 0; i < len(resourceUUIDs); i++ {
 					resourceUUID := strings.TrimSpace(resourceUUIDs[i])
@@ -210,7 +210,7 @@ func BuildResourceRoleDefinition(
 		resourceDefinition := ybaclient.ResourceDefinition{
 			AllowAll:        util.GetBoolPointer(roleResourceDefinition.AllowAll),
 			ResourceType:    util.GetStringPointer(roleResourceDefinition.ResourceType),
-			ResourceUUIDSet: &roleResourceDefinition.ResourceUUIDs,
+			ResourceUUIDSet: roleResourceDefinition.ResourceUUIDs,
 		}
 
 		exists := false
@@ -281,7 +281,7 @@ func BuildResourceRoleDefinitionV2(
 		resourceDefinition := ybav2client.ResourceDefinition{
 			AllowAll:        roleResourceDefinition.AllowAll,
 			ResourceType:    roleResourceDefinition.ResourceType,
-			ResourceUuidSet: &roleResourceDefinition.ResourceUUIDs,
+			ResourceUuidSet: roleResourceDefinition.ResourceUUIDs,
 		}
 
 		exists := false

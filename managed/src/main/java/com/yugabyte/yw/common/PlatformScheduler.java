@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,11 +26,19 @@ public class PlatformScheduler {
   @Inject
   public PlatformScheduler(
       ActorSystem actorSystem,
-      ExecutionContext executionContext,
+      PlatformExecutorFactory executorFactory,
       ShutdownHookHandler shutdownHookHandler) {
     this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
     this.shutdownHookHandler = shutdownHookHandler;
+    // Create a separate execution context for scheduler to use its own thread pool.
+    this.executionContext =
+        ExecutionContext.fromExecutor(
+            executorFactory.createExecutor(
+                "scheduler",
+                new ThreadFactoryBuilder()
+                    .setNameFormat("platform-scheduler-%d")
+                    .setDaemon(true)
+                    .build()));
   }
 
   private Cancellable createShutdownAwareSchedule(

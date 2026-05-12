@@ -14,13 +14,13 @@
 
 #include <memory>
 
-#include "yb/cdc/xrepl_types.h"
-#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/master/master_client.fwd.h"
 
@@ -67,8 +67,8 @@ namespace cdc {
 class CDCStateTable;
 struct CDCStateTableEntry;
 
-typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
-    CDCServiceProxyMap;
+using CDCServiceProxyMap =
+    std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>;
 
 YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
@@ -124,7 +124,11 @@ using RollBackTabletIdCheckpointMap =
   TEST_SIMULATE_ERROR(PeerNotLeader, 2, NotFound, "Not leader for requested tablet id") \
   TEST_SIMULATE_ERROR( \
       PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
-  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found")
+  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found") \
+  TEST_SIMULATE_ERROR( \
+      LogIndexCacheEntryNotFound, 5, NotFound, "Log index cache entry for op index not found") \
+  TEST_SIMULATE_ERROR( \
+      LogReaderNotInitialized, 6, IllegalState, "LogReader is not initialized")
 
 enum TestSimulateErrorCode : int32_t {
 #define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
@@ -150,7 +154,7 @@ class CDCServiceImpl : public CDCServiceIf {
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
 
-  ~CDCServiceImpl();
+  ~CDCServiceImpl() override;
 
   void CreateCDCStream(
       const CreateCDCStreamRequestPB* req,
@@ -228,8 +232,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) override;
 
   void BootstrapProducer(
-      const BootstrapProducerRequestPB* req,
-      BootstrapProducerResponsePB* resp,
+      const cdc::BootstrapProducerRequestPB* req,
+      cdc::BootstrapProducerResponsePB* resp,
       rpc::RpcContext rpc) override;
 
   void GetCDCDBStreamInfo(
@@ -294,6 +298,16 @@ class CDCServiceImpl : public CDCServiceIf {
   static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  // Returns a list of catalog tables which gets streamed. (Currently 'pg_publication_rel' &
+  // 'pg_class' are the only catalog tables which gets streamed).
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<std::vector<TableId>> GetStreamableCatalogTables(const NamespaceId& namespace_id);
+
+  // Returns true if the given table is one of the catalog table which gets streamed.
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<bool> IsStreamableCatalogTable(
+      const TableId& table_id, const NamespaceId& namespace_id);
 
   // Sets paused producer XCluster streams.
   void SetPausedXClusterProducerStreams(
@@ -416,10 +430,6 @@ class CDCServiceImpl : public CDCServiceIf {
   void TabletLeaderGetCheckpoint(
       const GetCheckpointRequestPB* req, GetCheckpointResponsePB* resp, rpc::RpcContext* context);
 
-  void UpdateTabletPeersWithMaxCheckpoint(
-      const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
-      std::unordered_set<TabletId>* failed_tablet_ids);
-
   void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
 
   Status UpdateTabletPeerWithCheckpoint(
@@ -486,7 +496,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
       const TabletIdStreamIdSet& cdc_state_entries_to_delete,
-      const std::unordered_set<TabletId>& failed_tablet_ids,
       const StreamIdSet& slot_entries_to_be_deleted);
 
   // This method sends an rpc to the master to remove the expired / not of interest tables from the
@@ -510,9 +519,7 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
-  void FilterOutTabletsToBeDeletedByAllStreams(
-      TabletIdCDCCheckpointMap* tablet_checkpoint_map,
-      std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
+  void RemoveTabletEntriesToBeDeletedByAllStreams(TabletIdCDCCheckpointMap* tablet_checkpoint_map);
 
   Result<bool> CheckBeforeImageActive(
       const TabletId& tablet_id, const StreamMetadata& stream_metadata,
@@ -640,6 +647,8 @@ class CDCServiceImpl : public CDCServiceIf {
   //
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
   scoped_refptr<Thread> update_peers_and_metrics_thread_;
+
+  std::shared_ptr<std::unordered_set<TabletStreamInfo>> last_seen_tablet_stream_entries_;
 
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};

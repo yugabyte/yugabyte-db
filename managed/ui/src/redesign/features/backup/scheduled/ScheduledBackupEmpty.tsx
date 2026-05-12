@@ -12,7 +12,7 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { YBButton, YBTooltip } from '../../../components';
 
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
-import ScheduleIcon from '../../../assets/schedule.svg';
+import ScheduleIcon from '../../../assets/schedule.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -58,20 +58,19 @@ export const ScheduledBackupEmpty = ({
         {t('subText')}
       </Typography>
       <RbacValidator customValidateFunction={() => hasPerm} isControl>
-        {
-          wrapWithTooltip(
-            <span>
-              <YBButton
-                onClick={onActionButtonClick}
-                variant="primary"
-                size="large"
-                disabled={disabled}
-                data-testid="create-scheduled-backup"
-              >
-                {t('createSchduledPolicy')}
-              </YBButton>
-            </span>)
-        }
+        {wrapWithTooltip(
+          <span>
+            <YBButton
+              onClick={onActionButtonClick}
+              variant="primary"
+              size="large"
+              disabled={disabled}
+              data-testid="create-scheduled-backup"
+            >
+              {t('createSchduledPolicy')}
+            </YBButton>
+          </span>
+        )}
       </RbacValidator>
     </div>
   );

@@ -13,7 +13,7 @@ select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection
 select bson_dollar_project('{"_id":"1"}', '{"a" : { "$setIntersection" : [[1,1,2],[3,3,4]]} }');
 
 -- $setIntersection operator: Nested Elements:
--- NOTE: MongoDB does not recurse into arrays and considers only the first/outer-level array
+-- NOTE: we don't recurse into arrays and considers only the first/outer-level array
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[[1,{"a":1, "b":1}],2,3],[4,[1,{"a":1, "b":1}],6]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[{"a":[1,2,3],"b":1},2,3],[4,{"a":[1,2,3],"b":1},6]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[[1,2,3]],[[3,2,1]]]} }');
@@ -25,8 +25,8 @@ select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
 
 ---- $setIntersection operator: same value with different type:
--- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
--- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+-- if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ 1,2,3],[{ "$numberDecimal" : "1" },2,3]]} }');
@@ -58,8 +58,8 @@ select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersectio
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
-select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
-select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.135Z"}] ]} }');
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
@@ -98,8 +98,8 @@ select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.1,
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
 
 ---- $setUnion operator: same value with different type:
--- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
--- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0
+-- if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ 1,2,3],[{ "$numberDecimal" : "1" },2,3]]} }');
@@ -131,8 +131,8 @@ select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$bin
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
-select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
-select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
@@ -170,8 +170,8 @@ select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{"a"
 select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{"a":1},{"b":1}],[{"a":1},{"b":2}]]} }');
 
 -- $setEquals operator: same value with different type:
--- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
--- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+-- if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
 select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberLong" : "1" }],[1]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberLong" : "1" },{ "$numberDouble" : "1.0" }],[1],[{ "$numberDecimal" : "1.0" }]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberDouble" : "1.1" }],[1.1],[{ "$numberDecimal" : "1.1" }]]} }');
@@ -189,8 +189,8 @@ select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [ [{"
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
-select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
-select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
 select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
@@ -227,8 +227,8 @@ select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : 
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3,4],[1,2,5,6,7]]} }');
 
 ---- $setDifference operator: same value with different type:
--- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
--- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+-- if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDecimal" :  "1.0"},{"$numberDouble" :  "2.0"},3,4],[1,2]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDecimal" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[1.1,2.1]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"}]]} }');
@@ -241,7 +241,7 @@ select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : 
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
-select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.137Z"}] ]} }');
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2019-01-30T07:30:10.137Z"}] ]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[[1,2],[1,2,3]],[[1,2]]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"a":1},{"b":1}],[{"a":1},{"b":2}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [null,null]} }');
@@ -279,8 +279,8 @@ select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,2,3,4],[1,2,5,6,7]]} }');
 
 ---- $setIsSubset operator: same value with different type:
--- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
--- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+-- if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDecimal" :  "1.0"},{"$numberDouble" :  "2.0"},3,4],[1,2,4,3]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDecimal" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[1.1,2.1,3,4,5]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4,5]]} }');
@@ -293,7 +293,7 @@ select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{ 
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
-select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$date": "2013-12-12T06:23:15.134Z"}], [{"$date": "2013-12-12T06:23:15.134Z"}] ]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[[1,2],[1,2,3]],[[1,2],[1,2,3],[1,2,3,4]]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"a":1},{"b":1}],[{"a":1},{"b":1},{"c":2}]]} }');
 select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"a":1},{"b":2}],[{"a":1},{"b":1},{"c":2}]]} }');

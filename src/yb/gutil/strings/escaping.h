@@ -373,7 +373,7 @@ void WebSafeBase64Escape(
 //    ASCII equivalents. src is not null terminated, instead specify len.
 //    RETURNS the length of dest, or -1 if src contains invalid chars.
 // ----------------------------------------------------------------------
-size_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest);
+ssize_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest);
 bool Base32Unescape(const char* src, size_t slen, std::string* dest);
 inline bool Base32Unescape(const std::string& src, std::string* dest) {
   return Base32Unescape(src.data(), src.size(), dest);

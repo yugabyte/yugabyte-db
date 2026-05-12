@@ -8,6 +8,8 @@ menu:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
     weight: 200
+aliases:
+  - /architecture/concepts/transactions/
 type: docs
 ---
 

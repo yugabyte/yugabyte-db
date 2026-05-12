@@ -25,6 +25,8 @@ ADD_YB_LIBRARY(dockv_proto
         DEPS gutil protobuf yb_util yrpc
         NONLINK_DEPS ${DOCKV_PROTO_TGTS})
 
+add_dependencies(dockv_proto gen_src_yb_tserver_pg_client_proto)
+
 set(DOCKV_SRCS
     doc_bson.cc
     doc_key.cc

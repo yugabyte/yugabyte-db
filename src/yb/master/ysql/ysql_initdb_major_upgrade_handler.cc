@@ -18,6 +18,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
@@ -29,6 +30,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/env_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/pg_util.h"
@@ -68,6 +70,12 @@ DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
 
 DEFINE_test_flag(bool, ysql_block_writes_to_catalog, false,
     "Block writes to the catalog tables like we would during a ysql major upgrade");
+
+DEFINE_test_flag(bool, fail_ysql_pg_upgrade, false,
+    "Fail PerformPgUpgrade immediately before running the pg_upgrade binary");
+
+DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_string(initial_sys_catalog_snapshot_path);
 
 using yb::pgwrapper::PgWrapper;
 
@@ -276,7 +284,7 @@ YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
 }
 
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
     // Allow updates to the catalog version table only during the pg_upgrade step.
@@ -387,6 +395,17 @@ Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch
       sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId}, epoch.leader_term));
   RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables(
       {kPgYbCatalogVersionTableIdPriorVersion}, {kPgYbCatalogVersionTableId}, epoch.leader_term));
+
+  // pg_upgrade may have created invalidation messages in the current version's
+  // pg_yb_invalidation_messages table that correspond to catalog version bumps during the upgrade.
+  // Since we just reset the catalog versions to their pre-upgrade values, these invalidation
+  // messages are stale and would cause message_list mismatches when the master switches from
+  // reading the prior version table to the current version table at finalization.
+  const auto pg_yb_inval_messages_table_id =
+      GetPgsqlTableId(kTemplate1Oid, kPgYbInvalidationMessagesTableOid);
+  RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows(
+      {pg_yb_inval_messages_table_id}, epoch.leader_term));
+
   return Status::OK();
 }
 
@@ -455,6 +474,19 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.data_dir = pg_conf.data_dir;
   pg_upgrade_params.new_version_socket_dir =
       PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
+
+  // Ensure the temporary socket directory used by pg_upgrade is cleaned up
+  // when this function exits, even if it fails or returns early. This prevents
+  // stale socket directories from being left behind and confusing subsequent checks.
+  auto socket_dir_cleanup = ScopeExit([&pg_upgrade_params] {
+    LOG(INFO) << "Cleaning up temporary socket directory: "
+               << pg_upgrade_params.new_version_socket_dir;
+    auto status = Env::Default()->DeleteRecursively(pg_upgrade_params.new_version_socket_dir);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to clean up socket directory "
+                   << pg_upgrade_params.new_version_socket_dir << ": " << status;
+    }
+  });
   pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
   pg_upgrade_params.no_statistics = !FLAGS_ysql_upgrade_import_stats;
 
@@ -497,6 +529,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
     }
   }
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
+
+  SCHECK(!FLAGS_TEST_fail_ysql_pg_upgrade, InternalError, "TEST: Injected pg_upgrade failure");
 
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
 

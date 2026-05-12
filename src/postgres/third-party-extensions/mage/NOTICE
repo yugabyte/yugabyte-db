@@ -1,0 +1,8 @@
+Apache AGE
+Copyright 2023 The Apache Software Foundation.
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+
+Portions of Apache AGE were originally developed by Bitnine Co., Ltd. and were
+donated to the Apache Software Foundation. Copyright 2019-2020 Bitnine Co., Ltd.

@@ -79,7 +79,12 @@
         <groupId>com.github.seahen</groupId>
         <artifactId>maven-s3-wagon</artifactId>
         <version>${maven-s3-wagon.version}</version>
-     </extension>
+      </extension>
+      <extension>
+        <groupId>com.google.cloud.artifactregistry</groupId>
+        <artifactId>artifactregistry-maven-wagon</artifactId>
+        <version>2.2.5</version>
+      </extension>
     </extensions>
   </build>
 

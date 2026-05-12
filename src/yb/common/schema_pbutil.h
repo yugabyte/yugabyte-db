@@ -39,6 +39,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/memory/arena_list.h"
 
 namespace yb {
 
@@ -57,9 +58,11 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema);
 // Convert the specified column schema to protobuf.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
 void ColumnSchemaToPB(const ColumnSchema& schema, ColumnSchemaPB *pb, int flags = 0);
+void ColumnSchemaToPB(const ColumnSchema& schema, LWColumnSchemaPB *pb, int flags = 0);
 
 // Return the ColumnSchema created from the specified protobuf.
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb);
+ColumnSchema ColumnSchemaFromPB(const LWColumnSchemaPB& pb);
 
 // Convert the given list of ColumnSchemaPB objects into a Schema object.
 //
@@ -74,9 +77,14 @@ Status ColumnPBsToSchema(
 // The 'cols' list is replaced by this method.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
 void SchemaToColumnPBs(
-  const Schema& schema,
-  google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
-  int flags = 0);
+    const Schema& schema,
+    google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
+    int flags = 0);
+
+void SchemaToColumnPBs(
+    const Schema& schema,
+    ArenaList<LWColumnSchemaPB>* cols,
+    int flags = 0);
 
 // Extract the colocated table information of the given schema into a protobuf object.
 void SchemaToColocatedTableIdentifierPB(

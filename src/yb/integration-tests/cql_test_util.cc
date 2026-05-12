@@ -451,7 +451,6 @@ CassandraStatement CassandraPrepared::Bind() {
 }
 
 const MonoDelta kCassandraTimeOut = 20s * kTimeMultiplier;
-const std::string kCqlTestKeyspace = "test";
 
 CppCassandraDriver::CppCassandraDriver(
     const std::vector<std::string>& hosts, uint16_t port,

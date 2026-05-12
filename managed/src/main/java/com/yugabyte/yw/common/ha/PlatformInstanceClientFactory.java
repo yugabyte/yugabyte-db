@@ -39,7 +39,9 @@ public class PlatformInstanceClientFactory {
   public PlatformInstanceClient getClient(
       String clusterKey, String remoteAddress, Map<String, ConfigValue> wsOverrides) {
     return new PlatformInstanceClient(
-        new ApiHelper(wsClientRefresher.getClient(YB_HA_WS_KEY, wsOverrides)),
+        new ApiHelper(
+            wsClientRefresher.getClient(YB_HA_WS_KEY, wsOverrides),
+            wsClientRefresher.getMaterializer()),
         clusterKey,
         remoteAddress,
         configHelper);

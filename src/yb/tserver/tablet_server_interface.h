@@ -46,7 +46,7 @@ class PGConn;
 
 namespace server {
 class RpcAndWebServerBase;
-class YCQLStatementStatsProvider;
+class YCQLServerExternalInterface;
 }
 
 namespace tserver {
@@ -59,9 +59,12 @@ class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
 
-  virtual TSTabletManager* tablet_manager() = 0;
+  virtual TSTabletManager* tablet_manager() const = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
   virtual TSLocalLockManagerPtr ts_local_lock_manager() const = 0;
+#ifdef __linux__
+  virtual TServerCgroupManager* cgroup_manager() const = 0;
+#endif
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
@@ -123,7 +126,7 @@ class TabletServerIf : public LocalTabletServer {
   }
 
   virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) = 0;
+      server::YCQLServerExternalInterface* cql_server_if) = 0;
 
   virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
 
@@ -133,6 +136,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Status ClearMetacache(const std::string& namespace_id) = 0;
 
+  virtual Status ClearYCQLMetaDataCache() = 0;
+
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
 
@@ -140,7 +145,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) = 0;
 
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;
@@ -165,6 +171,12 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status RestartPG() const = 0;
 
   virtual Status KillPg() const = 0;
+
+  virtual ConnectivityStateResponsePB ConnectivityState() = 0;
+
+  virtual ReplicationInfoPB GetClusterReplicationInfo() const = 0;
+
+  virtual int32_t cluster_config_version() const = 0;
 };
 
 } // namespace tserver

@@ -38,7 +38,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
 - Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#set-ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you have set the appropriate [system configuration](../../../../manual-deployment/system-config/) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly, as follows:
 
@@ -296,17 +296,29 @@ partition:
   tserver: 3
 ```
 
-If you want to change the defaults, you can use the following command. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults:
+If you want to change the defaults, use the `helm upgrade --set` command; or, if you are installing on a Kubernetes cluster with a configuration different than the defaults, you can use `helm install` instead of `helm upgrade`.
+
+For example, to change the TServer resource:
 
 ```sh
 helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
 
-Replica count can be changed using the following command. Note that only the YB-TServers need to be scaled in a replication factor 3 cluster which keeps the masters count at `3`:
+To change replica count:
 
 ```sh
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
+
+Note that only the YB-TServers need to be scaled in a replication factor 3 cluster, which keeps the masters count at 3.
+
+#### Memory limits for Kubernetes deployments
+
+For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart (the `resource.master.limits.memory` and `resource.tserver.limits.memory` values).
+
+The Helm chart automatically converts these Kubernetes pod memory limits to the `--memory_limit_hard_bytes` command-line flag, which is passed to the YugabyteDB processes (yb-tserver and yb-master) when the pods start. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
+
+For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the Helm chart automatically converts this to bytes and sets `--memory_limit_hard_bytes=4294967296` as a command-line argument when starting the TServer pods.
 
 ### Readiness probes
 

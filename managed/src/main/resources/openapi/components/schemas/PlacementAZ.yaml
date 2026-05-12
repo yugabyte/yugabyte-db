@@ -1,6 +1,11 @@
 title: PlacementAZ
 description: YBA Placement Availability Zone within Placement Region. Part of PlacementRegion.
 type: object
+required:
+  - uuid
+  - name
+  - replication_factor
+  - num_nodes_in_az
 properties:
   uuid:
     description: The AZ id
@@ -26,10 +31,10 @@ properties:
   leader_affinity:
     description: Affinitizes raft leaders to this AZ.
     type: boolean
+  leader_preference:
+    description: Priority of zone (for leaders placement). Values have to be contiguous non-negative integers. Zero means non-prioritized. Multiple zones can have the same value. A lower value indicates higher zone priority.
+    type: integer
+    format: int32
   lb_name:
     description: The Load Balancer id.
     type: string
-  leader_preference:
-    description: Priority of zone (for leaders placement). Values have to be contiguous non-zero integers. Multiple zones can have the same value. A lower value indicates higher zone priority.
-    type: integer
-    format: int32

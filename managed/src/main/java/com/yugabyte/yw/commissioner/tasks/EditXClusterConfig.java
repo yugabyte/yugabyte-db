@@ -5,14 +5,17 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -42,12 +45,15 @@ import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 @Retryable
 public class EditXClusterConfig extends CreateXClusterConfig {
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
   protected EditXClusterConfig(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -62,6 +68,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     // Lock the source universe.
     lockAndFreezeUniverseForUpdate(
         sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
+    boolean taskSucceeded = false;
     try {
       // Lock the target universe.
       lockAndFreezeUniverseForUpdate(
@@ -96,6 +103,30 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(xClusterConfig, editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+          if (xClusterConfig.isUsedForDr()) {
+            TaskExecutor.SubTaskGroup stateUpdate;
+
+            if ("Paused".equals(editFormData.status)) {
+              stateUpdate =
+                  createSetDrStatesTask(
+                      xClusterConfig,
+                      State.Paused,
+                      SourceUniverseState.ReplicationPaused,
+                      TargetUniverseState.ReplicationPaused,
+                      null /* keyspacePending */);
+            } else {
+              stateUpdate =
+                  createSetDrStatesTask(
+                      xClusterConfig,
+                      State.Replicating,
+                      SourceUniverseState.ReplicatingData,
+                      TargetUniverseState.ReceivingData,
+                      null /* keyspacePending */);
+            }
+
+            stateUpdate.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
         } else if (editFormData.sourceRole != null || editFormData.targetRole != null) {
           createChangeXClusterRoleTask(
                   taskParams().getXClusterConfig(),
@@ -150,6 +181,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
+      taskSucceeded = true;
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
@@ -185,6 +217,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     } finally {
       // Unlock the source universe.
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
+      if (xClusterConfig.isUsedForDr()) {
+        DrConfig drConfig = xClusterConfig.getDrConfig();
+        drConfig.refresh();
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
+      }
     }
 
     log.info("Completed {}", getName());

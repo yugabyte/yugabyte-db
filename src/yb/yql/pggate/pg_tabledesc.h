@@ -67,6 +67,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Find the column given the postgres attr number.
   Result<size_t> FindColumn(int attr_num) const;
 
+  const std::vector<std::pair<int, size_t>>& GetAttrNumMap() const;
+
   Result<YbcPgColumnInfo> GetColumnInfo(int attr_number) const;
 
   bool IsHashPartitioned() const;

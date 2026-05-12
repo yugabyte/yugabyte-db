@@ -45,11 +45,12 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,7 @@ import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.BootstrapUniverseResponse;
+import org.yb.client.CDCStreamInfo;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
@@ -139,7 +141,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           TaskType.UniverseUpdateSucceeded);
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     defaultCustomer = testCustomer("EditXClusterConfig-test-customer");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     configName = "EditXClusterConfigTest-test-config";
@@ -192,18 +194,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-
-    try {
-      // Use reflection to access the package-private constructor.
-      Constructor<ListCDCStreamsResponse> constructor =
-          ListCDCStreamsResponse.class.getDeclaredConstructor(
-              long.class, String.class, MasterTypes.MasterErrorPB.class, List.class);
-      constructor.setAccessible(true);
-      ListCDCStreamsResponse listCDCStreamsResp =
-          constructor.newInstance(0, "", null, Collections.emptyList());
-      when(mockClient.listCDCStreams(null, null, null)).thenReturn(listCDCStreamsResp);
-    } catch (Exception ignored) {
-    }
+    initSourceUniverseActiveXClusterStreams();
 
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -256,6 +247,31 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           .thenReturn(mockTableSchemaResponseTable3);
     } catch (Exception ignored) {
     }
+  }
+
+  private void initSourceUniverseActiveXClusterStreams() throws Exception {
+    Map<String, String> options = new HashMap<>();
+    options.put("record_format", "WAL");
+    options.put("source_type", "XCLUSTER");
+    options.put("state", "ACTIVE");
+
+    CDCStreamInfo streamInfo1 = mock(CDCStreamInfo.class);
+    when(streamInfo1.getStreamId()).thenReturn(exampleStreamID1);
+    when(streamInfo1.getOptions()).thenReturn(options);
+
+    CDCStreamInfo streamInfo2 = mock(CDCStreamInfo.class);
+    when(streamInfo2.getStreamId()).thenReturn(exampleStreamID2);
+    when(streamInfo2.getOptions()).thenReturn(options);
+
+    CDCStreamInfo streamInfo3 = mock(CDCStreamInfo.class);
+    when(streamInfo3.getStreamId()).thenReturn(exampleStreamID3);
+    when(streamInfo3.getOptions()).thenReturn(options);
+
+    ListCDCStreamsResponse listCDCStreamsResp = mock(ListCDCStreamsResponse.class);
+    when(listCDCStreamsResp.hasError()).thenReturn(false);
+    when(listCDCStreamsResp.getStreams())
+        .thenReturn(List.of(streamInfo1, streamInfo2, streamInfo3));
+    when(mockClient.listCDCStreams(null, null, null)).thenReturn(listCDCStreamsResp);
   }
 
   private TaskInfo submitTask(
@@ -931,10 +947,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
-
-    System.out.println("taskInfo.getSubTasks()");
-    taskInfo.getSubTasks().forEach(task -> System.out.println(task.getTaskType()));
-
     assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.size(), taskInfo.getSubTasks().size());
     for (int i = 0; i < ADD_TABLE_IS_ALTER_DONE_FAILURE.size(); i++) {
       TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);

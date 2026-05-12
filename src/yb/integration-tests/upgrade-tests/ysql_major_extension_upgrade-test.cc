@@ -375,4 +375,39 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PlPgsql) {
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 }
+
+TEST_F(YsqlMajorExtensionUpgradeTest, YbYcqlUtils) {
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION yb_ycql_utils")));
+  auto check_query = [&](const std::optional<size_t> tserver_idx) {
+    const auto query = "SELECT COUNT(*) FROM ycql_stat_statements;";
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+    auto result = ASSERT_RESULT((conn.FetchRows<pgwrapper::PGUint64>(query)));
+    ASSERT_FALSE(result.empty());
+  };
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+}
+
+TEST_F(YsqlMajorExtensionUpgradeTest, PgCryptoSchema) {
+  const std::vector<std::string> expected_error = {
+      "In database: yugabyte",
+      "  pgcrypto installed in pg_catalog schema",
+      "Your installation contains the 'pgcrypto' extension in the",
+      "conflicting 'pg_catalog' schema. To proceed with the upgrade, please",
+      "uninstall the extension using DROP EXTENSION, and reinstall it into",
+      "a different schema (e.g. public).",
+  };
+
+  // Seems like pg_catalog schema prohibutes alter extension, so we need to drop and recreate
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pgcrypto SCHEMA pg_catalog")));
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(expected_error));
+  ASSERT_OK(ExecuteStatement("DROP EXTENSION pgcrypto"));
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgcrypto SCHEMA public"));
+  ASSERT_OK(UpgradeClusterToCurrentVersion());
+}
+
 } // namespace yb

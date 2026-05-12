@@ -24,4 +24,7 @@ void AddExtensionQueryScanForVectorQuery(PlannerInfo *root, RelOptInfo *rel,
 										 RangeTblEntry *rte,
 										 const SearchQueryEvalData *searchQueryData);
 
+
+void AddExplainCustomScanWrapper(PlannerInfo *root, RelOptInfo *rel,
+								 RangeTblEntry *rte);
 #endif

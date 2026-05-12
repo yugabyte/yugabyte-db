@@ -1,6 +1,6 @@
-  services:
+services:
   - name: prometheusConfig
-    fileName: '{{ .ConfFileLocation }}'
+    fileName: "{{ .ConfFileLocation }}"
     contents: |
       # Copyright (c) YugabyteDB, Inc.
 
@@ -208,6 +208,7 @@
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
       --web.enable-lifecycle \
+      --web.enable-remote-write-receiver \
       --web.config.file={{ .WebConfFile }} \
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
@@ -237,7 +238,7 @@
         {{ end }}
       {{ end }}
   - name: prometheusLogrotate
-    fileName: '{{ logrotateD }}/prometheus'
+    fileName: "{{ logrotateD }}/prometheus"
     contents: |
       {{ .LogDir }}/prometheus.log {
           daily

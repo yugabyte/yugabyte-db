@@ -43,9 +43,7 @@ var listBackupCmd = &cobra.Command{
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup", "List - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "List - Get Storage Configuration")
 		}
 
 		backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
@@ -71,11 +69,11 @@ var listBackupCmd = &cobra.Command{
 		var offset int32 = 0
 
 		backupAPIFilter := ybaclient.BackupApiFilter{}
-		if (len(strings.TrimSpace(universeNames))) > 0 {
+		if !util.IsEmptyString(universeNames) {
 			backupAPIFilter.SetUniverseNameList(strings.Split(universeNames, ","))
 		}
 
-		if (len(strings.TrimSpace(universeUUIDs))) > 0 {
+		if !util.IsEmptyString(universeUUIDs) {
 			backupAPIFilter.SetUniverseUUIDList(strings.Split(universeUUIDs, ","))
 		}
 
@@ -97,8 +95,7 @@ var listBackupCmd = &cobra.Command{
 			// Execute backup list request
 			r, response, err := backupListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup", "List")
 			}
 
 			// Check if backups found

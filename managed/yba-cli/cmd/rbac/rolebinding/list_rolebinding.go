@@ -38,15 +38,10 @@ var listRoleBindingCmd = &cobra.Command{
 
 		userUUID := ""
 
-		if len(strings.TrimSpace(email)) != 0 {
+		if !util.IsEmptyString(email) {
 			rUsers, response, err := authAPI.ListUsers().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"RBAC: Role Binding",
-					"List - List Users")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "RBAC: Role Binding", "List - List Users")
 			}
 
 			r := make([]ybaclient.UserWithFeatures, 0)

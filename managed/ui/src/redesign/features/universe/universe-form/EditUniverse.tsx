@@ -50,7 +50,8 @@ import {
   TOAST_AUTO_DISMISS_INTERVAL,
   TOTAL_NODES_FIELD,
   USER_TAGS_FIELD,
-  SPOT_INSTANCE_FIELD
+  SPOT_INSTANCE_FIELD,
+  K8S_AZ_OVERRIDES_FIELD
 } from './utils/constants';
 import { providerQueryKey, api as helperApi } from '../../../helpers/api';
 import { TaskDetailDrawer } from '../../tasks';
@@ -201,6 +202,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         // In case of K8 universe, user intent dedicatedNodes will be false,
         // hence we need to set masterDeviceInfo here as well
         userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
+        const k8sAzOverrides = _.get(formData, K8S_AZ_OVERRIDES_FIELD, {});
+        userIntent.userIntentOverrides = { azOverrides: k8sAzOverrides };
       }
 
       payload.clusters[primaryIndex].placementInfo.cloudList[0].regionList = getPlacements(

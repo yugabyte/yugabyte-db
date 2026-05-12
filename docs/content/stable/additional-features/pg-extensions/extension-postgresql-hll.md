@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgresql-hll
 ---
 
 The [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll) extension adds a new data type hll, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes hll can estimate the count of tens of billions of distinct values with only a few percent error.

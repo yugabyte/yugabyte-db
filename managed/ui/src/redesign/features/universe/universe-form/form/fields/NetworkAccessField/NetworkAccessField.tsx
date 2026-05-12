@@ -5,7 +5,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBToggle, YBTooltip } from '../../../../../../components';
 import { UniverseFormData, ExposingServiceTypes } from '../../../utils/dto';
 import { EXPOSING_SERVICE_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface NetworkAccessFieldProps {

@@ -79,6 +79,11 @@ public class TestPgRegressMisc extends BasePgRegressTest {
 
   @Test
   public void testPgRegressMiscSerial5() throws Exception {
+    // This test requires all queries to run on same backend with conn mgr
+    // otherwise on new backends there are catalog requests which causes a
+    // mismatch in the number of RPCs, leading to a difference in EXPLAIN
+    // output.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_misc_serial5_schedule");
   }
 
@@ -89,7 +94,7 @@ public class TestPgRegressMisc extends BasePgRegressTest {
         Collections.emptyMap(),
         Collections.singletonMap(
             "ysql_pg_conf_csv",
-            "yb_make_all_ddl_statements_incrementing=true"
+            "yb_test_make_all_ddl_statements_incrementing=true"
         )
     );
     runPgRegressTest("yb_misc_catalog_version_increment_schedule");

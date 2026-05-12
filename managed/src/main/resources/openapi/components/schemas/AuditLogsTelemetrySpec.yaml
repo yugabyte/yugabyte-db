@@ -1,0 +1,14 @@
+x-yba-api-visibility: internal
+title: AuditLogsTelemetrySpec
+type: object
+description: Audit logs (YSQL/YCQL). Omit or set to null to disable.
+properties:
+  ysql_audit_config:
+    $ref: "./YSQLAuditConfig.yaml"
+  ycql_audit_config:
+    $ref: "./YCQLAuditConfig.yaml"
+  exporters:
+    description: List of exporters. Empty = no export.
+    type: array
+    items:
+      $ref: "./TelemetryExporterEntry.yaml"

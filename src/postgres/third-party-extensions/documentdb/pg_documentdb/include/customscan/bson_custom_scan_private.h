@@ -26,7 +26,7 @@
 	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
 #define READ_OID_FIELD(fldname) \
 	token = pg_strtok(&length);     /* skip :fldname */ \
-	token = pg_strtok(&length);     /* get field value */ \
+	token = pg_strtok(&length);     /* Retrieve specified field value */ \
 	local_node->fldname = atooid(token)
 
 /* String fields */
@@ -40,12 +40,12 @@
 
 #define READ_STRING_FIELD(fldname) \
 	token = pg_strtok(&length);     /* skip :fldname */ \
-	token = pg_strtok(&length);     /* get field value */ \
+	token = pg_strtok(&length);     /* Retrieve specified field value */ \
 	local_node->fldname = nullable_string(token, length)
 
 #define READ_STRING_FIELD_VALUE(fldValue) \
 	token = pg_strtok(&length);     /* skip :fldname */ \
-	token = pg_strtok(&length);     /* get field value */ \
+	token = pg_strtok(&length);     /* Retrieve specified field value */ \
 	fldValue = nullable_string(token, length)
 
 /* Bool fields */
@@ -55,7 +55,7 @@
 
 #define READ_BOOL_FIELD(fldname) \
 	token = pg_strtok(&length);     /* skip :fldname */ \
-	token = pg_strtok(&length);     /* get field value */ \
+	token = pg_strtok(&length);     /* Retrieve specified field value */ \
 	local_node->fldname = strtobool(token)
 
 #endif

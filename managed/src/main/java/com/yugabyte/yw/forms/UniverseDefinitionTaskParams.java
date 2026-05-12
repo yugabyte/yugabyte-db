@@ -92,7 +92,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of(
           SoftwareUpgradeState.Upgrading,
           SoftwareUpgradeState.RollingBack,
-          SoftwareUpgradeState.Finalizing);
+          SoftwareUpgradeState.Finalizing,
+          SoftwareUpgradeState.Paused);
 
   @Constraints.Required()
   @Size(min = 1)
@@ -161,6 +162,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+  @ApiModelProperty(value = "YbaApi Internal. FIPS compatibility is enabled for universe")
+  public boolean fipsEnabled = false;
+
   // Set to true when software rollback is allowed.
   @ApiModelProperty(
       value = "Available since YBA version 2.20.2.0",
@@ -177,6 +182,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     UpgradeFailed,
     @EnumValue("PreFinalize")
     PreFinalize,
+    @EnumValue("Paused")
+    Paused,
     @EnumValue("Finalizing")
     Finalizing,
     @EnumValue("FinalizeFailed")
@@ -216,7 +223,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
 
   // Place all masters into default region flag.
-  @ApiModelProperty public boolean mastersInDefaultRegion = true;
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> "
+              + "With geo partitioning support, default region is replaced with default partition")
+  @Deprecated
+  public boolean mastersInDefaultRegion = true;
 
   // true iff created through a k8s CR and controlled by the
   // Kubernetes Operator.
@@ -332,6 +345,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paCollectorUuid = null;
+
   @Data
   public static class PerInstanceTypeReservation {
     private String instanceType;
@@ -347,6 +366,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @Data
   public static class AwsZoneReservation {
+    private UUID providerUUID;
+    private String zone;
+    private String region;
+    private String reservationName;
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  @Data
+  public static class GcpZoneReservation {
+    private UUID providerUUID;
     private String zone;
     private String region;
     private String reservationName;
@@ -355,6 +384,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @Data
   public static class AzureRegionReservation {
+    private UUID providerUUID;
     private String groupName;
     private String region;
     private Set<String> zones = new HashSet<>();
@@ -374,15 +404,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpReservationInfo implements ReservationInfo {
+    private Map<String, GcpZoneReservation> reservationsByZoneMap = new HashMap<>();
+  }
+
+  @Data
   public static class CapacityReservationState {
-    private AzureReservationInfo azureReservationInfo;
-    private AwsReservationInfo awsReservationInfo;
+    private Map<UUID, AzureReservationInfo> azureReservationInfos = new HashMap<>();
+    private Map<UUID, AwsReservationInfo> awsReservationInfos = new HashMap<>();
+    private Map<UUID, GcpReservationInfo> gcpReservationInfos = new HashMap<>();
 
     // other reservation types
 
     @JsonIgnore
     public boolean isEmpty() {
-      return azureReservationInfo == null && awsReservationInfo == null;
+      return azureReservationInfos.isEmpty()
+          && awsReservationInfos.isEmpty()
+          && gcpReservationInfos.isEmpty();
     }
   }
 
@@ -438,6 +476,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "YbaApi Internal. Information about capacity reservation.")
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
     private CapacityReservationState capacityReservationState;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved pre-disk size")
+    private Map<UUID, Map<ServerType, Integer>> originalDiskSize;
+
+    // Current batch index for full move operations in Kubernetes universes.
+    // Used for retryability to resume from the correct batch.
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved full move batch index for TS")
+    private int currentTsFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Saved full move batch index for Master")
+    private int currentMasterFullMoveBatchIndex = -1;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value = "List of current partitions. " + "WARNING: This is a preview API that could change")
+    private List<PartitionInfo> partitions;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "Property indicating that tablespaces are created for partitions."
+                + "WARNING: This is a preview API that could change")
+    private boolean geoPartitioned;
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -508,11 +581,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(
-        boolean validateGFlagsConsistency, boolean isAuthEnforced, Set<NodeDetails> nodes) {
+        boolean validateGFlagsConsistency,
+        boolean isAuthEnforced,
+        boolean isFipsEnabled,
+        Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
       }
-      if (placementInfo == null) {
+      if (placementInfo == null && CollectionUtils.isEmpty(partitions)) {
         throw new IllegalStateException("Placement should be provided");
       }
       checkDeviceInfo(userIntent.deviceInfo);
@@ -535,6 +611,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -632,6 +709,59 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
     }
+
+    @JsonIgnore
+    public PartitionInfo getDefaultPartition() {
+      return partitions == null
+          ? null
+          : partitions.stream().filter(g -> g.defaultPartition).findFirst().get();
+    }
+
+    public Optional<UUID> searchProviderUUIDByAz(UUID azUUID) {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        for (PartitionInfo partition : partitions) {
+          Optional<UUID> ret = searchProviderUUIDByAz(azUUID, partition.getPlacement());
+          if (ret.isPresent()) {
+            return ret;
+          }
+        }
+        return Optional.empty();
+      }
+      return searchProviderUUIDByAz(azUUID, getOverallPlacement());
+    }
+
+    public static Optional<UUID> searchProviderUUIDByAz(UUID azUUID, PlacementInfo placementInfo) {
+      return placementInfo
+          .azInfoStream()
+          .filter(az -> az.placementAZ.uuid.equals(azUUID))
+          .findFirst()
+          .map(az -> az.cloud.uuid);
+    }
+
+    public CloudType getProviderCloudType(NodeDetails nodeDetails) {
+      return userIntent.providerType;
+    }
+
+    @JsonIgnore
+    public PlacementInfo getOverallPlacement() {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        PlacementInfo result = new PlacementInfo();
+        // TODO Sort?
+        for (PartitionInfo partition : partitions) {
+          partition
+              .getPlacement()
+              .azStream()
+              .forEach(
+                  az -> {
+                    int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
+                    PlacementInfoUtil.addPlacementZone(
+                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                  });
+        }
+        return result;
+      }
+      return placementInfo;
+    }
   }
 
   public static boolean hasEphemeralStorage(UniverseDefinitionTaskParams params) {
@@ -697,7 +827,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (other == null) {
         return;
       }
-      if (other.getDeviceInfo() != null) {
+      if (other.getDeviceInfo() != null && !other.getDeviceInfo().allNull()) {
         this.setDeviceInfo(other.getDeviceInfo());
       }
       if (other.getInstanceType() != null) {
@@ -714,6 +844,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return result;
+    }
+
+    public boolean allNull() {
+      return Stream.of(this.getDeviceInfo(), this.getInstanceType()).allMatch(Objects::isNull);
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
     }
   }
 
@@ -763,6 +903,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               this.getInstanceType())
           .allMatch(Objects::isNull);
     }
+
+    @JsonIgnore
+    public void updatePerProcess(
+        ServerType serverType, Consumer<PerProcessDetails> perProcessConsumer) {
+      if (perProcess == null) {
+        perProcess = new HashMap<>();
+      }
+      perProcess.compute(
+          serverType,
+          (k, v) -> {
+            if (v == null) {
+              v = new PerProcessDetails();
+            }
+            perProcessConsumer.accept(v);
+            if (v != null && v.allNull()) {
+              v = null;
+            }
+            return v;
+          });
+      if (perProcess.containsKey(serverType) && perProcess.get(serverType) == null) {
+        perProcess.remove(serverType);
+      }
+      if (MapUtils.isEmpty(perProcess)) {
+        perProcess = null;
+      }
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setPerProcess(null);
+      this.setCgroupSize(null);
+      this.setProxyConfig(null);
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
+    }
   }
 
   @ApiModel(
@@ -804,7 +979,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               v = new AZOverrides();
             }
             azOverridesConsumer.accept(v);
-            if (v.allNull()) {
+            if (v != null && v.allNull()) {
               v = null;
             }
             return v;
@@ -818,9 +993,39 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public void unsetCgroupSize() {
+      Consumer<AZOverrides> azOverridesConsumer = azO -> azO.setCgroupSize(null);
+      if (MapUtils.isNotEmpty(azOverrides)) {
+        Set<UUID> azUUIDs = new HashSet<UUID>(azOverrides.keySet());
+        azUUIDs.stream().forEach(azUUID -> updateAZOverride(azUUID, azOverridesConsumer));
+      }
+    }
+
+    @JsonIgnore
+    public void removeNonRequiredAZs(Set<UUID> usedAZs) {
+      if (MapUtils.isEmpty(azOverrides)) {
+        return;
+      }
+      azOverrides.keySet().retainAll(usedAZs);
+    }
+
+    @JsonIgnore
     public boolean allNull() {
       return Stream.of(this.getAzOverrides(), this.getPerProcess()).allMatch(Objects::isNull);
     }
+  }
+
+  @ApiModel(
+      description =
+          "WARNING: This is a preview API that could change." + " Information about Geo partition")
+  @Data
+  public static class PartitionInfo {
+    @ApiModelProperty UUID uuid = UUID.randomUUID();
+    @Constraints.Required() @ApiModelProperty private String name;
+    @ApiModelProperty private boolean defaultPartition;
+    @ApiModelProperty private PlacementInfo placement;
+    @ApiModelProperty private int replicationFactor;
+    @ApiModelProperty private String tablespaceName;
   }
 
   /** The user defined intent for the universe. */
@@ -938,8 +1143,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableConnectionPooling = false;
 
-    @ApiModelProperty(notes = "default: true")
-    public boolean enableYEDIS = true;
+    @ApiModelProperty(notes = "default: false")
+    public boolean enableYEDIS = false;
 
     @ApiModelProperty() public boolean enableNodeToNodeEncrypt = false;
 
@@ -974,7 +1179,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
-
     @ApiModelProperty() public boolean enableLB = false;
 
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
@@ -1087,6 +1291,59 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
     private boolean useClockbound = false;
 
+    @Data
+    @ApiModel(description = "Multi-tenancy configuration for QoS")
+    public static class MultiTenancyConfig {
+      @ApiModelProperty(value = "Enable QoS-based multi-tenancy (sets enable_qos gflag)")
+      private boolean enableQos = false;
+
+      @ApiModelProperty(value = "Maximum per-database CPU percentage")
+      @Nullable
+      private Double qosMaxDbCpuPercent;
+
+      @ApiModelProperty(value = "Maximum number of databases allowed")
+      @Nullable
+      private Integer qosMaxDbCount;
+
+      @Override
+      public MultiTenancyConfig clone() {
+        MultiTenancyConfig newConfig = new MultiTenancyConfig();
+        newConfig.enableQos = enableQos;
+        newConfig.qosMaxDbCount = qosMaxDbCount;
+        newConfig.qosMaxDbCpuPercent = qosMaxDbCpuPercent;
+        return newConfig;
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        if (other == null) {
+          return false;
+        }
+        if (other.getClass() != this.getClass()) {
+          return false;
+        }
+        MultiTenancyConfig otherMt = (MultiTenancyConfig) other;
+        return enableQos == otherMt.enableQos
+            && Objects.equals(qosMaxDbCount, otherMt.getQosMaxDbCount())
+            && Objects.equals(qosMaxDbCpuPercent, otherMt.getQosMaxDbCpuPercent());
+      }
+    }
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Multi-tenancy configuration")
+    private MultiTenancyConfig multiTenancy;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Universe provisioned with cpu cgroup")
+    @Getter
+    @Setter
+    private boolean cpuCgroupConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1101,6 +1358,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s"
                 + " universe")
     private boolean useYbdbInbuiltYbc = false;
+
+    @JsonIgnore
+    public boolean isQosEnabled() {
+      return multiTenancy != null && multiTenancy.isEnableQos();
+    }
 
     @Override
     public String toString() {
@@ -1188,6 +1450,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
       newUserIntent.useClockbound = useClockbound;
+      if (multiTenancy != null) {
+        newUserIntent.multiTenancy = multiTenancy.clone();
+      }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
       return newUserIntent;
     }
@@ -1227,6 +1492,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public Set<UUID> getAllProviderUUIDs() {
+      // For tests to work.
+      if (provider == null) {
+        return Collections.emptySet();
+      }
+      return Collections.singleton(UUID.fromString(provider));
+    }
+
+    @JsonIgnore
+    public Set<CloudType> getAllCloudTypes() {
+      return Collections.singleton(providerType);
+    }
+
+    @JsonIgnore
     public String getBaseInstanceType() {
       return getInstanceType(null);
     }
@@ -1260,20 +1539,33 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      if (dedicatedNodes
-          && masterDeviceInfo != null
-          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
+      return getDeviceInfoForAz(
+          nodeDetails.getAzUuid(), nodeDetails.dedicatedTo == ServerType.MASTER);
+    }
+
+    public DeviceInfo getDeviceInfoForAz(UUID azUUID, boolean isDedicatedMaster) {
+      if (dedicatedNodes && masterDeviceInfo != null && isDedicatedMaster) {
+        OverridenDetails overridenDetails =
+            getOverridenDetails(UniverseTaskBase.ServerType.MASTER, azUUID);
+        if (overridenDetails.getDeviceInfo() != null) {
+          JsonNode original = Json.toJson(masterDeviceInfo);
+          JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+          log.debug(
+              "Getting overriden master device info {} for az {}", Json.toJson(overriden), azUUID);
+
+          CommonUtils.deepMerge(original, overriden);
+          log.debug("Master device info after merging {}", original);
+
+          return Json.fromJson(original, DeviceInfo.class);
+        }
         return masterDeviceInfo;
       }
       OverridenDetails overridenDetails =
-          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
         JsonNode original = Json.toJson(deviceInfo);
         JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overriden),
-            nodeDetails.getAzUuid());
+        log.debug("Getting overriden device info {} for az {}", Json.toJson(overriden), azUUID);
 
         CommonUtils.deepMerge(original, overriden);
         log.debug("Device info after merging {}", original);
@@ -1281,6 +1573,62 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
+    }
+
+    public void updateAZVolumeOverrides(
+        UserIntent other, Set<UUID> azs, Set<UUID> skipAZs, boolean isDedicatedMaster) {
+      ServerType serverType = isDedicatedMaster ? ServerType.MASTER : ServerType.TSERVER;
+      UserIntentOverrides otherOverridesClone =
+          other.userIntentOverrides == null
+              ? new UserIntentOverrides()
+              : other.userIntentOverrides.clone();
+      if (otherOverridesClone.getAzOverrides() == null) {
+        otherOverridesClone.setAzOverrides(new HashMap<>());
+      }
+
+      UserIntentOverrides originalOverridesClone =
+          this.getUserIntentOverrides() == null
+              ? new UserIntentOverrides()
+              : this.getUserIntentOverrides().clone();
+
+      azs.stream()
+          .filter(azUUID -> CollectionUtils.isEmpty(skipAZs) || !skipAZs.contains(azUUID))
+          .forEach(
+              azUUID -> {
+                Consumer<AZOverrides> applyChangesConsumer =
+                    (azO) -> {
+                      DeviceInfo deviceInfo = null;
+                      if (otherOverridesClone.getAzOverrides() != null
+                          && otherOverridesClone.getAzOverrides().get(azUUID) != null) {
+                        AZOverrides azOverrides = otherOverridesClone.getAzOverrides().get(azUUID);
+                        if (azOverrides.getDeviceInfo() != null) {
+                          deviceInfo = azOverrides.getDeviceInfo();
+                        }
+
+                        Consumer<PerProcessDetails> perProcessConsumer =
+                            (perProc) -> {
+                              DeviceInfo perProcDeviceInfo = null;
+                              if (azOverrides.getPerProcess() != null
+                                  && azOverrides.getPerProcess().containsKey(serverType)) {
+                                if (azOverrides.getPerProcess().get(serverType).getDeviceInfo()
+                                    != null) {
+                                  perProcDeviceInfo =
+                                      azOverrides.getPerProcess().get(serverType).getDeviceInfo();
+                                }
+                                perProc.setDeviceInfo(perProcDeviceInfo);
+                              } else {
+                                perProc.reset();
+                              }
+                            };
+                        azO.updatePerProcess(serverType, perProcessConsumer);
+                        azO.setDeviceInfo(deviceInfo);
+                      } else {
+                        azO.reset();
+                      }
+                    };
+                originalOverridesClone.updateAZOverride(azUUID, applyChangesConsumer);
+              });
+      this.setUserIntentOverrides(originalOverridesClone);
     }
 
     public ProxyConfig getProxyConfig(@Nullable UUID azUUID) {
@@ -1349,33 +1697,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return true;
       }
       return false;
-    }
-
-    public boolean onlyRegionsChanged(UserIntent other) {
-      if (universeName.equals(other.universeName)
-          && provider.equals(other.provider)
-          && providerType == other.providerType
-          && replicationFactor == other.replicationFactor
-          && newRegionsAdded(regionList, other.regionList)
-          && Objects.equals(preferredRegion, other.preferredRegion)
-          && instanceType.equals(other.instanceType)
-          && numNodes == other.numNodes
-          && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
-          && assignPublicIP == other.assignPublicIP
-          && useSpotInstance == other.useSpotInstance
-          && spotPrice.equals(other.spotPrice)
-          && assignStaticPublicIP == other.assignStaticPublicIP
-          && useTimeSync == other.useTimeSync
-          && dedicatedNodes == other.dedicatedNodes
-          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
-        return true;
-      }
-      return false;
-    }
-
-    private static boolean newRegionsAdded(List<UUID> left, List<UUID> right) {
-      return (new HashSet<>(left)).containsAll(new HashSet<>(right));
     }
 
     /**
@@ -1453,7 +1774,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * @param placementInfo PlacementInfo describing the placement of the primary cluster.
    * @return the updated/inserted primary cluster.
    */
-  public Cluster upsertPrimaryCluster(UserIntent userIntent, PlacementInfo placementInfo) {
+  public Cluster upsertPrimaryCluster(
+      UserIntent userIntent, List<PartitionInfo> partitions, PlacementInfo placementInfo) {
     Cluster primaryCluster = getPrimaryCluster();
     if (primaryCluster != null) {
       if (userIntent != null) {
@@ -1462,10 +1784,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (placementInfo != null) {
         primaryCluster.placementInfo = placementInfo;
       }
+      primaryCluster.setPartitions(partitions);
     } else {
       primaryCluster =
           new Cluster(ClusterType.PRIMARY, (userIntent == null) ? new UserIntent() : userIntent);
       primaryCluster.placementInfo = placementInfo;
+      primaryCluster.setPartitions(partitions);
       clusters.add(primaryCluster);
     }
     return primaryCluster;
@@ -1478,12 +1802,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    *
    * @param userIntent UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param partitions List of geo partition infos.
    * @param clusterUuid uuid of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
   public Cluster upsertCluster(
-      UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
-    return upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.ASYNC);
+      UserIntent userIntent,
+      List<PartitionInfo> partitions,
+      PlacementInfo placementInfo,
+      UUID clusterUuid) {
+    return upsertCluster(userIntent, partitions, placementInfo, clusterUuid, ClusterType.ASYNC);
   }
 
   /**
@@ -1493,12 +1821,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    *
    * @param userIntent UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param partitions List of geo partition infos.
    * @param clusterUuid uuid of the cluster we want to change.
    * @param clusterType type of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
   public Cluster upsertCluster(
       UserIntent userIntent,
+      List<PartitionInfo> partitions,
       PlacementInfo placementInfo,
       UUID clusterUuid,
       ClusterType clusterType) {
@@ -1510,9 +1840,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (placementInfo != null) {
         cluster.placementInfo = placementInfo;
       }
+      cluster.setPartitions(partitions);
     } else {
       cluster = new Cluster(clusterType, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
+      cluster.setPartitions(partitions);
       clusters.add(cluster);
     }
     cluster.setUuid(clusterUuid);
@@ -1623,6 +1955,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return Iterables.getOnlyElement(foundClusters, null);
   }
 
+  public UUID searchProviderUUIDByAz(UUID azUUID) {
+    return clusters.stream()
+        .map(c -> c.searchProviderUUIDByAz(azUUID))
+        .filter(p -> p.isPresent())
+        .findFirst()
+        .map(o -> o.get())
+        .orElseGet(() -> AvailabilityZone.getOrBadRequest(azUUID).getProvider().getUuid());
+  }
+
   // the getter has some logic built around, as there are no other layer to
   // have such logic at a common place
   public UUID getClientRootCA() {
@@ -1631,6 +1972,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   public void setClientRootCA(UUID clientRootCA) {
     this.clientRootCA = clientRootCA;
+  }
+
+  @JsonIgnore
+  public UUID getRawClientRootCA() {
+    return clientRootCA;
   }
 
   /**
@@ -1681,7 +2027,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (cluster.userIntent.enableLB) {
         // Get AZs in cluster
         List<PlacementInfo.PlacementAZ> azList =
-            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.getOverallPlacement());
         for (PlacementInfo.PlacementAZ placementAZ : azList) {
           String lbName = placementAZ.lbName;
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
@@ -1715,6 +2061,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public PrevYBSoftwareConfig prevYBSoftwareConfig;
 
   @Data
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public static class PrevYBSoftwareConfig {
 
     @ApiModelProperty private String softwareVersion;
@@ -1727,6 +2074,55 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
 
     @ApiModelProperty private boolean canRollbackCatalogUpgrade;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. True when canary upgrade is enabled"
+                + " for this upgrade (task progress API)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private boolean isCanaryUpgrade;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Canary pause state when upgrade is"
+                + " paused at a canary point")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private CanaryPauseState canaryPauseState = null;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ master upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> masterAZUpgradeStatesList = new ArrayList<>();
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ tserver upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> tserverAZUpgradeStatesList = new ArrayList<>();
+
+    /**
+     * After YBA restart or task failure, any AZ left {@link AZUpgradeStatus#IN_PROGRESS} should be
+     * marked {@link AZUpgradeStatus#FAILED} so progress is not stuck mid-AZ.
+     */
+    public void markInProgressAzUpgradeStatusesAsFailed() {
+      if (masterAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : masterAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+      if (tserverAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : tserverAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+    }
   }
 
   // XCluster: All the xCluster related code resides in this section.

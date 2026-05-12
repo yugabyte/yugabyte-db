@@ -45,13 +45,7 @@ func AddInstanceTypeUtil(
 		ProviderCode(providerType)
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"Add - Get Provider",
-		)
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Add - Get Provider")
 	}
 	if len(r) < 1 {
 		logrus.Fatalf(
@@ -112,7 +106,7 @@ func AddInstanceTypeUtil(
 		MemSizeGB: util.GetFloat64Pointer(memSize),
 		NumCores:  util.GetFloat64Pointer(numCores),
 	}
-	if len(strings.TrimSpace(architecture)) > 0 {
+	if !util.IsEmptyString(architecture) {
 		details := requestBody.GetInstanceTypeDetails()
 		details.SetArch(architecture)
 		requestBody.SetInstanceTypeDetails(details)
@@ -121,9 +115,13 @@ func AddInstanceTypeUtil(
 	rCreate, response, err := authAPI.CreateInstanceType(providerUUID).
 		InstanceType(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Add")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Add")
 	}
+
+	util.CheckAndDereference(
+		rCreate,
+		fmt.Sprintf("Failed to create instance type %s", instanceTypeName),
+	)
 
 	instanceTypesCtx := formatter.Context{
 		Command: "add",
@@ -137,11 +135,11 @@ func AddInstanceTypeUtil(
 		providerUUID)
 
 	instanceTypeList := make([]ybaclient.InstanceTypeResp, 0)
-	instanceTypeList = append(instanceTypeList, rCreate)
+	instanceTypeList = append(instanceTypeList, *rCreate)
 	instancetype.Write(instanceTypesCtx, instanceTypeList)
 }
 
-func buildVolumeDetails(volumeStrings []string, providerType string) *[]ybaclient.VolumeDetails {
+func buildVolumeDetails(volumeStrings []string, providerType string) []ybaclient.VolumeDetails {
 	if len(volumeStrings) == 0 && strings.EqualFold(providerType, util.OnpremProviderType) {
 		logrus.Fatalln(
 			formatter.Colorize("Atleast one volume is required per instance type.\n",
@@ -161,15 +159,15 @@ func buildVolumeDetails(volumeStrings []string, providerType string) *[]ybaclien
 			val := kvp[1]
 			switch key {
 			case "mount-points":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					volume["mount-points"] = val
 				}
 			case "size":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					volume["size"] = val
 				}
 			case "type":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					volume["type"] = val
 				}
 			}
@@ -207,7 +205,7 @@ func buildVolumeDetails(volumeStrings []string, providerType string) *[]ybaclien
 		}
 		res = append(res, r)
 	}
-	return &res
+	return res
 }
 
 // AddAndListInstanceTypeValidations validates the flags for add instance type

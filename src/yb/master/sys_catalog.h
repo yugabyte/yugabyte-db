@@ -179,6 +179,9 @@ class SysCatalogTable {
       int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term);
 
+  Result<bool> GetYsqlYbSystemTableInfo(
+      PgOid relnamespace, const TableName& table_name, PgOid* oid, PgOid* relfilenode);
+
   // ==================================================================
   // Static schema related methods.
   // ==================================================================
@@ -287,6 +290,12 @@ class SysCatalogTable {
                                               const std::string& column_name,
                                               const ReadHybridTime& read_time = ReadHybridTime());
 
+  // Read 'column_name' (e.g. indisvalid/indisready/indislive) boolean value from the pg_index
+  // catalog table for the given index OID.
+  Result<bool> ReadPgIndexBoolColumn(
+      const PgOid database_oid, const PgOid index_oid, const std::string& column_name,
+      const ReadHybridTime& read_time = ReadHybridTime());
+
   // Read all nspname strings from the pg_namespace catalog table.
   // Return map: relnamespace oid -> nspname string.
   Result<PgOidToStringMap> ReadPgNamespaceNspnameMap(const PgOid database_oid);
@@ -364,6 +373,11 @@ class SysCatalogTable {
   tablet::TabletPeerPtr TEST_GetTabletPeer() {
     return tablet_peer_;
   }
+
+  Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time = ReadHybridTime());
+
+  Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
 
  private:
   friend class CatalogManager;

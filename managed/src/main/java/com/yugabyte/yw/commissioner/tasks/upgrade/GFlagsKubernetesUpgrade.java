@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
@@ -37,7 +36,6 @@ import lombok.extern.slf4j.Slf4j;
 @Abortable
 public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
-  private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
   private final GFlagsAuditHandler gFlagsAuditHandler;
   private final AuditService auditService;
@@ -45,14 +43,12 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Inject
   protected GFlagsKubernetesUpgrade(
       BaseTaskDependencies baseTaskDependencies,
-      GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
       KubernetesManagerFactory kubernetesManagerFactory,
       GFlagsAuditHandler gFlagsAuditHandler,
       AuditService auditService) {
     super(baseTaskDependencies, operatorStatusUpdaterFactory, kubernetesManagerFactory);
-    this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
     this.gFlagsAuditHandler = gFlagsAuditHandler;
     this.auditService = auditService;

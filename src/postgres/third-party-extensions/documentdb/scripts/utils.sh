@@ -24,7 +24,7 @@ function GetPostgresPath()
   local pgVersion=$1
   local osVersion=$(cat /etc/os-release | grep "^ID=");
 
-  if [[ "$osVersion" == "ID=ubuntu" || "$osVersion" == "ID=debian"|| "$osVersion" == "ID=mariner" ]]; then
+  if [[ "$osVersion" == "ID=ubuntu" || "$osVersion" == "ID=debian"|| "$osVersion" == "ID=mariner" || "$osVersion" == "ID=azurelinux" ]]; then
     echo "/usr/lib/postgresql/$pgVersion/bin"
   else
     echo "/usr/pgsql-$pgVersion/bin"
@@ -60,6 +60,12 @@ function GetInitDB()
   echo $(GetPostgresPath $pgVersion)/initdb
 }
 
+function GetPGConfig()
+{
+  local pgVersion=${PG_VERSION:-16}
+  echo $(GetPostgresPath $pgVersion)/pg_config
+}
+
 function StopServer()
 {
   local _directory=$1
@@ -74,11 +80,12 @@ function StartServer()
   local _directory=$1
   local _port=$2
   local _logPath=${3:-$_directory/pglog.log}
+  local _additionalArgs=${4:-''}
   local _pgctlPath=$(GetPGCTL)
 
   echo "Starting postgres in $_directory"
-  echo "Calling: $_pgctlPath start -D $_directory -o \"-p $_port -l $_logPath\""
-  $_pgctlPath start -D $_directory -o "-p $_port" -l $_logPath
+  echo "Calling: $_pgctlPath start -D $_directory -o \"-p $_port\" -l $_logPath $_additionalArgs"
+  $_pgctlPath start -D $_directory -o "-p $_port" -l $_logPath $_additionalArgs
 }
 
 
@@ -101,14 +108,39 @@ function SetupPostgresServerExtensions()
 }
 
 
+function SetupCustomAdminUser()
+{
+  # This sets up a user
+  local user=$1
+  local pass=$2
+  local port=$3
+  local owner=$4
+
+  echo "Setting up custom user $user with owner $owner.";
+  if ! psql -p "$port" -U "$owner" -d postgres -c "SELECT 1 FROM pg_roles WHERE rolname = '$user';" | grep -q 1; then
+    psql -p $port -U $owner -d postgres -c "SELECT documentdb_api.create_user('{\"createUser\":\"$user\", \"pwd\":\"$pass\", \"roles\":[{\"role\":\"readWriteAnyDatabase\",\"db\":\"admin\"}, {\"role\":\"clusterAdmin\",\"db\":\"admin\"}]}');";
+  else
+    echo "Role $user already exists."
+  fi
+}
+
 function InitDatabaseExtended()
 {
   local _directory=$1
   local _preloadLibraries=$2
+
+  echo "Initializing PostgreSQL database in $_directory with preload libraries: $_preloadLibraries"
+
+  if [ -d "$_directory" ]; then
+    echo "Removing contents of $_directory"
+    rm -rf $_directory/*
+    rm -rf $_directory/.[!.]*
+  fi
   
-  echo "Deleting directory $_directory"
-  rm -rf $_directory
-  mkdir -p $_directory
+  if [ ! -d "$_directory" ]; then
+    echo "Creating directory $_directory"
+    mkdir -p $_directory
+  fi
 
   echo "Calling initdb for $_directory"
   $(GetInitDB) -D $_directory
@@ -120,9 +152,12 @@ function SetupPostgresConfigurations()
 {
   local installdir=$1;
   local preloadLibraries=$2;
-  requiredLibraries="citus, pg_cron, ${preloadLibraries}";
+  requiredLibraries="pg_cron, ${preloadLibraries}";
   echo shared_preload_libraries = \'$requiredLibraries\' | tee -a $installdir/postgresql.conf
   echo cron.database_name = \'postgres\' | tee -a $installdir/postgresql.conf
+  echo documentdb.enableBackgroundWorker = 'true' | tee -a $installdir/postgresql.conf
+  echo documentdb.enableBackgroundWorkerJobs = 'true' | tee -a $installdir/postgresql.conf
+  echo documentdb.indexBuildsScheduledOnBgWorker = 'false' | tee -a $installdir/postgresql.conf
   echo ssl = off | tee -a $installdir/postgresql.conf
 }
 

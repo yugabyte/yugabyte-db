@@ -145,14 +145,8 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_RUNTIME_int32(compaction_priority_start_bound, 10,
-    "Compaction task of DB that has number of SST files less than specified will have "
-    "priority 0.");
-
-DEFINE_RUNTIME_int32(compaction_priority_step_size, 5,
-    "Compaction task of DB that has number of SST files greater that "
-    "compaction_priority_start_bound will get 1 extra priority per every "
-    "compaction_priority_step_size files.");
+DECLARE_int32(compaction_priority_start_bound);
+DECLARE_int32(compaction_priority_step_size);
 
 DEFINE_RUNTIME_int32(small_compaction_extra_priority, 1,
     "Small compaction will get small_compaction_extra_priority extra priority.");
@@ -172,6 +166,9 @@ DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
 
 DEFINE_test_flag(double, simulated_crash_after_modify_flushed_frontier_probability, 0.0,
                  "Probability of a simulated crash at the end of DBImpl::ModifyFlushedFrontier.");
+
+DEFINE_test_flag(bool, fail_flush_mem_table, false,
+    "Fails all flush memtable requests when the flag is set.");
 
 DEFINE_RUNTIME_bool(
     rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, false,
@@ -311,6 +308,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_reason_(compaction_->compaction_reason()),
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
+    SetTaskCgroup(db_impl->task_cgroup());
     db_impl->mutex_.AssertHeld();
     SetTaskInfoAndCountAsPending();
   }
@@ -529,7 +527,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return internal::kTopDiskCompactionPriority - active_tasks;
+    return yb::PriorityThreadPool::kPriorityGroupBase - active_tasks;
   }
 
   ColumnFamilyData* column_family_data() const {
@@ -579,7 +577,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl_->mutex_.AssertHeld();
 
     if (db_impl_->IsShuttingDown()) {
-      return internal::kShuttingDownPriority;
+      return yb::PriorityThreadPool::kPriorityShuttingDown;
     }
 
     auto* current_version = cfd_->GetSuperVersion()->current;
@@ -649,7 +647,9 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
-      : ThreadPoolTask(db_impl), cfd_(cfd) {}
+      : ThreadPoolTask(db_impl), cfd_(cfd) {
+    SetTaskCgroup(db_impl->task_cgroup());
+  }
 
   bool ShouldRemoveWithKey(void* key) override {
     return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;
@@ -800,6 +800,11 @@ DBOptions SanitizeOptions(const std::string& dbname, const DBOptions& src) {
 
   if (result.compaction_readahead_size > 0) {
     result.new_table_reader_for_compaction_inputs = true;
+  }
+
+  if (!result.block_based_table_builder_mem_tracker && result.mem_tracker) {
+    result.block_based_table_builder_mem_tracker =
+        yb::MemTracker::FindOrCreateTracker("BlockBasedTableBuilder", result.mem_tracker);
   }
 
   return result;
@@ -2017,6 +2022,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
 Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                                            MemTable* mem, VersionEdit* edit) {
   mutex_.AssertHeld();
+  mem->MarkImmutable();
   const uint64_t start_micros = env_->NowMicros();
   FileMetaData meta;
   Status s;
@@ -2142,7 +2148,9 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   // and EventListener callback will be called when the db_mutex
   // is unlocked by the current thread.
   auto file_number_holder = flush_job.Run(&file_meta);
-
+  if (PREDICT_FALSE(FLAGS_TEST_fail_flush_mem_table)) {
+    file_number_holder = STATUS(IOError, "TEST_fail_flush_mem_table set");
+  }
   if (file_number_holder.ok()) {
     InstallSuperVersionAndScheduleWorkWrapper(cfd, job_context,
                                               mutable_cf_options);
@@ -2150,7 +2158,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       *made_progress = 1;
     }
     VersionStorageInfo::LevelSummaryStorage tmp;
-    YB_LOG_EVERY_N_SECS(INFO, 1)
+    YB_LOG_EVERY_N_SECS(INFO, 10)
         << "[" << cfd->GetName() << "] Level summary: "
         << cfd->current()->storage_info()->LevelSummary(&tmp);
   }
@@ -2159,7 +2167,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       && db_options_.paranoid_checks && bg_error_.ok()) {
     // if a bad error happened (not ShutdownInProgress) and paranoid_checks is
     // true, mark DB read-only
-    bg_error_ = file_number_holder.status();
+    bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
@@ -2177,7 +2185,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(file_path)));
     }
     if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
-      bg_error_ = STATUS(IOError, "Max allowed space was reached");
+      bg_error_.TrySet(STATUS(IOError, "Max allowed space was reached"));
       DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
     }
   }
@@ -2598,9 +2606,8 @@ Status DBImpl::CompactFilesImpl(
         "[%s] [JOB %d] Compaction error: %s",
         c->column_family_data()->GetName().c_str(), job_context->job_id,
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
-        bg_error_.ok()) {
-      bg_error_ = status;
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ && bg_error_.ok()) {
+      bg_error_.TrySet(status);
     }
   }
 
@@ -2917,6 +2924,13 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   // Wait until the flush completes.
   return WaitForFlushMemTable(cfh->cfd());
+}
+
+Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
+  InstrumentedMutexLock l(&mutex_);
+  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
+  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  return Status::OK();
 }
 
 Status DBImpl::SyncWAL() {
@@ -4050,9 +4064,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   } else {
     RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log, "Compaction error: %s",
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
-        bg_error_.ok()) {
-      bg_error_ = status;
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ && bg_error_.ok()) {
+      bg_error_.TrySet(status);
     }
   }
 
@@ -4335,7 +4348,7 @@ std::unique_ptr<SuperVersion> DBImpl::InstallSuperVersionAndScheduleWork(
 Status DBImpl::GetImpl(const ReadOptions& read_options,
                        ColumnFamilyHandle* column_family, const Slice& key,
                        std::string* value, bool* value_found) {
-  StopWatch sw(env_, stats_.get(), DB_GET);
+  StopWatchMicro sw(env_, stats_.get(), DB_GET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -4396,7 +4409,7 @@ std::vector<Status> DBImpl::MultiGet(
     const std::vector<ColumnFamilyHandle*>& column_family,
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
 
-  StopWatch sw(env_, stats_.get(), DB_MULTIGET);
+  StopWatchMicro sw(env_, stats_.get(), DB_MULTIGET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
   struct MultiGetColumnFamilyData {
@@ -5071,7 +5084,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
     db_iter->SetIterUnderDBIter(internal_iter);
 
-    if (yb::GetAtomicFlag(&FLAGS_rocksdb_use_logging_iterator)) {
+    if (FLAGS_rocksdb_use_logging_iterator) {
       return new TransitionLoggingIteratorWrapper(db_iter, LogPrefix());
     }
     return db_iter;
@@ -5279,7 +5292,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     RecordTick(stats_.get(), WRITE_WITH_WAL);
   }
 
-  StopWatch write_sw(env_, db_options_.statistics.get(), DB_WRITE);
+  StopWatchMicro write_sw(env_, db_options_.statistics.get(), DB_WRITE);
 
 #ifndef NDEBUG
   auto num_write_waiters = write_waiters_.fetch_add(1, std::memory_order_acq_rel);
@@ -5546,7 +5559,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       RecordTick(stats_.get(), WAL_FILE_BYTES, log_size);
       if (status.ok() && need_log_sync) {
         RecordTick(stats_.get(), WAL_FILE_SYNCED);
-        StopWatch sw(env_, stats_.get(), WAL_FILE_SYNC_MICROS);
+        StopWatchMicro sw(env_, stats_.get(), WAL_FILE_SYNC_MICROS);
         // It's safe to access logs_ with unlocked mutex_ here because:
         //  - we've set getting_synced=true for all logs,
         //    so other threads won't pop from logs_ while we're here,
@@ -5662,7 +5675,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       // Is setting bg_error_ enough here?  This will at least stop
       // compaction and fail any further writes.
       if (!status.ok() && bg_error_.ok() && !w.CallbackFailed()) {
-        bg_error_ = status;
+        bg_error_.TrySet(status);
       }
     }
   }
@@ -5671,7 +5684,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   if (db_options_.paranoid_checks && !status.ok() && !w.CallbackFailed() && !status.IsBusy()) {
     mutex_.Lock();
     if (bg_error_.ok()) {
-      bg_error_ = status;  // stop compaction & fail any further writes
+      bg_error_.TrySet(status);  // stop compaction & fail any further writes
     }
     mutex_.Unlock();
   }
@@ -6137,9 +6150,15 @@ bool DBImpl::NeedsDelay() {
   return write_controller_.NeedsDelay();
 }
 
-Result<std::string> DBImpl::GetMiddleKey() {
+Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->GetMiddleKey();
+  if (!lower_bound_key.empty()) {
+    auto lower_bound_internal_key = InternalKey::MinPossibleForUserKey(lower_bound_key);
+    return default_cf_handle_->cfd()->current()->GetMiddleKey(lower_bound_internal_key.Encode());
+  }
+  // Use an empty (invalid) internal key to get the middle key without a lower bound.
+  const Slice kEmptyInternalKey;
+  return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
 }
 
 yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
@@ -6384,7 +6403,7 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
-UserFrontierPtr DBImpl::GetFlushedFrontier() {
+yb::storage::UserFrontierPtr DBImpl::GetFlushedFrontier() {
   InstrumentedMutexLock l(&mutex_);
   auto result = versions_->FlushedFrontier();
   if (result) {
@@ -6392,25 +6411,34 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
   }
   std::vector<LiveFileMetaData> files;
   versions_->GetLiveFilesMetaData(&files);
-  UserFrontierPtr accumulated;
+  yb::storage::UserFrontierPtr accumulated;
   for (const auto& file : files) {
     if (!file.imported) {
-      UserFrontier::Update(
-          file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &accumulated);
+      yb::storage::UserFrontier::Update(
+          file.largest.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
+          &accumulated);
     }
   }
   return accumulated;
 }
 
-UserFrontierPtr DBImpl::CalcMemTableFrontier(UpdateUserValueType frontier_type) {
+yb::storage::UserFrontierPtr DBImpl::CalcMemTableFrontier(
+    yb::storage::UpdateUserValueType frontier_type) {
   InstrumentedMutexLock l(&mutex_);
   auto cfd = default_cf_handle_->cfd();
   return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
 }
 
-UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
+UserFrontierRange DBImpl::CalcMemTableFrontiers() {
   InstrumentedMutexLock l(&mutex_);
-  UserFrontierPtr accumulated;
+  auto cfd = default_cf_handle_->cfd();
+  return cfd->imm()->MergeFrontiersWith(cfd->mem()->GetFrontiers());
+}
+
+yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(
+    yb::storage::UpdateUserValueType type) {
+  InstrumentedMutexLock l(&mutex_);
+  yb::storage::UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
     if (cfd) {
       const auto* mem = cfd->mem();
@@ -6421,7 +6449,7 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
           // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
           // under lock).
           if (frontier) {
-            UserFrontier::Update(frontier.get(), type, &accumulated);
+            yb::storage::UserFrontier::Update(frontier.get(), type, &accumulated);
           }
         }
       } else {
@@ -6459,7 +6487,8 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   return Status::OK();
 }
 
-Status DBImpl::ModifyFlushedFrontier(UserFrontierPtr frontier, FrontierModificationMode mode) {
+Status DBImpl::ModifyFlushedFrontier(
+    yb::storage::UserFrontierPtr frontier, FrontierModificationMode mode) {
   VersionEdit edit;
   edit.ModifyFlushedFrontier(std::move(frontier), mode);
   RETURN_NOT_OK(ApplyVersionEdit(&edit));
@@ -6852,102 +6881,140 @@ Status DB::ListColumnFamilies(const DBOptions& db_options,
 Snapshot::~Snapshot() {
 }
 
-Status DestroyDB(const std::string& dbname, const Options& options) {
-  const InternalKeyComparator comparator(options.comparator);
-  const Options& soptions(SanitizeOptions(dbname, &comparator, options));
-  Env* env = soptions.env;
+namespace {
+void SetStatusIfNotOK(Status& status, Status&& other_status) {
+  if (other_status.ok()) {
+    return;
+  }
+  if (status.ok()) {
+    status = std::move(other_status);
+  } else {
+    LOG(WARNING) << "Ignoring " << other_status << ", because of previous failure: " << status;
+  }
+}
+
+#define GET_CHILDREN_AND_RETURN_IF_NOK(env, dir, children, status) \
+  do { \
+    auto internal_status = env.GetChildren(dir, &children); \
+    if (!internal_status.ok()) { \
+      if (!internal_status.IsNotFound()) { \
+        SetStatusIfNotOK(status, std::move(internal_status)); \
+      } \
+      return; \
+    } \
+  } while (false)
+
+Result<FileLock*> TryGetLock(
+    Env& env, const std::string& db_name, const std::string& lock_file_name) {
+  FileLock* lock = nullptr;
+  if (env.DirExists(db_name)) {
+    RETURN_NOT_OK(env.LockFile(lock_file_name, &lock));
+  }
+  return lock;
+}
+
+void CleanupDbDir(Env& env, Status& status, const std::string& db_name, const Options& options) {
   std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, db_name, filenames, status);
 
-  // Ignore error in case directory does not exist
-  env->GetChildrenWarnNotOk(dbname, &filenames);
+  uint64_t number;
+  FileType type;
 
-  FileLock* lock;
-  const std::string lockname = LockFileName(dbname);
-  Status result = env->LockFile(lockname, &lock);
-  if (result.ok()) {
-    uint64_t number;
-    FileType type;
-    InfoLogPrefix info_log_prefix(!options.db_log_dir.empty(), dbname);
-    for (size_t i = 0; i < filenames.size(); i++) {
-      if (ParseFileName(filenames[i], &number, info_log_prefix.prefix, &type) &&
-          type != kDBLockFile) {  // Lock file will be deleted at end
-        Status del;
-        std::string path_to_delete = dbname + "/" + filenames[i];
-        if (type == kMetaDatabase) {
-          del = DestroyDB(path_to_delete, options);
-        } else if (type == kTableFile || type == kTableSBlockFile) {
-          del = DeleteSSTFile(&options, path_to_delete, 0);
-        } else {
-          del = env->DeleteFile(path_to_delete);
-        }
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
+  InfoLogPrefix info_log_prefix(!options.db_log_dir.empty(), db_name);
+  for (size_t i = 0; i < filenames.size(); i++) {
+    if (ParseFileName(filenames[i], &number, info_log_prefix.prefix, &type) &&
+        type != kDBLockFile) {  // Lock file will be deleted at end
+      Status del;
+      std::string path_to_delete = db_name + "/" + filenames[i];
+      if (type == kMetaDatabase) {
+        del = DestroyDB(path_to_delete, options);
+      } else if (type == kTableFile || type == kTableSBlockFile) {
+        del = DeleteSSTFile(&options, path_to_delete, 0);
+      } else {
+        del = env.DeleteFile(path_to_delete);
       }
-    }
-
-    for (size_t path_id = 0; path_id < options.db_paths.size(); path_id++) {
-      const auto& db_path = options.db_paths[path_id];
-      env->GetChildrenWarnNotOk(db_path.path, &filenames);
-      for (size_t i = 0; i < filenames.size(); i++) {
-        if (ParseFileName(filenames[i], &number, &type) &&
-            // Lock file will be deleted at end
-            (type == kTableFile || type == kTableSBlockFile)) {
-          std::string table_path = db_path.path + "/" + filenames[i];
-          Status del = DeleteSSTFile(&options, table_path,
-                                     static_cast<uint32_t>(path_id));
-          if (result.ok() && !del.ok()) {
-            result = del;
-          }
-        }
-      }
-    }
-
-    std::vector<std::string> walDirFiles;
-    std::string archivedir = ArchivalDirectory(dbname);
-    if (dbname != soptions.wal_dir) {
-      env->GetChildrenWarnNotOk(soptions.wal_dir, &walDirFiles);
-      archivedir = ArchivalDirectory(soptions.wal_dir);
-    }
-
-    // Delete log files in the WAL dir
-    for (const auto& file : walDirFiles) {
-      if (ParseFileName(file, &number, &type) && type == kLogFile) {
-        Status del = env->DeleteFile(soptions.wal_dir + "/" + file);
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
-      }
-    }
-
-    // ignore case where no archival directory is present.
-    if (env->FileExists(archivedir).ok()) {
-      std::vector<std::string> archiveFiles;
-      env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
-      // Delete archival files.
-      for (size_t i = 0; i < archiveFiles.size(); ++i) {
-        if (ParseFileName(archiveFiles[i], &number, &type) &&
-          type == kLogFile) {
-          Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
-          if (result.ok() && !del.ok()) {
-            result = del;
-          }
-        }
-      }
-
-      WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
-    }
-    WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");
-    env->CleanupFile(lockname);
-    if (env->FileExists(dbname).ok()) {
-      WARN_NOT_OK(env->DeleteDir(dbname), "Failed to cleanup dir " + dbname);
-    }
-    if (env->FileExists(soptions.wal_dir).ok()) {
-      WARN_NOT_OK(env->DeleteDir(soptions.wal_dir),
-                  "Failed to cleanup wal dir " + soptions.wal_dir);
+      SetStatusIfNotOK(status, std::move(del));
     }
   }
-  return result;
+
+  for (size_t path_id = 0; path_id < options.db_paths.size(); path_id++) {
+    const auto& db_path = options.db_paths[path_id];
+    if (!env.DirExists(db_path.path)) {
+      continue;
+    }
+    env.GetChildrenWarnNotOk(db_path.path, &filenames);
+    for (size_t i = 0; i < filenames.size(); i++) {
+      if (ParseFileName(filenames[i], &number, &type) &&
+          // Lock file will be deleted at end
+          (type == kTableFile || type == kTableSBlockFile)) {
+        std::string table_path = db_path.path + "/" + filenames[i];
+        SetStatusIfNotOK(
+            status, DeleteSSTFile(&options, table_path, static_cast<uint32_t>(path_id)));
+      }
+    }
+  }
+}
+
+void DeleteWALDir(Env& env, Status& status, const std::string& wal_dir) {
+  std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, wal_dir, filenames, status);
+
+  uint64_t number;
+  FileType type;
+  for (const auto& file : filenames) {
+    if (ParseFileName(file, &number, &type) && type == kLogFile) {
+      SetStatusIfNotOK(status, env.DeleteFile(wal_dir + "/" + file));
+    }
+  }
+
+  SetStatusIfNotOK(status, env.DeleteDir(wal_dir));
+}
+
+void DeleteArchivalDir(Env& env, Status& status, const std::string& archival_dir) {
+  std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, archival_dir, filenames, status);
+
+  uint64_t number;
+  FileType type;
+  for (size_t i = 0; i < filenames.size(); ++i) {
+    if (ParseFileName(filenames[i], &number, &type) && type == kLogFile) {
+      SetStatusIfNotOK(status, env.DeleteFile(archival_dir + "/" + filenames[i]));
+    }
+  }
+  SetStatusIfNotOK(status, env.DeleteDir(archival_dir));
+}
+
+}  // namespace
+
+Status DestroyDB(const std::string& db_name, const Options& options) {
+  const InternalKeyComparator comparator(options.comparator);
+  const Options& soptions(SanitizeOptions(db_name, &comparator, options));
+  Env& env = *soptions.env;
+  Status status;
+
+  const auto lock_file_name = LockFileName(db_name);
+  auto lock = VERIFY_RESULT(TryGetLock(env, db_name, lock_file_name));
+
+  // Release the lock at the end, and cleanup the db directory.
+  auto se = yb::ScopeExit([lock, &env, &status, db_name, lock_file_name] {
+    if (lock) {
+      SetStatusIfNotOK(status, env.UnlockFile(lock));
+      env.CleanupFile(lock_file_name);
+    }
+    if (env.DirExists(db_name)) {
+      SetStatusIfNotOK(status, env.DeleteDir(db_name));
+    }
+  });
+
+  CleanupDbDir(env, status, db_name, options);
+
+  DeleteArchivalDir(env, status, ArchivalDirectory(soptions.wal_dir));
+
+  if (db_name != soptions.wal_dir) {
+    DeleteWALDir(env, status, soptions.wal_dir);
+  }
+
+  return status;
 }
 
 Status DBImpl::WriteOptionsFile() {

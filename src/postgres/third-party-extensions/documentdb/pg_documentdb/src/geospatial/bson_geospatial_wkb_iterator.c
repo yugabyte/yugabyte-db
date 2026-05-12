@@ -58,7 +58,8 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 	IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_ORDER);
 
 	/* Read GeoJSON Type */
-	uint32 type = *(uint32 *) (iter->currptr);
+	uint32 type = WKBGeometryType_Invalid;
+	memcpy(&type, iter->currptr, WKB_BYTE_SIZE_TYPE);
 
 	/* Check if type is stuffed with SRID */
 	if ((type & POSTGIS_EWKB_SRID_FLAG) == POSTGIS_EWKB_SRID_FLAG)
@@ -93,7 +94,8 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 
 		case WKBGeometryType_LineString:
 		{
-			int32 numPoints = *(int32 *) (iter->currptr);
+			int32 numPoints = 0;
+			memcpy(&numPoints, iter->currptr, WKB_BYTE_SIZE_NUM);
 			IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
 
 			for (int i = 0; i < numPoints; i++)
@@ -123,13 +125,15 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 
 		case WKBGeometryType_Polygon:
 		{
-			numOfRings = *(int32 *) (iter->currptr);
+			numOfRings = 0;
+			memcpy(&numOfRings, iter->currptr, WKB_BYTE_SIZE_NUM);
 			IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
 			const char *ringPointsStart = NULL;
 
 			for (int currRing = 0; currRing < numOfRings; currRing++)
 			{
-				int32 numPoints = *(int32 *) (iter->currptr);
+				int32 numPoints = 0;
+				memcpy(&numPoints, iter->currptr, WKB_BYTE_SIZE_NUM);
 				IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
 				ringPointsStart = iter->currptr;
 
@@ -192,7 +196,8 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 		case WKBGeometryType_MultiPolygon:
 		case WKBGeometryType_GeometryCollection:
 		{
-			int32 numShapes = *(int32 *) (iter->currptr);
+			int32 numShapes = 0;
+			memcpy(&numShapes, iter->currptr, WKB_BYTE_SIZE_NUM);
 			IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_NUM);
 
 			for (int i = 0; i < numShapes; i++)

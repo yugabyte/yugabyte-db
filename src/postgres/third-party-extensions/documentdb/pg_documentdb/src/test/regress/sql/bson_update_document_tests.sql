@@ -2,6 +2,7 @@ SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 2000;
 SET documentdb.next_collection_index_id TO 2000;
 
+SET documentdb.enableupdatebsondocument TO false;
 -- replace document scenarios
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a": 1}', '{ "": { "_id": 1, "b": 2 } }', '{}');
 
@@ -93,7 +94,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :[13,3,1]}', '{ "": { "$bit": { "expdata.0" : { "and" :10 }  }  }}', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "and" : 0, "or" : 10 }} }}', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "or" : 10, "xor" : 10 }} }}', '{}');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1}', '{ "": { "$bit": { "expdata" : { "or" : 10 }} }, "upsert" : false}', '{}');
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1}', '{ "": { "$bit": { "expdata" : { "or" : 10 }} }}', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "key": { "x": { "y": [ 100, 200 ]}}, "f": 12 }', '{ "": { "$bit": {"key.x.y.0": {"and": 10}, "f": {"and": 10 }}}}', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "key": { "x": { "y": 10 }}, "f": 1}', '{ "": { "$bit": { "key.x.y": { "xor": 10 } }}}', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "key": {"x": { "y": [100 , 200 ] } }, "f": 1 } ', '{ "": { "$bit": { "key.x.y.0": { "and": 10 } }}}', '{}');
@@ -920,3 +921,5 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 --$rename working complex cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "key": 1,"key2": 2,"f": {"g": 1, "h": 1},"h":1}', '{ "": { "$rename": { "key": "f.g"} } }', '{}');
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 2, "key": 2,"x": {"y": 1, "z": 2}}', '{ "": { "$rename": { "key": "newName","x.y":"z","x.z":"k"} } }', '{}');
+
+SET documentdb.enableupdatebsondocument TO true;

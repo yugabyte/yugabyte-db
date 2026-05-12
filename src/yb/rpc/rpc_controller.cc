@@ -179,6 +179,13 @@ CallResponsePtr RpcController::response() const {
   return CallResponsePtr(call_, &call_->call_response_);
 }
 
+RefCntBuffer RpcController::data_holder() const NO_THREAD_SAFETY_ANALYSIS {
+  if (!call_) {
+    return RefCntBuffer();
+  }
+  return call_->call_response_.data_holder();
+}
+
 Result<CallResponsePtr> RpcController::CheckedResponse() const {
   if (status().ok()) {
     return response();

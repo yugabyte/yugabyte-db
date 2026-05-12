@@ -24,9 +24,11 @@ CORE_SCHEMA_NAME=documentdb_core
 API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
 API_READONLY_ROLE=documentdb_readonly_role
+API_BG_WORKER_ROLE=documentdb_bg_worker_role
 POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=documentdb
 API_GUC_PREFIX=documentdb
+API_GUC_PREFIX_V2=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes
@@ -36,6 +38,10 @@ include $(OSS_SRC_DIR)/Makefile.cflags
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 
 OBJS = $(patsubst %.c,%.o,$(SOURCES))
+
+# Update to notify roaring to use the C atomics implementation (as opposed to c++): See roaring.h CROARING_ATOMIC_IMPL_C
+PG_CFLAGS += -DCROARING_ATOMIC_IMPL=3
+PG_CPPFLAGS += -DCROARING_ATOMIC_IMPL=3
 
 DEBUG ?= no
 ifeq ($(DEBUG),yes)
@@ -53,11 +59,32 @@ clean-sql:
 check:
 	$(MAKE) -C src/test all
 
-check-minimal:
-	$(MAKE) -C src/test/regress check-bson-minimal
+installcheck:
+	$(MAKE) -C src/test installcheck
 
-check-documentdb-minimal:
-	$(MAKE) -C src/test/regress check-bson-minimal
+check-extended-rum:
+	$(MAKE) -C src/test/extended_rum_tests all
+
+check-minimal:
+	$(MAKE) -C src/test/regress check-minimal
+
+check-documentdb-minimal: check-minimal
+
+check-docdb-rum-minimal:
+	$(MAKE) -C src/test/extended_rum_tests check-minimal
+
+check-valgrind:
+	mkdir -p $(CURDIR)/src/test/regress/log/
+	echo >$(CURDIR)/src/test/regress/log/pglog.log
+	$(OSS_SRC_DIR)/scripts/start_oss_server.sh -c -u "" -v -p 58070 -f $(CURDIR)/src/test/regress/regression_opts.conf -l $(CURDIR)/src/test/regress/log/pglog.log
+	$(MAKE) INSTALL_PG_PORT=58070 -C src/test installcheck
+	$(OSS_SRC_DIR)/scripts/start_oss_server.sh -s -v
+
+check-start-oss-server:
+	mkdir -p $(CURDIR)/src/test/regress/log/
+	echo >$(CURDIR)/src/test/regress/log/pglog.log
+	$(OSS_SRC_DIR)/scripts/start_oss_server.sh -c -u "" -p 58070 -f $(CURDIR)/src/test/regress/regression_opts.conf -l $(CURDIR)/src/test/regress/log/pglog.log
+	$(MAKE) INSTALL_PG_PORT=58070 -C src/test installcheck
 
 citus-indent:
 	citus_indent

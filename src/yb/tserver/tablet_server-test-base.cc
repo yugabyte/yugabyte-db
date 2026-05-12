@@ -179,10 +179,11 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
                                                int32_t row_idx,
                                                int32_t new_val,
                                                TimeSeries *ts) {
-  WriteRequestPB req;
-  req.set_tablet_id(kTabletId);
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  req.ref_tablet_id(kTabletId);
 
-  WriteResponsePB resp;
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
   string new_string_val(strings::Substitute("mutated$0", row_idx));
@@ -190,7 +191,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
   AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
 
-  SCOPED_TRACE(resp.DebugString());
+  SCOPED_TRACE(resp.ShortDebugString());
   ASSERT_FALSE(resp.has_error())<< resp.ShortDebugString();
   ASSERT_EQ(0, resp.per_row_errors_size());
   if (ts) {
@@ -236,10 +237,11 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
     num_batches = count;
   }
 
-  WriteRequestPB req;
-  req.set_tablet_id(tablet_id);
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  req.ref_tablet_id(tablet_id);
 
-  WriteResponsePB resp;
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
 
   uint64_t inserted_since_last_report = 0;
@@ -272,7 +274,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
       if (r == 0) {
         LOG(FATAL) << "Failed to insert batch "
                    << first_row_in_batch << "-" << last_row_in_batch
-                   << ": " << resp.DebugString();
+                   << ": " << resp.ShortDebugString();
       } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
@@ -299,19 +301,20 @@ void TabletServerTestBase::DeleteTestRowsRemote(int32_t first_row,
     proxy = proxy_.get();
   }
 
-  WriteRequestPB req;
-  WriteResponsePB resp;
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
 
-  req.set_tablet_id(tablet_id);
+  req.ref_tablet_id(tablet_id);
 
   for (int32_t rowid = first_row; rowid < first_row + count; rowid++) {
     AddTestRowDelete(rowid, &req);
   }
 
-  SCOPED_TRACE(req.DebugString());
+  SCOPED_TRACE(req.ShortDebugString());
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
-  SCOPED_TRACE(resp.DebugString());
+  SCOPED_TRACE(resp.ShortDebugString());
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 

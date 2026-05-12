@@ -212,7 +212,6 @@ readonly -a VALID_BUILD_TYPES=(
   tsan_slow
   pvs
   prof_gen
-  prof_use
 )
 make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
@@ -237,6 +236,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang17
   clang18
   clang19
+  clang21
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -555,17 +555,14 @@ set_build_type_based_on_jenkins_job_name() {
 set_default_compiler_type() {
   expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    if is_mac; then
-      YB_COMPILER_TYPE=clang
-      adjust_compiler_type_on_mac
-    elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang19
-    else
-      fatal "Cannot set default compiler type on OS $OSTYPE"
-    fi
+    YB_COMPILER_TYPE=clang21
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
   fi
+}
+
+is_apple_clang() {
+  is_mac && [[ $YB_COMPILER_TYPE == clang ]]
 }
 
 is_clang() {
@@ -712,7 +709,7 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       cmake_build_type=debug
     ;;
-    prof_gen|prof_use)
+    prof_gen)
       cmake_build_type=release
     ;;
     *)
@@ -732,7 +729,7 @@ set_cmake_build_type_and_compiler_type() {
           "Sanitizers are only supported with Clang."
   fi
 
-  if [[ $build_type =~ ^(prof_gen|prof_use)$ && $YB_COMPILER_TYPE == gcc* ]]; then
+  if [[ $build_type == prof_gen && $YB_COMPILER_TYPE == gcc* ]]; then
     fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
           "PGO works only with Clang for now."
   fi
@@ -1495,7 +1492,7 @@ save_brew_path_to_build_dir() {
 }
 
 save_llvm_toolchain_info_to_build_dir() {
-  if is_linux; then
+  if is_linux || ! is_apple_clang; then
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_URL:-}" "llvm_url.txt"
   fi
@@ -2487,30 +2484,20 @@ lint_java_code() {
     local java_test_file
     for java_test_file in "${java_test_files[@]}"; do
       local log_prefix="YB JAVA LINT: $java_test_file"
-      if ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBParameterizedTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonMac\.class\)' \
-             "$java_test_file"
-      then
+      local run_with_pattern='@RunWith\((value[ ]*=[ ]*)?('
+      run_with_pattern+='YBParameterizedTestRunnerNonTsanOnly|YBParameterizedTestRunner|'
+      run_with_pattern+='YBTestRunnerNonSanitizersOrMac|YBTestRunnerNonSanOrAArch64Mac|'
+      run_with_pattern+='YBTestRunnerNonTsanOnly|YBTestRunnerNonTsanAsan|'
+      run_with_pattern+='YBTestRunnerReleaseOnly|YBTestRunnerYsqlConnMgr|'
+      run_with_pattern+='YBParameterizedTestRunnerYsqlConnMgr|YBTestRunnerNonMac|'
+      run_with_pattern+='YBTestRunner)\.class\)'
+      if ! grep -Eq "$run_with_pattern" "$java_test_file"; then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanOrAArch64Mac, " \
-            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac are being " \
-            "used in test"
+            "YBParameterizedTestRunnerNonTsanOnly, YBTestRunnerNonTsanOnly, " \
+            " YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
+            "YBTestRunnerNonSanOrAArch64Mac, YBTestRunnerReleaseOnly, " \
+            "YBTestRunnerYsqlConnMgr, YBParameterizedTestRunnerYsqlConnMgr " \
+            "nor YBTestRunnerNonMac are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2656,7 +2643,7 @@ check_arc_wrapper() {
     # This is a Yugabyte workstation or dev server.
     local arc_path
     set +e
-    arc_path=$( which arc )
+    arc_path=$( command -v arc )
     set -e
     if [[ ! -f $arc_path ]]; then
       # OK if arc is not found. Then people cannot "arc land" changes that do not pass tests.

@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -41,9 +42,11 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -349,6 +352,51 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.customerUuid = testCustomer.getUuid();
     tableParams.backupUuid = UUID.randomUUID();
     tableParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    tableParams.setBackupStats(true);
+    tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    tableParams.setEnableBackupsDuringDDL(true);
+    String backupKeys = TestUtils.readResource(filePath);
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode keysNode = mapper.readValue(backupKeys, ObjectNode.class);
+    when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID()))
+        .thenReturn(keysNode);
+    when(mockGFlagsValidation.getYsqlMajorVersion(any())).thenReturn(Optional.of(15));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList(anyString()))
+        .thenReturn(Set.of("001_init.sql", "002_add_table.sql"));
+    YbcSuccessBackupConfig backupConfig = new YbcSuccessBackupConfig();
+    String universeVersion =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    backupConfig.ybdbVersion = universeVersion;
+    backupConfig.universeKeys = keysNode.get("universe_keys");
+    backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
+    backupConfig.backupUUID = tableParams.backupUuid.toString();
+    backupConfig.customerUUID = tableParams.customerUuid.toString();
+    backupConfig.ysqlMajorVersion = "15";
+    backupConfig.ysqlMigrationFiles = Set.of("001_init.sql", "002_add_table.sql");
+    BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
+    BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
+    assertEquals(true, extArgs.getUseTablespaces());
+    assertEquals(false, extArgs.getDumpStatistics()); // Version does not support stats dump
+    assertEquals(false, extArgs.getUseReadTimeYsqlDump()); // Version does not support read time
+    assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
+  }
+
+  @Test
+  @Parameters(value = {"backup/ybc_extended_args_backup_keys.json"})
+  public void testGetExtendedBackupStatsDumpReadTimeAllowed(String filePath) throws Exception {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.getPrimaryCluster().userIntent.ybSoftwareVersion = "2025.2.2.0-b1";
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    BackupTableParams tableParams = new BackupTableParams();
+    tableParams.useTablespaces = true;
+    tableParams.customerUuid = testCustomer.getUuid();
+    tableParams.backupUuid = UUID.randomUUID();
+    tableParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    tableParams.setBackupStats(true);
+    tableParams.setEnableBackupsDuringDDL(true);
     tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
@@ -371,7 +419,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
-    assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
+    assertEquals(true, extArgs.getUseReadTimeYsqlDump());
+    assertEquals(true, extArgs.getDumpStatistics());
   }
 
   @Test
@@ -432,6 +481,55 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         csConfig.getRegionSpecMapMap().get("us-west2").getCredsMap().equals(s3Region_2CredsMap));
     String expectedDir = commonDir.concat("/");
     assertEquals(expectedDir, csConfig.getDefaultSpec().getCloudDir());
+  }
+
+  @Test
+  public void testCreateBackupConfigNfsWithVolumes() {
+    List<String> nfsVolumes = Arrays.asList("/mnt/nfs/vol1", "/mnt/nfs/vol2");
+    CustomerConfig nfsConfig =
+        ModelFactory.createNfsStorageConfig(
+            testCustomer, "test-NFS-vol", "/tmp/nfs", "yugabyte_backup", nfsVolumes);
+    UUID uniUUID = UUID.randomUUID();
+    String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
+    when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    when(mockNfsUtil.createCloudStoreSpec(
+            anyString(), anyString(), nullable(String.class), any(), any()))
+        .thenCallRealMethod();
+    when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createBackupConfig(nfsConfig, commonDir, defaultUniverse);
+    assertEquals(nfsVolumes, csConfig.getDefaultSpec().getNfsVolumesList());
+    assertEquals("/tmp/nfs", csConfig.getDefaultSpec().getCredsMap().get("YBC_NFS_DIR"));
+    assertEquals("yugabyte_backup", csConfig.getDefaultSpec().getBucket());
+    String expectedDir = commonDir.concat("/");
+    assertEquals(expectedDir, csConfig.getDefaultSpec().getCloudDir());
+  }
+
+  @Test
+  public void testCreateRestoreConfigNfsWithVolumes() {
+    List<String> nfsVolumes = Arrays.asList("/mnt/nfs/vol1", "/mnt/nfs/vol2");
+    CustomerConfig nfsConfig =
+        ModelFactory.createNfsStorageConfig(
+            testCustomer, "test-NFS-restore", "/tmp/nfs", "yugabyte_backup", nfsVolumes);
+    when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    when(mockNfsUtil.createRestoreCloudStoreSpec(
+            anyString(), anyString(), any(), anyBoolean(), any()))
+        .thenCallRealMethod();
+    when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+
+    BucketLocation defaultBucketLocation = new BucketLocation();
+    defaultBucketLocation.bucket = "yugabyte_backup";
+    defaultBucketLocation.cloudDir = "univ-000/backup/keyspace-bar/";
+    YbcBackupResponse successMarker = new YbcBackupResponse();
+    successMarker.responseCloudStoreSpec = new ResponseCloudStoreSpec();
+    successMarker.responseCloudStoreSpec.defaultLocation = defaultBucketLocation;
+
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createRestoreConfig(nfsConfig, successMarker, defaultUniverse);
+    assertEquals(nfsVolumes, csConfig.getDefaultSpec().getNfsVolumesList());
+    assertEquals("/tmp/nfs", csConfig.getDefaultSpec().getCredsMap().get("YBC_NFS_DIR"));
+    assertEquals("yugabyte_backup", csConfig.getDefaultSpec().getBucket());
+    assertEquals("univ-000/backup/keyspace-bar/", csConfig.getDefaultSpec().getCloudDir());
   }
 
   @Test

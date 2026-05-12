@@ -3,143 +3,144 @@ SET citus.next_shard_id TO 9630000;
 SET documentdb.next_collection_id TO 963000;
 SET documentdb.next_collection_index_id TO 963000;
 -- Insert data
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 1, "city_id": 101, "city": "Beijing", "province": "Beijing", "airport": "Beijing Capital", "policy": { "flight_type": "domestic"} }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 2, "city_id": 102, "city": "Shanghai", "province": "Shanghai", "airport": "Pudong International", "policy": { "$or": [ { "origin": "Guangdong"}, {"flight_type": "domestic"}] } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 3, "city_id": 103, "city": "Guangzhou", "province": "Guangdong", "airport": "Baiyun International", "policy": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 4, "city_id": 104, "city": "Shenzhen", "province": "Guangdong", "airport": "Baoan International", "policy": { "$or": [ {"$and": [{"flight_type": "domestic"}, {"origin": "Guangdong"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 5, "city_id": 105, "city": "Chengdu", "province": "Sichuan", "airport": "Shuangliu International", "policy": { "tags": { "$all": ["domestic", "vip"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- positive cases
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Beijing"}}, { "$inverseMatch": {"path": "policy", "input": {"flight_type": "international"}}}]}');
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
-                                                                                    document                                                                                    
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Beijing"}}, { "$inverseMatch": {"path": "policy", "input": {"flight_type": "domestic"}}}]}');
+                                                                                            document                                                                                            
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "airport_id" : { "$numberInt" : "10165" }, "city" : "Adak Island", "state" : "AK", "name" : "Adak", "rule" : { "flight_type" : "private" } }
+ { "_id" : { "$numberInt" : "1" }, "city_id" : { "$numberInt" : "101" }, "city" : "Beijing", "province" : "Beijing", "airport" : "Beijing Capital", "policy" : { "flight_type" : "domestic" } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Shanghai"}}, { "$inverseMatch": {"path": "policy", "input": {"flight_type": "international"}}}]}');
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
-                                                                                                         document                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Shanghai"}}, { "$inverseMatch": {"path": "policy", "input": {"flight_type": "domestic"}}}]}');
+                                                                                                                     document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "2" }, "city_id" : { "$numberInt" : "102" }, "city" : "Shanghai", "province" : "Shanghai", "airport" : "Pudong International", "policy" : { "$or" : [ { "origin" : "Guangdong" }, { "flight_type" : "domestic" } ] } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": {"is_emergency": true}}}]}');
-                                                                                                           document                                                                                                            
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": {"is_emergency": true}}}]}');
+                                                                                                                                                              document                                                                                                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+ { "_id" : { "$numberInt" : "3" }, "city_id" : { "$numberInt" : "103" }, "city" : "Guangzhou", "province" : "Guangdong", "airport" : "Baiyun International", "policy" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+ { "_id" : { "$numberInt" : "4" }, "city_id" : { "$numberInt" : "104" }, "city" : "Shenzhen", "province" : "Guangdong", "airport" : "Baoan International", "policy" : { "$or" : [ { "$and" : [ { "flight_type" : "domestic" }, { "origin" : "Guangdong" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": { "flight_type": "domestic", "origin": "Guangdong" }}}]}');
+                                                                                                                                                              document                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "city_id" : { "$numberInt" : "104" }, "city" : "Shenzhen", "province" : "Guangdong", "airport" : "Baoan International", "policy" : { "$or" : [ { "$and" : [ { "flight_type" : "domestic" }, { "origin" : "Guangdong" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "private", "origin": "CA" }}}]}');
-                                                                                                                                                         document                                                                                                                                                          
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
-(1 row)
-
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA" }}}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": { "flight_type": "international", "origin": "Guangdong" }}}]}');
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA", "is_vip": true }}}]}');
-                                                                                                                                                         document                                                                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": { "flight_type": "domestic", "origin": "Guangdong", "is_vip": true }}}]}');
+                                                                                                                                                              document                                                                                                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+ { "_id" : { "$numberInt" : "4" }, "city_id" : { "$numberInt" : "104" }, "city" : "Shenzhen", "province" : "Guangdong", "airport" : "Baoan International", "policy" : { "$or" : [ { "$and" : [ { "flight_type" : "domestic" }, { "origin" : "Guangdong" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": [{ "flight_type": "private"}, {"is_emergency": true}]}}]}');
-                                                                                                           document                                                                                                            
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": [{ "flight_type": "domestic"}, {"is_emergency": true}]}}]}');
+                                                                                                                                                              document                                                                                                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
-(1 row)
+ { "_id" : { "$numberInt" : "3" }, "city_id" : { "$numberInt" : "103" }, "city" : "Guangzhou", "province" : "Guangdong", "airport" : "Baiyun International", "policy" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+ { "_id" : { "$numberInt" : "4" }, "city_id" : { "$numberInt" : "104" }, "city" : "Shenzhen", "province" : "Guangdong", "airport" : "Baoan International", "policy" : { "$or" : [ { "$and" : [ { "flight_type" : "domestic" }, { "origin" : "Guangdong" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(2 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "WA"}}, { "$inverseMatch": {"path": "rule", "input": { "tags": ["private", "vip"]}}}]}');
-                                                                                             document                                                                                              
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{"$match": {"province": "Guangdong"}}, { "$inverseMatch": {"path": "policy", "input": { "tags": ["domestic", "vip"]}}}]}');
+ document 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
-(1 row)
+(0 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
-                                                                                                         document                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{ "$inverseMatch": {"path": "policy", "input": { "origin": "Guangdong" }}}]}');
+                                                                                                                     document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "2" }, "city_id" : { "$numberInt" : "102" }, "city" : "Shanghai", "province" : "Shanghai", "airport" : "Pudong International", "policy" : { "$or" : [ { "origin" : "Guangdong" }, { "flight_type" : "domestic" } ] } }
 (1 row)
 
 -- Validate errors
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"pathRule": "rule", "input": {"flight_type": "private"} }}]}');
-ERROR:  unrecognized argument to $inverseMatch: 'pathRule'
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "inputValue": {"flight_type": "private"} }}]}');
-ERROR:  unrecognized argument to $inverseMatch: 'inputValue'
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "", "input": {"flight_type": "private"} }}]}');
-ERROR:  Missing 'path' parameter to $inverseMatch
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": ["flight_type", "private"] }}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": {"pathRule": "policy", "input": {"flight_type": "domestic"} }}]}');
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'pathRule'
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": {"path": "policy", "inputValue": {"flight_type": "domestic"} }}]}');
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'inputValue'
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": {"path": "", "input": {"flight_type": "domestic"} }}]}');
+ERROR:  Path parameter is missing for the operator $inverseMatch
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": {"path": "policy", "input": ["flight_type", "domestic"] }}]}');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [{"flight_type": "private"}, ""] }}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": {"path": "policy", "input": [{"flight_type": "domestic"}, ""] }}]}');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": [{"path": "rule", "input": [{"flight_type": "private"}, ""] }, {"path": "rule2", "input": {}}]}]}');
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [ { "$inverseMatch": [{"path": "policy", "input": [{"flight_type": "domestic"}, ""] }, {"path": "policy2", "input": {}}]}]}');
 ERROR:  $inverseMatch requires a document as an input instead got: array
 -- insert a document with an invalid query
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','chinese_cities','{ "_id": 6, "city_id": 106, "city": "Hangzhou", "province": "Zhejiang", "airport": "Hangzhou Xiaoshan International", "specialPolicy": { "tags": { "$allValues": ["domestic", "vip"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- any inverseMatch that queries that path should fail
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
-ERROR:  unknown operator: $allValues
--- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
-                                                                                                         document                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{ "$inverseMatch": {"path": "specialPolicy", "input": { "origin": "Guangdong" }, "defaultResult": false}}]}');
+ERROR:  Unrecognized operator specified: $allValues
+-- if we query "policy" path without defaultResult in the spec it should not match for the Hangzhou city which doesn't define the policy as the default value is false
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{ "$inverseMatch": {"path": "policy", "input": { "origin": "Guangdong" }}}]}');
+                                                                                                                     document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "2" }, "city_id" : { "$numberInt" : "102" }, "city" : "Shanghai", "province" : "Shanghai", "airport" : "Pudong International", "policy" : { "$or" : [ { "origin" : "Guangdong" }, { "flight_type" : "domestic" } ] } }
 (1 row)
 
 -- with defaultResult true should return all documents that don't define the path and false shouldn't return them
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": true}}]}');
-                                                                                                         document                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{ "$inverseMatch": {"path": "policy", "input": { "origin": "Guangdong" }, "defaultResult": true}}]}');
+                                                                                                                     document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
- { "_id" : { "$numberInt" : "8" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "specialRule" : { "tags" : { "$allValues" : [ "private", "vip" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "city_id" : { "$numberInt" : "102" }, "city" : "Shanghai", "province" : "Shanghai", "airport" : "Pudong International", "policy" : { "$or" : [ { "origin" : "Guangdong" }, { "flight_type" : "domestic" } ] } }
+ { "_id" : { "$numberInt" : "6" }, "city_id" : { "$numberInt" : "106" }, "city" : "Hangzhou", "province" : "Zhejiang", "airport" : "Hangzhou Xiaoshan International", "specialPolicy" : { "tags" : { "$allValues" : [ "domestic", "vip" ] } } }
 (2 rows)
 
-SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
-                                                                                                         document                                                                                                          
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "chinese_cities", "pipeline": [{ "$inverseMatch": {"path": "policy", "input": { "origin": "Guangdong" }, "defaultResult": false}}]}');
+                                                                                                                     document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "2" }, "city_id" : { "$numberInt" : "102" }, "city" : "Shanghai", "province" : "Shanghai", "airport" : "Pudong International", "policy" : { "$or" : [ { "origin" : "Guangdong" }, { "flight_type" : "domestic" } ] } }
 (1 row)
 
 -- add tests with lookup for RBAC "like" scenarios
@@ -264,14 +265,14 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
-                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)) LIMIT '1'::bigint)) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)) LIMIT '1'::bigint), false) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
                Output: collection.document
@@ -279,14 +280,14 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
                Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
                InitPlan 2 (returns $1)
                  ->  Result
-                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0, false)
                        InitPlan 1 (returns $0)
                          ->  Limit
                                Output: (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson))
                                ->  Aggregate
                                      Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
                                      ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
-                                           Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                           Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
                                            Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
                                            Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
                                            ->  Bitmap Index Scan on _id_
@@ -296,14 +297,14 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 (27 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
-                                                                                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)))) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint))), false) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
                Output: collection.document
@@ -311,12 +312,12 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
                Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
                InitPlan 2 (returns $1)
                  ->  Result
-                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0, false)
                        InitPlan 1 (returns $0)
                          ->  Aggregate
                                Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
                                ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
-                                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
                                      Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
                                      Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
                                      ->  Bitmap Index Scan on _id_
@@ -604,9 +605,9 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "paym
 
 -- negative cases
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": {}, "input": "$roles"}} ], "cursor": {} }');
-ERROR:  BSON field '$inverseMatch.path' is the wrong type 'object', expected type 'string'
+ERROR:  The BSON field '$inverseMatch.path' has an incorrect type 'object'; it should be of type 'string'.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "", "input": "$roles"}} ], "cursor": {} }');
-ERROR:  Missing 'path' parameter to $inverseMatch
+ERROR:  Path parameter is missing for the operator $inverseMatch
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [true]}} ], "cursor": {} }');
  document 
 ---------------------------------------------------------------------
@@ -622,6 +623,6 @@ ERROR:  'input' and 'from' can't be used together in an $inverseMatch stage.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "collection"}} ], "cursor": {} }');
 ERROR:  'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"rule": "rule"}} ], "cursor": {} }');
-ERROR:  unrecognized argument to $inverseMatch: 'rule'
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'rule'
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "mycoll", "pipeline": []}} ], "cursor": {} }');
-ERROR:  'from' collection: 'invmatch.mycoll' doesn't exist.
+ERROR:  The 'from' collection 'invmatch.mycoll' could not be found.

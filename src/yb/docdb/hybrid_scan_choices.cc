@@ -132,6 +132,8 @@ void ScanTarget::Reset() {
 }
 
 Slice ScanTarget::SliceUpToColumn(size_t column_idx) const {
+  CHECK_LT(column_idx, columns_.size());
+  CHECK_LE(columns_[column_idx].end, value_.AsSlice().size());
   return value_.AsSlice().Prefix(columns_[column_idx].end);
 }
 
@@ -247,8 +249,13 @@ HybridScanChoices::HybridScanChoices(
   const auto& options_col_ids = doc_spec.options_indexes();
   const auto& options = doc_spec.options();
   const auto* range_bounds = doc_spec.range_bounds();
+  auto options_list_to_string = [](const auto& list) {
+    return CollectionToString(list, [](Slice option) { return option.ToDebugHexString(); });
+  };
   VLOG_WITH_FUNC(4)
-      << "Options indexes: " << AsString(options_col_ids) << ", options: " << AsString(options)
+      << "Options indexes: " << AsString(options_col_ids)
+      << ", options: "
+      << (options ? CollectionToString(*options, options_list_to_string) : "<NULL>")
       << ", bounds: " << AsString(range_bounds);
 
   for (size_t idx = 0; idx < schema.num_dockey_components(); ++idx) {
@@ -265,7 +272,8 @@ HybridScanChoices::HybridScanChoices(
     if (col_has_range_option) {
       const auto& temp_options = (*options)[idx];
       VLOG_WITH_FUNC(4)
-          << "Column: " << idx << "/" << col_id << " options: " << AsString(temp_options);
+          << "Column: " << idx << "/" << col_id << " options: "
+          << options_list_to_string(temp_options);
 
       current_options.reserve(temp_options.size());
       if (temp_options.empty()) {
@@ -667,9 +675,8 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
   VLOG_WITH_FUNC(2) << "current_scan_target is " << scan_target_.ToString();
   if (is_options_done_ && bloom_filter_options_.mode() == BloomFilterMode::kVariable) {
     finished_ = true;
-  } else {
-    UpdateUpperBound(nullptr);
   }
+  RETURN_NOT_OK(UpdateUpperBound(nullptr));
   return true;
 }
 
@@ -847,8 +854,8 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped, 
     }
   }
 
-  if (result && !finished_) {
-    UpdateUpperBound(nullptr);
+  if (result) {
+    RETURN_NOT_OK(UpdateUpperBound(nullptr));
   }
 
   VLOG_WITH_FUNC(3)
@@ -912,7 +919,7 @@ Result<bool> HybridScanChoices::PrepareIterator(IntentAwareIterator& iter, Slice
   }
 
   VLOG_WITH_FUNC(3) << "current_scan_target: " << scan_target_.ToString();
-  UpdateUpperBound(&iter);
+  RETURN_NOT_OK(UpdateUpperBound(&iter));
   return true;
 }
 
@@ -980,15 +987,22 @@ Result<bool> HybridScanChoices::AdvanceToNextRow(
   return true;
 }
 
-void HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
+Status HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
+  if (finished_) {
+    return Status::OK();
+  }
   if (!iter) {
     if (!iterator_bound_scope_) {
-      return;
+      return Status::OK();
     }
     iter = &iterator_bound_scope_->iterator();
   }
 
   DCHECK_EQ(bloom_filter_options_.mode(), BloomFilterMode::kVariable);
+  RSTATUS_DCHECK_LE(
+      num_bloom_filter_cols_, scan_target_.num_columns(), IllegalState,
+      Format("Wrong number of columns in scan target $0, while at least $1 required",
+             scan_target_.num_columns(), num_bloom_filter_cols_));
   auto bloom_filter_key = scan_target_.SliceUpToColumn(num_bloom_filter_cols_ - 1);
 
   auto need_update =
@@ -1000,7 +1014,7 @@ void HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
       << bloom_filter_key.ToDebugHexString() << ", need update: " << need_update;
 
   if (!need_update) {
-    return;
+    return Status::OK();
   }
 
   iter->UpdateFilterKey(scan_target_.AsSlice(), scan_target_.AsSlice());
@@ -1011,6 +1025,7 @@ void HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
   } else {
     iterator_bound_scope_.emplace(upper_bound_, iter);
   }
+  return Status::OK();
 }
 
 std::string OptionRange::ToString() const {

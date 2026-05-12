@@ -13,6 +13,8 @@
 
 package org.yb.pgsql;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.Test;
@@ -27,6 +29,8 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
+    flagMap.put("skip_prefix_locks", "false");
+
     /*
      * Setting yb_max_query_layer_retries allows to reliably test wait queue semantics in
      * isolation by avoiding query layer retries of serialization errors.
@@ -40,10 +44,23 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
     return 1800;
   }
 
-  @Test
-  public void testPgRegress() throws Exception {
+  private void runIsolationRegressTest(String schedule) throws Exception {
     runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_wait_queues_schedule",
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR, schedule,
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+  }
+
+  @Test
+  public void testPgRegressWithoutSkipPrefixLocks() throws Exception {
+    runIsolationRegressTest("yb_wait_queues_schedule_skip_prefix_locks_off");
+  }
+
+  @Test
+  public void testPgRegressWithSkipPrefixLocks() throws Exception {
+    Map<String, String> flagMap = new HashMap<>();
+    flagMap.put("skip_prefix_locks", "true");
+    flagMap.put("ysql_enable_packed_row", "true");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    runIsolationRegressTest("yb_wait_queues_schedule");
   }
 }

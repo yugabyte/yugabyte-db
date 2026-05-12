@@ -30,8 +30,12 @@
 // under the License.
 //
 
+#include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -44,9 +48,11 @@
 
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/metrics_aggregator.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -58,6 +64,7 @@ using namespace std::literals;
 
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_bool(TEST_pause_flush_aggregated_metrics);
+DECLARE_bool(TEST_enable_sync_points);
 
 namespace yb {
 
@@ -509,23 +516,18 @@ TEST_F(MetricsTest, JsonPrintTest) {
   ASSERT_OK(entity_->WriteAsJson(&writer, MetricJsonOptions()));
 
   // Now parse it back out.
-  JsonReader reader(out.str());
-  ASSERT_OK(reader.Init());
+  JsonDocument doc;
+  auto metrics = ASSERT_RESULT(doc.Parse(out.str()))["metrics"];
 
-  vector<const rapidjson::Value*> metrics;
-  ASSERT_OK(reader.ExtractObjectArray(reader.root(), "metrics", &metrics));
-  ASSERT_EQ(1, metrics.size());
-  string metric_name;
-  ASSERT_OK(reader.ExtractString(metrics[0], "name", &metric_name));
+  auto size = ASSERT_RESULT(metrics.size());
+  ASSERT_EQ(1, size);
+  auto metric_name = ASSERT_RESULT(metrics[0]["name"].GetString());
   ASSERT_EQ("reqs_pending", metric_name);
-  int64_t metric_value;
-  ASSERT_OK(reader.ExtractInt64(metrics[0], "value", &metric_value));
+  auto metric_value = ASSERT_RESULT(metrics[0]["value"].GetInt64());
   ASSERT_EQ(1L, metric_value);
 
-  const rapidjson::Value* attributes;
-  ASSERT_OK(reader.ExtractObject(reader.root(), "attributes", &attributes));
-  string attr_value;
-  ASSERT_OK(reader.ExtractString(attributes, "test_attr", &attr_value));
+  auto attributes = doc.Root()["attributes"];
+  auto attr_value = ASSERT_RESULT(attributes["test_attr"].GetString());
   ASSERT_EQ("attr_val", attr_value);
 }
 
@@ -822,7 +824,7 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
     ASSERT_TRUE(registry_.TEST_metrics_aggregator()->IsPreAggregatedMetric(kTabletGaugeName));
   }
 
-  SetAtomicFlag(true, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_flush_aggregated_metrics) = true;
   std::thread metric_deletion_thread([&]{
     // Simulate metric deletion in the middle of WriteForPrometheus.
     std::this_thread::sleep_for(2s);
@@ -831,7 +833,7 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
     table_entity->RetireOldMetrics();
     tablet_gauge.reset(nullptr);
     table_gauge.reset(nullptr);
-    SetAtomicFlag(false, &FLAGS_TEST_pause_flush_aggregated_metrics);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_flush_aggregated_metrics) = false;
   });
   {
     // Verify that metrics are absent in the scrape output after deletion.
@@ -845,6 +847,173 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
     std::this_thread::sleep_for(2s);
     ASSERT_FALSE(registry_.TEST_metrics_aggregator()->IsPreAggregatedMetric(kTabletGaugeName));
   }
+}
+
+TEST_F(MetricsTest, VerifyLabelValueEscaping) {
+  // Test escaping of quotes in table names
+  MetricEntity::AttributeMap entity_attr1;
+  entity_attr1["tablet_id"] = "tablet_id_52";
+  entity_attr1["table_name"] = "\"yo\".\"name_split\"";
+  entity_attr1["table_id"] = "table_id_53";
+  auto tablet_entity1 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_54", entity_attr1);
+  scoped_refptr<Counter> counter1 = METRIC_t_counter.Instantiate(tablet_entity1);
+
+  // Test escaping of backslashes
+  MetricEntity::AttributeMap entity_attr2;
+  entity_attr2["tablet_id"] = "tablet_id_55";
+  entity_attr2["table_name"] = "path\\to\\table";
+  entity_attr2["table_id"] = "table_id_56";
+  auto tablet_entity2 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_57", entity_attr2);
+  scoped_refptr<Counter> counter2 = METRIC_t_counter.Instantiate(tablet_entity2);
+
+  // Test escaping of newlines
+  MetricEntity::AttributeMap entity_attr3;
+  entity_attr3["tablet_id"] = "tablet_id_58";
+  entity_attr3["table_name"] = "line1\nline2";
+  entity_attr3["table_id"] = "table_id_59";
+  auto tablet_entity3 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_60", entity_attr3);
+  scoped_refptr<Counter> counter3 = METRIC_t_counter.Instantiate(tablet_entity3);
+
+  MetricPrometheusOptions opts;
+  std::stringstream output;
+  PrometheusWriter writer(&output, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  string output_str = output.str();
+
+  // Quotes should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"\\\"yo\\\".\\\"name_split\\\"\"");
+  ASSERT_STR_NOT_CONTAINS(output_str, "table_name=\"\"yo\".\"name_split\"\"");
+
+  // Backslashes should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"path\\\\to\\\\table\"");
+
+  // Newlines should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"line1\\nline2\"");
+}
+
+// Regression test for a dangling-reference bug in
+// MetricsAggregator::CreateOrFindPreAggregatedMetricValueHolder.
+//
+// Before the fix, the function obtained `auto&` (a reference into the
+// unordered_map) to a shared_ptr<PreAggregatedMetricInfo>, then released
+// the mutex before dereferencing it.  A concurrent cleanup or map rehash
+// could invalidate that reference, causing a use-after-free / SIGSEGV.
+//
+// Under TSAN this reliably reports the data race.  Under ASAN it may
+// manifest as a heap-use-after-free.  Without sanitizers the crash is
+// timing-dependent.
+TEST_F(MetricsTest, MetricsAggregatorCreateCleanupRace) {
+  MetricsAggregator aggregator;
+
+  constexpr int kNumCreatorThreads = 4;
+  constexpr int kNumCleanupThreads = 2;
+  constexpr auto kTestDuration = 5s;
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> metric_id{0};
+
+  auto creator_fn = [&]() {
+    while (!stop.load(std::memory_order_relaxed)) {
+      int id = metric_id.fetch_add(1, std::memory_order_relaxed);
+      std::string name = Format("race_metric_$0", id);
+
+      MetricEntity::AttributeMap attrs;
+      attrs["table_id"] = "table_1";
+      attrs["metric_type"] = "tablet";
+
+      auto proto = std::make_shared<OwningCounterPrototype>(
+          "tablet", name, "label", MetricUnit::kOperations, "desc", MetricLevel::kInfo);
+
+      // Discard the returned value holder so its use_count drops to 1,
+      // making CleanupRetiredMetricsAndCorrespondingAttributes eligible
+      // to erase the map entry.
+      aggregator.CreateOrFindPreAggregatedMetricValueHolder(
+          attrs, std::move(proto), name,
+          kTableLevel | kServerLevel, "tablet",
+          "table_1", "counter", "desc");
+    }
+  };
+
+  auto cleanup_fn = [&]() {
+    while (!stop.load(std::memory_order_relaxed)) {
+      aggregator.CleanupRetiredMetricsAndCorrespondingAttributes();
+    }
+  };
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < kNumCreatorThreads; i++) {
+    threads.emplace_back(creator_fn);
+  }
+  for (int i = 0; i < kNumCleanupThreads; i++) {
+    threads.emplace_back(cleanup_fn);
+  }
+
+  std::this_thread::sleep_for(kTestDuration);
+  stop.store(true, std::memory_order_relaxed);
+  for (auto& t : threads) {
+    t.join();
+  }
+}
+
+TEST_F(MetricsTest, FlushStalePreAggregatedAttribute) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  MetricEntity::AttributeMap stable_attrs;
+  stable_attrs["table_name"] = "t";
+  stable_attrs["table_id"] = "table_id_flush_segfault";
+  stable_attrs["tablet_id"] = "tablet_id_flush_segfault";
+  const std::string kTabletEntityId = "tablet_flush_segfault_entity";
+  auto tablet = METRIC_ENTITY_tablet.Instantiate(&registry_, kTabletEntityId, stable_attrs);
+  ASSERT_TRUE(tablet);
+
+  // Clear the metrics from the tablet entity, and recreate it with the same attributes.
+  {
+    scoped_refptr<Counter> counter = METRIC_t_counter.Instantiate(tablet);
+    tablet->RemoveFromMetricMap(&METRIC_t_counter);
+  }
+  registry_.TEST_metrics_aggregator()->CleanupRetiredMetricsAndCorrespondingAttributes();
+  MetricEntity::AttributeMap updated_attrs = stable_attrs;
+  tablet = METRIC_ENTITY_tablet.Instantiate(&registry_, kTabletEntityId, updated_attrs);
+  ASSERT_TRUE(tablet);
+
+  // Set up a sync point to wait for the flush thread to reach the attributesnapshot.
+  std::mutex sync_mutex;
+  std::condition_variable sync_cv;
+  bool after_snapshots_reached = false;
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+  SyncPoint::GetInstance()->SetCallBack(
+      "FlushPreAggregatedValues.after_snapshots",
+      [&](void*) {
+        std::lock_guard<std::mutex> lock(sync_mutex);
+        after_snapshots_reached = true;
+        sync_cv.notify_one();
+      });
+  SyncPoint::GetInstance()->LoadDependency({SyncPoint::Dependency{
+      "tablet_holder_ready", "FlushPreAggregatedValues.after_snapshots"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  std::thread flush_thread([&]() {
+    MetricPrometheusOptions opts;
+    opts.export_help_and_type = ExportHelpAndType::kFalse;
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    CHECK_OK(registry_.WriteForPrometheus(&writer, opts));
+  });
+
+  {
+    std::unique_lock<std::mutex> lock(sync_mutex);
+    sync_cv.wait(lock, [&] { return after_snapshots_reached; });
+  }
+  // Instantiate a new counter on the tablet entity.
+  ASSERT_TRUE(METRIC_t_counter.Instantiate(tablet));
+  // Signal the flush thread to continue.
+  TEST_SYNC_POINT("tablet_holder_ready");
+
+  flush_thread.join();
 }
 
 } // namespace yb

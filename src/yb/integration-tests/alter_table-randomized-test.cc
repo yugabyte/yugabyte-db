@@ -368,7 +368,7 @@ struct MirrorTable {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     for (;;) {
-      auto op = CreateOp(table, op_type);
+      auto op = CreateOp(table, session->arena(), op_type);
       auto* const req = op->mutable_request();
       bool first = true;
       auto schema = table->schema();
@@ -407,14 +407,15 @@ struct MirrorTable {
     }
   }
 
-  shared_ptr<YBqlWriteOp> CreateOp(const shared_ptr<YBTable>& table, OpType op_type) {
+  shared_ptr<YBqlWriteOp> CreateOp(
+      const client::YBTablePtr& table, ThreadSafeArenaPtr arena, OpType op_type) {
     switch (op_type) {
       case INSERT:
-        return shared_ptr<YBqlWriteOp>(table->NewQLInsert());
+        return shared_ptr<YBqlWriteOp>(table->NewQLInsert(std::move(arena)));
       case UPDATE:
-        return shared_ptr<YBqlWriteOp>(table->NewQLUpdate());
+        return shared_ptr<YBqlWriteOp>(table->NewQLUpdate(std::move(arena)));
       case DELETE:
-        return shared_ptr<YBqlWriteOp>(table->NewQLDelete());
+        return shared_ptr<YBqlWriteOp>(table->NewQLDelete(std::move(arena)));
     }
     return shared_ptr<YBqlWriteOp>();
   }

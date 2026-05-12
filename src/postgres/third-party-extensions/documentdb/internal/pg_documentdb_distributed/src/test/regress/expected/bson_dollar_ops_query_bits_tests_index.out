@@ -1993,25 +1993,25 @@ SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE d
 ROLLBACK;
 --Negative Test Cases $bitsAllClear
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : -1  } }';
-ERROR:  Expected a positive number in: $bitsAllClear: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAllClear: -1.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 23.04  } }';
-ERROR:  Expected an integer: $bitsAllClear: 23.04
+ERROR:  Expected value of integer type: $bitsAllClear: 23.04
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 99999999999 } }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllClear: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 99999999999 ] } }';
-ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+ERROR:  Expected an integer but got 'long' type for element 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "99999999999" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllClear: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "1.0232" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 1.0232.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllClear: 1.0232.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "-1" }} }';
-ERROR:  Expected a positive number in: $bitsAllClear: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAllClear: -1.0
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2021,29 +2021,29 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
         }
       ]
     }', TRUE);
-ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllClear" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAllClear [ 0 ]
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllClear" : 1 } } }:Expression not supported in partial index: a $bitsAllClear [ 0 ]
 
 --Negative Test Cases $bitsAnyClear
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : -1  } }';
-ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAnyClear: -1.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 23.04  } }';
-ERROR:  Expected an integer: $bitsAnyClear: 23.04
+ERROR:  Expected value of integer type: $bitsAnyClear: 23.04
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 99999999999 } }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnyClear: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 99999999999 ] } }';
-ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+ERROR:  Expected an integer but got 'long' type for element 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "99999999999" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnyClear: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "1.0232" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 1.0232.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnyClear: 1.0232.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "-1" }} }';
-ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAnyClear: -1.0
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2053,29 +2053,29 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
         }
       ]
     }', TRUE);
-ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnyClear" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAnyClear [ 0 ]
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnyClear" : 1 } } }:Expression not supported in partial index: a $bitsAnyClear [ 0 ]
 
 --Negative Test Cases $bitsAllSet
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : -1  } }';
-ERROR:  Expected a positive number in: $bitsAllSet: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAllSet: -1.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 23.04  } }';
-ERROR:  Expected an integer: $bitsAllSet: 23.04
+ERROR:  Expected value of integer type: $bitsAllSet: 23.04
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 99999999999 } }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllSet: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 99999999999 ] } }';
-ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+ERROR:  Expected an integer but got 'long' type for element 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "99999999999" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllSet: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "1.0232" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 1.0232.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllSet: 1.0232.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "-1" }} }';
-ERROR:  Expected a positive number in: $bitsAllSet: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAllSet: -1.0
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2085,33 +2085,33 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
         }
       ]
     }', TRUE);
-ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllSet" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAllSet [ 0 ]
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllSet" : 1 } } }:Expression not supported in partial index: a $bitsAllSet [ 0 ]
 
 --Negative Test Cases $bitsAnySet
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : -1  } }';
-ERROR:  Expected a positive number in: $bitsAnySet: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAnySet: -1.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 23.04  } }';
-ERROR:  Expected an integer: $bitsAnySet: 23.04
+ERROR:  Expected value of integer type: $bitsAnySet: 23.04
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 99999999999 } }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnySet: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 99999999999 ] } }';
-ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+ERROR:  Expected an integer but got 'long' type for element 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "99999999999" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnySet: 99999999999.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "1.0232" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 1.0232.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnySet: 1.0232.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "-1" }} }';
-ERROR:  Expected a positive number in: $bitsAnySet: -1.0
+ERROR:  A positive number was expected in the following context: $bitsAnySet: -1.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "NaN" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: NaN.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAnySet: NaN.0
 SELECT document FROM documentdb_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "Infinity" }} }';
-ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: Infinity.0
+ERROR:  Unable to store as a 32-bit integer: $bitsAllSet: Infinity.0
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2121,7 +2121,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
         }
       ]
     }', TRUE);
-ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnySet" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAnySet [ 0 ]
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnySet" : 1 } } }:Expression not supported in partial index: a $bitsAnySet [ 0 ]
 
 --drop collection
 SELECT drop_collection('db','bitwiseOperators');

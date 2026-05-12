@@ -14,6 +14,8 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -29,6 +31,16 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
   protected final String namespace;
   private final Class<T> clazz;
   protected final Integer reconcileExceptionBackoffMS = 5000;
+
+  protected final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The resource currently being reconciled. Set before calling create/update/noOp handlers
+  // so that child classes can associate dependent resources (e.g. secrets) with the correct owner.
+  protected KubernetesResourceDetails currentReconcileResource;
+
+  // The local PlatformInstance UUID for the current reconcile cycle, set at the start of
+  // reconcile(). Null when HA is not configured.
+  protected UUID currentLocalInstanceUuid;
 
   public AbstractReconciler(
       KubernetesClient client,
@@ -58,6 +70,14 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
   protected abstract void handleResourceDeletion(
       T resource, Customer cust, OperatorWorkQueue.ResourceAction action) throws Exception;
 
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
+
   // Implemented methods
   @Override
   public void run() {
@@ -65,6 +85,11 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
     while (!Thread.currentThread().isInterrupted()) {
       if (resourceInformer.hasSynced()) {
         break;
+      }
+      try {
+        Thread.sleep(10);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
     }
     while (true) {
@@ -142,16 +167,30 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
 
     try {
       Customer cust = operatorUtils.getOperatorCustomer();
+      KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(resource);
+      currentReconcileResource = resourceDetails;
+      UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+      currentLocalInstanceUuid = localInstanceUuid;
+
       // checking to see if the resource was deleted.
       if (action == OperatorWorkQueue.ResourceAction.DELETE
           || resource.getMetadata().getDeletionTimestamp() != null) {
         handleResourceDeletion(resource, cust, action);
-      } else if (action == OperatorWorkQueue.ResourceAction.CREATE) {
-        createActionReconcile(resource, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.UPDATE) {
-        updateActionReconcile(resource, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.NO_OP) {
-        noOpActionReconcile(resource, cust);
+        Set<KubernetesResourceDetails> orphaned =
+            resourceTracker.untrackResource(resourceDetails, localInstanceUuid);
+        log.info("Untracked resource {} and orphaned dependencies: {}", resourceDetails, orphaned);
+      } else {
+        // Track/update the resource for all non-delete actions so that the persisted
+        // YAML in OperatorResource stays current after updates and restarts.
+        resourceTracker.trackResource(resource, localInstanceUuid);
+        log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+        if (action == OperatorWorkQueue.ResourceAction.CREATE) {
+          createActionReconcile(resource, cust);
+        } else if (action == OperatorWorkQueue.ResourceAction.UPDATE) {
+          updateActionReconcile(resource, cust);
+        } else if (action == OperatorWorkQueue.ResourceAction.NO_OP) {
+          noOpActionReconcile(resource, cust);
+        }
       }
     } catch (Exception e) {
       log.error("Got Exception in Operator Action", e);

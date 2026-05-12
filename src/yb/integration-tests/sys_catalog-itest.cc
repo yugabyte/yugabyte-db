@@ -29,8 +29,7 @@ class SysCatalogITest : public pgwrapper::PgMiniTestBase {
     TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
 
     master::GetNamespaceInfoResponsePB resp;
-    ASSERT_OK(client_->GetNamespaceInfo(
-        /*namespace_id=*/std::string(), namespace_name, YQL_DATABASE_PGSQL, &resp));
+    ASSERT_OK(client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp));
     namespace_id_ = resp.namespace_().id();
 
     google::SetVLOGLevel("catalog_manager*", 1);

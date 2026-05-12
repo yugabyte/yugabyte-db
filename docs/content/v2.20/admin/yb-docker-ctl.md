@@ -13,7 +13,7 @@ type: docs
 
 {{< warning title="yb-docker-ctl is deprecated" >}}
 
-yb-docker-ctl is no longer maintained. The recommended method to run YugabyteDB in Docker is to use [yugabyted](../../reference/configuration/yugabyted/#create-a-multi-region-cluster-in-docker). For more information, see the [Quick Start](/preview/quick-start/docker/).
+yb-docker-ctl is no longer maintained. The recommended method to run YugabyteDB in Docker is to use [yugabyted](../../reference/configuration/yugabyted/#create-a-multi-region-cluster-in-docker). For more information, see the [Quick Start](/stable/quick-start/docker/).
 
 {{< /warning >}}
 

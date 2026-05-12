@@ -25,72 +25,72 @@ import (
 )
 
 // Refresh the releases page to get the latest YugabyteDB releases
-func (a *AuthAPIClient) Refresh() ybaclient.ReleaseManagementApiApiRefreshRequest {
-	return a.APIClient.ReleaseManagementApi.Refresh(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) Refresh() ybaclient.ReleaseManagementAPIRefreshRequest {
+	return a.APIClient.ReleaseManagementAPI.Refresh(a.ctx, a.CustomerUUID)
 }
 
 // GetListOfReleases API to fetch list of releases
 func (a *AuthAPIClient) GetListOfReleases(
 	includeMetadata bool,
-) ybaclient.ReleaseManagementApiApiGetListOfReleasesRequest {
-	return a.APIClient.ReleaseManagementApi.
+) ybaclient.ReleaseManagementAPIGetListOfReleasesRequest {
+	return a.APIClient.ReleaseManagementAPI.
 		GetListOfReleases(a.ctx, a.CustomerUUID).
 		IncludeMetadata(includeMetadata)
 }
 
 // ListNewReleases API to fetch list of new releases
-func (a *AuthAPIClient) ListNewReleases() ybaclient.NewReleaseManagementApiApiListNewReleasesRequest {
-	return a.APIClient.NewReleaseManagementApi.ListNewReleases(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ListNewReleases() ybaclient.NewReleaseManagementAPIListNewReleasesRequest {
+	return a.APIClient.NewReleaseManagementAPI.ListNewReleases(a.ctx, a.CustomerUUID)
 }
 
 // GetNewRelease API to fetch list of new releases
 func (a *AuthAPIClient) GetNewRelease(
 	rUUID string,
-) ybaclient.NewReleaseManagementApiApiGetNewReleaseRequest {
-	return a.APIClient.NewReleaseManagementApi.GetNewRelease(a.ctx, a.CustomerUUID, rUUID)
+) ybaclient.NewReleaseManagementAPIGetNewReleaseRequest {
+	return a.APIClient.NewReleaseManagementAPI.GetNewRelease(a.ctx, a.CustomerUUID, rUUID)
 }
 
 // CreateNewRelease API to create new release
-func (a *AuthAPIClient) CreateNewRelease() ybaclient.NewReleaseManagementApiApiCreateNewReleaseRequest {
-	return a.APIClient.NewReleaseManagementApi.CreateNewRelease(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CreateNewRelease() ybaclient.NewReleaseManagementAPICreateNewReleaseRequest {
+	return a.APIClient.NewReleaseManagementAPI.CreateNewRelease(a.ctx, a.CustomerUUID)
 }
 
 // DeleteNewRelease API to delete new release
 func (a *AuthAPIClient) DeleteNewRelease(
 	rUUID string,
-) ybaclient.NewReleaseManagementApiApiDeleteNewReleaseRequest {
-	return a.APIClient.NewReleaseManagementApi.DeleteNewRelease(a.ctx, a.CustomerUUID, rUUID)
+) ybaclient.NewReleaseManagementAPIDeleteNewReleaseRequest {
+	return a.APIClient.NewReleaseManagementAPI.DeleteNewRelease(a.ctx, a.CustomerUUID, rUUID)
 }
 
 // UpdateNewRelease API to update new release
 func (a *AuthAPIClient) UpdateNewRelease(
 	rUUID string,
-) ybaclient.NewReleaseManagementApiApiUpdateNewReleaseRequest {
-	return a.APIClient.NewReleaseManagementApi.UpdateNewRelease(a.ctx, a.CustomerUUID, rUUID)
+) ybaclient.NewReleaseManagementAPIUpdateNewReleaseRequest {
+	return a.APIClient.NewReleaseManagementAPI.UpdateNewRelease(a.ctx, a.CustomerUUID, rUUID)
 }
 
 // UploadRelease API to upload URL
-func (a *AuthAPIClient) UploadRelease() ybaclient.UploadReleasePackagesApiApiUploadReleaseRequest {
-	return a.APIClient.UploadReleasePackagesApi.UploadRelease(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) UploadRelease() ybaclient.UploadReleasePackagesAPIUploadReleaseRequest {
+	return a.APIClient.UploadReleasePackagesAPI.UploadRelease(a.ctx, a.CustomerUUID)
 }
 
 // GetUploadRelease API to get URL
 func (a *AuthAPIClient) GetUploadRelease(
 	fileUUID string,
-) ybaclient.UploadReleasePackagesApiApiGetUploadReleaseRequest {
-	return a.APIClient.UploadReleasePackagesApi.GetUploadRelease(a.ctx, a.CustomerUUID, fileUUID)
+) ybaclient.UploadReleasePackagesAPIGetUploadReleaseRequest {
+	return a.APIClient.UploadReleasePackagesAPI.GetUploadRelease(a.ctx, a.CustomerUUID, fileUUID)
 }
 
 // ExtractMetadata API to extract metadata from tarball
-func (a *AuthAPIClient) ExtractMetadata() ybaclient.ExtractMetadataFromRemoteTarballApiApiExtractMetadataRequest {
-	return a.APIClient.ExtractMetadataFromRemoteTarballApi.ExtractMetadata(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ExtractMetadata() ybaclient.ExtractMetadataFromRemoteTarballAPIExtractMetadataRequest {
+	return a.APIClient.ExtractMetadataFromRemoteTarballAPI.ExtractMetadata(a.ctx, a.CustomerUUID)
 }
 
 // GetExtractMetadata API to get extract metadata
 func (a *AuthAPIClient) GetExtractMetadata(
 	fileUUID string,
-) ybaclient.ExtractMetadataFromRemoteTarballApiApiExtractMetadata_0Request {
-	return a.APIClient.ExtractMetadataFromRemoteTarballApi.ExtractMetadata_1(
+) ybaclient.ExtractMetadataFromRemoteTarballAPIExtractMetadata_0Request {
+	return a.APIClient.ExtractMetadataFromRemoteTarballAPI.ExtractMetadata_1(
 		a.ctx,
 		a.CustomerUUID,
 		fileUUID)
@@ -250,7 +250,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataCI(resourceUUID, message, operatio
 			return ybaclient.ResponseExtractMetadata{},
 				fmt.Errorf("receive interrupt signal, operation could still be on-going")
 		case <-checkEveryInSec.C:
-			r := ybaclient.ResponseExtractMetadata{}
+			r := &ybaclient.ResponseExtractMetadata{}
 			var response *http.Response
 			var err error
 			if strings.Compare(operation, "url") == 0 {
@@ -282,7 +282,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataCI(resourceUUID, message, operatio
 
 			if slices.Contains(util.CompletedReleaseReponseStates(), currentStatus) {
 				if !slices.Contains(util.ErrorReleaseResponseStates(), currentStatus) {
-					return r, nil
+					return *r, nil
 				}
 				logrus.Info(
 					formatter.Colorize(
@@ -292,7 +292,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataCI(resourceUUID, message, operatio
 						formatter.RedColor,
 					),
 				)
-				return r, nil
+				return *r, nil
 			}
 
 			if previousStatus != currentStatus {
@@ -336,7 +336,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataProgressBar(resourceUUID, message,
 			return ybaclient.ResponseExtractMetadata{},
 				fmt.Errorf("receive interrupt signal, operation could still be on-going")
 		case <-checkEveryInSec.C:
-			r := ybaclient.ResponseExtractMetadata{}
+			r := &ybaclient.ResponseExtractMetadata{}
 			var response *http.Response
 			var err error
 			if strings.Compare(operation, "url") == 0 {
@@ -371,7 +371,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataProgressBar(resourceUUID, message,
 
 			if slices.Contains(util.CompletedReleaseReponseStates(), currentStatus) {
 				if !slices.Contains(util.ErrorReleaseResponseStates(), currentStatus) {
-					return r, nil
+					return *r, nil
 				}
 				logrus.Info(
 					formatter.Colorize(
@@ -381,7 +381,7 @@ func (a *AuthAPIClient) WaitForExtractMetadataProgressBar(resourceUUID, message,
 						formatter.RedColor,
 					),
 				)
-				return r, nil
+				return *r, nil
 			}
 
 			s.Suffix = output

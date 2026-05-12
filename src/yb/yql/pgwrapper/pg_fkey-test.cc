@@ -50,6 +50,7 @@ DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::pgwrapper {
 namespace {
@@ -91,11 +92,11 @@ struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCou
 class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_enable_automatic_tablet_splitting = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
-    FLAGS_pg_client_use_shared_memory = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
     // Disable auto analyze in this test suite because it introduce flakiness of metrics.
-    FLAGS_ysql_enable_auto_analyze = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     // Tests assert for expected rpc counts from ysql which change with object locking enabled.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
@@ -716,7 +717,7 @@ class PgFKeyFKCacheLimitTest : public PgFKeyTest {
 
   void SetUp() override {
     AppendPgConfOption(FKReferenceCacheLimitPgConfOption(kDefaultRefCacheLimit));
-    FLAGS_ysql_session_max_batch_size = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_session_max_batch_size) = 1;
     PgFKeyTest::SetUp();
   }
 
@@ -785,6 +786,7 @@ class PgFKeyTestRegionLocal : public PgFKeyTestNoFKCache {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     PgFKeyTestNoFKCache::SetUp();
   }
 

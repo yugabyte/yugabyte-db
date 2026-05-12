@@ -42,8 +42,6 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
     // The test looks for a specific error message. So let's just disble the table locks here.
     flags.put("enable_object_locking_for_table_locks", "false");
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    flags.put("allowed_preview_flags_csv",
-              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     return flags;
   }
 

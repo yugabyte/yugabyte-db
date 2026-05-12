@@ -33,10 +33,14 @@
 
 #include <memory>
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdcsdk_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -44,7 +48,9 @@
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -56,11 +62,20 @@ using std::shared_ptr;
 using std::vector;
 
 METRIC_DEFINE_event_stats(
-    server, load_balancer_duration, "Load balancer duration",
-    yb::MetricUnit::kMilliseconds, "Duration of one load balancer run (in milliseconds)");
+    server, load_balancer_duration, "Cluster balancer duration",
+    yb::MetricUnit::kMilliseconds, "Duration of one cluster balancer run (in milliseconds)");
 
 DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
     "Amount of time the catalog manager background task thread waits between runs");
+
+DEFINE_RUNTIME_int32(transaction_table_check_interval_sec, 15 * 60,
+    "Interval in seconds for checking if the transaction status tables have expected tablets. "
+    "Only used when autoscale_transaction_tables is true.");
+TAG_FLAG(transaction_table_check_interval_sec, advanced);
+DEFINE_validator(transaction_table_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_bool(autoscale_transaction_tables, true,
+    "Automatically scale transaction status tables based on the number of live tservers.");
 
 DEFINE_RUNTIME_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
@@ -82,8 +97,20 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_int32(transaction_table_num_tablets_per_tserver);
+DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb::master {
+
+namespace {
+
+std::atomic<int32_t> TEST_catalog_manager_bg_task_run_counter{0};
+
+}  // namespace
+
+int32_t TEST_catalog_manager_bg_task_run_count() {
+  return TEST_catalog_manager_bg_task_run_counter.load();
+}
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
     : closing_(false),
@@ -92,8 +119,9 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
       thread_(nullptr),
       master_(master),
       catalog_manager_(master->catalog_manager_impl()),
-      load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
-          master_->metric_entity())) {
+      cluster_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
+          master_->metric_entity())),
+      last_live_tservers_(0) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -242,23 +270,16 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   }
   TryResumeBackfillForTables(epoch, &table_map);
 
-  // Do the LB enabling check
-  if (!processed_tablets) {
-    if (catalog_manager_->TimeSinceElectedLeader() >
-        MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
-      auto start = CoarseMonoClock::Now();
-      catalog_manager_->load_balance_policy_->RunLoadBalancer(epoch);
-      load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
-    }
-  }
-
-  std::vector<scoped_refptr<TableInfo>> tables;
+  std::vector<TableInfoPtr> tables;
   TabletInfoMap tablet_info_map;
   {
     CatalogManager::SharedLock lock(catalog_manager_->mutex_);
     auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
     tablet_info_map = *catalog_manager_->tablet_map_;
+  }
+  if (!processed_tablets) {
+    MaybeRunClusterBalancer(epoch, tables, tablet_info_map);
   }
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
@@ -289,6 +310,22 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
   // Abort inactive YSQL BackendsCatalogVersionJob jobs.
   master_->ysql_backends_manager()->AbortInactiveJobs();
+
+  if (FLAGS_autoscale_transaction_tables) {
+    ScaleUpTransactionStatusTablesIfNeeded(epoch);
+  }
+}
+
+void CatalogManagerBgTasks::MaybeRunClusterBalancer(
+    const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+    const TabletInfoMap& tablets) {
+  if (catalog_manager_->TimeSinceElectedLeader() <=
+      MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
+    return;
+  }
+  auto start = CoarseMonoClock::Now();
+  catalog_manager_->load_balance_policy_->RunClusterBalancer(epoch, tables, tablets);
+  cluster_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
 }
 
 void CatalogManagerBgTasks::Run() {
@@ -305,7 +342,7 @@ void CatalogManagerBgTasks::Run() {
       // leader_status is not ok.
       if (was_leader_) {
         LOG(INFO) << "Begin one-time cleanup on losing leadership";
-        load_balancer_duration_->Reset();
+        cluster_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
         master_->ysql_backends_manager()->AbortAllJobs();
@@ -318,10 +355,148 @@ void CatalogManagerBgTasks::Run() {
     //    to notify about tablets creation.
     //  - DeleteTable will call Wake() to finish destructing any table internals
     l.Unlock();
+    TEST_catalog_manager_bg_task_run_counter.fetch_add(1);
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_end);
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
   VLOG(1) << "Catalog manager background task thread shutting down";
+}
+
+// todo(30707): Move this check to its own dedicated task.
+void CatalogManagerBgTasks::ScaleUpTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch) {
+  auto interval_sec = FLAGS_transaction_table_check_interval_sec;
+
+  auto now = CoarseMonoClock::Now();
+  if ((now - last_transaction_status_check_time_) < std::chrono::seconds(interval_sec)) {
+    return;  // Not time yet
+  }
+  last_transaction_status_check_time_ = now;
+
+  size_t num_live_tservers = master_->ts_manager()->NumLiveDescriptors();
+  if (last_live_tservers_ == num_live_tservers) {
+    return;  // No change in number of live tservers, nothing to do
+  }
+
+  WARN_NOT_OK(
+      DoScaleUpTransactionStatusTables(num_live_tservers, epoch),
+      "Transaction status table scaleup failed. Will retry in next iteration.");
+}
+
+Status CatalogManagerBgTasks::DoScaleUpTransactionStatusTables(
+    size_t num_live_tservers, const LeaderEpoch& epoch) {
+  LOG(INFO) << "Number of live tservers changed from " << last_live_tservers_
+      << " to " << num_live_tservers;
+
+  auto global_txn_table = VERIFY_RESULT(catalog_manager_->GetGlobalTransactionStatusTable());
+  SCHECK(global_txn_table, NotFound, "Global transaction status table not found");
+
+  RETURN_NOT_OK_PREPEND(
+      AddTabletsToTransactionStatusTableIfNeeded(
+          global_txn_table, num_live_tservers, ReplicationInfoPB(), /* is_global */ true, epoch),
+      "Global transaction status table check failed");
+
+  RETURN_NOT_OK_PREPEND(
+      ScaleUpLocalTransactionStatusTablesIfNeeded(epoch, global_txn_table->id()),
+      "Local transaction status table check failed");
+
+  last_live_tservers_ = num_live_tservers;
+  return Status::OK();
+}
+
+Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
+    const LeaderEpoch& epoch, const TableId& global_txn_table_id) {
+
+  // Collect all the local transaction status tables and their placements.
+  std::vector<std::pair<TableInfoPtr, ReplicationInfoPB>> transaction_tables;
+  {
+    CatalogManager::SharedLock lock(catalog_manager_->mutex_);
+    for (const auto& table_id : catalog_manager_->transaction_table_ids_set_) {
+      // Skip the global transaction status table.
+      if (table_id == global_txn_table_id) {
+        continue;
+      }
+
+      auto table = catalog_manager_->tables_->FindTableOrNull(table_id);
+      if (!table) {
+        LOG(DFATAL) << "Table " << table_id
+            << " in transaction_table_ids_set_ but not in table_ids_map_";
+        continue;
+      }
+      transaction_tables.push_back(
+          {table, VERIFY_RESULT(catalog_manager_->GetTableReplicationInfoNoDefault(table))});
+    }
+  }
+
+  // For each of the local transaction status tables, verify if the number of tablets is sufficient.
+  // If not, add more tablets to the table.
+  for (const auto& [table, repl_info] : transaction_tables) {
+
+    auto live_tservers_result = catalog_manager_->FindTServersForPlacementInfo(
+        repl_info.live_replicas(), catalog_manager_->GetAllLiveNotBlacklistedTServers());
+    if (!live_tservers_result.ok()) {
+      WARN_NOT_OK(live_tservers_result, Format(
+          "Failed to find live tservers for placement info - skipping table $0 ($1)",
+          table->name(), table->id()));
+      continue;
+    }
+    auto num_live_tservers = (*live_tservers_result).size();
+    if (num_live_tservers == 0) {
+      LOG(WARNING) << "No live tservers for placement info :" << repl_info.ShortDebugString()
+                    << " - skipping table " << table->name()
+                    << " (" << table->id() << ")";
+      continue;
+    }
+
+    RETURN_NOT_OK(AddTabletsToTransactionStatusTableIfNeeded(
+        table, num_live_tservers, repl_info, /* is_global */ false, epoch));
+  }
+  return Status::OK();
+}
+
+Status CatalogManagerBgTasks::AddTabletsToTransactionStatusTableIfNeeded(
+    const TableInfoPtr& table, size_t num_live_tservers,
+    const ReplicationInfoPB& repl_info, bool is_global, const LeaderEpoch& epoch) {
+  const auto prefix = is_global ? "Global" : "Local";
+  // Get actual number of tablets.
+  size_t num_tablets = table->TabletCount();
+
+  // Calculate expected number of tablets.
+  auto flag_num_tablets = FLAGS_transaction_table_num_tablets;
+  auto flag_num_tablets_per_tserver = FLAGS_transaction_table_num_tablets_per_tserver;
+  size_t expected_tablets =
+      (flag_num_tablets > 0) ? flag_num_tablets
+                             : (num_live_tservers * flag_num_tablets_per_tserver);
+
+  // Return if the number of tablets is sufficient. Otherwise, add tablets.
+  if (num_tablets >= expected_tablets) {
+    return Status::OK();
+  }
+
+  size_t tablets_to_add = expected_tablets - num_tablets;
+
+  LOG(INFO) << prefix << " transaction status table check: insufficient tablets detected."
+      << " Adding " << tablets_to_add << " more tablets."
+      << " Details: table=" << table->name() << " (" << table->id() << ")."
+      << (is_global ? "" : ", placement info: " + repl_info.ShortDebugString())
+      << ", tablets=" << num_tablets
+      << ", expected=" << expected_tablets
+      << " (transaction_table_num_tablets=" << flag_num_tablets
+      << " or (num_live_tservers=" << num_live_tservers
+      << " * transaction_table_num_tablets_per_tserver=" << flag_num_tablets_per_tserver << "))"
+      << ", num_tablets_per_tserver=" << (num_tablets / num_live_tservers);
+
+  return AddTabletsToTransactionStatusTable(table, tablets_to_add, epoch);
+}
+
+Status CatalogManagerBgTasks::AddTabletsToTransactionStatusTable(
+    const TableInfoPtr& table, size_t tablets_to_add, const LeaderEpoch& epoch) {
+  AddTransactionStatusTabletRequestPB req;
+  AddTransactionStatusTabletResponsePB resp;
+  req.set_table_id(table->id());
+  for (size_t i = 0; i < tablets_to_add; i++) {
+    RETURN_NOT_OK(catalog_manager_->AddTransactionStatusTablet(&req, &resp, nullptr, epoch));
+  }
+  return Status::OK();
 }
 
 } // namespace yb::master

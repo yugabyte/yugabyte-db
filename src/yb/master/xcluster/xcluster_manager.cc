@@ -348,6 +348,55 @@ Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
   return XClusterTargetManager::GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
+Status XClusterManager::XClusterFailover(
+    const XClusterFailoverRequestPB* req,
+    XClusterFailoverResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+
+  LOG(INFO) << "Initiating xCluster failover for replication group " << replication_group_id;
+  return XClusterTargetManager::XClusterFailover(
+      replication_group_id, epoch, catalog_manager_.AsyncTaskPool());
+}
+
+Status XClusterManager::IsXClusterFailoverDone(
+    const IsXClusterFailoverDoneRequestPB* req,
+    IsXClusterFailoverDoneResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+
+  auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
+  if (!replication_info) {
+    // Callers are expected to have triggered XClusterFailover before polling this RPC.
+    // A successful failover deletes the replication group, so its absence means success.
+    resp->set_done(true);
+    return Status::OK();
+  }
+
+  auto repl_info_lock = replication_info->LockForRead();
+
+  SCHECK_FORMAT(
+      repl_info_lock->pb.has_failover_in_progress(), NotFound,
+      "No failover operation found for replication group $0", replication_group_id);
+
+  if (repl_info_lock->pb.failover_in_progress()) {
+    resp->set_done(false);
+    return Status::OK();
+  }
+
+  resp->set_done(true);
+  if (repl_info_lock->pb.has_last_failover_completion_status()) {
+    *resp->mutable_failover_error() = repl_info_lock->pb.last_failover_completion_status();
+  }
+  return Status::OK();
+}
+
 Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
   return XClusterTargetManager::RefreshXClusterSafeTimeMap(epoch);
 }
@@ -982,7 +1031,14 @@ Status XClusterManager::InsertPackedSchemaForXClusterTarget(
   }
 
   return XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
-      table_id, req->packed_schema(), req->current_schema_version(), epoch);
+      table_id, req->packed_schema(), req->current_consumer_schema_version(), epoch);
+}
+
+Status XClusterManager::HandleNewSchemaForAutomaticXClusterTarget(
+    const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+    HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::HandleNewSchemaForAutomaticXClusterTarget(req, resp, epoch);
 }
 
 Status XClusterManager::InsertHistoricalColocatedSchemaPacking(
@@ -1009,6 +1065,32 @@ void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
   monitored_tasks_.erase(task);
 }
 
+Status XClusterManager::RegisterUniqueFailoverTask(
+    const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+
+  auto& failover_task = failover_tasks_[replication_group_id];
+  if (auto existing = failover_task.lock()) {
+    return STATUS_FORMAT(
+        AlreadyPresent, "xCluster failover already in progress for replication group $0",
+        replication_group_id);
+  }
+
+  failover_task = task;
+
+  RSTATUS_DCHECK(
+      monitored_tasks_.insert(task).second, AlreadyPresent,
+      Format("Task $0 already registered", task->description()));
+  return Status::OK();
+}
+
+void XClusterManager::UnRegisterFailoverTask(
+    const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  monitored_tasks_.erase(task);
+  failover_tasks_.erase(replication_group_id);
+}
+
 Status XClusterManager::ProcessCreateTableReq(
     const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
     const NamespaceId& namespace_id) const {
@@ -1021,7 +1103,8 @@ Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& r
   if (!req.old_rewrite_table_id().empty()) {
     table_id = req.old_rewrite_table_id();
     error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
-  } else if (IsIndex(req) && req.skip_index_backfill()) {
+  } else if (IsIndex(req) && req.skip_index_backfill() &&
+             !req.index_info().has_vector_idx_options()) {
     table_id = req.indexed_table_id();
     error_str =
         "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "

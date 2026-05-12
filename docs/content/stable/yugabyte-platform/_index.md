@@ -80,7 +80,7 @@ Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB 
 
   {{< sections/3-box-card
   title="Automation"
-  description="Automate tasks using the API, CLI, Terraform, and more.."
+  description="Automate tasks using the API, CLI, Terraform, and more."
   buttonText="Automation"
   buttonUrl="anywhere-automation/"
   >}}

@@ -180,8 +180,8 @@ SELECT * FROM settings;
  jit_optimize_above_cost        | 500000    | Query Tuning / Planner Cost Constants
  min_parallel_index_scan_size   | 64        | Query Tuning / Planner Cost Constants
  min_parallel_table_scan_size   | 1024      | Query Tuning / Planner Cost Constants
- parallel_setup_cost            | 1000      | Query Tuning / Planner Cost Constants
- parallel_tuple_cost            | 0.1       | Query Tuning / Planner Cost Constants
+ parallel_setup_cost            | 1700      | Query Tuning / Planner Cost Constants
+ parallel_tuple_cost            | 0.18      | Query Tuning / Planner Cost Constants
  random_page_cost               | 4         | Query Tuning / Planner Cost Constants
  seq_page_cost                  | 1         | Query Tuning / Planner Cost Constants
  enable_async_append            | on        | Query Tuning / Planner Method Configuration

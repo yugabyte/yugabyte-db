@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2.29.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.29.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -318,6 +318,7 @@ CREATE TABLE public.par (
     parc10 integer DEFAULT 5
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.par SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -358,6 +359,7 @@ CREATE TABLE public.ch (
     CONSTRAINT ch_pkey PRIMARY KEY((chc1) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.ch SET (yb_presplit='2');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -424,6 +426,7 @@ CREATE TABLE public.chat_user (
     CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.chat_user SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -459,6 +462,7 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
     CONSTRAINT hash_tbl_pk_with_include_clause_pkey PRIMARY KEY((k1, k2) HASH) INCLUDE (v)
 )
 SPLIT INTO 8 TABLETS;
+ALTER TABLE public.hash_tbl_pk_with_include_clause SET (yb_presplit='8');
 
 
 \if :use_roles
@@ -495,6 +499,7 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
     CONSTRAINT hash_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY((col1) HASH, col2 ASC) INCLUDE (col3, col4)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -525,6 +530,7 @@ CREATE TABLE public.inh2_par1 (
     parc6 numeric(8,1)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.inh2_par1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -556,6 +562,7 @@ CREATE TABLE public.inh2_par2 (
     parc7 text DEFAULT 'PAR2_C7_DEF'::text
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.inh2_par2 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -596,6 +603,7 @@ CREATE TABLE public.inh2_ch (
     CONSTRAINT inh2_ch_pkey PRIMARY KEY((chc1) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.inh2_ch SET (yb_presplit='2');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -668,6 +676,7 @@ CREATE TABLE public.level0 (
     CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.level0 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -768,6 +777,7 @@ CREATE TABLE public.level1_1 (
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.level1_1 SET (yb_presplit='2');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -826,6 +836,7 @@ CREATE TABLE public.level2_0 (
     c4 text
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.level2_0 SET (yb_presplit='2');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -878,6 +889,7 @@ CREATE TABLE public.level2_1 (
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.level2_1 SET (yb_presplit='2');
 
 -- For binary upgrade, set up inherited constraint.
 ALTER TABLE ONLY public.level2_1 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
@@ -930,6 +942,7 @@ CREATE TABLE public.p1 (
     CONSTRAINT p1_pkey PRIMARY KEY((k) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.p1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -964,6 +977,7 @@ CREATE TABLE public.p2 (
     CONSTRAINT p2_pkey PRIMARY KEY((k) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.p2 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -998,8 +1012,7 @@ CREATE TABLE public.part_uniq_const (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-PARTITION BY RANGE (v1)
-SPLIT INTO 1 TABLETS;
+PARTITION BY RANGE (v1);
 
 
 \if :use_roles
@@ -1035,6 +1048,7 @@ CREATE TABLE public.part_uniq_const_30_50 (
     CONSTRAINT part_uniq_const_30_50_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.part_uniq_const_30_50 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1070,6 +1084,7 @@ CREATE TABLE public.part_uniq_const_50_100 (
     CONSTRAINT part_uniq_const_50_100_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.part_uniq_const_50_100 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1105,6 +1120,7 @@ CREATE TABLE public.part_uniq_const_default (
     CONSTRAINT part_uniq_const_default_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.part_uniq_const_default SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1152,6 +1168,7 @@ CREATE TABLE public.pre_split_range (
     CONSTRAINT pre_split_range_pkey PRIMARY KEY(customer_id ASC)
 )
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
+ALTER TABLE public.pre_split_range SET (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))');
 
 
 \if :use_roles
@@ -1187,6 +1204,7 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
     CONSTRAINT range_tbl_pk_with_include_clause_pkey PRIMARY KEY(k1 ASC, k2 ASC) INCLUDE (v)
 )
 SPLIT AT VALUES ((1, '1'), (100, '100'));
+ALTER TABLE public.range_tbl_pk_with_include_clause SET (yb_presplit='((1, ''1''), (100, ''100''))');
 
 
 \if :use_roles
@@ -1256,6 +1274,7 @@ CREATE TABLE public.rls_private (
     CONSTRAINT rls_private_pkey PRIMARY KEY((k) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.rls_private SET (yb_presplit='2');
 
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
 
@@ -1292,10 +1311,45 @@ CREATE TABLE public.rls_public (
     CONSTRAINT rls_public_pkey PRIMARY KEY((k) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.rls_public SET (yb_presplit='2');
 
 
 \if :use_roles
     ALTER TABLE public.rls_public OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: stats_tbl; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16738'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16737'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16736'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16736'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16739'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16739'::pg_catalog.oid);
+
+CREATE TABLE public.stats_tbl (
+    id integer NOT NULL,
+    value text,
+    CONSTRAINT stats_tbl_pkey PRIMARY KEY((id) HASH)
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.stats_tbl OWNER TO regress_rls_alice;
 \endif
 
 --
@@ -1320,6 +1374,7 @@ CREATE TABLE public.tbl1 (
     b integer
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1356,6 +1411,7 @@ CREATE TABLE public.tbl10 (
     CONSTRAINT tbl10_pkey PRIMARY KEY((a, c) HASH, b ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl10 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1461,6 +1517,7 @@ CREATE TABLE public.tbl13 (
     CONSTRAINT tbl13_pkey PRIMARY KEY((b, c) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl13 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1517,6 +1574,7 @@ CREATE TABLE public.tbl2 (
     a integer NOT NULL
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl2 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1613,6 +1671,7 @@ CREATE TABLE public.tbl4 (
     CONSTRAINT tbl4_pkey PRIMARY KEY((a) HASH, b ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl4 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1648,6 +1707,7 @@ CREATE TABLE public.tbl5 (
     CONSTRAINT tbl5_pkey PRIMARY KEY((a) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl5 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1681,6 +1741,7 @@ CREATE TABLE public.tbl6 (
     CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl6 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1717,6 +1778,7 @@ CREATE TABLE public.tbl7 (
     CONSTRAINT tbl7_pkey PRIMARY KEY((b) HASH, c ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl7 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1753,6 +1815,7 @@ CREATE TABLE public.tbl8 (
     CONSTRAINT tbl8_pkey PRIMARY KEY((a) HASH, d ASC)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl8 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1788,6 +1851,7 @@ CREATE TABLE public.tbl9 (
     CONSTRAINT tbl9_pkey PRIMARY KEY((a, b) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.tbl9 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1817,6 +1881,7 @@ CREATE TABLE public.th1 (
     c double precision
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.th1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -1852,6 +1917,7 @@ CREATE TABLE public.th2 (
     CONSTRAINT th2_pkey PRIMARY KEY((a) HASH, b ASC)
 )
 SPLIT INTO 3 TABLETS;
+ALTER TABLE public.th2 SET (yb_presplit='3');
 
 
 \if :use_roles
@@ -1887,6 +1953,7 @@ CREATE TABLE public.th3 (
     CONSTRAINT th3_pkey PRIMARY KEY((a, b) HASH)
 )
 SPLIT INTO 4 TABLETS;
+ALTER TABLE public.th3 SET (yb_presplit='4');
 
 
 \if :use_roles
@@ -1922,6 +1989,7 @@ CREATE TABLE public.tr1 (
     CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
 )
 SPLIT AT VALUES ((1), (100));
+ALTER TABLE public.tr1 SET (yb_presplit='((1), (100))');
 
 
 \if :use_roles
@@ -1956,7 +2024,8 @@ CREATE TABLE public.tr2 (
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
 )
-SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12));
+SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
+ALTER TABLE public.tr2 SET (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))');
 
 
 \if :use_roles
@@ -2227,6 +2296,19 @@ COPY public.rls_public (k, v) FROM stdin;
 
 
 --
+-- Data for Name: stats_tbl; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.stats_tbl (id, value) FROM stdin;
+5	echo
+1	alpha
+4	delta
+2	bravo
+3	charlie
+\.
+
+
+--
 -- Data for Name: tbl1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -2403,8 +2485,88 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'ch',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'chc1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '6'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc10',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc4',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc5',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'ch',
+	'attname', 'parc9',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2417,7 +2579,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'chat_user',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2431,7 +2593,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'hash_tbl_pk_with_include_clause',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2445,7 +2607,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'hash_tbl_pk_with_multiple_included_columns',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2459,8 +2621,100 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'inh2_ch',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '2'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'chc1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{10,20}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'chc2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '8'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{2_CH_2,CH_1_FOO}'::text,
+	'correlation', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '6'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_FOO,2_FOO}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1.1,2.2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc5',
+	'inherited', 'f'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '7'::integer,
+	'n_distinct', '-0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc6',
+	'inherited', 'f'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '7'::integer,
+	'n_distinct', '-0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_ch',
+	'attname', 'parc7',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '11'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{CH_C7_DEF,PAR2_C7_DEF}'::text,
+	'correlation', '-1'::real
 );
 
 
@@ -2473,8 +2727,54 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'inh2_par1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par1',
+	'attname', 'parc1',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par1',
+	'attname', 'parc2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '6'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_FOO,2_FOO}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par1',
+	'attname', 'parc3',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1.1,2.2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par1',
+	'attname', 'parc6',
+	'inherited', 't'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '7'::integer,
+	'n_distinct', '-0.5'::real
 );
 
 
@@ -2487,8 +2787,66 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'inh2_par2',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par2',
+	'attname', 'parc1',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par2',
+	'attname', 'parc2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '6'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_FOO,2_FOO}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par2',
+	'attname', 'parc3',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1.1,2.2}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par2',
+	'attname', 'parc5',
+	'inherited', 't'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '7'::integer,
+	'n_distinct', '-0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'inh2_par2',
+	'attname', 'parc7',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '11'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{CH_C7_DEF,PAR2_C7_DEF}'::text,
+	'correlation', '-1'::real
 );
 
 
@@ -2501,8 +2859,97 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level0',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c1',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c1',
+	'inherited', 't'::boolean,
+	'null_frac', '0.4'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.4'::real,
+	'most_common_vals', '{2}'::text,
+	'most_common_freqs', '{0.4}'::real[],
+	'correlation', '0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '2'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '3'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{0,1_0,1_1,2_0,2_1}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c3',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c3',
+	'inherited', 't'::boolean,
+	'null_frac', '0.4'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.6'::real,
+	'histogram_bounds', '{1_0,2_0,2_1}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c4',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'attname', 'c4',
+	'inherited', 't'::boolean,
+	'null_frac', '0.6'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.39999998'::real,
+	'histogram_bounds', '{1_1,2_1}'::text,
+	'correlation', '1'::real
 );
 
 
@@ -2515,8 +2962,95 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level1_0',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c1',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.6666667'::real,
+	'most_common_vals', '{2}'::text,
+	'most_common_freqs', '{0.6666667}'::real[],
+	'correlation', '0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_0,2_0,2_1}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c3',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_0,2_0,2_1}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c4',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'attname', 'c4',
+	'inherited', 't'::boolean,
+	'null_frac', '0.6666667'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.3333333'::real
 );
 
 
@@ -2529,8 +3063,92 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level1_1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c1',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c1',
+	'inherited', 't'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_1,2_1}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c3',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c3',
+	'inherited', 't'::boolean,
+	'null_frac', '0.5'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-0.5'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c4',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'attname', 'c4',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1_1,2_1}'::text,
+	'correlation', '1'::real
 );
 
 
@@ -2543,8 +3161,48 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level2_0',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_0',
+	'attname', 'c1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_0',
+	'attname', 'c2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_0',
+	'attname', 'c3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_0',
+	'attname', 'c4',
+	'inherited', 'f'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
 );
 
 
@@ -2557,8 +3215,48 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level2_1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1',
+	'attname', 'c1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1',
+	'attname', 'c2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1',
+	'attname', 'c3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1',
+	'attname', 'c4',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2571,7 +3269,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'p1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2585,7 +3283,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'p2',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2599,8 +3297,78 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'par',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc1',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc10',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc3',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc4',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc5',
+	'inherited', 't'::boolean,
+	'null_frac', '1'::real,
+	'avg_width', '0'::integer,
+	'n_distinct', '0'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'par',
+	'attname', 'parc9',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2612,9 +3380,45 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const',
-	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'relpages', '-1'::integer,
+	'reltuples', '3'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const',
+	'attname', 'v1',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,31,51}'::text,
+	'correlation', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const',
+	'attname', 'v2',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{151,231,1001}'::text,
+	'correlation', '1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const',
+	'attname', 'v3',
+	'inherited', 't'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{151,231,1001}'::text,
+	'correlation', '1'::real
 );
 
 
@@ -2627,8 +3431,38 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_30_50',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50',
+	'attname', 'v1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50',
+	'attname', 'v2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50',
+	'attname', 'v3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2641,8 +3475,38 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100',
+	'attname', 'v1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100',
+	'attname', 'v2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100',
+	'attname', 'v3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2655,8 +3519,38 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_default',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default',
+	'attname', 'v1',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default',
+	'attname', 'v2',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default',
+	'attname', 'v3',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2669,7 +3563,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'pre_split_range',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2683,7 +3577,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'range_tbl_pk_with_include_clause',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2697,7 +3591,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'range_tbl_pk_with_multiple_included_columns',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2711,7 +3605,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'rls_private',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2725,8 +3619,46 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'rls_public',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: stats_tbl; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'stats_tbl',
+	'relpages', '0'::integer,
+	'reltuples', '5'::real,
+	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'stats_tbl',
+	'attname', 'id',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2,3,4,5}'::text,
+	'correlation', '-0.3'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'stats_tbl',
+	'attname', 'value',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '6'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{alpha,bravo,charlie,delta,echo}'::text,
+	'correlation', '-0.3'::real
 );
 
 
@@ -2739,8 +3671,28 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl1',
+	'attname', 'a',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl1',
+	'attname', 'b',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2753,7 +3705,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl10',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2767,7 +3719,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl11',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2781,7 +3733,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl12',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2795,7 +3747,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl13',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2809,7 +3761,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl2',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2823,7 +3775,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl3',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2837,7 +3789,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl4',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2851,8 +3803,38 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl5',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5',
+	'attname', 'a',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5',
+	'attname', 'b',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5',
+	'attname', 'c',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real
 );
 
 
@@ -2865,7 +3847,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl6',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2879,7 +3861,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl7',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2893,7 +3875,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl8',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2907,7 +3889,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl9',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2921,7 +3903,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'th1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2935,7 +3917,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'th2',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2949,7 +3931,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'th3',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2963,7 +3945,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tr1',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2977,7 +3959,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tr2',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -2991,7 +3973,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'uaccount',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '0'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3006,6 +3988,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16515'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16515'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+ALTER INDEX public.c1 SET (yb_presplit='((''foo''), (''qux''))');
 
 ALTER TABLE ONLY public.p1
     ADD CONSTRAINT c1 UNIQUE USING INDEX c1;
@@ -3021,6 +4004,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16522'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16522'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
+ALTER INDEX public.c2 SET (yb_presplit='10');
 
 ALTER TABLE ONLY public.p2
     ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
@@ -3060,6 +4044,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16535'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16535'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 2 TABLETS;
+ALTER INDEX public.non_unique_idx_with_include_clause SET (yb_presplit='2');
 
 
 --
@@ -3130,6 +4115,18 @@ ALTER TABLE ONLY public.part_uniq_const_default
 
 
 --
+-- Name: stats_tbl_value_idx; Type: INDEX; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16741'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16741'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY stats_tbl_value_idx ON public.stats_tbl USING lsm (value ASC);
+
+
+--
 -- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -3139,6 +4136,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16424'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16424'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 2 TABLETS;
+ALTER INDEX public.tbl8_idx SET (yb_presplit='2');
 
 
 --
@@ -3151,6 +4149,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16425'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16425'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 2 TABLETS;
+ALTER INDEX public.tbl8_idx2 SET (yb_presplit='2');
 
 
 --
@@ -3187,6 +4186,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16428'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16428'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 2 TABLETS;
+ALTER INDEX public.tbl8_idx5 SET (yb_presplit='2');
 
 
 --
@@ -3199,6 +4199,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16506'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16506'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
+ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
 
 
 --
@@ -3211,6 +4212,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16507'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16507'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
+ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
 
 
 --
@@ -3222,7 +4224,8 @@ CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) S
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16509'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16509'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
+CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
+ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))');
 
 
 --
@@ -3235,6 +4238,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16508'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16508'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
+ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
 
 
 --
@@ -3247,6 +4251,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16529'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16529'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 2 TABLETS;
+ALTER INDEX public.unique_idx_with_include_clause SET (yb_presplit='2');
 
 
 --
@@ -3436,7 +4441,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'ch_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3492,7 +4497,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'inh2_ch_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '2'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3506,7 +4511,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level1_0_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3520,7 +4525,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level1_1_c3_idx',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3534,7 +4539,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level1_1_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3548,7 +4553,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level2_1_c3_idx',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3562,7 +4567,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'level2_1_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3618,7 +4623,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_30_50_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3632,7 +4637,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_30_50_v1_v2_key',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3646,7 +4651,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3660,7 +4665,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100_v1_v2_key',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3674,7 +4679,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100_v2_uniq',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3688,7 +4693,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_default_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3702,7 +4707,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_default_v1_v2_key',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -3806,6 +4811,34 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 
 
 --
+-- Statistics for Name: stats_tbl_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'stats_tbl_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '5'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: stats_tbl_value_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'stats_tbl_value_idx',
+	'relpages', '0'::integer,
+	'reltuples', '5'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
 -- Statistics for Name: tbl10_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
@@ -3898,7 +4931,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'tbl5_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '1'::real,
 	'relallvisible', '0'::integer
 );
 

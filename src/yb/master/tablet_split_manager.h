@@ -26,6 +26,7 @@ namespace master {
 
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
+YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
@@ -62,7 +63,9 @@ class TabletSplitManager {
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
   Status ValidateSplitCandidateTable(
       const TableInfoPtr& table,
-      IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
+      IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse,
+      IgnoreVectorIndexesValidation ignore_vector_indexes_validation =
+          IgnoreVectorIndexesValidation::kFalse);
 
   // Tablet-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
@@ -102,7 +105,8 @@ class TabletSplitManager {
   // Disables splitting for tablets that are too small to split.
   void DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id);
 
-  Status PrepareForPitr(const CoarseTimePoint& deadline);
+  Status PrepareForSnapshotRestore(
+      const CoarseTimePoint& deadline, const std::string& feature_name);
 
  private:
   void ScheduleSplits(const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch);
@@ -125,6 +129,8 @@ class TabletSplitManager {
   CoarseTimePoint last_run_time_;
 
   scoped_refptr<yb::AtomicGauge<uint64_t>> automatic_split_manager_time_ms_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_tablet_split_candidates_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_outstanding_tablet_splits_;
   scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   template <typename IdType>

@@ -17,11 +17,9 @@
 #include <future>
 #include <map>
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/rocksdb_fwd.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/storage/storage_types.h"
 
 #include "yb/util/env.h"
 #include "yb/util/kv_util.h"
@@ -30,6 +28,14 @@
 #include "yb/util/status_callback.h"
 
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm_metrics.h"
+
+namespace yb {
+
+class PriorityThreadPoolToken;
+using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
+
+}
 
 namespace yb::vector_index {
 
@@ -43,7 +49,7 @@ struct VectorLSMInsertEntry {
 };
 
 struct VectorLSMInsertContext {
-  const rocksdb::UserFrontiers* frontiers = nullptr;
+  const storage::UserFrontiers* frontiers = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -61,7 +67,7 @@ class VectorLSMMergeRegistry;
 class VectorLSMMergeFilter {
  public:
   virtual ~VectorLSMMergeFilter() = default;
-  virtual rocksdb::FilterDecision Filter(VectorId vector_id) = 0;
+  virtual storage::FilterDecision Filter(VectorId vector_id) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 
@@ -70,7 +76,7 @@ template<IndexableVectorType Vector,
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
-  using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
+  using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
 
   std::string log_prefix;
   std::string storage_dir;
@@ -78,10 +84,11 @@ struct VectorLSMOptions {
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
+  MetricEntityPtr metric_entity;
 };
 
 template<IndexableVectorType VectorType,
@@ -105,8 +112,8 @@ class VectorLSM {
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
-  rocksdb::UserFrontierPtr GetFlushedFrontier();
-  rocksdb::FlushAbility GetFlushAbility();
+  storage::UserFrontierPtr GetFlushedFrontier();
+  storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
@@ -139,6 +146,9 @@ class VectorLSM {
   bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
+  // Test helper method to get the size of the latest chunk (highest serial number).
+  uint64_t TEST_LatestChunkSize() const;
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
   // Utility method to correctly prepare Status instance in case of shutting down.
@@ -150,6 +160,10 @@ class VectorLSM {
 
   const std::string& StorageDir() const {
     return options_.storage_dir;
+  }
+
+  VectorLSMMetrics& metrics() const {
+    return *DCHECK_NOTNULL(metrics_.get());
   }
 
   struct MutableChunk;
@@ -274,8 +288,8 @@ class VectorLSM {
   // modifications (e.g. due to merging of chunks).
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
-  std::unique_ptr<InsertRegistry> insert_registry_;
-  std::unique_ptr<MergeRegistry> merge_registry_;
+  std::shared_ptr<InsertRegistry> insert_registry_;
+  std::shared_ptr<MergeRegistry> merge_registry_;
 
   // May be changed if new manifest file is created (due to absence or compaction).
   size_t next_manifest_file_no_ = 0;
@@ -307,6 +321,8 @@ class VectorLSM {
   std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
 
   Status failed_status_ GUARDED_BY(mutex_);
+
+  std::unique_ptr<VectorLSMMetrics> metrics_;
 };
 
 template<template<class, class> class Factory, class VectorIndex>

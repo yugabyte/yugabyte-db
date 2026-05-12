@@ -31,7 +31,7 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/util/metrics.h"
 
@@ -252,6 +252,12 @@ const CounterEntry kCounters[] = {
       &METRIC_docdb_obsolete_keys_found_past_cutoff},
 };
 
+const CounterEntry kCountersForPgStatStatements[] = {
+  {pggate::YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND,
+      TabletCounters::kDocDBObsoleteKeysFound,
+      &METRIC_docdb_obsolete_keys_found},
+};
+
 const GaugeEntry kGauges[] = {
   {pggate::YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS,
       TabletGauges::kActiveWriteQueryObjects,
@@ -284,6 +290,39 @@ const EventStatsEntry kEventStats[] = {
       TabletEventStats::kIntentDbRemoveThreadJoinDuration,
       &METRIC_intentsdb_rocksdb_remove_thread_join_group_micros},
 };
+
+const EventStatsEntry kEventStatsForPgStatStatements[] = {
+  {pggate::YB_STORAGE_EVENT_QL_READ_LATENCY,
+      TabletEventStats::kQlReadLatency,
+      &METRIC_ql_read_latency},
+  {pggate::YB_STORAGE_EVENT_QL_WRITE_LATENCY,
+      TabletEventStats::kQlWriteLatency,
+      &METRIC_ql_write_latency},
+};
+
+struct MetricsLists {
+  std::span<const CounterEntry> counters;
+  std::span<const GaugeEntry> gauges;
+  std::span<const EventStatsEntry> event_stats;
+};
+
+const MetricsLists& GetMetricsForCaptureType(PgsqlMetricsCaptureType metrics_capture) {
+  static const MetricsLists kAllMetrics = {
+      kCounters,
+      kGauges,
+      kEventStats,
+  };
+  static const MetricsLists kPgssMetrics = {
+      kCountersForPgStatStatements,
+      {},
+      kEventStatsForPgStatStatements,
+  };
+
+  if (metrics_capture == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_PGSS) {
+    return kPgssMetrics;
+  }
+  return kAllMetrics;
+}
 
 class TabletMetricsImpl final : public TabletMetrics {
  public:
@@ -392,9 +431,22 @@ void ScopedTabletMetrics::AddAggregateStats(
   stats_[std::to_underlying(event_stats)].Add(other);
 }
 
-void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
+void ScopedTabletMetrics::CopyToPgsqlResponse(
+    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+void ScopedTabletMetrics::CopyToPgsqlResponse(
+    LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+template <class PB>
+void ScopedTabletMetrics::DoCopyToPgsqlResponse(
+    PB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  const auto& metrics_lists = GetMetricsForCaptureType(metrics_capture);
   auto* metrics = response->mutable_metrics();
-  for (const auto& counter : kCounters) {
+  for (const auto& counter : metrics_lists.counters) {
     auto value = counters_[std::to_underlying(counter.counter)];
     // Don't send unchanged statistics.
     if (value != 0) {
@@ -403,7 +455,7 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
       metric->set_value(value);
     }
   }
-  for (const auto& gauge : kGauges) {
+  for (const auto& gauge : metrics_lists.gauges) {
     auto value = gauges_[std::to_underlying(gauge.gauge)];
     if (value != 0) {
       auto* metric = metrics->add_gauge_metrics();
@@ -411,7 +463,7 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
       metric->set_value(value);
     }
   }
-  for (const auto& event_stat : kEventStats) {
+  for (const auto& event_stat : metrics_lists.event_stats) {
     const auto& value = stats_[std::to_underlying(event_stat.event_stat)];
     if (value.TotalCount() != 0) {
       auto* metric = metrics->add_event_metrics();

@@ -25,6 +25,7 @@
 #include <boost/logic/tribool.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
@@ -41,6 +42,7 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/subdocument.h"
@@ -144,14 +146,13 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     boost::tribool pk_is_known = doc_op->OpType() == DocOperationType::PGSQL_WRITE_OPERATION ?
         boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
         boost::indeterminate;
-    // When skip_prefix_locks is enabled, if a PK is not specified in a serializable txn, the empty
-    // key must be locked to cover the locks of the pk. This is a coarser lock and can result in
-    // blocking many other transactions.
+    // When skip_prefix_locks is enabled, for a serializable txn, we always take a strong lock
+    // on the top level key. This is a coarser lock and can result in blocking many other
+    // transactions.
     const bool top_level_key_takes_strong_locks =
-        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
-        !static_cast<bool>(pk_is_known);
-    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << "skip_prefix_locks:"
-                      << skip_prefix_locks << "pk_is_known:" << static_cast<bool>(pk_is_known);
+        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks;
+    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << ", skip_prefix_locks:"
+                      << skip_prefix_locks << ", pk_is_known:" << static_cast<bool>(pk_is_known);
 
     // TODO(#20662): Assert for the following invariant: the set of (key, intent type) for which
     // in-memory locks are acquired should be a superset of all (key, intent type) pairs which are
@@ -259,7 +260,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager,
+    SharedLockManager* lock_manager,
     dockv::SkipPrefixLocks skip_prefix_locks) {
   PrepareDocWriteOperationResult result;
 
@@ -327,6 +328,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
+      VLOG_WITH_FUNC(4) << "Apply " << AsString(*doc_op) << " failed: " << AsString(s);
       std::string error_msg;
       if (ql::GetErrorCode(s) == ql::ErrorCode::CONDITION_NOT_SATISFIED) {
         // Generating the error message here because 'table_name'
@@ -338,7 +340,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
       // Ensure we set appropriate error in the response object for QL errors.
       const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
       resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(std::move(error_msg));
+      resp->dup_error_message(error_msg);
       continue;
     }
 
@@ -361,6 +363,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
+    const SubtxnSet& aborted,
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* key_value_intents) {
   KeyBytes txn_reverse_index_prefix;
@@ -448,6 +451,22 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             write_id = decoded_value.write_id;
 
             if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
+            // These writes were never committed and should not be streamed to CDC.
+            if (aborted.Test(decoded_value.subtransaction_id)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip colocated table tombstone intents (DELETEs with no primary key).
+            // These are generated during colocated table rewrites and should not be
+            // streamed by CDC.
+            dockv::DocKeyDecoder decoder(intent.doc_path);
+            if (VERIFY_RESULT(decoder.DecodeColocationId()) && decoder.GroupEnded()) {
               reverse_index_iter.Next();
               continue;
             }

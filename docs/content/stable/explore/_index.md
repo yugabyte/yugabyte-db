@@ -4,6 +4,10 @@ headerTitle: Explore YugabyteDB
 linkTitle: Explore
 headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
+aliases:
+  - /stable/explore/high-performance/
+  - /stable/explore/planet-scale/
+  - /stable/explore/cloud-native/orchestration-readiness/
 type: indexpage
 showRightNav: true
 ---
@@ -53,6 +57,13 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
     linkText4="Explore more"
     linkClass4="more"
     linkUrl4="ycql-language/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Gen-AI applications"
+    description="Explore how to build Generative AI applications using YugabyteDB."
+    buttonText="Gen-AI applications"
+    buttonUrl="gen-ai-apps/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -123,21 +134,3 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   >}}
 
 {{< /sections/3-boxes >}}
-
-<!--
-| Section | Purpose | [Universe&nbsp;setup](#set-up-yugabytedb-universe) |
-| :--- | :--- | :--- |
-| [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
-| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra-compatible YCQL language features. | Single-node<br/>local/cloud |
-| [Going beyond SQL](going-beyond-sql/) | Learn about YugabyteDB exclusive features such as follower reads, tablespaces, built-in connection pooling, and more. | Multi-node<br/>local |
-| [Resiliency](fault-tolerance/) | Learn how YugabyteDB achieves resiliency when a node fails. | Multi-node<br/>local |
-| [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
-| [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node<br/>local/cloud |
-| [Colocation](colocation/) | YugabyteDB allows for closely related data to reside together via colocation. Learn how to co-locate tables. | Single-node<br/>local/cloud |
-| [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi-node<br/>local |
-| [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node<br/>local/cloud |
-| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point-in-time recovery. | Single-node<br/>local |
-| [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
-| [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
-| [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
--->

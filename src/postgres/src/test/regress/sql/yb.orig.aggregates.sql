@@ -92,7 +92,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
 :run_ss_ios_bs;
 
--- In case preliminary check might happen, pushdown should be avoided.
+-- In case YB recheck might happen, pushdown should be avoided.
 \set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
 :explain :query; :query;
 
@@ -130,6 +130,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 -- tests using run_ss_ios cannot use a plain index scan (so they also cannot use a bitmap index scan)
 -- adding a hint would just re-test sequential scan
+-- TODO(#31195): update EXPLAIN outputs having constant = constant.
 \set run_ss_ios ':explain :query; :explain :ss :query; :explain :ios :query; :ss :query; :ios :query;'
 :run_ss_ios;
 \set query 'SELECT COUNT(a) FROM ybaggtest2'

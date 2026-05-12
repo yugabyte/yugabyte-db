@@ -10,48 +10,47 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.ObjectCodec;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.HaConfigStates.InstanceState;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.persistence.Transient;
-import java.io.IOException;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
 @JsonPropertyOrder({"uuid", "config_uuid", "address", "is_leader", "is_local", "last_backup"})
-@JsonDeserialize(using = PlatformInstance.PlatformInstanceDeserializer.class)
 @Getter
 @Setter
 public class PlatformInstance extends Model {
@@ -72,27 +71,77 @@ public class PlatformInstance extends Model {
   @Column(nullable = false, unique = true)
   private String address;
 
-  @ManyToOne private HighAvailabilityConfig config;
+  @ManyToOne @JsonIgnore private HighAvailabilityConfig config;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
+  @ApiModelProperty(value = "Last backup time", example = "2022-12-12T13:07:18Z")
   @JsonProperty("last_backup")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date lastBackup;
 
-  @Constraints.Required()
-  @Column(unique = true)
-  private Boolean isLeader;
-
   @Constraints.Required
-  @Column(unique = true)
-  private Boolean isLocal;
+  @Enumerated(EnumType.STRING)
+  private State state;
+
+  @JsonProperty("is_local")
+  @Constraints.Required
+  private boolean isLocal;
 
   @Transient private String ybaVersion = null;
 
-  @JsonGetter("config_uuid")
-  @JsonSerialize(using = HAConfigToUUIDSerializer.class)
-  public HighAvailabilityConfig getConfig() {
-    return this.config;
+  /** State and the transitions. */
+  public enum State {
+    LEADER {
+      @Override
+      public Set<State> nextStates() {
+        return toSet(LEADER, STAND_BY);
+      }
+    },
+    STAND_BY {
+      @Override
+      public Set<State> nextStates() {
+        return toSet(STAND_BY, LEADER);
+      }
+    };
+
+    public abstract Set<State> nextStates();
+
+    public static State parse(String strType) {
+      State state = EnumUtils.getEnumIgnoreCase(State.class, strType);
+      if (state == null) {
+        throw new IllegalArgumentException("Unknown state: " + state);
+      }
+      return state;
+    }
+
+    private static Set<State> toSet(State... states) {
+      return states == null
+          ? Collections.emptySet()
+          : ImmutableSet.<State>builder().add(states).build();
+    }
+
+    public void validateTransition(State nextState) {
+      if (!this.nextStates().contains(nextState)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Invalid state transition from %s to %s", name(), nextState.name()));
+      }
+    }
+  }
+
+  @JsonProperty("config_uuid")
+  public UUID getConfigUuid() {
+    return config != null ? config.getUuid() : null;
+  }
+
+  @JsonSetter("config_uuid")
+  public void setConfigUuid(UUID configUuid) {
+    if (configUuid != null) {
+      this.config = HighAvailabilityConfig.maybeGet(configUuid).orElse(null);
+    } else {
+      this.config = null;
+    }
   }
 
   public boolean updateLastBackup() {
@@ -117,43 +166,27 @@ public class PlatformInstance extends Model {
     return false;
   }
 
+  // Backward compatibility.
   @JsonGetter("is_leader")
-  public boolean getIsLeader() {
-    return this.isLeader != null;
+  public boolean isLeader() {
+    return state == State.LEADER;
   }
 
-  @JsonGetter("is_local")
-  public Boolean getIsLocal() {
-    return this.isLocal != null;
-  }
-
-  @JsonSetter("is_leader")
-  public void setIsLeader(boolean isLeader) {
-    this.isLeader = isLeader ? true : null;
-  }
-
-  @JsonSetter("is_local")
-  public void setIsLocal(boolean isLocal) {
-    this.isLocal = isLocal ? true : null;
-  }
-
-  public void updateIsLocal(Boolean isLocal) {
-    this.setIsLocal(isLocal);
-    this.update();
+  public void updateLocal(boolean isLocal) {
+    setLocal(isLocal);
+    update();
   }
 
   public void promote() {
-    if (!this.getIsLeader()) {
-      this.setIsLeader(true);
-      this.update();
-    }
+    getState().validateTransition(State.LEADER);
+    setState(State.LEADER);
+    update();
   }
 
   public void demote() {
-    if (this.getIsLeader()) {
-      this.setIsLeader(false);
-      this.update();
-    }
+    getState().validateTransition(State.STAND_BY);
+    setState(State.STAND_BY);
+    update();
   }
 
   @JsonGetter("instance_state")
@@ -193,18 +226,17 @@ public class PlatformInstance extends Model {
     model.uuid = UUID.randomUUID();
     model.config = config;
     model.address = address;
-    model.setIsLeader(isLeader);
-    model.setIsLocal(isLocal);
+    model.setState(isLeader ? State.LEADER : State.STAND_BY);
+    model.setLocal(isLocal);
     model.save();
-
     return model;
   }
 
   public static void update(
       PlatformInstance instance, String address, boolean isLeader, boolean isLocal) {
     instance.setAddress(address);
-    instance.setIsLeader(isLeader);
-    instance.setIsLocal(isLocal);
+    instance.setState(isLeader ? State.LEADER : State.STAND_BY);
+    instance.setLocal(isLocal);
     instance.update();
   }
 
@@ -228,54 +260,5 @@ public class PlatformInstance extends Model {
     long backupAgeMillis = System.currentTimeMillis() - lastBackupTime.getTime();
     return backupAgeMillis
         >= Math.max(2 * replicationFrequency.toMillis(), BACKUP_DISCONNECT_TIME_MILLIS);
-  }
-
-  private static class HAConfigToUUIDSerializer extends JsonSerializer<HighAvailabilityConfig> {
-    @Override
-    public void serialize(
-        HighAvailabilityConfig value, JsonGenerator gen, SerializerProvider provider)
-        throws IOException {
-      gen.writeString(value.getUuid().toString());
-    }
-  }
-
-  static class PlatformInstanceDeserializer extends JsonDeserializer<PlatformInstance> {
-    @Override
-    public PlatformInstance deserialize(JsonParser jp, DeserializationContext ctxt)
-        throws IOException {
-      ObjectCodec codec = jp.getCodec();
-      JsonNode json = codec.readTree(jp);
-      try {
-        if (json.has("uuid")
-            && json.has("config_uuid")
-            && json.has("address")
-            && json.has("is_leader")
-            && json.has("is_local")) {
-          PlatformInstance instance = new PlatformInstance();
-          instance.uuid = UUID.fromString(json.get("uuid").asText());
-          UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
-          instance.config = HighAvailabilityConfig.maybeGet(configUUID).orElse(null);
-          instance.address = json.get("address").asText();
-          instance.setIsLeader(json.get("is_leader").asBoolean());
-          instance.setIsLocal(json.get("is_local").asBoolean());
-          JsonNode lastBackup = json.get("last_backup");
-          instance.lastBackup =
-              (lastBackup == null || lastBackup.asText().equals("null"))
-                  ? null
-                  : new Date(lastBackup.asLong());
-
-          return instance;
-        } else {
-          LOG.error(
-              "Could not deserialize {} to platform instance model. "
-                  + "At least one expected field is missing",
-              json);
-        }
-      } catch (Exception e) {
-        LOG.error("Error importing platform instance: {}", json, e);
-      }
-
-      return null;
-    }
   }
 }

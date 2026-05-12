@@ -65,7 +65,6 @@ YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
 EARLYOOM = "earlyoom"
-TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -89,7 +88,10 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 3
+MIN_OPEN_FILES = 1048576
+MIN_PROCESSES = 64000
+
+PER_PROCESS_VERSION = 4
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -260,6 +262,12 @@ YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
 YB_PROCESS_OPEN_FILES = MetricDefinition(
     "yb_process_open_files",
     "Check number of open files per process and its subprocesses")
+YB_PROCESS_LIMIT = MetricDefinition(
+    "yb_process_limit",
+    "Process resource limits from /proc/<pid>/limits")
+YB_PROCESS_LIMITS_STATUS = MetricDefinition(
+    "yb_process_limits_status",
+    "Process limits status (1 = OK, 0 = incorrect)")
 YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
     "yb_node_unexpected_tserver_running",
     "Tserver is running on node (but should not)")
@@ -275,6 +283,12 @@ YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
 YB_THP_SETTINGS_CHECK = MetricDefinition(
     "yb_thp_settings_check",
     "Check that THP settings are applied")
+YB_NODE_YNP_VERSION = MetricDefinition(
+    "yb_node_ynp_version",
+    "YNP version on the node")
+YB_NODE_YNP_VERSION_SKEW = MetricDefinition(
+    "yb_node_ynp_version_skew",
+    "YNP version skew between YBA and node")
 
 ###################################################################################################
 # Reporting
@@ -568,7 +582,7 @@ class NodeChecker():
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
-                 ybdb_inbuilt_ybc):
+                 ybdb_inbuilt_ybc, yba_ynp_version):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -611,6 +625,7 @@ class NodeChecker():
         self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.check_thp = check_thp
         self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
+        self.yba_ynp_version = yba_ynp_version
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -770,33 +785,43 @@ class NodeChecker():
                 # In case the runtime certs are different from the on-disk certs
                 # & they are about to expire <= 30 days, we will raise the alerts
                 # for users to restart the services.
-                try:
-                    cert_output = self.retrieve_host_certs(self.node, self.tserver_rpc_port)
-                except Exception as e:
-                    logging.info("Failed to retrieve tserver certs, trying with master")
-                    cert_output = self.retrieve_host_certs(self.node, self.master_rpc_port)
-                certs = self.parse_certs(cert_output)
-                if not self.are_certs_same(certs, cert_path):
-                    for cert in certs:
-                        output = self.get_certificate_expiration_date_from_string(cert)
-                        try:
-                            ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
-                            date = output.replace('notAfter=', '')
-                            expiry_date = datetime.strptime(date, ssl_date_fmt)
-                        except Exception as ex:
-                            message = str(ex)
-                            return e.fill_and_return_entry([message], has_error=True)
+                failed_target = None
+                targets = []
+                if self.master_index >= 0:
+                    targets.append('master')
+                if self.tserver_index >= 0:
+                    targets.append('tserver')
+                for target in targets:
+                    try:
+                        port = self.tserver_rpc_port if target == 'tserver'\
+                            else self.master_rpc_port
+                        cert_output = self.retrieve_host_certs(self.node, port)
 
-                        delta = expiry_date - datetime.now()
-                        if delta.days < days_till_expiry:
-                            days_till_expiry = delta.days
+                        certs = self.parse_certs(cert_output)
+                        if not self.are_certs_same(certs, cert_path):
+                            for cert in certs:
+                                output = self.get_certificate_expiration_date_from_string(cert)
+                                try:
+                                    ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
+                                    date = output.replace('notAfter=', '')
+                                    expiry_date = datetime.strptime(date, ssl_date_fmt)
+                                except Exception as ex:
+                                    message = str(ex)
+                                    return e.fill_and_return_entry([message], has_error=True)
 
-                    if days_till_expiry >=0 and days_till_expiry < 30:
-                        return e.fill_and_return_entry(
-                            ['{} certificate expires in {} days. Consider running rolling restart'
-                            .format(cert_name, days_till_expiry)],
-                            has_error=True,
-                            metrics=[metric])
+                                delta = expiry_date - datetime.now()
+                                if delta.days < days_till_expiry:
+                                    days_till_expiry = delta.days
+                                    failed_target = target
+                    except Exception as e:
+                        logging.info("Failed to retrieve {} certs".format(target))
+
+                if days_till_expiry >=0 and days_till_expiry < 30:
+                    return e.fill_and_return_entry(
+                        ['{} certificate for {} expires in {} days. Consider running rolling'
+                         ' restart'.format(cert_name, failed_target, days_till_expiry)],
+                        has_error=True,
+                        metrics=[metric])
 
             return e.fill_and_return_entry(
                 ['{} days'.format(days_till_expiry)],
@@ -1941,16 +1966,10 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            if process_name == TOTAL:
-                stat = self._get_empty_proc_results()
-                for proc in self.current_process_results.keys():
-                    stat = self._merge_proc_results(
-                        stat, self.current_process_results[proc]['total_stat'])
-                self._dump_per_process_results()
-            else:
-                res = self._load_per_process_metrics(process_name)
-                stat = res['total_stat']
-                self.current_process_results[process_name] = res
+            res = self._load_per_process_metrics(process_name)
+            stat = res['total_stat']
+            self.current_process_results[process_name] = res
+            self._dump_per_process_results()
             ticks = int(os.sysconf("SC_CLK_TCK"))
             metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
                                                                             Label('type', 'user')])
@@ -1972,6 +1991,86 @@ class NodeChecker():
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
+
+    def check_process_limits(self, process_name):
+        metric = Metric.from_definition(YB_PROCESS_LIMIT)
+        e = self._new_entry("Per-process limits check", process_name)
+        process = Label("process", process_name)
+        try:
+            pid = self.get_process_pid_by_name(process_name)
+            if pid is None:
+                return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+
+            cmd = 'cat /proc/{}/limits'.format(pid)
+            output = self._check_output(cmd).strip()
+
+            limit_map = {
+                'Max open files': 'max_open_files',
+                'Max processes': 'max_processes',
+                'Max core file size': 'max_core_file_size',
+                'Max locked memory': 'max_locked_memory',
+            }
+
+            actual_limits = {}
+            for line in output.split('\n'):
+                for limit_name, label_value in limit_map.items():
+                    if line.startswith(limit_name):
+                        parts = line[len(limit_name):].split()
+                        if len(parts) >= 2:
+                            soft = parts[0]
+                            hard = parts[1]
+                            soft_val = -1 if soft == 'unlimited' else int(soft)
+                            hard_val = -1 if hard == 'unlimited' else int(hard)
+                            actual_limits[label_value] = {
+                                'soft': soft_val, 'hard': hard_val
+                            }
+                            metric.add_value(soft_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'soft')])
+                            metric.add_value(hard_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'hard')])
+                        break
+
+            issues = self._check_limit_thresholds(actual_limits)
+            status_metric = Metric.from_definition(YB_PROCESS_LIMITS_STATUS)
+            status_metric.add_value(0 if issues else 1, labels=[process])
+            all_metrics = [metric, status_metric]
+            if issues:
+                return e.fill_and_return_entry(
+                    ['Process {} has incorrect limits: {}'.format(
+                        process_name, '; '.join(issues))],
+                    has_error=True, metrics=all_metrics)
+
+            return e.fill_and_return_entry([], has_error=False, metrics=all_metrics)
+        except Exception as ex:
+            return e.fill_and_return_entry(
+                ["Failed to parse process limits: {}".format(str(ex))],
+                has_error=True, metrics=[metric])
+
+    def _check_limit_thresholds(self, actual_limits):
+        issues = []
+        threshold_checks = {
+            'max_open_files': MIN_OPEN_FILES,
+            'max_processes': MIN_PROCESSES,
+        }
+        for limit_label, min_val in threshold_checks.items():
+            if limit_label in actual_limits:
+                soft = actual_limits[limit_label]['soft']
+                if soft != -1 and soft < min_val:
+                    issues.append(
+                        '{} soft limit {} is below minimum {}'.format(
+                            limit_label, soft, min_val))
+
+        if 'max_core_file_size' in actual_limits:
+            core_soft = actual_limits['max_core_file_size']['soft']
+            if core_soft != -1:
+                issues.append(
+                    'max_core_file_size soft limit {} is not unlimited'.format(
+                        core_soft))
+        return issues
 
     def check_other_process_stats(self):
         metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)
@@ -2198,8 +2297,10 @@ class NodeChecker():
         process_map = {}
         for cur_pid in pid_list:
             stat = self._get_empty_proc_results()
+            start_time = None
             try:
                 stat = self._get_process_stats_by_pid(cur_pid)
+                start_time = stat['start_time']
             except Exception as e:
                 pass
             # Calculating the sum with current state
@@ -2207,8 +2308,14 @@ class NodeChecker():
             # We need to substract pid stats from prev run
             if cur_pid in prev_process_map:
                 prev_stat = prev_process_map[cur_pid]['stats']
-                self._invert_prev_pid_stats(prev_stat)
-                total_stat = self._merge_proc_results(total_stat, prev_stat)
+                prev_start_time = prev_stat['start_time'] if 'start_time' in prev_stat.keys()\
+                    else None
+                if prev_start_time == start_time or prev_start_time is None:
+                    self._invert_prev_pid_stats(prev_stat)
+                    total_stat = self._merge_proc_results(total_stat, prev_stat)
+                else:
+                    self.verbose_log("Prev start time {} cur {} for pid {}"
+                                     .format(start_time, prev_start_time, cur_pid))
 
             process_map[cur_pid] = {
                 'is_root': cur_pid == root_pid,
@@ -2269,6 +2376,7 @@ class NodeChecker():
             res['user_cpu_seconds'] = int(stat_list[13])
             res['system_cpu_seconds'] = int(stat_list[14])
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
+            res['start_time'] = int(stat_list[21])
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2381,6 +2489,68 @@ class NodeChecker():
                     ["Found running process: {}, should be disabled".format(pid)], has_error=True)
         return e.fill_and_return_entry([], has_error=False)
 
+    def check_ynp_version(self):
+        logging.info("Checking YNP version on node {}".format(self.node))
+        e = self._new_entry("YNP Version")
+        metrics = []
+
+        yugabyte_dir = os.path.join(self.yb_home_dir, ".yugabyte")
+        ynp_version_file = os.path.join(yugabyte_dir, "ynp_version")
+        cmd = 'if [ -f "{}" ]; then cat "{}"; else echo ""; fi'.format(
+            ynp_version_file, ynp_version_file)
+        node_ynp_version = self._check_output(cmd).strip()
+
+        if check_for_errors(node_ynp_version):
+            node_ynp_version = ""
+
+        # If file is missing or empty, report placeholder metric and skip skew check
+        if not node_ynp_version:
+            version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+                .add_value(0, [Label("ynp_version", "unknown")])
+            skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW).add_value(0)
+            metrics.extend([version_metric, skew_metric])
+            return e.fill_and_return_entry(
+                ["YNP version file not found or empty at {}".format(ynp_version_file)],
+                has_error=False,
+                metrics=metrics)
+
+        # Report the node YNP version metric
+        version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+            .add_value(1, [Label("ynp_version", node_ynp_version)])
+        metrics.append(version_metric)
+
+        # Check for version skew using semver comparison
+        skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW)
+        if self.yba_ynp_version:
+            is_greater = is_semver_greater(self.yba_ynp_version, node_ynp_version)
+            if is_greater is None:
+                # Could not parse one or both versions - report as warning, no skew error
+                skew_metric.add_value(0)
+                metrics.append(skew_metric)
+                return e.fill_and_return_warning_entry(
+                    ["Unable to parse versions for comparison: YBA={}, Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    metrics=metrics)
+            elif is_greater:
+                # YBA version is strictly greater than node version - skew detected
+                skew_metric.add_value(1, [
+                    Label("yba_ynp_version", self.yba_ynp_version),
+                    Label("node_ynp_version", node_ynp_version)])
+                metrics.append(skew_metric)
+                return e.fill_and_return_entry(
+                    ["YNP version skew: YBA={} > Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    has_error=True,
+                    metrics=metrics)
+
+        # No skew: either versions match, node is ahead/equal, or no YBA version provided
+        skew_metric.add_value(0)
+        metrics.append(skew_metric)
+        return e.fill_and_return_entry(
+            ["YNP version: {}".format(node_ynp_version)],
+            has_error=False,
+            metrics=metrics)
+
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
@@ -2452,6 +2622,29 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
 def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
+
+def parse_semver(version_str):
+    """Parse a semver string like '1.2.3' into a tuple of ints.
+       Supports optional pre-release suffix after a hyphen (ignored for comparison).
+       Returns None if the version string is invalid."""
+    if not version_str:
+        return None
+    base_version = version_str.split('-')[0].strip()
+    parts = base_version.split('.')
+    try:
+        return tuple(int(p) for p in parts)
+    except (ValueError, TypeError):
+        return None
+
+
+def is_semver_greater(version_a, version_b):
+    """Returns True if version_a > version_b using semantic versioning.
+       Returns None if either version cannot be parsed."""
+    parsed_a = parse_semver(version_a)
+    parsed_b = parse_semver(version_b)
+    if parsed_a is None or parsed_b is None:
+        return None
+    return parsed_a > parsed_b
 
 def is_service_running(service_name):
     env = os.environ.copy()
@@ -2700,6 +2893,8 @@ def main():
                         help='Add verbose output')
     parser.add_argument('--cronbased', default=False, required=False, action='store_true',
                         help='Set to true if the node is cronbased instead of systemd')
+    parser.add_argument('--yba_ynp_version', type=str, default=None, required=False,
+                        help='YNP version from YBA side for skew comparison.')
 
     args = parser.parse_args()
 
@@ -2727,37 +2922,13 @@ def main():
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
-        n.ybdb_inbuilt_ybc)
+        n.ybdb_inbuilt_ybc, args.yba_ynp_version)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
-    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
-    if n.enable_earlyoom:
-        coordinator.add_check(checker, "count_earlyoom_kills")
+
+    # Node metrics collection check should always go first.
+    # Otherwise we'll not collect all the required metrics in HealthChecker.
     coordinator.add_check(checker, "check_node_metrics_collection")
-    coordinator.add_check(checker, "check_disk_utilization")
-    coordinator.add_check(checker, "check_for_core_files")
-    if n.enable_tls:
-        coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
-        coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
-        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
-    if n.enable_tls_client:
-        coordinator.add_check(checker, "check_client_ca_certificate_expiration")
-        if not n.root_and_client_root_ca_same:
-            coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
-            coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
-
-    if not args.metrics_only:
-        # These checks are not working properly when called from inside the service
-        # Will only call them as part of health checks for now
-        # And metrics will be exposed by Platform
-        if n.tserver_index >= 0:
-            coordinator.add_check(checker, "check_file_descriptors")
-        if n.check_clock:
-            coordinator.add_check(checker, "check_clock_skew")
-
-    if n.check_time_drift:
-        coordinator.add_check(checker, "check_yb_node_clock_drift")
-
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)
         if alert_enhancements_version:
@@ -2767,9 +2938,7 @@ def main():
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
-    else:
-        if not args.metrics_only:
-            coordinator.add_check(checker, "check_unexpected_process", MASTER)
+        coordinator.add_check(checker, "check_process_limits", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2817,9 +2986,39 @@ def main():
             coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
-    else:
-        if not args.metrics_only:
+        coordinator.add_check(checker, "check_process_limits", TSERVER)
+
+    coordinator.add_check(checker, "check_disk_utilization")
+    coordinator.add_check(checker, "check_for_core_files")
+
+    if not args.metrics_only:
+        # These checks are not working properly when called from inside the service
+        # Will only call them as part of health checks for now
+        # And metrics will be exposed by Platform
+        if n.check_clock:
+            coordinator.add_check(checker, "check_clock_skew")
+        if n.tserver_index >= 0:
+            coordinator.add_check(checker, "check_file_descriptors")
+        else:
             coordinator.add_check(checker, "check_unexpected_process", TSERVER)
+        if n.master_index < 0:
+            coordinator.add_check(checker, "check_unexpected_process", MASTER)
+
+    if n.check_time_drift:
+        coordinator.add_check(checker, "check_yb_node_clock_drift")
+
+    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
+    if n.enable_earlyoom:
+        coordinator.add_check(checker, "count_earlyoom_kills")
+    if n.enable_tls:
+        coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
+    if n.enable_tls_client:
+        coordinator.add_check(checker, "check_client_ca_certificate_expiration")
+        if not n.root_and_client_root_ca_same:
+            coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
+            coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
@@ -2842,13 +3041,13 @@ def main():
     if n.clockbound_enabled:
         coordinator.add_check(checker, "check_clockbound_sync_status")
 
-    coordinator.add_check(checker, "check_process_stats", TOTAL)
     if n.topk_other_processes > 0:
-        # This should be run after TOTAL is calculated (we don't want it to be included in total).
         coordinator.add_check(checker, "check_other_process_stats")
 
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
+
+    coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
     for e in entries:

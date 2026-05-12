@@ -2,7 +2,7 @@ import { makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 
 import { DrConfig, DrConfigState } from '../disasterRecovery/dtos';
-import { ReactComponent as RightArrowWithBorder } from '../../../redesign/assets/arrow-right.svg';
+import RightArrowWithBorder from '../../../redesign/assets/arrow-right.svg';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 
 interface ReplicationIconProps {
@@ -47,6 +47,7 @@ export const ReplicationIcon = ({ drConfig }: ReplicationIconProps) => {
     case DrConfigState.REPLICATING:
     case DrConfigState.FAILED:
       return <RightArrowWithBorder />;
+    case DrConfigState.PAUSED:
     case DrConfigState.HALTED:
       return (
         <div className={classes.iconBorder}>

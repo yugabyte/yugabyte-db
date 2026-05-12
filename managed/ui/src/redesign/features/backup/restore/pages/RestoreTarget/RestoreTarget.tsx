@@ -97,7 +97,14 @@ const RestoreTarget = forwardRef<PageRef>((_, forwardRef) => {
   useQuery(['tables', targetUniverse?.value], () => fetchTablesInUniverse(targetUniverse?.value), {
     enabled: enableVerifyDuplicateTable,
     onSuccess: (resp) => {
-      if (isDuplicateKeyspaceExistsinUniverse(preflightRespData, resp.data, additionalBackupProps ?? undefined, getValues("source.keyspace.label"))) {
+      if (
+        isDuplicateKeyspaceExistsinUniverse(
+          preflightRespData,
+          resp.data,
+          additionalBackupProps ?? undefined,
+          getValues('source.keyspace.label')
+        )
+      ) {
         setValue('target.forceKeyspaceRename', true);
         setValue('target.renameKeyspace', true);
       }

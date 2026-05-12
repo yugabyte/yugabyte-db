@@ -100,10 +100,11 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(8, subTasks.size());
+    assertEquals(9, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SaveSoftwareUpgradeProgress);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
@@ -129,10 +130,11 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(7, subTasks.size());
+    assertEquals(8, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SaveSoftwareUpgradeProgress);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
@@ -165,10 +167,11 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(10, subTasks.size());
+    assertEquals(11, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SaveSoftwareUpgradeProgress);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FinalizeYsqlMajorCatalogUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);

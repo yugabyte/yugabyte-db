@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 import { useTranslation } from 'react-i18next';
 import { YBLabel, YBTextarea } from '../../redesign/components';
 import { YBCopyButton } from '../common/descriptors';
-import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg';
+import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg?img';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import { useFormatDatetime } from '../../redesign/helpers/DateUtils';
 
@@ -53,6 +53,7 @@ export const JWTToken: FC<any> = () => {
   const oidcJWTToken = Cookies.get('jwt_token');
   const expiryDate = Cookies.get('expiration');
   const ysqlCommandText = `ysqlsh <username>/${oidcJWTToken}`;
+  const ycqlCommandText = `ycqlsh -u <username> -p ${oidcJWTToken}`;
   const localDate = formatDatetime(expiryDate!);
 
   return (
@@ -96,6 +97,15 @@ export const JWTToken: FC<any> = () => {
                     <span className={helperClasses.ysqlCommandText}>{`$ ${ysqlCommandText}`}</span>
                   </Box>
                   <YBCopyButton text={ysqlCommandText} />
+                </Box>
+              </Box>
+
+              <Box mt={3} ml={3} display="flex" flexDirection="column">
+                <Box display="flex" flexDirection="row" alignItems={'center'}>
+                  <Box className={helperClasses.ysqlCommand}>
+                    <span className={helperClasses.ysqlCommandText}>{`$ ${ycqlCommandText}`}</span>
+                  </Box>
+                  <YBCopyButton text={ycqlCommandText} />
                 </Box>
               </Box>
             </>

@@ -27,7 +27,6 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -98,8 +97,6 @@ public class ImportController extends AuthenticatedController {
 
   // Expected string for node exporter http request.
   private static final String NODE_EXPORTER_RESP = "Node Exporter";
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject YBClientService ybService;
 
@@ -732,7 +729,7 @@ public class ImportController extends AuthenticatedController {
     placementInfo.cloudList.add(placementCloud);
 
     // Add the placement info and user intent.
-    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, placementInfo);
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, placementInfo);
     // Create the node details set. This is a partial set that contains only the master nodes.
     taskParams.nodeDetailsSet = new HashSet<>();
 

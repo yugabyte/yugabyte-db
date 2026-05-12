@@ -14,6 +14,7 @@ import {
   UniverseNamespace,
   YBPSuccess
 } from './dtos';
+import type { YbdbRelease } from '../features/universe/universe-actions/software-upgrade/dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
@@ -45,6 +46,7 @@ import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-log
 import { TelemetryProvider } from '../features/export-telemetry/dtos';
 import { Task, TaskState } from '../features/tasks/dtos';
 import { SortDirection } from '../utils/dtos';
+import { UniverseSoftwareUpgradePrecheckReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -118,8 +120,12 @@ export const universeQueryKey = {
   ],
   namespaces: (universeUuid: string | undefined) => [
     ...universeQueryKey.detail(universeUuid),
-    ,
     'namespaces'
+  ],
+  detailsV2: (universeUuid: string | undefined) => [
+    ...universeQueryKey.ALL,
+    'detailsV2',
+    universeUuid
   ]
 };
 
@@ -213,6 +219,19 @@ export const telemetryProviderQueryKey = {
   detail: (telemetryProviderId: string) => [...telemetryProviderQueryKey.ALL, telemetryProviderId]
 };
 
+export const dbReleaseQueryKey = {
+  ALL: ['dbReleaseg'],
+  list: () => [...dbReleaseQueryKey.ALL, 'list']
+};
+
+export const dbUpgradeMetadataQueryKey = {
+  ALL: ['dbUpgradeMetadata'],
+  detail: (
+    universeUuid: string,
+    dbUpgradeMetadataQueryRequestBody: UniverseSoftwareUpgradePrecheckReqBody
+  ) => [...dbUpgradeMetadataQueryKey.ALL, universeUuid, dbUpgradeMetadataQueryRequestBody]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
@@ -237,7 +256,7 @@ export interface CreateDrConfigRequest {
       storageConfigUUID: string;
     };
   };
-  pitrParams: {
+  pitrParams?: {
     retentionPeriodSec: number;
   };
 
@@ -391,9 +410,7 @@ class ApiService {
     this.cancellers.findUniverseByName = source.cancel;
 
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find?name=${universeName}`;
-    return axios
-      .get<string[]>(requestUrl, { cancelToken: source.token })
-      .then((resp) => resp.data);
+    return axios.get<string[]>(requestUrl, { cancelToken: source.token }).then((resp) => resp.data);
   };
 
   fetchUniverseList = (): Promise<Universe[]> => {
@@ -654,6 +671,11 @@ class ApiService {
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
   };
 
+  getDbReleases = (): Promise<YbdbRelease[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release`;
+    return axios.get<YbdbRelease[]>(requestUrl).then((response) => response.data);
+  };
+
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {
     if (providerId) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/releases`;
@@ -814,6 +836,7 @@ class ApiService {
       })
       .then((response) => response.data);
   };
+
   getAlerts = (
     offset: number,
     limit: number,

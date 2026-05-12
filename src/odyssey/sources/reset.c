@@ -9,6 +9,105 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
+int yb_od_server_cleanup_resources(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	int max = instance->config.yb_max_prepared_statements;
+	if (max <= 0 || server->yb_prep_stmt_count <= max)
+		return 0;
+
+	int excess = server->yb_prep_stmt_count - max;
+	int sent = 0;
+	od_list_t *it;
+	od_list_foreach(&server->yb_prep_stmt_lru, it) {
+		if (sent >= excess)
+			break;
+		od_hashmap_list_item_t *item = od_container_of(
+			it, od_hashmap_list_item_t, yb_lru_link);
+		yb_od_hash_64_t keyhash =
+			yb_od_murmur_hash_64(item->key.data, item->key.len);
+		char buf[YB_OD_HASH_64_LEN];
+		od_snprintf(buf, YB_OD_HASH_64_LEN, "%016" PRIx64, keyhash);
+
+		machine_msg_t *msg = kiwi_fe_write_close(
+			NULL, YB_KIWI_FE_CLOSE_FORCE, buf, YB_OD_HASH_64_LEN);
+		if (msg == NULL) {
+			od_error(&instance->logger, "lru cleanup", NULL,
+				 server, "failed to create close packet");
+			break;
+		}
+		int rc = od_write(&server->io, &msg);
+		if (rc == -1) {
+			od_error(&instance->logger, "lru cleanup", NULL, server,
+				 "write error: %s", od_io_error(&server->io));
+			return -1;
+		}
+		sent++;
+	}
+
+	if (sent == 0)
+		return 0;
+
+	machine_msg_t *sync_msg = kiwi_fe_write_sync(NULL);
+	if (sync_msg == NULL) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "failed to create sync packet");
+		return -1;
+	}
+	int rc = od_write(&server->io, &sync_msg);
+	if (rc == -1) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "sync write error: %s", od_io_error(&server->io));
+		return -1;
+	}
+	od_server_sync_request(server, 1);
+
+	rc = od_backend_ready_wait(server, "lru-cleanup", 1, yb_wait_timeout);
+	if (rc < 0) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "failed waiting for force-close responses");
+		return -1;
+	}
+
+	od_debug(&instance->logger, "lru cleanup", NULL, server,
+		 "evicted %d prepared statements, count now %d",
+		 sent, server->yb_prep_stmt_count);
+	return 0;
+}
+
+/*
+ * Send 'g' packet to reset GUC defaults to original values.
+ * Returns 0 on success, -1 on error and -2 on timeout.
+ */
+int yb_send_reset_backend_default_query(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	machine_msg_t *msg;
+	int rc;
+
+	msg = yb_kiwi_fe_write_guc_defaults(
+		NULL, NULL, 0, KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS);
+	if (msg == NULL) {
+		od_error(&instance->logger, "reset all backend default",
+			 server->client, server, "failed to create packet");
+		return -1;
+	}
+
+	rc = od_write(&server->io, &msg);
+	od_server_sync_request(server, 1);
+	if (rc == -1) {
+		od_error(&instance->logger, "reset all backend default",
+			 server->client, server, "write to server error: %s",
+			 od_io_error(&server->io));
+		return -1;
+	}
+
+	/* Wait for ReadyForQuery response */
+	rc = od_backend_ready_wait(server, "reset-guc-defaults", 1,
+				   yb_wait_timeout);
+	return rc;
+}
+
 int od_reset(od_server_t *server)
 {
 	od_instance_t *instance = server->global->instance;
@@ -38,6 +137,12 @@ int od_reset(od_server_t *server)
 			       server, "in active transaction, closing");
 			goto drop;
 		}
+	}
+
+	if (server->yb_has_unsynced_pending_packets) {
+		od_log(&instance->logger, "reset", server->client, server,
+		       "server has extra unsynchronized packets, closing");
+		goto drop;
 	}
 
 	/* Server is not synchronized.
@@ -85,9 +190,21 @@ int od_reset(od_server_t *server)
 			if (rc < 0)
 				break;
 		}
-		if (rc == -1) {
+		if (rc < 0) {
 			if (!machine_timedout())
 				goto error;
+
+			/*
+			 * YB: Control should only reach here when server is not
+			 * responding/has timed out.
+			 * While the solution for #22849 involves not sending an
+			 * error to the client in case the reset query times out,
+			 * here we allow forwarding an error to the client in case
+			 * we timeout waiting for a sync AND the cancel also fails.
+			 * However, the client would have already disconnected
+			 * (hence the call to od_reset), and the error message will
+			 * not really be going anywhere.
+			 */
 
 			/* support route cancel off */
 			if (!route->rule->pool->cancel) {
@@ -119,6 +236,10 @@ int od_reset(od_server_t *server)
 	}
 	od_debug(&instance->logger, "reset", server->client, server,
 		 "synchronized");
+
+	rc = yb_od_server_cleanup_resources(server);
+	if (rc < 0)
+		goto error;
 
 	/* send rollback in case server has an active
 	 * transaction running */
@@ -163,9 +284,7 @@ int od_reset(od_server_t *server)
 	 */
 	if (!instance->config.yb_optimized_session_parameters && !route->id.logical_rep)
 	{
-		char query_reset[] = "RESET ALL";
-		rc = od_backend_query(server, "reset-resetall", query_reset,
-				      NULL, sizeof(query_reset), yb_wait_timeout, 1);
+		rc = yb_send_reset_backend_default_query(server);
 		if (rc == -1)
 			goto error;
 		/* reset timeout */

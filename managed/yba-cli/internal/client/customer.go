@@ -9,16 +9,16 @@ import (
 )
 
 // CustomerDetail fetches customer details
-func (a *AuthAPIClient) CustomerDetail() ybaclient.CustomerManagementApiApiCustomerDetailRequest {
-	return a.APIClient.CustomerManagementApi.CustomerDetail(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CustomerDetail() ybaclient.CustomerManagementAPICustomerDetailRequest {
+	return a.APIClient.CustomerManagementAPI.CustomerDetail(a.ctx, a.CustomerUUID)
 }
 
 // UpdateCustomer fetches update customer
-func (a *AuthAPIClient) UpdateCustomer() ybaclient.CustomerManagementApiApiUpdateCustomerRequest {
-	return a.APIClient.CustomerManagementApi.UpdateCustomer(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) UpdateCustomer() ybaclient.CustomerManagementAPIUpdateCustomerRequest {
+	return a.APIClient.CustomerManagementAPI.UpdateCustomer(a.ctx, a.CustomerUUID)
 }
 
 // ListOfCustomers fetches list customer
-func (a *AuthAPIClient) ListOfCustomers() ybaclient.CustomerManagementApiApiListOfCustomersRequest {
-	return a.APIClient.CustomerManagementApi.ListOfCustomers(a.ctx)
+func (a *AuthAPIClient) ListOfCustomers() ybaclient.CustomerManagementAPIListOfCustomersRequest {
+	return a.APIClient.CustomerManagementAPI.ListOfCustomers(a.ctx)
 }

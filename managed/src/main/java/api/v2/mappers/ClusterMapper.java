@@ -7,6 +7,7 @@ import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -34,10 +35,12 @@ public interface ClusterMapper {
   @Mapping(target = "placementSpec", source = "placementInfo")
   @Mapping(target = "useSpotInstance", source = "userIntent.useSpotInstance")
   @Mapping(target = "gflags", source = "userIntent")
+  @Mapping(target = "partitionsSpec", source = "partitions")
   ClusterSpec toV2ClusterSpec(Cluster v1Cluster);
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   // null check is required here to avoid overwriting the auto generated uuid with null
   @Mapping(target = "uuid", nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   Cluster toV1Cluster(ClusterSpec clusterSpec);
@@ -47,6 +50,7 @@ public interface ClusterMapper {
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   Cluster toV1ClusterFromClusterEditSpec(
       ClusterEditSpec clusterEditSpec, @MappingTarget Cluster v1Cluster);
 
@@ -66,8 +70,29 @@ public interface ClusterMapper {
     return v1Clusters;
   }
 
+  @Mapping(target = "userIntent", source = ".")
+  Cluster toV1ClusterFromUniverseResizeNodesCluster(
+      UniverseResizeNodesCluster source, @MappingTarget Cluster v1Cluster);
+
+  default List<Cluster> toV1ClustersFromUniverseResizeNodesCluster(
+      List<UniverseResizeNodesCluster> resizeClusters, @MappingTarget List<Cluster> v1Clusters) {
+    if (resizeClusters == null) {
+      return v1Clusters;
+    }
+    for (UniverseResizeNodesCluster resizeCluster : resizeClusters) {
+      Cluster v1Cluster =
+          v1Clusters.stream()
+              .filter(c -> c.uuid.equals(resizeCluster.getUuid()))
+              .findAny()
+              .orElseThrow();
+      toV1ClusterFromUniverseResizeNodesCluster(resizeCluster, v1Cluster);
+    }
+    return v1Clusters;
+  }
+
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
+  @Mapping(target = "partitionsSpec", ignore = true)
   ClusterSpec deepCopyClusterSpecWithoutPlacementSpec(
       ClusterSpec source, @MappingTarget ClusterSpec target);
 
@@ -76,6 +101,7 @@ public interface ClusterMapper {
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
+  @Mapping(target = "partitionsSpec", ignore = true)
   ClusterEditSpec deepCopyClusterEditSpecWithoutPlacementSpec(
       ClusterSpec source, @MappingTarget ClusterEditSpec target);
 
@@ -85,6 +111,7 @@ public interface ClusterMapper {
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   Cluster overwriteClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget Cluster newReadReplica);
 

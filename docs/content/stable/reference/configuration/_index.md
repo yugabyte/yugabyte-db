@@ -4,11 +4,13 @@ headerTitle: Configuration
 linkTitle: Configuration
 description: YugabyteDB configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
 headcontent: Configure core database services
+aliases:
+  - /stable/reference
 menu:
   stable:
     identifier: configuration
     parent: reference
-    weight: 2600
+    weight: 200
 type: indexpage
 ---
 

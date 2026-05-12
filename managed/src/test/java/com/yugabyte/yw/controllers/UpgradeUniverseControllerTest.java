@@ -54,6 +54,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -63,6 +64,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.AZUpgradeStep;
+import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -88,6 +91,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
@@ -95,13 +99,18 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -514,6 +523,174 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testSoftwareUpgradeWithCanaryConfig() {
+    UUID validPrimaryAzUuid = UUID.randomUUID();
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementCloud cloud = new PlacementCloud();
+    cloud.uuid = UUID.randomUUID();
+    cloud.code = "aws";
+    PlacementRegion region = new PlacementRegion();
+    region.uuid = UUID.randomUUID();
+    region.code = "region-1";
+    PlacementAZ az = new PlacementAZ();
+    az.uuid = validPrimaryAzUuid;
+    az.name = "az-1";
+    az.replicationFactor = 1;
+    region.azList = new ArrayList<>();
+    region.azList.add(az);
+    cloud.regionList = new ArrayList<>();
+    cloud.regionList.add(region);
+    placementInfo.cloudList = new ArrayList<>();
+    placementInfo.cloudList.add(cloud);
+
+    Universe universeWithPlacement =
+        ModelFactory.createUniverse(
+            "CanaryUpgradeUniverse",
+            UUID.randomUUID(),
+            customer.getId(),
+            Common.CloudType.aws,
+            placementInfo);
+    universeWithPlacement.getUniverseDetails().softwareUpgradeState =
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+    universeWithPlacement.save();
+
+    AZUpgradeStep step = new AZUpgradeStep();
+    step.azUUID = validPrimaryAzUuid;
+    step.pauseAfterTserverUpgrade = true;
+    CanaryUpgradeConfig canaryConfig = new CanaryUpgradeConfig();
+    canaryConfig.pauseAfterMasters = true;
+    canaryConfig.primaryClusterAZSteps = List.of(step);
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Result result =
+        runUpgrade(
+            universeWithPlacement,
+            p -> {
+              SoftwareUpgradeParams sp = (SoftwareUpgradeParams) p;
+              // Use preview-to-preview upgrade (2.19.0.0-b1) to avoid preview/stable version check
+              sp.ybSoftwareVersion = "2.19.0.0-b1";
+              sp.canaryUpgradeConfig = canaryConfig;
+            },
+            SoftwareUpgradeParams.class,
+            "software");
+
+    assertOk(result);
+    ArgumentCaptor<SoftwareUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.SoftwareUpgrade), argCaptor.capture());
+    SoftwareUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals("2.19.0.0-b1", taskParams.ybSoftwareVersion);
+    assertNotNull(taskParams.canaryUpgradeConfig);
+    assertTrue(taskParams.canaryUpgradeConfig.pauseAfterMasters);
+    assertNotNull(taskParams.canaryUpgradeConfig.primaryClusterAZSteps);
+    assertEquals(1, taskParams.canaryUpgradeConfig.primaryClusterAZSteps.size());
+    assertEquals(
+        validPrimaryAzUuid, taskParams.canaryUpgradeConfig.primaryClusterAZSteps.get(0).azUUID);
+    assertTrue(
+        taskParams.canaryUpgradeConfig.primaryClusterAZSteps.get(0).pauseAfterTserverUpgrade);
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeSuccess() {
+    when(mockConfig.getBoolean("yb.upgrade.enable_canary_upgrade")).thenReturn(true);
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    storedParams.ybSoftwareVersion = "2.21.0.0-b2";
+    storedParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.save();
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.softwareUpgradeState = SoftwareUpgradeState.Paused;
+              details.placementModificationTaskUuid = taskUUID;
+              u.setUniverseDetails(details);
+            });
+
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenReturn(taskUUID);
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", taskUUID.toString());
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", taskUUID.toString());
+    assertValue(json, "resourceUUID", defaultUniverse.getUniverseUUID().toString());
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.SoftwareUpgradeYB), any(SoftwareUpgradeParams.class), eq(taskUUID));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeInvalidTaskUUID() {
+    UUID nonExistentTaskUUID = UUID.randomUUID();
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", nonExistentTaskUUID.toString());
+
+    assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeWrongUniverse() {
+    Universe otherUniverse = ModelFactory.createUniverse("Other Universe", customer.getId());
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(otherUniverse.getUniverseUUID());
+    storedParams.clusters.add(otherUniverse.getUniverseDetails().getPrimaryCluster());
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.save();
+
+    otherUniverse =
+        Universe.saveDetails(
+            otherUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.softwareUpgradeState = SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              u.setUniverseDetails(details);
+            });
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", taskUUID.toString());
+
+    assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
   public void testSoftwareUpgradeNonRolling() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -743,6 +920,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     "UpgradeFailed",
     "Upgrading",
     "PreFinalize",
+    "Paused",
     "Finalizing",
     "FinalizeFailed",
     "RollingBack",
@@ -1250,9 +1428,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/certs";
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    bodyJson.put("rootCA", universe.getUniverseDetails().rootCA.toString());
+    bodyJson.put("clientRootCA", universe.getUniverseDetails().getClientRootCA().toString());
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No changes in rootCA or clientRootCA.");
 
     ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
@@ -1348,6 +1530,31 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testCertsRotateByTlsConfigUpdateLeavesSleepAfterRestartUnsetWhenOmitted()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForCertsRotate(false);
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls";
+    ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
+    bodyJson.put("enableNodeToNodeEncrypt", "true");
+    bodyJson.put("enableClientToNodeEncrypt", "true");
+    bodyJson.put("rootAndClientRootCASame", "false");
+    bodyJson.put("upgradeOption", "Non-Rolling");
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.CertsRotate), argCaptor.capture());
+
+    CertsRotateParams taskParams = argCaptor.getValue();
+    assertNull(taskParams.sleepAfterMasterRestartMillis);
+    assertNull(taskParams.sleepAfterTServerRestartMillis);
+    assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
+  }
+
+  @Test
   public void testCertsRotateWithOnPremUniverse() throws IOException, NoSuchAlgorithmException {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -1373,6 +1580,78 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testCertsRotateWithKubernetesUniverseOnlyRootCA()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    // Create initial rootCA and clientRootCA (same for K8s) using certificateHelper
+    // to properly set up certificate files including private key
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+    UUID initialRootCA =
+        certificateHelper.createRootCA(mockConfig, "test-k8s-initial", customer.getUuid());
+
+    // Create K8s universe with both encryption flags set to true
+    Universe universe = createUniverse("Test K8s Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        universeObject -> {
+          UniverseDefinitionTaskParams universeDetails = universeObject.getUniverseDetails();
+          PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.enableNodeToNodeEncrypt = true;
+          userIntent.enableClientToNodeEncrypt = true;
+          userIntent.providerType = CloudType.kubernetes;
+          universeDetails.rootCA = initialRootCA;
+          universeDetails.setClientRootCA(initialRootCA);
+          universeDetails.rootAndClientRootCASame = true;
+          universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
+          universeObject.setUniverseDetails(universeDetails);
+        });
+
+    // Create new rootCA for rotation using certificateHelper to properly set up certificate files
+    UUID newRootCA = certificateHelper.createRootCA(mockConfig, "test-k8s-new", customer.getUuid());
+
+    // Call certs rotate with only rootCA (not clientRootCA)
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/certs";
+    ObjectNode bodyJson = Json.newObject().put("rootCA", newRootCA.toString());
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), argCaptor.capture());
+
+    CertsRotateParams taskParams = argCaptor.getValue();
+    assertEquals(newRootCA, taskParams.rootCA);
+    // For K8s universes, clientRootCA should be automatically set to rootCA
+    assertEquals(newRootCA, taskParams.getClientRootCA());
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertTrue(taskParams.rootAndClientRootCASame);
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test K8s Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
     assertAuditEntry(1, customer.getUuid());
   }
@@ -1710,9 +1989,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   @Test
   public void testThirdpartyUpgradeOnpremWithManual() {
     Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(onprem.getUniverseDetails().getPrimaryCluster());
     provider.getDetails().skipProvisioning = true;
     provider.save();
     PlatformServiceException exception =
@@ -1880,7 +2157,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 universeDetails.rootAndClientRootCASame = false;
                 userIntent.providerType = CloudType.aws;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               // Modifying default values to make sure these params are merged into taskParams.
               universeDetails.setTxnTableWaitCountFlag = !universeDetails.setTxnTableWaitCountFlag;
               universeDetails.allowInsecure = !universeDetails.allowInsecure;
@@ -1955,7 +2232,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universeDetails.rootAndClientRootCASame = true;
           universeDetails.rootCA = rootCA;
           universeDetails.setClientRootCA(rootCA);
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(
+              userIntent, universeDetails.getPrimaryCluster().getPartitions(), placementInfo);
           universe.setUniverseDetails(universeDetails);
         });
     return universeUUID;
@@ -2002,7 +2280,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
           userIntent.provider = provider.getUuid().toString();
           userIntent.regionList = ImmutableList.of(region.getUuid());
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 0; idx <= userIntent.numNodes; idx++) {

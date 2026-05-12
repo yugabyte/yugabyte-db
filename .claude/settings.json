@@ -1,0 +1,43 @@
+{
+  "attribution": {
+    "commit": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(./build-support/lint.sh *)",
+      "Bash(./yb_build.sh *)",
+      "Bash(.agents/scripts/git-push.sh *)",
+
+      "Bash(git add *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git commit *)",
+      "Bash(git rebase *)",
+      "Bash(git blame *)",
+      "Bash(git cat-file *)",
+      "Bash(git describe *)",
+      "Bash(git diff *)",
+      "Bash(git fetch *)",
+      "Bash(git for-each-ref *)",
+      "Bash(git grep *)",
+      "Bash(git log *)",
+      "Bash(git ls-files *)",
+      "Bash(git ls-tree *)",
+      "Bash(git reflog show*)",
+      "Bash(git remote -v)",
+      "Bash(git remote get-url *)",
+      "Bash(git rev-list *)",
+      "Bash(git rev-parse *)",
+      "Bash(git shortlog *)",
+      "Bash(git show *)",
+      "Bash(git status *)",
+
+      "Bash(mkdir -p /tmp/claude)",
+      "Edit(/tmp/claude/**)",
+      "Read(/tmp/claude/**)",
+      "Write(/tmp/claude/**)"
+    ],
+    "deny": [
+      "Bash(git push *)"
+    ]
+  }
+}

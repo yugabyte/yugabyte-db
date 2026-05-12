@@ -13,17 +13,16 @@
 
 #include <optimizer/plancat.h>
 
-bool UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
-										 RangeTblEntry *rte);
+struct ReplaceExtensionFunctionContext;
+bool UpdatePathsWithExtensionStreamingCursorPlans(PlannerInfo *root, RelOptInfo *rel,
+												  RangeTblEntry *rte, struct
+												  ReplaceExtensionFunctionContext *context);
 
 void UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *rel);
 
 Query * ReplaceCursorParamValues(Query *query, ParamListInfo boundParams);
 
 void ValidateCursorCustomScanPlan(Plan *plan);
-
-void UpdatePathsWithOptimizedExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
-												  RangeTblEntry *rte);
 
 PathTarget * BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex);
 #endif

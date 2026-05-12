@@ -158,12 +158,12 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(promQueriesString)) == 0 {
+		if util.IsEmptyString(promQueriesString) {
 			filePath, err := cmd.Flags().GetString("prom-queries-file-path")
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(filePath)) != 0 {
+			if !util.IsEmptyString(filePath) {
 				fileByte, err := os.ReadFile(filePath)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -172,7 +172,7 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(promQueriesString)) != 0 {
+		if !util.IsEmptyString(promQueriesString) {
 			err = json.Unmarshal([]byte(promQueriesString), &promQueriesMap)
 			if err != nil {
 				logrus.Fatal(
@@ -190,7 +190,7 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 			EndDate:                endTime,
 			MaxNumRecentCores:      util.GetInt32Pointer(int32(maxRecentCores)),
 			MaxCoreFileSize:        util.GetInt64Pointer(maxCoreFileSize),
-			PrometheusMetricsTypes: util.StringSliceFromString(promMetricTypes),
+			PrometheusMetricsTypes: promMetricTypes,
 			PromQueries:            &promQueriesMap,
 		}
 
@@ -217,14 +217,10 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 			SupportBundle(requestBody).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"Create",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "Create")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		taskUUID := rTask.GetTaskUUID()
 		bundleUUID := rTask.GetResourceUUID()
@@ -255,13 +251,23 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 
 			bundle, response, err := authAPI.GetSupportBundle(universeUUID, bundleUUID).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe: Support Bundle", "Create - Fetch Support Bundle")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(
+					response,
+					err,
+					"Universe: Support Bundle",
+					"Create - Fetch Support Bundle",
+				)
 			}
 
-			r := make([]ybaclient.SupportBundle, 0)
-			r = append(r, bundle)
+			r := util.CheckAndAppend(
+				make([]ybaclient.SupportBundle, 0),
+				bundle,
+				fmt.Sprintf("Support Bundle %s for universe %s (%s) not found",
+					bundleUUID,
+					universeName,
+					universeUUID,
+				),
+			)
 
 			supportBundleCtx := formatter.Context{
 				Command: "create",
@@ -278,7 +284,7 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 	},
 }

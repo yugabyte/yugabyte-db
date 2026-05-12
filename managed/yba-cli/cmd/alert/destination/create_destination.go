@@ -32,7 +32,7 @@ var createDestinationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No name specified to create alert destination\n",
@@ -63,13 +63,7 @@ var createDestinationAlertCmd = &cobra.Command{
 
 		channels, response, err := authAPI.ListAlertChannels().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Destination",
-				"Create - List Alert Channels",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Create - List Alert Channels")
 		}
 
 		if len(channels) == 0 {
@@ -114,18 +108,17 @@ var createDestinationAlertCmd = &cobra.Command{
 			CreateAlertDestinationRequest(reqBody).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Destination",
-				"Create",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Create")
 		}
 
-		alertConfigUUID := r.GetUuid()
+		alertDestination := util.CheckAndDereference(
+			r,
+			fmt.Sprintf("An error occurred while adding alert destination %s", name),
+		)
 
-		if len(strings.TrimSpace(alertConfigUUID)) == 0 {
+		alertConfigUUID := alertDestination.GetUuid()
+
+		if util.IsEmptyString(alertConfigUUID) {
 			logrus.Fatal(formatter.Colorize(
 				fmt.Sprintf(
 					"An error occurred while adding alert destination %s\n",
@@ -140,7 +133,7 @@ var createDestinationAlertCmd = &cobra.Command{
 		populateAlertChannels(authAPI, "Create")
 
 		alerts := make([]ybaclient.AlertDestination, 0)
-		alerts = append(alerts, r)
+		alerts = append(alerts, alertDestination)
 		alertCtx := formatter.Context{
 			Command: "create",
 			Output:  os.Stdout,

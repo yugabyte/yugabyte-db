@@ -62,7 +62,6 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
     // The test expects schema version mismatch errors admist processing of DDLs, most of which
     // are eliminated with object locking. Hence, disable the feature for the test.
     flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
     return flagMap;
   }
 
@@ -299,7 +298,7 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
         e.getMessage().contains("marked for deletion")) {
       numExpectedErrors.incrementAndGet();
     } else {
-      LOG.error("Unexpected error code: " + e.getSQLState());
+      LOG.error("Unexpected error code: " + e.getSQLState() + ", message: " + e.getMessage());
       testFailed.set(true);
     }
   }

@@ -112,3 +112,28 @@ if [[ "$platform_id" == "platform:el8" ]]; then
         add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
     fi
 fi
+
+# Verify user-level systemd linger setup
+{% if use_system_level_systemd == 'False' %}
+    uid=$(id -u {{ yb_user }})
+    user_run_dir="/run/user/$uid"
+
+    # Verify linger is enabled
+    if [ -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
+        echo "[PASS] Linger is enabled for {{ yb_user }}"
+        add_result "Linger Status Check" "PASS" "Linger is enabled for {{ yb_user }}."
+    else
+        echo "[FAIL] Linger is not enabled for {{ yb_user }}"
+        add_result "Linger Status Check" "FAIL" "Linger is not enabled for {{ yb_user }}."
+    fi
+
+    # Verify /run/user/<uid> exists
+    if [ -d "$user_run_dir" ]; then
+        echo "[PASS] User runtime directory $user_run_dir exists"
+        add_result "User Systemd Directory Check" "PASS" "$user_run_dir exists."
+    else
+        echo "[FAIL] User runtime directory $user_run_dir does not exist"
+        add_result "User Systemd Directory Check" "FAIL" \
+            "$user_run_dir does not exist. Linger setup may have failed."
+    fi
+{% endif %}

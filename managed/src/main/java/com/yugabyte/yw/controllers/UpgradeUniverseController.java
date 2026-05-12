@@ -22,9 +22,11 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.ResumeCanaryUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -187,6 +189,61 @@ public class UpgradeUniverseController extends AuthenticatedController {
         Audit.ActionType.UpgradeSoftware,
         customerUuid,
         universeUuid);
+  }
+
+  /**
+   * API that resumes a paused canary software upgrade. Re-submits the same task without deleting
+   * existing subtasks so the upgrade continues from the remaining work.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @param request Request body containing the paused task UUID
+   * @return Result with the same task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.29.0.0",
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. Resumes a paused canary software"
+              + " upgrade. The request body must contain the task UUID of the paused upgrade.",
+      value = "Resume canary software upgrade",
+      nickname = "resumeCanarySoftwareUpgrade",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "resume_canary_upgrade_params",
+          value = "Resume Canary Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.ResumeCanaryUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result resumeCanarySoftwareUpgrade(
+      UUID customerUuid, UUID universeUuid, Http.Request request) {
+    Customer.getOrBadRequest(customerUuid);
+    Universe.getOrBadRequest(universeUuid, Customer.getOrBadRequest(customerUuid));
+    ResumeCanaryUpgradeParams params =
+        parseJsonAndValidate(request, ResumeCanaryUpgradeParams.class);
+    UUID taskUuid =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customerUuid, universeUuid, params.taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUuid.toString(),
+            Audit.ActionType.UpgradeSoftware,
+            request.body().asJson(),
+            taskUuid,
+            null);
+    return new YBPTask(taskUuid, universeUuid).asResult();
   }
 
   /**
@@ -425,9 +482,36 @@ public class UpgradeUniverseController extends AuthenticatedController {
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeCerts(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    // Check if rootCA or clientRootCA are explicitly set to null in the request
+    // This information is needed to preserve null values during binding
+    JsonNode requestBody = request.body().asJson();
+    boolean rootCAExplicitlyNull = false;
+    boolean clientRootCAExplicitlyNull = false;
+    if (requestBody != null) {
+      if (requestBody.has("rootCA") && requestBody.get("rootCA").isNull()) {
+        rootCAExplicitlyNull = true;
+      } else if (!requestBody.has("rootCA")) {
+        rootCAExplicitlyNull = true;
+      }
+      if (requestBody.has("clientRootCA") && requestBody.get("clientRootCA").isNull()) {
+        clientRootCAExplicitlyNull = true;
+      } else if (!requestBody.has("clientRootCA")) {
+        clientRootCAExplicitlyNull = true;
+      }
+    }
+
+    // Store the explicit null flags in a way that can be accessed after binding
+    final boolean finalRootCAExplicitlyNull = rootCAExplicitlyNull;
+    final boolean finalClientRootCAExplicitlyNull = clientRootCAExplicitlyNull;
+
     return requestHandler(
         request,
-        upgradeUniverseHandler::rotateCerts,
+        (CertsRotateParams params, Customer customer, Universe universe) -> {
+          // Restore explicit null values before processing
+          params.rootCAExplicitlyNull = finalRootCAExplicitlyNull;
+          params.clientRootCAExplicitlyNull = finalClientRootCAExplicitlyNull;
+          return upgradeUniverseHandler.rotateCerts(params, customer, universe);
+        },
         CertsRotateParams.class,
         Audit.ActionType.UpgradeCerts,
         customerUuid,
@@ -480,7 +564,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Modifies the audit logging"
+              + " configuration for a universe.",
       value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
@@ -491,7 +577,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -694,6 +780,37 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::rebootUniverse,
         UpgradeTaskParams.class,
         Audit.ActionType.RebootUniverse,
+        customerUUID,
+        universeUUID);
+  }
+
+  @ApiOperation(
+      value = "Provision universe nodes",
+      notes =
+          "Queues a task to provision universe nodes with YBA node agent and YNP stack."
+              + " Supports rolling upgrade.",
+      nickname = "provisionUniverseNodes",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "provision_universe_nodes_params",
+          value = "Provision Universe Nodes Params",
+          dataType = "com.yugabyte.yw.forms.ProvisionUniverseNodesParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result provisionUniverseNodes(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::provisionUniverseNodes,
+        ProvisionUniverseNodesParams.class,
+        Audit.ActionType.ProvisionUniverseNodes,
         customerUUID,
         universeUUID);
   }

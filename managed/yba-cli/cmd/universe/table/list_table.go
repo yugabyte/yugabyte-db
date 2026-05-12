@@ -29,7 +29,7 @@ var listTableCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to list tables"+
@@ -49,12 +49,7 @@ var listTableCmd = &cobra.Command{
 
 		universeList, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Table",
-				"List - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "List - Fetch Universe")
 		}
 
 		if len(universeList) < 1 {
@@ -83,12 +78,7 @@ var listTableCmd = &cobra.Command{
 			IncludeColocatedParentTables(includeColocatedParentTables).
 			XClusterSupportedOnly(xclusterSupportedOnly).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Table",
-				"List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "List")
 		}
 
 		tableName, err := cmd.Flags().GetString("table-name")
@@ -97,7 +87,7 @@ var listTableCmd = &cobra.Command{
 		}
 
 		tables := make([]ybaclient.TableInfoResp, 0)
-		if len(strings.TrimSpace(tableName)) == 0 {
+		if util.IsEmptyString(tableName) {
 			tables = r
 		} else {
 			for _, table := range r {

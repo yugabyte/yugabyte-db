@@ -13,9 +13,16 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
+#include "yb/common/pgsql_error.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -32,13 +39,29 @@ YB_DEFINE_ENUM(TransactionErrorCode,
 
 struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 7;
+  static constexpr CategoryDescriptor kCategory{7, "transaction error"sv};
 
   static std::string ToMessage(Value value) {
     return ToString(value);
   }
 };
 
-typedef StatusErrorCodeImpl<TransactionErrorTag> TransactionError;
+using TransactionError = StatusErrorCodeImpl<TransactionErrorTag>;
+
+template <class... Args>
+Status CreateAbortedStatus(Args&&... args) {
+  return STATUS(
+      TryAgain, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
+
+template <class... Args>
+Status CreateExpiredStatus(Args&&... args) {
+  return STATUS(
+      Expired, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
 
 } // namespace yb

@@ -20,22 +20,24 @@ Enable the YugabyteDB [cost-based optimizer (CBO)](../../architecture/query-laye
 
 Use of CBO is recommended for all YSQL deployments.
 
-You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that doesn't rely on table statistics. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed. The new setting (`off`) trades plan adaptability (provided by the CBO and using table statistics) for plan stability (heuristic-based).
+You configure CBO using the [ysql_yb_enable_cbo](../../reference/configuration/yb-tserver/#ysql-yb-enable-cbo) flag or its equivalent [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The flag provides a heuristic-based optimizer mode (`yb_enable_cbo=off`) that doesn't rely on table statistics. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable CBO for specific connections if needed. The `off` setting trades plan adaptability (provided by the CBO and using table statistics) for plan stability (heuristic-based).
 
 `yb_enable_cbo` replaces the [yb_enable_optimizer_statistics](../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) and [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) parameters, which will be deprecated and removed in a future release.
 
 ## New deployments
 
-For new YSQL deployments, or when migrating from another system, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+For new universes running v2025.2 or later, CBO is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-```sh
---ysql_pg_conf_csv=yb_enable_cbo=on
-```
-
-Alternatively, set the following YB-TServer flag:
+For older YSQL deployments, or when deploying manually, to enable CBO, set the following YB-TServer flag:
 
 ```sh
 --ysql_yb_enable_cbo=on
+```
+
+Alternatively, you can add the `yb_enable_cbo` parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+
+```sh
+--ysql_pg_conf_csv=yb_enable_cbo=on
 ```
 
 ## Existing deployments
@@ -52,6 +54,12 @@ When upgrading a deployment to a version of YugabyteDB that supports the `yb_ena
 `legacy_mode` uses only reltuples for index scan nodes, and both reltuples and the column statistics for other operations such as joins, GROUP BY, and more. (`legacy_mode` is currently the default for new deployments.)
 
 You should migrate existing deployments from using `legacy_mode` or `legacy_stats_mode` to either `on` (recommended) or, if you do not want to use CBO, `off`.
+
+Note that when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable the following features:
+
+- [Auto Analyze](../../additional-features/auto-analyze/): ysql_enable_auto_analyze is set to true.
+- [YugabyteDB bitmap scan](../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan): yb_enable_bitmapscan is set to true.
+- [Parallel append](../../additional-features/parallel-query/): yb_enable_parallel_append is set to true, yb_parallel_range_rows is set to 10000.
 
 <!--## Recommended settings
 
@@ -96,7 +104,7 @@ If your tables are analyzed, do the following:
 
 ## ANALYZE and Auto Analyze service
 
-Use the [YugabyteDB Auto Analyze service](../../additional-features/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
+Use the [YugabyteDB Auto Analyze service](../../additional-features/auto-analyze/) to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
 
 Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances.
 

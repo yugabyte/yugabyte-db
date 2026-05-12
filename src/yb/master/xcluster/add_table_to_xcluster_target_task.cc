@@ -19,10 +19,11 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -64,6 +65,8 @@ std::string AddTableToXClusterTargetTask::description() const {
 }
 
 Status AddTableToXClusterTargetTask::FirstStep() {
+  VLOG_WITH_PREFIX(1) << "Starting AddTableToXClusterTargetTask for table info "
+                      << table_info_->ToString();
   auto universe_l = universe_->LockForRead();
   auto& universe_pb = universe_l->pb;
 
@@ -97,6 +100,10 @@ Status AddTableToXClusterTargetTask::FirstStep() {
   if (!is_db_scoped_) {
     auto xcluster_rpc = VERIFY_RESULT(
         universe_->GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
+    VLOG_WITH_PREFIX(1) << "Using BootstrapProducer with namespace: "
+                        << table_info_->namespace_name()
+                        << " pgschema: " << table_info_->pgschema_name()
+                        << " table name: " << table_info_->name();
     return xcluster_rpc->client()->BootstrapProducer(
         YQLDatabase::YQL_DATABASE_PGSQL, table_info_->namespace_name(),
         {table_info_->pgschema_name()}, {table_info_->name()}, std::move(callback));
@@ -122,6 +129,16 @@ Status AddTableToXClusterTargetTask::FirstStep() {
         {xcluster_table_info.xcluster_source_table_id()}, std::move(callback));
   }
 
+  SCHECK(
+      !is_automatic_ddl_mode_, IllegalState,
+      "Table being added to xCluster automatic-mode replication lacks source table ID; it has "
+      "namespace: $0 pg_schema: $1 tablename: $2",
+      table_info_->namespace_name(), table_info_->pgschema_name(), table_info_->name());
+
+  VLOG_WITH_PREFIX(1) << "No source table ID so falling back on GetXClusterTableCheckpointInfos "
+                         "with producer namespace ID: "
+                      << producer_namespace_id << " pgschema: " << table_info_->pgschema_name()
+                      << " table name: " << table_info_->name();
   return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
       universe_->ReplicationGroupId(), producer_namespace_id, {table_info_->name()},
       {table_info_->pgschema_name()}, std::move(callback));

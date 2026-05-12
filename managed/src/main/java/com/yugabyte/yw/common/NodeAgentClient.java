@@ -13,12 +13,14 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors.FieldDescriptor;
-import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
@@ -66,11 +68,14 @@ import com.yugabyte.yw.nodeagent.UpdateResponse;
 import com.yugabyte.yw.nodeagent.UpgradeInfo;
 import com.yugabyte.yw.nodeagent.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.UploadFileResponse;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckInput;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckOutput;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
 import io.grpc.ConnectivityState;
+import io.grpc.Context;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -101,6 +106,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -113,6 +119,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -144,16 +151,16 @@ public class NodeAgentClient {
   private final ChannelFactory channelFactory;
   private final RuntimeConfGetter confGetter;
   // Late binding to prevent circular dependency.
-  private final com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider;
+  private final com.google.inject.Provider<NodeAgentPoller> nodeAgentPollerProvider;
 
   @Inject
   public NodeAgentClient(
       RuntimeConfGetter confGetter,
-      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      com.google.inject.Provider<NodeAgentPoller> nodeAgentPollerProvider) {
     this(
         confGetter,
-        nodeAgentEnablerProvider,
+        nodeAgentPollerProvider,
         platformExecutorFactory.createExecutor(
             "node_agent.grpc_executor",
             new ThreadFactoryBuilder().setNameFormat("NodeAgentGrpcPool-%d").build()));
@@ -161,11 +168,11 @@ public class NodeAgentClient {
 
   public NodeAgentClient(
       RuntimeConfGetter confGetter,
-      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      com.google.inject.Provider<NodeAgentPoller> nodeAgentPollerProvider,
       ExecutorService executorService) {
     this(
         confGetter,
-        nodeAgentEnablerProvider,
+        nodeAgentPollerProvider,
         config ->
             ChannelFactory.getDefaultChannel(
                 config, new GrpcClientRequestInterceptor(config, confGetter), executorService));
@@ -173,30 +180,39 @@ public class NodeAgentClient {
 
   public NodeAgentClient(
       RuntimeConfGetter confGetter,
-      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      com.google.inject.Provider<NodeAgentPoller> nodeAgentPollerProvider,
       ChannelFactory channelFactory) {
     this.confGetter = confGetter;
-    this.nodeAgentEnablerProvider = nodeAgentEnablerProvider;
+    this.nodeAgentPollerProvider = nodeAgentPollerProvider;
     this.channelFactory = channelFactory;
-    this.cachedChannels =
+    CacheBuilder<Object, Object> cacheBuilder =
         CacheBuilder.newBuilder()
             .removalListener(
                 n -> {
                   ManagedChannel channel = (ManagedChannel) n.getValue();
-                  log.debug("Channel for {} expired", n.getKey());
+                  log.debug(
+                      "Channel for {} expired. Current size: {}", n.getKey(), getClientCacheSize());
                   if (!channel.isShutdown() && !channel.isTerminated()) {
                     channel.shutdown();
                   }
                 })
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .maximumSize(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionCacheSize))
-            .build(
-                new CacheLoader<ChannelConfig, ManagedChannel>() {
-                  @Override
-                  public ManagedChannel load(ChannelConfig config) {
-                    return NodeAgentClient.this.channelFactory.get(config);
-                  }
-                });
+            .expireAfterAccess(10, TimeUnit.MINUTES);
+    if (confGetter.getGlobalConf(GlobalConfKeys.nodeAgentIgnoreConnectionCacheSize)) {
+      // Only LRU is effective.
+      log.debug("Ignoring max cache size for node agent client connections");
+    } else {
+      int maxClients = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionCacheSize);
+      log.debug("Setting max cache size for node agent client connections to {}", maxClients);
+      cacheBuilder = cacheBuilder.maximumSize(maxClients);
+    }
+    this.cachedChannels =
+        cacheBuilder.build(
+            new CacheLoader<ChannelConfig, ManagedChannel>() {
+              @Override
+              public ManagedChannel load(ChannelConfig config) {
+                return NodeAgentClient.this.channelFactory.get(config);
+              }
+            });
   }
 
   @Builder
@@ -228,6 +244,7 @@ public class NodeAgentClient {
           && confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableMessageCompression)) {
         callOptions = callOptions.withCompression(compression);
       }
+      int requestLogLevel = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel);
       return new ForwardingClientCall.SimpleForwardingClientCall<ReqT, RespT>(
           channel.newCall(methodDescriptor, callOptions)) {
 
@@ -250,6 +267,11 @@ public class NodeAgentClient {
           headers.put(
               Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
           headers.put(Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), requestId);
+          if (requestLogLevel >= 0) {
+            headers.put(
+                Metadata.Key.of("x-request-log-level", Metadata.ASCII_STRING_MARSHALLER),
+                String.valueOf(requestLogLevel));
+          }
           super.start(responseListener, headers);
         }
       };
@@ -665,31 +687,129 @@ public class NodeAgentClient {
     redactedVals.put(token, "REDACTED");
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgent(
-      String ip, Provider provider, @Nullable Universe universe) {
-    if (isClientEnabled(provider, universe)) {
-      Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
-      if (optional.isPresent() && optional.get().isActive()) {
-        return optional;
+  /**
+   * Gets the node agent for the given IP and triggers upgrade if needed. It returns empty optional
+   * if node agent is not found or not in active state.
+   *
+   * @param ip the IP address of the node agent.
+   * @return the optional of node agent instance.
+   */
+  public Optional<NodeAgent> maybeGetAndUpgrade(String ip) {
+    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
+    if (optional.isEmpty()) {
+      log.debug("Node agent is not installed for {}", ip);
+      return optional;
+    }
+    NodeAgent nodeAgent = optional.get();
+    if (!nodeAgent.isActive()) {
+      log.debug("Node agent {} is not in active state", nodeAgent);
+      return optional;
+    }
+    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+      nodeAgent.refresh();
+    }
+    return optional;
+  }
+
+  /**
+   * Gets the node agent for the given IP and triggers upgrade if needed. It throws exception if
+   * node agent is not found or not in active state.
+   *
+   * @param ip the IP address of the node agent.
+   * @return the node agent instance.
+   */
+  public NodeAgent getAndUpgradeOrThrow(String ip) {
+    return maybeGetAndUpgrade(ip)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    String.format(
+                        "Node agent must already be installed and in active state for %s", ip)));
+  }
+
+  /**
+   * Returns true if the cloudType supports node agent.
+   *
+   * @param cloudType the given cloud type.
+   * @return true if the cloudType supports node agent.
+   */
+  public static boolean isCloudTypeSupported(CloudType cloudType) {
+    if (cloudType == CloudType.kubernetes || cloudType == CloudType.local) {
+      log.trace("Node agent is not supported for kubernetes provider");
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Checks if node agent client is enabled for the provider and the universe if it is non-null.
+   * Client check adds additional requirements.
+   *
+   * @param provider the given provider.
+   * @param universe the given universe.
+   * @return true if the client is enabled.
+   */
+  public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
+    if (!isCloudTypeSupported(provider.getCloudCode())) {
+      log.debug(
+          "Node agent is not supported for {} provider {}",
+          provider.getCloudCode(),
+          provider.getUuid());
+      return false;
+    }
+    if (universe != null && !isNodeAgentEnabled(universe, p -> true).orElse(false)) {
+      log.debug(
+          "Node agent is not enabled for universe {}({})",
+          universe.getName(),
+          universe.getUniverseUUID());
+      return false;
+    }
+    if (universe != null && universe.getUniverseDetails().installNodeAgent) {
+      log.debug(
+          "Node agent is not available on all nodes for universe {}({})",
+          universe.getName(),
+          universe.getUniverseUUID());
+      // Check if mixed mode is allowed.
+      if (!confGetter.getConfForScope(universe, UniverseConfKeys.allowNodeAgentClientMixMode)) {
+        return false;
       }
     }
-    return Optional.empty();
+    // All checks passed.
+    return true;
   }
 
-  /* Passing universe allows more specific check for the universe. */
-  public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
-    return nodeAgentEnablerProvider.get().isNodeAgentClientEnabled(provider, universe);
-  }
-
-  public boolean isAnsibleOffloadingEnabled(
-      NodeAgent nodeAgent, Provider provider, @Nullable Universe universe) {
-    if (!isClientEnabled(provider, universe)) {
-      return false;
+  // This checks if node agent is enabled for the universe with additional provider check.
+  public Optional<Boolean> isNodeAgentEnabled(
+      Universe universe, Predicate<Provider> additionalProviderPredicate) {
+    Map<String, Boolean> providerEnabledMap = new HashMap<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (cluster.userIntent == null
+          || cluster.userIntent.providerType == CloudType.kubernetes
+          || cluster.userIntent.provider == null) {
+        // Unsupported cluster is found.
+        return Optional.empty();
+      }
+      boolean enabled =
+          providerEnabledMap.computeIfAbsent(
+              cluster.userIntent.provider,
+              k -> {
+                Provider provider =
+                    Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                boolean isEnabled =
+                    additionalProviderPredicate == null
+                        || additionalProviderPredicate.test(provider);
+                if (!isEnabled) {
+                  log.debug(
+                      "Node agent is not enabled for provider {} in additional check",
+                      provider.getUuid());
+                }
+                return isEnabled;
+              });
+      if (!enabled) {
+        return Optional.of(false);
+      }
     }
-    if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
-      return false;
-    }
-    return nodeAgent.getConfig().isOffloadable();
+    return Optional.of(universe.getUniverseDetails().clusters.size() > 0);
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
@@ -1101,6 +1221,18 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), DestroyServerOutput.class);
   }
 
+  public YnpPreflightCheckOutput runYnpPreflightCheck(
+      NodeAgent nodeAgent, YnpPreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setYnpPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), YnpPreflightCheckOutput.class);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
@@ -1131,13 +1263,19 @@ public class NodeAgentClient {
             .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
-        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+        if (e.getStatus().getCode() == Code.DEADLINE_EXCEEDED) {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
+        } else if (e.getStatus().getCode() == Code.CANCELLED && !Context.current().isCancelled()) {
+          // Client side did not cancel it.
+          log.info(
+              "Cancelled by server. Reconnecting to node agent {} to describe task {}",
+              nodeAgent,
+              taskId);
+        } else {
           // Best effort to abort.
           abortTask(nodeAgent, taskId);
           log.error("Error in describing task for node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
-        } else {
-          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
         }
       }
     }
@@ -1153,5 +1291,9 @@ public class NodeAgentClient {
             .map(part -> part.contains(" ") ? "'" + part + "'" : part)
             .collect(Collectors.joining(" ")));
     return shellCommand;
+  }
+
+  private long getClientCacheSize() {
+    return cachedChannels.size();
   }
 }

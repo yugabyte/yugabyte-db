@@ -46,17 +46,19 @@
 #undef max
 #endif
 
+// TODO: forward declarations should be moved to "yb/rocksdb/rocksdb_fwd.h".
 namespace yb {
 
 class MemTracker;
 class PriorityThreadPool;
+class PriorityThreadPoolToken;
+using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 
 }
 
 namespace rocksdb {
 
 class Arena;
-class BoundaryValuesExtractor;
 class Cache;
 class CompactionFilter;
 class CompactionFilterFactory;
@@ -1356,8 +1358,11 @@ struct DBOptions {
   // This RocksDB instance root mem tracker.
   std::shared_ptr<yb::MemTracker> mem_tracker;
 
-  // Specific mem tracker for block based tables created by this RocksDB instance.
+  // Specific mem tracker for block based table readers created by this RocksDB instance.
   std::shared_ptr<yb::MemTracker> block_based_table_mem_tracker;
+
+  // Specific mem tracker for block based table builders created by this RocksDB instance.
+  std::shared_ptr<yb::MemTracker> block_based_table_builder_mem_tracker;
 
   // Adds ability to modify iterator created for SST file.
   // For instance some additional filtering could be added.

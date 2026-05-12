@@ -778,11 +778,11 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/universe_resources'
     },
+
     GET_UNIVERSE_PERF_ADVISOR_STATUS: {
       requestType: ApiRequestType.GET,
-      endpoint: '/troubleshooting_platform/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+      endpoint: '/pa_collector/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
     },
-
 
     MODIFY_BACKUP_STATE: {
         requestType: ApiRequestType.PUT,
@@ -836,6 +836,10 @@ export const ApiPermissionMap = {
     UPGRADE_UNIVERSE_SOFTWARE: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software'
+    },
+    UPGRADE_UNIVERSE_RESUME_CANARY: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software/resume-canary'
     },
     UPGRADE_NEW_UNIVERSE_SOFTWARE: {
         requestType: ApiRequestType.POST,
@@ -1085,17 +1089,29 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/settings/ha/internal/upload'
     },
-    CREATE_CONTINUOUS_BACKUP: {
+    CREATE_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.POST,
         endpoint: '/auto-yba-backups'
     },
-    DELETE_CONTINUOUS_BACKUP: {
+    DELETE_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
     },
-    EDIT_CONTINUOUS_BACKUP: {
+    EDIT_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
+    },
+    RESTORE_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/auto-yba-backups/restore'
+    },
+    CREATE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups'
+    },
+    RESTORE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups/restore'
     },
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,

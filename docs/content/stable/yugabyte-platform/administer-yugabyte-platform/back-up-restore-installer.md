@@ -6,7 +6,7 @@ headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
-    identifier: back-up-restore-installer
+    identifier: back-up-restore-2-installer
     parent: administer-yugabyte-platform
     weight: 30
 type: docs
@@ -15,17 +15,17 @@ type: docs
 Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../back-up-restore-yba/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
+      YugabyteDB Anywhere
+    </a>
+  </li>
+
   <li>
     <a href="../back-up-restore-installer/" class="nav-link active">
       <i class="fa-solid fa-building"></i>
       YBA Installer</a>
-  </li>
-
-  <li >
-    <a href="../back-up-restore-yp/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>
-      Replicated
-    </a>
   </li>
 
   <li>
@@ -69,7 +69,7 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
 
 The following table describes optional flags you can include with the `createBackup` command.
 
-| <div style="width:150px">Flag</div> | Description | Default |
+| <div style="width:200px">Flag</div> | Description | Default |
 | :--- | :---------- | :------ |
 | --disable_version_check | Exclude version metadata when creating backup. | false |
 | --exclude_prometheus | Exclude Prometheus metric data from backup. | false |
@@ -84,7 +84,7 @@ The following table describes optional flags you can include with the `createBac
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
-1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/) using YBA Installer.
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/).
 
 1. Copy the backup file from your storage location.
 
@@ -108,10 +108,11 @@ When finished, the restored YugabyteDB Anywhere is ready to continue managing yo
 
 The following table describes optional flags you can include with the `restoreBackup` command.
 
-| Flag | Description | Default |
+| <div style="width:200px">Flag</div> | Description | Default |
 | :--- | :---------- | :------ |
+| --disable_version_check | Exclude version metadata when performing restore. | false |
 | -h, --help | Help for `restoreBackup`. | |
-| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](../../install-yugabyte-platform/migrate-replicated/). | false |
+| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/). | false |
 | --skip_dbdrop | Skip dropping the YugabyteDB Anywhere database before a migration restore. Valid only if --migration is true. | false |
 | --skip_restart | Don't restart processes during command execution. | true |
 | &#8209;&#8209;use_system_pg | Use system path's `pg_restore` as opposed to installed binary. | false |

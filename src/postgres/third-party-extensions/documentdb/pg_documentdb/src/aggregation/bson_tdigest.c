@@ -55,10 +55,10 @@ typedef struct centroid_t
 typedef struct tdigest_t
 {
 	int32 vl_len_;              /* varlena header (do not touch directly!) */
-	int32 flags;                /* reserved for future use (versioning, ...) */
+	int32 flags;                /* Allocated specifically for potential future purposes such as version control */
 	int64 count;                /* number of items added to the t-digest */
 	int compression;            /* compression used to build the digest */
-	int ncentroids;             /* number of cetroids in the array */
+	int ncentroids;             /* Number of centroids in the array */
 	centroid_t centroids[FLEXIBLE_ARRAY_MEMBER];
 } tdigest_t;
 
@@ -93,11 +93,11 @@ typedef struct tdigest_aggstate_t
 	int64 count;                /* number of samples in the digest */
 	int ncompactions;           /* number of merges/compactions */
 	int compression;            /* compression algorithm */
-	int ncentroids;             /* number of centroids */
+	int ncentroids;             /* Total count of centroids */
 	int ncompacted;             /* compacted part */
 	/* array of requested percentiles and values */
-	int npercentiles;           /* number of percentiles */
-	int nvalues;                /* number of values */
+	int npercentiles;           /* Count of percentiles requested */
+	int nvalues;                /* Count of provided values */
 	double trim_low;            /* low threshold (for trimmed aggs) */
 	double trim_high;           /* high threshold (for trimmed aggs) */
 	double *percentiles;        /* array of percentiles (if any) */
@@ -271,7 +271,7 @@ tdigest_sort(tdigest_aggstate_t *state)
 		}
 
 		/*
-		 * We can ignore groups of size 1 (number of centroids, not counts), as
+		 * We can ignore groups of size 1 (Total count of centroids, not counts), as
 		 * those are trivially sorted.
 		 */
 		if (group_size > 1)
@@ -306,7 +306,7 @@ tdigest_sort(tdigest_aggstate_t *state)
  * accuracy, as mentioned in the paper.
  *
  * XXX This initially used the k1 scale function, but the implementation was
- * not limiting the number of centroids for some reason (it might have been
+ * not limiting the Total count of centroids for some reason (it might have been
  * a bug in the implementation, of course). The current code is a modified
  * copy from ajwerner [1], and AFAIK it's the k2 function, it's much simpler
  * and generally works quite nicely.
@@ -485,7 +485,7 @@ tdigest_compute_quantiles(tdigest_aggstate_t *state, double *result)
 				break;
 			}
 
-			/* account for the centroid */
+			/* Account for the centroid by adding its count */
 			count += c->count;
 		}
 
@@ -599,7 +599,7 @@ tdigest_aggstate_allocate(int npercentiles, int nvalues, int compression)
 	tdigest_aggstate_t *state;
 	char *ptr;
 
-	/* at least one of those values is 0 */
+	/* At least one of the provided values is equal to zero */
 	Assert(nvalues == 0 || npercentiles == 0);
 
 	/*
@@ -663,7 +663,7 @@ check_compression(int compression)
 {
 	if (compression < MIN_COMPRESSION || compression > MAX_COMPRESSION)
 	{
-		elog(ERROR, "invalid compression value %d", compression);
+		elog(ERROR, "Compression value %d is invalid", compression);
 	}
 }
 
@@ -858,7 +858,7 @@ tdigest_percentile(PG_FUNCTION_ARGS)
 		elog(ERROR, "tdigest_percentile called in non-aggregate context");
 	}
 
-	/* if there's no digest, return NULL */
+	/* Return NULL when no digest is present */
 	if (PG_ARGISNULL(0))
 	{
 		PG_RETURN_NULL();
@@ -1195,7 +1195,7 @@ bson_to_double_array(FunctionCallInfo fcinfo, bson_value_t *barray, int *len)
 	if (barray->value_type != BSON_TYPE_ARRAY || BsonDocumentValueCountKeys(barray) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION7750301), errmsg(
-							"The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: %s",
+							"Expected an array containing numbers from 0.0 to 1.0, but instead received: %s",
 							BsonValueToJsonForLogging(barray))));
 	}
 
@@ -1213,14 +1213,14 @@ bson_to_double_array(FunctionCallInfo fcinfo, bson_value_t *barray, int *len)
 							errmsg(
 								"Accumulator $percentile is not implemented yet")));
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION7750302), errmsg(
-								"The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: %s",
+								"Expected an array containing numbers from 0.0 to 1.0, but instead received: %s",
 								BsonValueToJsonForLogging(value))));
 		}
 		double percentile = BsonValueAsDoubleQuiet(bson_iter_value(&iter));
 		if (percentile < 0 || percentile > 1)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION7750303), errmsg(
-								"The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: %lf",
+								"Expected an array containing numbers from 0.0 to 1.0, but instead received: %lf",
 								percentile)));
 		}
 		result[i] = percentile;

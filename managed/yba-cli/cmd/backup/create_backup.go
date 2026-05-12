@@ -36,7 +36,7 @@ var createBackupCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeNameFlag)) == 0 {
+		if util.IsEmptyString(universeNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to take a backup\n", formatter.RedColor))
@@ -46,7 +46,7 @@ var createBackupCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
+		if util.IsEmptyString(storageConfigNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -60,7 +60,7 @@ var createBackupCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tableTypeFlag)) == 0 {
+		if util.IsEmptyString(tableTypeFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -84,13 +84,7 @@ var createBackupCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Backup",
-				"Create - Get Universe",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Create - Get Universe")
 		}
 
 		if len(r) < 1 {
@@ -118,9 +112,7 @@ var createBackupCmd = &cobra.Command{
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup", "Create - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Create - Get Storage Configuration")
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -230,7 +222,7 @@ var createBackupCmd = &cobra.Command{
 			StorageConfigUUID: storageUUID,
 			BackupCategory:    util.GetStringPointer(strings.ToUpper(category)),
 			BackupType:        util.GetStringPointer(backupType),
-			KeyspaceTableList: &keyspaceTableList,
+			KeyspaceTableList: keyspaceTableList,
 			UseTablespaces:    util.GetBoolPointer(useTablespaces),
 			Sse:               util.GetBoolPointer(sse),
 			TimeBeforeDelete:  util.GetInt64Pointer(timeBeforeDeleteInMs),
@@ -239,17 +231,18 @@ var createBackupCmd = &cobra.Command{
 			Parallelism:       util.GetInt32Pointer(int32(parallelism)),
 		}
 
-		if (len(strings.TrimSpace(baseBackupUUID))) > 0 {
+		if !util.IsEmptyString(baseBackupUUID) {
 			requestBody.SetBaseBackupUUID(baseBackupUUID)
 		}
 
 		rTask, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Create")
 		}
 
-		taskUUID := rTask.GetTaskUUID()
+		task := util.CheckTaskAfterCreation(rTask)
+
+		taskUUID := task.GetTaskUUID()
 		msg := fmt.Sprintf("The backup task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -274,13 +267,7 @@ var createBackupCmd = &cobra.Command{
 			backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
 			rBackup, response, err := backupTaskRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"Backup",
-					"Create - Get Backup",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup", "Create - Get Backup")
 			}
 			backupUUID := rBackup[0].GetBackupUUID()
 			baseBackupUUID := rBackup[0].GetBaseBackupUUID()
@@ -312,13 +299,7 @@ var createBackupCmd = &cobra.Command{
 			backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 			r, response, err := backupListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"Backup",
-					"Create - Describe Backup",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup", "Create - Describe Backup")
 			}
 
 			if len(r.GetEntities()) < 1 {
@@ -344,7 +325,7 @@ var createBackupCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 	},
 }
 
@@ -363,15 +344,15 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 			val := kvp[1]
 			switch key {
 			case "keyspace-name":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["keyspace-name"] = val
 				}
 			case "table-names":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["table-names"] = val
 				}
 			case "table-ids":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["table-ids"] = val
 				}
 			}
@@ -388,8 +369,8 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 
 		r := ybaclient.KeyspaceTable{
 			Keyspace:      util.GetStringPointer(keyspace["keyspace-name"]),
-			TableNameList: &tableNameList,
-			TableUUIDList: &tableIdList,
+			TableNameList: tableNameList,
+			TableUUIDList: tableIdList,
 		}
 		res = append(res, r)
 	}

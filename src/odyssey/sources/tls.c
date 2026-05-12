@@ -71,7 +71,7 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 				return -1;
 			uint8_t *type = machine_msg_data(msg);
 			*type = 'N';
-			rc = od_write(&client->io, msg);
+			rc = od_write(&client->io, &msg);
 			if (rc == -1) {
 				od_error(logger, "tls", client, NULL,
 					 "write error: %s",
@@ -90,7 +90,7 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			return -1;
 		uint8_t *type = machine_msg_data(msg);
 		*type = 'S';
-		rc = od_write(&client->io, msg);
+		rc = od_write(&client->io, &msg);
 		if (rc == -1) {
 			od_error(logger, "tls", client, NULL, "write error: %s",
 				 od_io_error(&client->io));
@@ -188,7 +188,7 @@ int od_tls_backend_connect(od_server_t *server, od_logger_t *logger,
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(logger, "tls", NULL, server, "write error: %s",
 			 od_io_error(&server->io));

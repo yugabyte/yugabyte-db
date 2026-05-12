@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-spi
 ---
 
 The [spi](https://www.postgresql.org/docs/15/contrib-spi.html) module provides several workable examples of using the Server Programming Interface (SPI) and triggers.

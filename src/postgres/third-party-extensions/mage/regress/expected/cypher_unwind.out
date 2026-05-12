@@ -1,0 +1,285 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('cypher_unwind');
+NOTICE:  graph "cypher_unwind" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- Create nodes and relations
+SELECT * FROM cypher('cypher_unwind', $$
+    CREATE (n {name: 'node1', a: [1, 2, 3]}),
+           (m {name: 'node2', a: [4, 5, 6]}),
+           (o {name: 'node3', a: [7, 8, 9]}),
+           (n)-[:KNOWS]->(m),
+           (m)-[:KNOWS]->(o)
+$$) as (i agtype);
+ i 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    RETURN n
+$$) as (i agtype);
+                                               i                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"a": [1, 2, 3], "name": "node1"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"a": [4, 5, 6], "name": "node2"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"a": [7, 8, 9], "name": "node3"}}::vertex
+(3 rows)
+
+--
+-- Test UNWIND clause
+--
+SELECT * FROM cypher('cypher_unwind', $$
+    UNWIND [1, 2, 3] AS i
+    RETURN i
+$$) as (i agtype);
+ i 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    WITH n.a AS a
+    UNWIND a AS i
+    RETURN *
+$$) as (i agtype, j agtype);
+     i     | j 
+-----------+---
+ [1, 2, 3] | 1
+ [1, 2, 3] | 2
+ [1, 2, 3] | 3
+ [4, 5, 6] | 4
+ [4, 5, 6] | 5
+ [4, 5, 6] | 6
+ [7, 8, 9] | 7
+ [7, 8, 9] | 8
+ [7, 8, 9] | 9
+(9 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    WITH [[1, 2], [3, 4], 5] AS nested
+    UNWIND nested AS x
+    UNWIND x AS y
+    RETURN y
+$$) as (i agtype);
+ i 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+-- UNWIND vertices
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    RETURN node
+$$) as (i agtype);
+                                               i                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"a": [1, 2, 3], "name": "node1"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"a": [4, 5, 6], "name": "node2"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"a": [4, 5, 6], "name": "node2"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"a": [7, 8, 9], "name": "node3"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    RETURN node.name
+$$) as (i agtype);
+    i    
+---------
+ "node1"
+ "node2"
+ "node2"
+ "node3"
+(4 rows)
+
+-- UNWIND edges
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND relationships(p) as relation
+    RETURN relation
+$$) as (i agtype);
+                                                             i                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "KNOWS", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "KNOWS", "end_id": 281474976710659, "start_id": 281474976710658, "properties": {}}::edge
+(2 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND relationships(p) as relation
+    RETURN type(relation)
+$$) as (i agtype);
+    i    
+---------
+ "KNOWS"
+ "KNOWS"
+(2 rows)
+
+-- UNWIND paths (vle)
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    RETURN path
+$$) as (i agtype);
+                                                                                                                                                                                                                                                                                                     i                                                                                                                                                                                                                                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710657, "label": "_ag_label_vertex", "properties": {"a": [1, 2, 3], "name": "node1"}}::vertex, {"id": 844424930131969, "label": "KNOWS", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge, {"id": 281474976710658, "label": "_ag_label_vertex", "properties": {"a": [4, 5, 6], "name": "node2"}}::vertex, {"id": 844424930131970, "label": "KNOWS", "end_id": 281474976710659, "start_id": 281474976710658, "properties": {}}::edge, {"id": 281474976710659, "label": "_ag_label_vertex", "properties": {"a": [7, 8, 9], "name": "node3"}}::vertex]::path
+(1 row)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    RETURN relationships(path)
+$$) as (i agtype);
+                                                                                                                           i                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "KNOWS", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge, {"id": 844424930131970, "label": "KNOWS", "end_id": 281474976710659, "start_id": 281474976710658, "properties": {}}::edge]
+(1 row)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    UNWIND relationships(path) as edge
+    RETURN edge
+$$) as (i agtype);
+                                                             i                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "KNOWS", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "KNOWS", "end_id": 281474976710659, "start_id": 281474976710658, "properties": {}}::edge
+(2 rows)
+
+-- Unwind with SET clause
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    SET node.type = 'vertex'
+$$) as (i agtype);
+ i 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    RETURN n
+$$) as (i agtype);
+                                                        i                                                        
+-----------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"a": [1, 2, 3], "name": "node1", "type": "vertex"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"a": [4, 5, 6], "name": "node2", "type": "vertex"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"a": [7, 8, 9], "name": "node3", "type": "vertex"}}::vertex
+(3 rows)
+
+--
+-- Issue 1302
+--
+SELECT create_graph('issue_1302');
+NOTICE:  graph "issue_1302" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    CREATE (agtype {name: 'node1', a: [1, 2, 3]}),
+           (m {name: 'node2', a: [4, 5, 6]}),
+           (o {name: 'node3', a: [7, 8, 9]}),
+           (n)-[:KNOWS]->(m),
+           (m)-[:KNOWS]->(o)
+$$) as (i agtype);
+ i 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    WITH n.a AS a
+    UNWIND a AS i
+    RETURN *
+$$) as (i agtype, j agtype);
+     i     | j 
+-----------+---
+ [1, 2, 3] | 1
+ [1, 2, 3] | 2
+ [1, 2, 3] | 3
+ [4, 5, 6] | 4
+ [4, 5, 6] | 5
+ [4, 5, 6] | 6
+ [7, 8, 9] | 7
+ [7, 8, 9] | 8
+ [7, 8, 9] | 9
+ [1, 2, 3] | 1
+ [1, 2, 3] | 2
+ [1, 2, 3] | 3
+ [4, 5, 6] | 4
+ [4, 5, 6] | 5
+ [4, 5, 6] | 6
+ [7, 8, 9] | 7
+ [7, 8, 9] | 8
+ [7, 8, 9] | 9
+           | 
+(19 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    UNWIND NULL as i
+    RETURN i
+$$) as (i agtype);
+ i 
+---
+ 
+(1 row)
+
+--
+-- Clean up
+--
+SELECT drop_graph('cypher_unwind', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table cypher_unwind._ag_label_vertex
+drop cascades to table cypher_unwind._ag_label_edge
+drop cascades to table cypher_unwind."KNOWS"
+NOTICE:  graph "cypher_unwind" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_1302', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1302._ag_label_vertex
+drop cascades to table issue_1302._ag_label_edge
+NOTICE:  graph "issue_1302" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

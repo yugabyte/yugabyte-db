@@ -32,6 +32,8 @@
 // Helpers for dealing with the protobufs defined in wire_protocol.proto.
 #pragma once
 
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "yb/common/common_fwd.h"
@@ -48,6 +50,8 @@
 #include "yb/util/status_ec.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/result.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -144,11 +148,11 @@ Status ResponseStatus(
 
 struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 14;
+  static constexpr CategoryDescriptor kCategory{14, "split child tablet IDs"sv};
 
   static std::string ToMessage(const Value& value);
 };
 
-typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;
+using SplitChildTabletIdsData = yb::StatusErrorCodeImpl<SplitChildTabletIdsTag>;
 
 } // namespace yb

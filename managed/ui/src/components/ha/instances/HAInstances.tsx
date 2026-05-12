@@ -15,7 +15,7 @@ import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { formatDuration } from '../../../utils/Formatters';
 import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
-import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
+import PrometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { getPrometheusBaseUrl } from '../../../redesign/features/metrics/utils';

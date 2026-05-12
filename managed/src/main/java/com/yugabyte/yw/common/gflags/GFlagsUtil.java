@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -88,7 +89,7 @@ public class GFlagsUtil {
   // handling of both cgroup v1 and v2.
   public static final String YSQL_CGROUP_PATH = "ysql";
 
-  private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+  private static final String DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED = "0.9";
   private static final int DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS = 480;
 
   public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
@@ -126,6 +127,7 @@ public class GFlagsUtil {
   public static final String USE_PRIVATE_IP = "use_private_ip";
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
+  public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -154,6 +156,9 @@ public class GFlagsUtil {
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
   public static final String TIME_SOURCE = "time_source";
+  public static final String ENABLE_QOS = "enable_qos";
+  public static final String QOS_MAX_DB_CPU_PERCENT = "qos_max_db_cpu_percent";
+  public static final String QOS_MAX_DB_COUNT = "qos_max_db_count";
 
   public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
       "timestamp_history_retention_interval_sec";
@@ -314,6 +319,10 @@ public class GFlagsUtil {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
     }
 
+    if (universe.getUniverseDetails().fipsEnabled) {
+      extra_gflags.put(OPENSSL_REQUIRE_FIPS, "true");
+    }
+
     boolean isMultiRegion =
         universe.getConfig().getOrDefault(Universe.IS_MULTIREGION, "false").equals("true");
     if (isMultiRegion) {
@@ -336,12 +345,23 @@ public class GFlagsUtil {
 
     if (node.dedicatedTo != null) {
       extra_gflags.put(
-          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
-          String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
+          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO, DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED);
     }
 
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
       extra_gflags.put(TIME_SOURCE, "clockbound");
+    }
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy() != null) {
+      MultiTenancyConfig mTConfig =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy();
+      extra_gflags.put(ENABLE_QOS, mTConfig.isEnableQos() ? "true" : "false");
+      if (mTConfig.getQosMaxDbCount() != null) {
+        extra_gflags.put(QOS_MAX_DB_COUNT, mTConfig.getQosMaxDbCount().toString());
+      }
+      if (mTConfig.getQosMaxDbCpuPercent() != null) {
+        extra_gflags.put(QOS_MAX_DB_CPU_PERCENT, mTConfig.getQosMaxDbCpuPercent().toString());
+      }
     }
 
     String processType = taskParam.getProperty("processType");
@@ -469,8 +489,10 @@ public class GFlagsUtil {
             : node.cloudInfo.private_ip;
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+    Provider provider = Util.getProviderForNode(node, cluster);
+    String ybHomeDir = provider.getYbHome();
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
@@ -480,8 +502,8 @@ public class GFlagsUtil {
             taskParam.overrideNodePorts
                 ? taskParam.communicationPorts.ybControllerrRpcPort
                 : node.ybControllerRpcPort));
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
+    ybcFlags.put("log_dir", provider.getYbHome() + YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", provider.getYbHome() + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put(
@@ -501,13 +523,13 @@ public class GFlagsUtil {
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
     // Also, /varz endpoint works, since webserver_interface is set to private_ip.
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
-    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
-    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
-    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
-    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
-    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", ybHomeDir + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", ybHomeDir + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", ybHomeDir + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", ybHomeDir + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
     ybcFlags.put(
@@ -541,7 +563,6 @@ public class GFlagsUtil {
     }
     ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
@@ -551,7 +572,7 @@ public class GFlagsUtil {
     if (userIntent.providerType == CloudType.local) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
-      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+      ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
     }
     return ybcFlags;
   }
@@ -566,9 +587,10 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+
+    Provider provider = Util.getProviderForNode(node, cluster);
     String ybHomeDir = provider.getYbHome();
     String serverAddress =
         listenOnAllInterfaces
@@ -716,7 +738,8 @@ public class GFlagsUtil {
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
-    if (taskParam.cgroupSize > 0) {
+    if (taskParam.cgroupSize > 0
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isQosEnabled()) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     // Add timestamp_history_retention_sec gflag if required.
@@ -907,6 +930,11 @@ public class GFlagsUtil {
       if (queryLogConfig.getYsqlQueryLogConfig() != null
           && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
         YSQLQueryLogConfig ysqlQueryLogConfig = queryLogConfig.getYsqlQueryLogConfig();
+        // Add log_line_prefix if specified in the API
+        if (StringUtils.isNotEmpty(ysqlQueryLogConfig.getLogLinePrefix())) {
+          ysqlPgConfCsvEntries.add(
+              "\"log_line_prefix='" + ysqlQueryLogConfig.getLogLinePrefix() + "'\"");
+        }
         ysqlPgConfCsvEntries.add(
             encodeBooleanPgAuditFlag("log_duration", ysqlQueryLogConfig.isLogDuration()));
         ysqlPgConfCsvEntries.add(
@@ -1145,6 +1173,46 @@ public class GFlagsUtil {
   }
 
   /**
+   * Make sure FIPS related GFlags are not overridden + check provider type - as only K8S is
+   * currently supported.
+   *
+   * @param fipsEnabled
+   */
+  public static void validateFipsCompliancy(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
+    if (fipsEnabled) {
+      if (userIntent.providerType != CloudType.kubernetes) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Currently only Kubernetes provider is supported for FIPS compliant universe");
+      }
+      // This is for new universes only, so don't consider old form of GFLags
+      if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
+        Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+        if (userIntent.specificGFlags.getPerAZ() != null) {
+          azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+        }
+        for (UUID azUuid : azUuids) {
+          Map<String, String> masterGFlags =
+              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER);
+          if (masterGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
+              && !masterGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+          }
+          Map<String, String> tserverGFlags =
+              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER);
+          if (tserverGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
+              && !tserverGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.
    *
@@ -1259,7 +1327,12 @@ public class GFlagsUtil {
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);
+      // If user is changing the port during configure YCQL upgrade, need to use the new port.
+      int yqlPort =
+          taskParams.overrideNodePorts
+              ? taskParams.communicationPorts.yqlServerRpcPort
+              : node.yqlServerRpcPort;
+      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, yqlPort);
     }
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
@@ -1570,6 +1643,24 @@ public class GFlagsUtil {
     }
   }
 
+  // Extract out the flag names from the undefok gflag.
+  public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = new HashSet<>();
+    String undefokValue = gflags.get(UNDEFOK);
+
+    if (StringUtils.isNotBlank(undefokValue)) {
+      String[] flagNames = undefokValue.split(",");
+      for (String flagName : flagNames) {
+        String trimmedFlagName = flagName.trim();
+        if (!trimmedFlagName.isEmpty()) {
+          undefokFlags.add(trimmedFlagName);
+        }
+      }
+    }
+
+    return undefokFlags;
+  }
+
   private static void mergeHostAndPort(
       Map<String, String> userGFlags, String addressKey, int port) {
     String val = userGFlags.get(addressKey);
@@ -1722,9 +1813,10 @@ public class GFlagsUtil {
       try {
         Files.createDirectory(localGflagFilePath);
       } catch (IOException e) {
+        LOG.error("Error while creating gflag directory: {}", e);
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
+            String.format("Failed to create tmp gflag directory: %s", e.getMessage()));
       }
     }
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -1734,15 +1826,28 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Missing placement information for the node in universe {}. Can't Continue",
+                "Missing placement information for the node in universe: %s. Can't Continue",
                 universeUUID.toString()));
       } else {
         placementUUID = node.placementUuid;
       }
     }
     UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
-    String providerUUID = userIntent.provider;
 
+    Set<UUID> allProviderUUIDs = userIntent.getAllProviderUUIDs();
+    UUID providerUUID;
+    if (allProviderUUIDs.size() == 1) {
+      providerUUID = allProviderUUIDs.iterator().next();
+    } else {
+      if (node == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing node information for multi-provider universe {}. Can't Continue",
+                universeUUID.toString()));
+      }
+      providerUUID = Util.getProviderForNode(node, universe).getUuid();
+    }
     String modifiedHbaConfEntries = "";
     // Split the input string at positions where it starts with "host..." or "local"
     String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
@@ -1759,7 +1864,7 @@ public class GFlagsUtil {
           modifiedHbaConfEntry.append("\"");
         }
         modifiedHbaConfEntry.append(
-            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID.toString()));
         if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
           if (i != hbaConfEntries.length - 1) {
             // Remove the trailing comma
@@ -1981,7 +2086,23 @@ public class GFlagsUtil {
     return cluster.userIntent.specificGFlags.isInheritFromPrimary();
   }
 
-  public static String getLogLinePrefix(String pgConfCsv) {
+  public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
+    // Priority 1: User specificGFlags take precedence when explicitly set
+    String userLogLinePrefix = extractLogLinePrefixFromCsv(ysqlPgConfCsv);
+    if (!DEFAULT_LOG_LINE_PREFIX.equals(userLogLinePrefix)) {
+      return userLogLinePrefix;
+    }
+    // Priority 2: Fall back to query log API's log_line_prefix if available
+    if (queryLogConfig != null
+        && queryLogConfig.getYsqlQueryLogConfig() != null
+        && StringUtils.isNotEmpty(queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix())) {
+      return queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix();
+    }
+    // Priority 3: Return default
+    return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  private static String extractLogLinePrefixFromCsv(String pgConfCsv) {
     if (StringUtils.isEmpty(pgConfCsv)) {
       return DEFAULT_LOG_LINE_PREFIX;
     }
@@ -2044,8 +2165,7 @@ public class GFlagsUtil {
         log.error("Failed to fetch in memory gflags", ignored);
       }
     } else {
-      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, universe);
       try {
         ShellResponse response =
             nodeUniverseManager.runCommand(

@@ -38,6 +38,7 @@ public class TestPgRegressIndex extends BasePgRegressTest {
     // Disable auto analyze because it aborts the SQL snippet:
     // force_cache_refresh which increments catalog version explictly.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
     return flagMap;
   }
 

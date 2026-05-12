@@ -9,6 +9,9 @@ menu:
     identifier: server-nodes-software
     parent: server-nodes
     weight: 20
+aliases:
+  - /stable/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/
+  - /stable/yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/
 type: indexpage
 showRightNav: true
 ---
@@ -35,7 +38,7 @@ On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle 
 DefaultLimitNOFILE=1048576
 ```
 
-You must reboot the system for these two settings to take effect.
+_You must reboot the system for these two settings to take effect._
 
 #### Transparent hugepages
 
@@ -45,7 +48,7 @@ Transparent hugepages (THP) should be enabled for optimal performance. Download 
 
 - [install-yb-enable-transparent-huge-pages-service.sh](/files/install-yb-enable-transparent-huge-pages-service.sh)
 
-You must reboot the system for these settings to take effect.
+_You must reboot the system for these settings to take effect._
 
 <details>
   <summary>More information</summary>
@@ -142,7 +145,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
 #### Python for database nodes
 
-Install Python 3.6-3.11 on the database nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.12 on the database nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 

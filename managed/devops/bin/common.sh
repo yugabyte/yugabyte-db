@@ -74,10 +74,16 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-readonly PYTHON3_EXECUTABLES=('python3.11' 'python3' 'python3.10')
-readonly PYTHON3_VERSIONS=('python3.11' 'python3.10')
-readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
-readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
+# python3 must be the last executable in the list to ensure that if it is used, it is validated to
+# be the correct version.
+readonly PYTHON3_EXECUTABLES=('python3.10' 'python3.11' 'python3.12' 'python3.13' 'python3')
+readonly PYTHON3_VERSIONS=('python3.10' 'python3.11' 'python3.12' 'python3.13')
+readonly LINUX_PLATFORMS=('manylinux_2_28_x86_64-cp-310-cp310' 'manylinux_2_28_x86_64-cp-311-cp311'
+                          'manylinux_2_28_x86_64-cp-312-cp312'
+                          'manylinux_2_28_x86_64-cp-313-cp313')
+readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311'
+                          'macosx-10.10-x86_64-cp-312-cp312'
+                          'macosx-10.10-x86_64-cp-313-cp313')
 DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"
 DOCKER_VENV_IMAGE_NAME="yba-devops-venv-builder"
 PYTHON_EXECUTABLE=""
@@ -88,15 +94,12 @@ readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
 
 readonly yb_devops_home=$( cd "${BASH_SOURCE%/*}"/.. && pwd )
-if [[ ! -d $yb_devops_home/roles ]]; then
-  fatal "No 'roles' subdirectory found inside yb_devops_home ('$yb_devops_home')"
-fi
 
 if [ -L /opt/yugabyte/devops ]; then
  export yb_devops_home_link="/opt/yugabyte/devops"
 fi
 
-# We need to export yb_devops_home because we rely on it in ansible.cfg.
+# We need to export yb_devops_home.
 export yb_devops_home
 
 # We need this in addition to yb_devops_home, because we sometimes just install a subset of scripts
@@ -314,7 +317,7 @@ create_pymodules_package() {
   chmod 777 "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
   run_pip install --upgrade pip > /dev/null
-  # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
+  # Download the scripts necessary. Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
   run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
@@ -453,7 +456,6 @@ install_pip() {
     log "Installing python-pip (will need sudo privileges for that)..."
     if [[ ${is_debian} == "true" ]]; then
       # Need pip to install Python dependencies.
-      # http://docs.ansible.com/ansible/guide_gce.html
       sudo apt-get install python-pip
     elif [[ ${is_centos} == "true" ]]; then
       # TODO: can the two commands below be done as one command? Or does the
@@ -575,16 +577,19 @@ activate_pex() {
   export PEX_ROOT="$pex_venv_dir"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
-  export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
+  PY_VERSION_MARKER="$pex_venv_dir/.python_version"
   trap "set +e cleanup_pexlock" EXIT INT TERM
   # Create and activate virtualenv
   (
     flock 9 || log "Waiting for pex lock";
     VENV_PY="$pex_venv_dir/bin/python"
-    # Check if the python symlink exists, and if it is either broken or doesn't match the expected
-    # version we will want to regenerate the pex venv.
-    if [[ -L $VENV_PY && (! -e $VENV_PY || $($VENV_PY --version) != $($PYTHON_EXECUTABLE --version)) ]]; then
-      log "detected python version mismatch between pex venv and ${PYTHON_EXECUTABLE}. Deleting pex venv to regenerate"
+    # We need to regenerate the pex venv (By deleting it here) if:
+    # 1. there is no python version marker file
+    # 2. the python symlink is either broken or doesn't match the version in the marker file
+    if [[ ! -f $PY_VERSION_MARKER
+        || (-L $VENV_PY && (! -e $VENV_PY || $($VENV_PY --version) != $(cat $PY_VERSION_MARKER))) ]]; then
+      log "detected python version mismatch between pex venv and ${PYTHON_EXECUTABLE}."
+      log "Deleting pex venv to regenerate"
       rm -rf "$pex_venv_dir"
     fi
     if [[ ! -e $pex_marker && -d $PEX_PATH ]]; then
@@ -592,8 +597,10 @@ activate_pex() {
       rm -rf "$pex_venv_dir" 2> /dev/null || log "Error cleaning up $pex_venv_dir"
       deactivate_virtualenv
       export PEX_VERBOSE=3
-      PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv $pex_venv_dir
+      # --collisions-ok is used to avoid overlapping .layout.json files in the pex venv.
+      PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv --collisions-ok $pex_venv_dir
       unset PEX_VERBOSE
+      echo $($PYTHON_EXECUTABLE --version) > $PY_VERSION_MARKER
     fi
     if [[ ! -x "$VENV_PY" ]]; then
       log "PEX virtual environment executable not found at $VENV_PY. Skipping pex activation."
@@ -632,14 +639,6 @@ activate_pex() {
 
 detect_os
 
-#
-# We should not load up ansible.env in all our shells scripts anymore! This should be automatically
-# sourced in our env, or manually sourced in individial scripts that need credentials to be setup.
-# Otherwise, for production scripts, run from YW, they should get all the relevant vars from YW
-# directly!
-#
-
-export ANSIBLE_HOST_KEY_CHECKING=False
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 

@@ -29,7 +29,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -50,7 +50,6 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -318,7 +317,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithNoPermissions() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     AccessKey accessKey =
         AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
     Result result =
@@ -332,7 +331,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithPermissions() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
     AccessKey accessKey =
@@ -348,7 +347,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithIncorrectPermissions() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     Role role1 =
         Role.create(
             defaultCustomer.getUuid(),
@@ -945,15 +944,11 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     KeyInfo keyInfo = new KeyInfo();
     keyInfo.publicKey = createTempFile("PUBLIC-KEY");
     keyInfo.privateKey = createTempFile("PRIVATE-KEY");
-    keyInfo.vaultFile = createTempFile("VAULT-FILE");
-    keyInfo.vaultPasswordFile = createTempFile("VAULT-PASSWORD-FILE");
     AccessKey accessKey = AccessKey.create(defaultProvider.getUuid(), "key-code-1", keyInfo);
 
     accessKeyHandler.delete(accessKey);
     assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().publicKey)));
     assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().privateKey)));
-    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultFile)));
-    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultPasswordFile)));
     Result result =
         assertPlatformException(
             () -> AccessKey.getOrBadRequest(defaultProvider.getUuid(), "key-code-1"));

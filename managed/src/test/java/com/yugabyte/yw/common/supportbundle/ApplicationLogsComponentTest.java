@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.io.File;
@@ -33,6 +34,8 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class ApplicationLogsComponentTest extends FakeDBApplication {
   @Mock public BaseTaskDependencies mockBaseTaskDependencies;
   @Mock public Config mockConfig;
+  @Mock public RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock public Config mockGlobalRuntimeConfig;
 
   private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
   private final String testRegexPattern = "application-log-\\d{4}-\\d{2}-\\d{2}(\\.gz)?";
@@ -67,10 +70,12 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
 
     // Mock all the config invocations with fake data
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
+    when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(mockRuntimeConfigFactory);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockGlobalRuntimeConfig);
     when(mockConfig.getString("log.override.path")).thenReturn(fakeSourceLogsPath);
-    when(mockConfig.getString("yb.support_bundle.application_logs_regex_pattern"))
+    when(mockGlobalRuntimeConfig.getString("yb.support_bundle.application_logs_regex_pattern"))
         .thenReturn(testRegexPattern);
-    when(mockConfig.getString("yb.support_bundle.application_logs_sdf_pattern"))
+    when(mockGlobalRuntimeConfig.getString("yb.support_bundle.application_logs_sdf_pattern"))
         .thenReturn(testSdfPattern);
   }
 

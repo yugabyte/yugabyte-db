@@ -123,7 +123,7 @@ public class SwamperHelperTest extends FakeDBApplication {
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
-    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
     u =
         Universe.saveDetails(
             u.getUniverseUUID(),
@@ -144,8 +144,7 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
       int otelMetricsPort =
           confGetter.getConfForScope(
-              Provider.getOrBadRequest(UUID.fromString(ui.provider)),
-              ProviderConfKeys.otelCollectorMetricsPort);
+              Util.getSingleProvider(ui), ProviderConfKeys.otelCollectorMetricsPort);
       ArrayNode targetsJson = (ArrayNode) Json.parse(sb.toString());
       String expectedTargetsTemplate = TestUtils.readResource(expectedFile);
       String expectedTargetsStr =
@@ -179,7 +178,7 @@ public class SwamperHelperTest extends FakeDBApplication {
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
-    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     File targetFile = new File(SWAMPER_TMP_PATH + "yugabyte." + u.getUniverseUUID() + ".json");
     try {

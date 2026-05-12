@@ -82,18 +82,6 @@ typedef struct BsonProjectionQueryState
 } BsonProjectionQueryState;
 
 
-/*
- * Cached state for ReplaceRoot and Redact.
- */
-typedef struct BsonReplaceRootRedactState
-{
-	/* The aggregation expression data */
-	AggregationExpressionData *expressionData;
-
-	/* The variable context for let if any */
-	ExpressionVariableContext *variableContext;
-} BsonReplaceRootRedactState;
-
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -140,13 +128,7 @@ static pgbson * BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 
 static pgbson * BsonLookUpProject(pgbson *sourceDocument, int numMatchedDocuments,
 								  Datum *mathedArray, char *matchedDocsFieldName);
-static void PopulateReplaceRootExpressionDataFromSpec(
-	BsonReplaceRootRedactState *expressionData, pgbson *pathSpec, pgbson *variableSpec,
-	const char *collationString);
 
-static void BuildRedactState(BsonReplaceRootRedactState *redactState, const
-							 bson_value_t *redactValue, pgbson *variableSpec, const
-							 char *collationString);
 static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
@@ -176,7 +158,8 @@ static pgbson * EvaluateRedactDocument(pgbson *document, const
 static void EvaluateRedactArray(const bson_value_t *array, const
 								BsonReplaceRootRedactState *state,
 								pgbson_array_writer *array_Writer);
-static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
+static void SetVariableSpec(ExpressionVariableContext **state,
+							const pgbson *variableSpec);
 static inline bool IsBsonDollarProjectFunctionOid(Oid functionOid);
 static inline bool IsBsonDollarAddFieldsFunctionOid(Oid functionOid);
 static pgbson * MergeDocumentWithArrayOverride(pgbson *sourceDocument,
@@ -209,6 +192,12 @@ PG_FUNCTION_INFO_V1(bson_dollar_project_geonear);
 Datum
 bson_dollar_project(PG_FUNCTION_ARGS)
 {
+	/* TODO: Remove after v0.110 when function has only STRICT forms */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+	{
+		PG_RETURN_NULL();
+	}
+
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *variableSpec = NULL;
@@ -220,12 +209,14 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 	if (PG_NARGS() > 2)
 	{
 		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		variableSpec = IsPgbsonEmptyDocument(variableSpec) ? NULL : variableSpec;
 		numArgs = 2;
 	}
 
 	if (EnableCollation && PG_NARGS() == 4)
 	{
 		collationString = PG_ARGISNULL(3) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(3));
+		collationString = IsCollationApplicable(collationString) ? collationString : NULL;
 		numArgs = 3;
 	}
 
@@ -289,8 +280,8 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 		variableSpec = PgbsonInitEmpty();
 	}
 
-	/* First project the input variable spec (pathSpec) to evaluate it's expressions using the current variable spec as a variable context in case
-	 * the current lookup spec has variable references to the parent lookup spec. */
+	/* First project the input variable spec (pathSpec) to evaluate it's expressions using the current variable spec
+	 * as a variable context in case the current lookup spec has variable references to the parent lookup spec. */
 	context.skipParseAggregationExpressions = false;
 
 	/* Add the time system variables to the context. */
@@ -401,8 +392,22 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_project_find(PG_FUNCTION_ARGS)
 {
-	pgbson *document = PG_GETARG_PGBSON(0);
-	pgbson *pathSpec = PG_GETARG_PGBSON(1);
+	/* Distributed query planning may substitute pruned shards with SELECT NULL ... WHERE false; that
+	 * surfaces here as a SQL NULL document, so bubble NULL back to the caller. */
+	pgbson *document = PG_GETARG_MAYBE_NULL_PGBSON(0);
+	if (document == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
+	pgbson *pathSpec = PG_GETARG_MAYBE_NULL_PGBSON(1);
+
+	/* Unlikely but sanity check */
+	if (pathSpec == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
 	pgbson *querySpec = NULL;
 	pgbson *variableSpec = NULL;
 	char *collationString = NULL;
@@ -432,6 +437,7 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 	{
 		/* If a let spec is specified modify argPositions/numArgs */
 		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+		variableSpec = IsPgbsonEmptyDocument(variableSpec) ? NULL : variableSpec;
 		argPosition[1] = 3;
 		numArgs = 2;
 	}
@@ -439,7 +445,7 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 	if (EnableCollation && PG_NARGS() > 4)
 	{
 		collationString = PG_ARGISNULL(4) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(4));
-
+		collationString = IsCollationApplicable(collationString) ? collationString : NULL;
 		argPosition[2] = 4;
 		numArgs = 3;
 	}
@@ -517,7 +523,8 @@ bson_dollar_project_geonear(PG_FUNCTION_ARGS)
 const BsonProjectionQueryState *
 GetProjectionStateForBsonProject(bson_iter_t *projectionSpecIter,
 								 bool forceProjectId,
-								 bool allowInclusionExclusion)
+								 bool allowInclusionExclusion,
+								 const pgbson *variableSpec)
 {
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
 	BsonProjectionContext context = {
@@ -525,12 +532,10 @@ GetProjectionStateForBsonProject(bson_iter_t *projectionSpecIter,
 		.forceProjectId = forceProjectId,
 		.allowInclusionExclusion = allowInclusionExclusion,
 		.querySpec = NULL,
-		.variableSpec = NULL,
+		.variableSpec = variableSpec,
 	};
-	BuildBsonPathTreeForDollarProject(projectionState, &context);
 
-	/* TODO VARIABLE take as argument. */
-	projectionState->variableContext = NULL;
+	BuildBsonPathTreeForDollarProject(projectionState, &context);
 	return projectionState;
 }
 
@@ -543,6 +548,12 @@ GetProjectionStateForBsonProject(bson_iter_t *projectionSpecIter,
 Datum
 bson_dollar_add_fields(PG_FUNCTION_ARGS)
 {
+	/* TODO: Remove after v0.110 when function has only STRICT forms */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+	{
+		PG_RETURN_NULL();
+	}
+
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 
@@ -716,17 +727,21 @@ bson_dollar_merge_documents_at_path(PG_FUNCTION_ARGS)
  * apply the projectionSpec on documents.
  */
 const BsonProjectionQueryState *
-GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter)
+GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter,
+								   const bson_value_t *variableSpec)
 {
 	bool skipParseAggregationExpressions = false;
 
-	/* TODO: pass in correct values after support let and collation with update command. */
-	pgbson *variableSpec = NULL;
+	/* TODO: pass in correct values after support collation with update command. */
 	const char *collationString = NULL;
+
+	pgbson *variableSpecBson = variableSpec &&
+							   variableSpec->value_type == BSON_TYPE_DOCUMENT ?
+							   PgbsonInitFromDocumentBsonValue(variableSpec) : NULL;
 
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
 	BuildBsonPathTreeForDollarAddFields(projectionState, projectionSpecIter,
-										skipParseAggregationExpressions, variableSpec,
+										skipParseAggregationExpressions, variableSpecBson,
 										collationString);
 	return projectionState;
 }
@@ -746,25 +761,32 @@ bson_dollar_set(PG_FUNCTION_ARGS)
 
 
 /*
- * bson_dollar_replace_root performs
+ * bson_dollar_replace_root performs the following:
  *      (1) evaluates the newRoot Expression provided by the spec and projects the evaluated
- * document as the new document.
- *      (2) It throws an error if the evaluated expression is not a document.
+ *          document as the new document.
+ *      (2) throws an error if the evaluated expression is not a document.
  *
- *   Spec: { $replaceRoot: { newRoot: <replacementDocument> } }
+ * Query semantics: { $replaceRoot: { newRoot: <newDocument> } }
  * ReplaceRoot performs a projection of one or more paths given a source document and a replaceRoot
- * specification as a bson iterator.
+ * stage as a bson iterator.
+ *
  *      sourceDocument => Single bson document
  *      replaceRootSpecIter => Projection specification
  *		forceProjectId => whether _id needs to be projected as well.
  *
- *      example replaceRoot Spec:   Example 1: { 'newRoot' :  { "a" : "$b" } }
+ *      example replaceRoot query:  Example 1: { 'newRoot' :  { "a" : "$b" } }
  *                                  Example 2: { 'newRoot' :  "$a.b" }
  *                                  Example 3: { 'newRoot' :  { "a" : "$b", [ "$x", {} ], { "c" : "d" } } }
  */
 Datum
 bson_dollar_replace_root(PG_FUNCTION_ARGS)
 {
+	/* TODO: Remove after v0.110 when function has only STRICT forms */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+	{
+		PG_RETURN_NULL();
+	}
+
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *variableSpec = NULL;
@@ -788,20 +810,22 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
 	BsonReplaceRootRedactState localState = { 0 };
 	const BsonReplaceRootRedactState *replaceRootExpression;
 
+	bson_value_t replaceRootValue = ConvertPgbsonToBsonValue(pathSpec);
 	SetCachedFunctionStateMultiArgs(
 		replaceRootExpression,
 		BsonReplaceRootRedactState,
 		argPositions,
 		numArgs,
 		PopulateReplaceRootExpressionDataFromSpec,
-		pathSpec,
+		&replaceRootValue,
 		variableSpec,
 		collationString);
 
 	bool forceProjectId = false;
 	if (replaceRootExpression == NULL)
 	{
-		PopulateReplaceRootExpressionDataFromSpec(&localState, pathSpec, variableSpec,
+		PopulateReplaceRootExpressionDataFromSpec(&localState, &replaceRootValue,
+												  variableSpec,
 												  collationString);
 		PG_RETURN_POINTER(ProjectReplaceRootDocument(document, localState.expressionData,
 													 localState.variableContext,
@@ -860,7 +884,7 @@ ProjectReplaceRootDocument(pgbson *document,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40228),
 							errmsg(
-								"'newRoot' expression must evaluate to an object, but resulting value was: : MISSING. Type of resulting value: 'missing'")));
+								"The expression 'newRoot' must result in an object, however the computed value was missing, with type identified as 'missing'.")));
 		}
 
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -872,7 +896,7 @@ ProjectReplaceRootDocument(pgbson *document,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40228),
 						errmsg(
-							"'newRoot' expression must evaluate to an object, but resulting value was: %s. Type of resulting value: '%s'.",
+							"The expression 'newRoot' must produce an object value, but instead it yielded: %s. The type of this resulting value is: '%s'.",
 							BsonValueToJsonForLogging(&resultElement.bsonValue),
 							BsonTypeName(resultElement.bsonValue.value_type)),
 						errdetail_log(
@@ -902,6 +926,41 @@ ProjectReplaceRootDocument(pgbson *document,
 }
 
 
+/* Populates the aggregation expression data for a replace root stage based on the pathSpec specified to $replaceRoot. */
+void
+PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *state,
+										  const bson_value_t *replaceRootValue,
+										  pgbson *variableSpec,
+										  const char *collationString)
+{
+	bson_iter_t replaceRootSpec;
+	bson_iter_init_from_data(&replaceRootSpec,
+							 replaceRootValue->value.v_doc.data,
+							 replaceRootValue->value.v_doc.data_len);
+
+	bson_value_t bsonValue;
+	GetBsonValueForReplaceRoot(&replaceRootSpec, &bsonValue);
+	ValidateReplaceRootElement(&bsonValue);
+
+	state->expressionData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionContext parseContext = { 0 };
+
+	/* Add the $$NOW time system variables field from the variableSpec. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &parseContext.timeSystemVariables);
+
+	if (IsCollationApplicable(collationString))
+	{
+		parseContext.collationString = collationString;
+	}
+
+	ParseAggregationExpressionData(state->expressionData, &bsonValue,
+								   &parseContext);
+
+	SetVariableSpec(&state->variableContext, variableSpec);
+}
+
+
 /*
  * Walks the bson document that specifies the projection specification and
  *
@@ -916,12 +975,12 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 	{
 		const char *path = bson_iter_key(replaceRootIterator);
 
-		/* Mongo behavior: replaceRoot spec can't have anything other field than "newRoot" */
+		/* replaceRoot spec can't have anything other field than "newRoot" */
 		if (strcmp(path, "newRoot") != 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg(
-								"BSON fields '$replaceRoot.%s' is an unknown field",
+								"The BSON field '$replaceRoot.%s' is not recognized as a valid or supported field name.",
 								path)));
 		}
 
@@ -933,14 +992,53 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg(
-							"BSON field '$replaceRoot.newRoot' is missing but a required field")));
+							"The required BSON field '$replaceRoot.newRoot' is not present in the data.")));
+	}
+}
+
+
+void
+ValidateReplaceRootElement(const bson_value_t *value)
+{
+	check_stack_depth();
+	CHECK_FOR_INTERRUPTS();
+	if (value->value_type == BSON_TYPE_DOCUMENT)
+	{
+		bson_iter_t docIter;
+		BsonValueInitIterator(value, &docIter);
+		while (bson_iter_next(&docIter))
+		{
+			StringView keyView = bson_iter_key_string_view(&docIter);
+			if (keyView.length > 0 && keyView.string[0] == '$')
+			{
+				/* Treat as expression (let expression evaluation handle the error) */
+				continue;
+			}
+
+			if (StringViewContains(&keyView, '.'))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+								errmsg("FieldPath field names may not contain '.'."
+									   " Consider using $getField or $setField")));
+			}
+
+			ValidateReplaceRootElement(bson_iter_value(&docIter));
+		}
+	}
+	else if (value->value_type == BSON_TYPE_ARRAY)
+	{
+		bson_iter_t arrayIter;
+		BsonValueInitIterator(value, &arrayIter);
+		while (bson_iter_next(&arrayIter))
+		{
+			ValidateReplaceRootElement(bson_iter_value(&arrayIter));
+		}
 	}
 }
 
 
 /*
- * Ref: docs/lookup.md
- * Mongo $lookup semantics: For each document from a collection t1, find all documents from a
+ * $lookup query semantics: For each document from a collection t1, find all documents from a
  * collection t2, where t1.localField = t2.foreignField.
  *
  * We implement this by iterating over all documents in t1, a generating a filter expression,
@@ -1009,11 +1107,10 @@ bson_dollar_lookup_extract_filter_array(PG_FUNCTION_ARGS)
 
 
 /*
- * Ref: docs/lookup.md
- * Mongo $lookup semantics: For each document from a collection t1, find all documents from a
+ * $lookup query semantics: For each document from a collection t1, find all documents from a
  * collection t2, where t1.localField = t2.foreignField.
  *
- * After the matching is done bson_dollar_lookup_project() formats the output according to Mongo spec.
+ * After the matching is done bson_dollar_lookup_project() formats the output appropriately.
  *
  * Details about the formatting logic is encoded in BsonLookUpProject(), which is called from this function.
  */
@@ -1046,12 +1143,12 @@ bson_dollar_lookup_project(PG_FUNCTION_ARGS)
 
 
 /*
- * This UDF is primarily perform checks on whether the document produced by
- * the facet stage is under 16MB. Note that the check is controlled by the
- * parameter validateDocumentSize. It is set to true, by the gateway when
- * facet is the last stage of an aggregation pipeline. If, facet is not the last
- * stage of the pipeline, we skip the check facet could be followed by an $unwind
- * to yield smaller documents.
+ * Test only : This UDF is primarily perform checks on whether the document produced by
+ * the facet stage is under 16 MB when facet is the last stage.
+ *
+ * This is not used in product code path any more as the cursor logic makes sure that per
+ * row output size is under 16 MB limit. So, if there is a single document exceeding 16 MB,
+ * appropriate error will be thrown.
  */
 Datum
 bson_dollar_facet_project(PG_FUNCTION_ARGS)
@@ -1138,6 +1235,12 @@ GetProjectionStateForBsonUnset(const bson_value_t *unsetValue, bool forceProject
 Datum
 bson_dollar_redact(PG_FUNCTION_ARGS)
 {
+	/* TODO: Remove after v0.110 when function has only STRICT forms */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+	{
+		PG_RETURN_NULL();
+	}
+
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *redactSpec = PG_GETARG_PGBSON(1);
 	char *redactSpecText = text_to_cstring(PG_GETARG_TEXT_PP(2));
@@ -1206,7 +1309,7 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
  * { $redact: <expression> }
  * The argument can be any expression, only need to check evaluation result of expression.
  */
-static void
+void
 BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *redactValue,
 				 pgbson *variableSpec, const char *collationString)
 {
@@ -1228,8 +1331,8 @@ BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *re
 /*
  * Given a document and a redact state, evaluate the document with the redact expression in state.
  * Recursively evaluate any nested documents or documents in arrays when the result returned is $$DESCEND.
- * Set boolean shouldPrune to true if the result returned is $$PRUNE, so that we can go back and prune the document along with its key at upper level.
- * see redact.md for more details.
+ * Set boolean shouldPrune to true if the result returned is $$PRUNE, so that we can go back and prune the
+ * document along with its key at upper level.
  */
 static pgbson *
 EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state,
@@ -1262,7 +1365,7 @@ EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17053),
 								errmsg(
-									"$redact's expression should not return anything aside from the variables $$KEEP, $$DESCEND, and $$PRUNE, but returned '%s'.",
+									"The $redact stage must evaluate to one of the variables $$KEEP, $$DESCEND, or $$PRUNE, but instead it produced '%s'.",
 									BsonValueToJsonForLogging(
 										&(state->expressionData->value)))));
 				break;
@@ -1360,14 +1463,15 @@ EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state
 	pfree(parsedValue);
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17053),
 					errmsg(
-						"$redact's expression should not return anything aside from the variables $$KEEP, $$DESCEND, and $$PRUNE, but returned '%s'.",
+						"The $redact stage must evaluate to one of the variables $$KEEP, $$DESCEND, or $$PRUNE, but instead it produced '%s'.",
 						BsonValueToJsonForLogging(&evaluatedResultElement.bsonValue))));
 }
 
 
 /*
  * Handles the projection of an array field for the $redact stage.
- * There is a recursive call to EvaluateRedactDocument for nested documents and recursive calls to EvaluateRedactArray for nested arrays.
+ * There is a recursive call to EvaluateRedactDocument for nested
+ * documents and recursive calls to EvaluateRedactArray for nested arrays.
  */
 static void
 EvaluateRedactArray(const bson_value_t *array, const BsonReplaceRootRedactState *state,
@@ -1503,7 +1607,7 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarProject(&projectionState, &projectContext);
 
-		/* TODO: Handle inclusion projection */
+		/* TODO: Need to address inclusion projection handling */
 		if (!projectionState.hasExclusion || projectionState.hasInclusion)
 		{
 			return false;
@@ -1590,10 +1694,12 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 	}
 
 	/*
-	 * TODO: AddFields followed by add fields, in this case, we can concat the 2 together
-	 * only if the second one doesn't reference the firstone. Without validating this we can't
-	 * inline.
-	 * currentExpr->funcid == BsonDollarAddFieldsFunctionOid() && functionOid == BsonDollarAddFieldsFunctionOid()
+	 * TODO: AddFields followed byAddFields, in this case, we can concat the 2 together
+	 * only if the second one doesn't reference the first one. Without validating this
+	 * we can't inline.
+	 *
+	 * currentExpr->funcid == BsonDollarAddFieldsFunctionOid() &&
+	 *  functionOid == BsonDollarAddFieldsFunctionOid()
 	 */
 	return false;
 }
@@ -1617,14 +1723,16 @@ BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 
 /*
  * Given a projection spec iterator, builds a BsonPathTree
- * for the purpose of find projection and its operators e.g. $slice, $elemMatch, $(positional)
+ * for the purpose of find projection and its operators
+ * e.g.,  $slice, $elemMatch, $(positional)
  */
 static void
 BuildBsonPathTreeForDollarProjectFind(BsonProjectionQueryState *state,
 									  BsonProjectionContext *projectionContext)
 {
 	BuildBsonPathTreeContext context = { 0 };
-	context.pathTreeState = GetPathTreeStateForFind(projectionContext->querySpec);
+	context.pathTreeState = GetPathTreeStateForFind(projectionContext->querySpec,
+													projectionContext->collationString);
 	context.allowInclusionExclusion = projectionContext->allowInclusionExclusion;
 
 	/* Set the necessary function hooks for find projection */
@@ -1724,7 +1832,7 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
  * Given a potentially null variable spec, sets the spec into the projection query state.
  */
 static void
-SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec)
+SetVariableSpec(ExpressionVariableContext **state, const pgbson *variableSpec)
 {
 	*state = NULL;
 
@@ -1767,7 +1875,7 @@ BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"$unset specification must have at least one field.")));
+							"Unset operator specification requires at least one field.")));
 	}
 
 	/* by default we do path based projections if there's ANY inclusions/exclusions */
@@ -1814,7 +1922,7 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"$lookup argument 'localField' must be a string, found localField: %s",
+							"The operator $lookup requires the 'localField' argument to be a string, but instead received: %s",
 							BsonTypeName(localFieldPath.value_type))));
 	}
 
@@ -1825,7 +1933,7 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"FieldPath field names may not start with '$'")));
+							"FieldPath field names cannot begin with the operators symbol '$'.")));
 	}
 
 	/* Start the iterator at the provided path */
@@ -1857,11 +1965,10 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 
 
 /*
- * Ref: docs/lookup.md
- * Mongo $lookup semantics: For each document from a collection t1, find all documents from a
+ * $lookup semantics: For each document from a collection d1, find all documents from a
  * collection t2, where t1.localField = t2.foreignField.
  *
- * After the matching is done bson_dollar_lookup_project() formats the output according to Mongo spec.
+ * After the matching is done bson_dollar_lookup_project() formats the output appropriately.
  *
  * Input to the method:
  *      1. A document from the t1
@@ -2006,11 +2113,11 @@ TraverseDocumentAndWriteLookupIndexCondition(pgbson_array_writer *arrayWriter,
 				bson_iter_t arrayElementInterator;
 				if (bson_iter_recurse(documentIterator, &arrayElementInterator))
 				{
-					/* If the current path ('a.0' or 'a.1.x' or 'a.b.0') matches an array (i.e., path 'a' points to an array) */
-					/* we explore the next path segment. If the next path segment is an array index ( '0', or '1' in the first */
-					/* two cases), we only traverse the array element pointed by the 'array index path'. Additionally we */
-					/* also advance the path (e.g., NULL, 'x', 'b.0' accordingly). If the path is NULL, we print and terminate, */
-					/* otherwise we traverse recursively. */
+					/* If the current path ('a.0' or 'a.1.x' or 'a.b.0') matches an array (i.e., path 'a' points to an array)
+					 * we explore the next path segment. If the next path segment is an array index ( '0', or '1' in the first
+					 * two cases), we only traverse the array element pointed by the 'array index path'. Additionally we
+					 * also advance the path (e.g., NULL, 'x', 'b.0' accordingly). If the path is NULL, we print and terminate,
+					 * otherwise we traverse recursively. */
 					char *arrayIndexSubstring = memchr(path, '.', pathLength);
 					int32_t arrayIndex = -1;
 
@@ -2085,7 +2192,8 @@ TraverseDocumentAndWriteLookupIndexCondition(pgbson_array_writer *arrayWriter,
 /*
  * Walks the bson document that specifies the unset specification and builds a tree
  * with the projection data.
- * e.g. "a.b.c" and "a.d.e" will produce a -> b,d; b->c; d->e
+ *
+ * e.g.,  "a.b.c" and "a.d.e" will produce a -> b,d; b->c; d->e
  * This will allow us to walk the documents later and produce a single projection spec.
  */
 static BsonIntermediatePathNode *
@@ -2138,14 +2246,15 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31120),
 								errmsg(
-									"$unset specification must be a string or an array containing only string values")));
+									"$unset require a string or an array containing exclusively string values")));
 			}
 		}
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31002),
-						errmsg("$unset specification must be a string or an array")));
+						errmsg(
+							"$unset requires specification as either a string or an array")));
 	}
 
 	return tree;
@@ -2189,10 +2298,11 @@ AdjustPathProjectionsForId(BsonIntermediatePathNode *tree,
 	}
 	else
 	{
-		/* if { _id: 0 } and no field projections exist. */
-		/* in this case, this means project the rest of the document */
-		/* if it has { _id: 0 } and any field projections, the document is not projected at all. */
-		/* Note we don't set hasExclusion if there were any other inclusions already specified. */
+		/* if { _id: 0 } and no field projections exist.
+		 * in this case, this means project the rest of the document
+		 * if it has { _id: 0 } and any field projections, the document is not projected at all.
+		 * Note we don't set hasExclusion if there were any other inclusions already specified.
+		 */
 		if (!hasInclusion && idField->nodeType == NodeType_LeafExcluded)
 		{
 			*hasIdExclusion = true;
@@ -2238,8 +2348,9 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 			continue;
 		}
 
-		/* field is a match. */
-		/* field is a perfect match - add it. */
+		/* field is a match.
+		 * field is a perfect match - add it.
+		 */
 		switch (child->nodeType)
 		{
 			case NodeType_LeafExcluded:
@@ -2380,7 +2491,7 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 
 			default:
 			{
-				ereport(ERROR, (errmsg("Unexpected node type %d",
+				ereport(ERROR, (errmsg("Node type %d is not recognized",
 									   child->nodeType)));
 			}
 		}
@@ -2473,10 +2584,11 @@ TraverseArrayAndAppendToWriter(bson_iter_t *parentIterator,
 			return;
 		}
 
-		/* for arrays, we walk every object and insert it. if there are matches they are written in. */
-		/* Note: for arrays, array indexes are not considered in the match. */
-		/* so a.0 does NOT match the 0th index of an array - instead it matches a field in a nested object */
-		/* with the path "0". */
+		/* for arrays, we walk every object and insert it. if there are matches they are written in.
+		 * Note: for arrays, array indexes are not considered in the match.
+		 * so a.0 does NOT match the 0th index of an array - instead it matches a field in a nested object
+		 * with the path "0".
+		 */
 		while (bson_iter_next(&childIter))
 		{
 			ProjectCurrentArrayIterToWriter(&childIter, arrayWriter,
@@ -2513,7 +2625,7 @@ ProjectCurrentArrayIterToWriter(bson_iter_t *arrayIter,
 	 */
 
 	/*
-	 * Mongo projection behavior (for operators like, project, addFields)
+	 * Projection behavior (for operators like, project, addFields)
 	 *
 	 *  document (D): { b: [1, 2, 3] }
 	 *      path Node:  b.c = 1
@@ -2618,37 +2730,6 @@ FilterNodeToWrite(void *state, int currentIndex)
 }
 
 
-/* Populates the aggregation expression data for a replace root stage based on the pathSpec specified to $replaceRoot. */
-static void
-PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expressionData,
-										  pgbson *pathSpec, pgbson *variableSpec,
-										  const char *collationString)
-{
-	bson_iter_t pathSpecIter;
-	PgbsonInitIterator(pathSpec, &pathSpecIter);
-
-	bson_value_t bsonValue;
-	GetBsonValueForReplaceRoot(&pathSpecIter, &bsonValue);
-
-	expressionData->expressionData = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionContext parseContext = { 0 };
-
-	/* Add the $$NOW time system variables field from the variableSpec. */
-	GetTimeSystemVariablesFromVariableSpec(variableSpec,
-										   &parseContext.timeSystemVariables);
-
-	if (IsCollationApplicable(collationString))
-	{
-		parseContext.collationString = collationString;
-	}
-
-	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue,
-								   &parseContext);
-
-	SetVariableSpec(&expressionData->variableContext, variableSpec);
-}
-
-
 /*
  * PostProcess with a project node during the inlining of projection
  * stages during planning.
@@ -2722,7 +2803,6 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 
 	/*
 	 * Add location to the document first if distance and loc fields are same then loc field gets the priority
-	 * aggregation/sources/geonear/distancefield_and_includelocs.js
 	 */
 	if (state->includeLocs.length > 0 && state->includeLocs.string != NULL)
 	{
@@ -2741,7 +2821,7 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 			&parseContext);
 	}
 
-	/* Add distance field */
+	/* Insert distance field value */
 	TraverseDottedPathAndGetOrAddField(
 		&state->distanceField,
 		&distanceValue,

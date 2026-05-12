@@ -16,10 +16,12 @@
 #include <boost/intrusive/list.hpp>
 
 #include "yb/hnsw/block_writer.h"
+#include "yb/rocksdb/cache.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
 
@@ -48,6 +50,14 @@ METRIC_DEFINE_counter(server, vector_index_cache_remove,
                       "Vector index block bytes removed from cache",
                       yb::MetricUnit::kBytes,
                       "Number of bytes removed from vector index block cache");
+
+METRIC_DEFINE_event_stats(server, vector_index_cache_read_us,
+                          "Time to read vector index chunk", yb::MetricUnit::kMicroseconds,
+                          "Time (microseconds) that was spent reading index chunk.");
+
+METRIC_DEFINE_event_stats(server, vector_index_cache_take_wait_us,
+                          "Time to take wait vector index chunk", yb::MetricUnit::kMicroseconds,
+                          "Time (microseconds) that was spent waiting while taking index chunk.");
 
 namespace yb::hnsw {
 
@@ -185,163 +195,142 @@ BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
       read(METRIC_vector_index_read.Instantiate(entity)),
       add(METRIC_vector_index_cache_add.Instantiate(entity)),
       evict(METRIC_vector_index_cache_evict.Instantiate(entity)),
-      remove(METRIC_vector_index_cache_remove.Instantiate(entity)) {
+      remove(METRIC_vector_index_cache_remove.Instantiate(entity)),
+      read_us(METRIC_vector_index_cache_read_us.Instantiate(entity)),
+      take_wait_us(METRIC_vector_index_cache_read_us.Instantiate(entity)) {
 }
 
-struct CachedBlock : boost::intrusive::list_base_hook<> {
-  BlockCacheShard* shard;
-  size_t end;
+struct CachedBlock {
+  BlockCache* cache = nullptr;
+  Uuid block_id;
   size_t size;
-  // Guarded by BlockCacheShard mutex.
-  int64_t use_count;
-  std::atomic<const std::byte*> data{nullptr};
-  std::mutex load_mutex;
-  DataBlock content GUARDED_BY(load_mutex);
+  size_t end;
+  ScopedTrackedConsumption scoped_consumption;
 
-  Result<const std::byte*> Load(
-      RandomAccessFile& file, MemTracker& mem_tracker, BlockCacheMetrics& metrics) {
-    std::lock_guard lock(load_mutex);
-    auto result = data.load(std::memory_order_acquire);
-    if (result) {
+  std::mutex mutex;
+  size_t use_count GUARDED_BY(mutex) = 0;
+  BlockCacheHandle handle GUARDED_BY(mutex);
+  DataBlock content GUARDED_BY(mutex);
+  std::shared_future<Result<const std::byte*>> load_future GUARDED_BY(mutex);
+
+  void Init(BlockCache& cache_, size_t block_size, size_t block_end) {
+    cache = &cache_;
+    block_id = Uuid::Generate();
+    size = block_size;
+    end = block_end;
+    scoped_consumption = ScopedTrackedConsumption(cache->mem_tracker(), sizeof(*this));
+  }
+
+  void Init(BlockCache& cache_, DataBlock&& context_data, size_t block_end) {
+    Init(cache_, context_data.size, block_end);
+
+    DCHECK_GT(context_data.size, 0);
+    bool has_data;
+    {
+      std::lock_guard lock(mutex);
+      content = std::move(context_data);
+      has_data = content.data != nullptr;
+    }
+    if (has_data) {
+      cache->Insert(*this, false);
+    }
+  }
+
+  Result<const std::byte*> Take(RandomAccessFile& file) {
+    cache->metrics().query->Increment();
+
+    UniqueLock lock(mutex);
+    ++use_count;
+    if (content.data) {
+      cache->metrics().hit->Increment();
+      auto result = content.data.get();
+      auto need_handle = !handle && use_count == 1;
+      lock.unlock();
+      if (need_handle) {
+        auto new_handle = cache->Lookup(*this);
+        if (new_handle) {
+          lock.lock();
+          DCHECK(!handle);
+          handle = new_handle;
+        }
+      }
       return result;
     }
-    if (!content.empty()) {
-      // It could happen that block is in the process of eviction, in this case we could just
-      // restore data pointing to content instead of reloading it
-      data.store(result = content.data(), std::memory_order_release);
+    if (!load_future.valid()) {
+      std::promise<Result<const std::byte*>> promise;
+      load_future = promise.get_future();
+      lock.unlock();
+      auto result = Load(file);
+      promise.set_value(result);
       return result;
     }
-    mem_tracker.Consume(size);
-    content.resize(size);
-    Slice read_result;
-    RETURN_NOT_OK(file.Read(end - size, size, &read_result, content.data()));
-    RSTATUS_DCHECK_EQ(
-        read_result.size(), content.size(), Corruption,
-        Format("Wrong number of read bytes in block $0 - $1", end - size, size));
-    metrics.read->IncrementBy(read_result.size());
-    data.store(result = content.data(), std::memory_order_release);
+
+    auto future = load_future;
+    lock.unlock();
+
+    auto start = MonoTime::Now();
+    auto result = future.get();
+    cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
     return result;
   }
 
-  void Unload(MemTracker& mem_tracker) {
-    std::lock_guard lock(load_mutex);
-    if (data.load(std::memory_order_acquire)) {
-      // The Load was called during eviction, no need to unload data.
-      return;
-    }
-    content = {};
-    mem_tracker.Release(size);
-  }
-};
-
-class alignas(CACHELINE_SIZE) BlockCacheShard {
- public:
-  void Init(size_t capacity, BlockCache& block_cache) {
-    capacity_ = capacity;
-    block_cache_ = &block_cache;
-  }
-
-  Result<const std::byte*> Take(CachedBlock& block, RandomAccessFile& file) {
-    block_cache_->metrics().query->Increment();
+  void Release() {
+    BlockCacheHandle release_handle;
     {
-      std::lock_guard lock(mutex_);
-      ++block.use_count;
-      // Remove block from LRU while it is used.
-      if (block.is_linked()) {
-        DCHECK_EQ(block.use_count, 1);
-        RemoveBlockFromLRU(block);
-      }
-
-      auto data = block.data.load(std::memory_order_acquire);
-      if (data) {
-        block_cache_->metrics().hit->Increment();
-        return data;
-      }
-    }
-    return VERIFY_RESULT(
-        block.Load(file, *block_cache_->mem_tracker(), block_cache_->metrics()));
-  }
-
-  void Release(CachedBlock& block) {
-    boost::container::small_vector<CachedBlock*, 10> evicted_blocks;
-    {
-      std::lock_guard lock(mutex_);
-      DCHECK(!block.is_linked());
-      if (--block.use_count != 0) {
+      std::lock_guard lock(mutex);
+      if (--use_count != 0) {
         return;
       }
-      Evict(block.size, evicted_blocks);
-      block_cache_->metrics().add->IncrementBy(block.size);
-      consumption_ += block.size;
-      lru_.push_back(block);
+      release_handle = std::exchange(handle, {});
     }
-    size_t evicted_bytes = 0;
-    for (auto* evicted_block : evicted_blocks) {
-      evicted_block->Unload(*block_cache_->mem_tracker());
-      evicted_bytes += evicted_block->size;
-    }
-    if (evicted_bytes) {
-      block_cache_->metrics().evict->IncrementBy(evicted_bytes);
+    if (release_handle) {
+      cache->metrics().add->IncrementBy(size);
+      cache->Release(release_handle);
+    } else {
+      cache->metrics().evict->IncrementBy(size);
     }
   }
 
-  void Remove(CachedBlock& block) {
-    std::lock_guard lock(mutex_);
-    DCHECK_EQ(block.use_count, 0);
-    if (block.is_linked()) {
-      RemoveBlockFromLRU(block);
+  void Unload() {
+    {
+      std::lock_guard lock(mutex);
+      handle = {};
+      if (use_count != 0) {
+        return;
+      }
+      content.data.reset();
+      load_future = {};
     }
+    cache->metrics().evict->IncrementBy(size);
+  }
+
+  static void Delete(const Slice& key, void* value) {
+    static_cast<CachedBlock*>(value)->Unload();
   }
 
  private:
-  using Blocks = boost::intrusive::list<CachedBlock>;
+  Result<const std::byte*> Load(RandomAccessFile& file) {
+    auto start = MonoTime::Now();
+    std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
+    Slice read_result;
+    RETURN_NOT_OK(file.Read(end - size, size, &read_result, new_content.get()));
+    RSTATUS_DCHECK_EQ(
+        read_result.size(), size, Corruption,
+        Format("Wrong number of read bytes in block $0 - $1", end - size, size));
 
-  void RemoveBlockFromLRU(CachedBlock& block) REQUIRES(mutex_) {
-    block_cache_->metrics().remove->IncrementBy(block.size);
-    lru_.erase(lru_.iterator_to(block));
-    consumption_ -= block.size;
+    cache->metrics().read_us->Increment((MonoTime::Now() - start).ToMicroseconds());
+    cache->metrics().read->IncrementBy(size);
+    auto new_handle = cache->Insert(*this, true);
+    cache->metrics().remove->IncrementBy(size);
+
+    std::lock_guard lock(mutex);
+    DCHECK_GT(use_count, 0);
+    handle = new_handle;
+    content.size = size;
+    content.data = std::move(new_content);
+    return content.data.get();
   }
-
-  void Evict(
-      size_t space_required,
-      boost::container::small_vector_base<CachedBlock*>& evicted_blocks) REQUIRES(mutex_) {
-    space_required = std::min(space_required, capacity_);
-    auto it = lru_.begin();
-    while (consumption_ + space_required > capacity_ && it != lru_.end()) {
-      auto& block = *it;
-      ++it;
-      block.data.store(nullptr, std::memory_order_release);
-      lru_.erase(lru_.iterator_to(block));
-      consumption_ -= block.size;
-      evicted_blocks.push_back(&block);
-    }
-  }
-
-  size_t capacity_ = 0;
-  BlockCache* block_cache_ = nullptr;
-  std::mutex mutex_;
-  Blocks lru_ GUARDED_BY(mutex_);
-  size_t consumption_ GUARDED_BY(mutex_) = 0;
 };
-
-BlockCache::BlockCache(
-    Env& env, const MemTrackerPtr& mem_tracker, const MetricEntityPtr& metric_entity,
-    size_t capacity, size_t num_shard_bits)
-    : env_(env),
-      mem_tracker_(mem_tracker),
-      metrics_(std::make_unique<BlockCacheMetrics>(metric_entity)),
-      shards_mask_((1ULL << num_shard_bits) - 1),
-      shards_(std::make_unique<BlockCacheShard[]>(shards_mask_ + 1)) {
-  for (size_t i = 0; i <= shards_mask_; ++i) {
-    shards_[i].Init(capacity >> num_shard_bits, *this);
-  }
-}
-
-BlockCache::~BlockCache() = default;
-
-BlockCacheShard& BlockCache::NextShard() {
-  return shards_[(next_shard_++) & shards_mask_];
-}
 
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
   DataBlock buffer(
@@ -354,11 +343,11 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
   Serialize(header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
-    sum += block.size();
+    sum += block.size;
     writer.Append(sum);
   }
-  writer.Append(crc::Crc32c(buffer.data(), buffer.size() - writer.SpaceLeft()));
-  writer.Append<uint64_t>(buffer.size());
+  writer.Append(crc::Crc32c(buffer.data.get(), buffer.size - writer.SpaceLeft()));
+  writer.Append<uint64_t>(buffer.size);
   DCHECK_EQ(writer.SpaceLeft(), 0);
   return buffer;
 }
@@ -375,15 +364,8 @@ FileBlockCache::FileBlockCache(
   size_t index = 0;
   AllocateBlocks(blocks.size());
   for (auto& data : blocks) {
-    total_size += data.size();
-    auto& block = blocks_[index];
-    block.shard = &block_cache_.NextShard();
-    block.end = total_size;
-    block.size = data.size();
-    block.content = std::move(data);
-    block_cache.mem_tracker()->Consume(block.size);
-    block.use_count = 1;
-    block.shard->Release(block);
+    total_size += data.size;
+    blocks_[index].Init(block_cache_, std::move(data), total_size);
     ++index;
   }
   blocks.clear();
@@ -391,7 +373,7 @@ FileBlockCache::FileBlockCache(
 
 FileBlockCache::~FileBlockCache() {
   for (size_t i = 0; i != size_; ++i) {
-    blocks_[i].shard->Remove(blocks_[i]);
+    block_cache_.Erase(blocks_[i]);
   }
 }
 
@@ -432,23 +414,55 @@ Result<Header> FileBlockCache::Load() {
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
   for (size_t i = 0; i < size_; i++) {
-    blocks_[i].shard = &block_cache_.NextShard();
-    blocks_[i].end = reader.Read<uint64_t>();
-    blocks_[i].size = blocks_[i].end - prev_end;
-    blocks_[i].use_count = 0;
-    prev_end = blocks_[i].end;
+    auto new_end = reader.Read<uint64_t>();
+    blocks_[i].Init(block_cache_, new_end - prev_end, new_end);
+    prev_end = new_end;
   }
   return header;
 }
 
 Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  auto& block = blocks_[index];
-  return block.shard->Take(block, *file_);
+  return blocks_[index].Take(*file_);
 }
 
 void FileBlockCache::Release(size_t index) {
-  auto& block = blocks_[index];
-  block.shard->Release(block);
+  blocks_[index].Release();
+}
+
+BlockCache::BlockCache(
+    Env& env, const MemTrackerPtr& mem_tracker, const MetricEntityPtr& metric_entity,
+    rocksdb::Cache& block_cache)
+    : env_(env),
+      mem_tracker_(MemTracker::FindOrCreateTracker("vector_index_block_cache", mem_tracker)),
+      metadata_mem_tracker_(MemTracker::FindOrCreateTracker("metadata", mem_tracker_)),
+      metrics_(std::make_unique<BlockCacheMetrics>(metric_entity)),
+      block_cache_(block_cache) {
+}
+
+BlockCache::~BlockCache() = default;
+
+BlockCacheHandle BlockCache::Insert(CachedBlock& block, bool retain) {
+  rocksdb::Cache::Handle* result;
+  auto status = block_cache_.Insert(
+      block.block_id.AsSlice(), rocksdb::kInMultiTouchId, &block, block.size, &CachedBlock::Delete,
+      retain ? &result : nullptr);
+  if (!status.ok()) {
+    LOG_WITH_FUNC(WARNING) << "Failure: " << status;
+    return BlockCacheHandle{};
+  }
+  return BlockCacheHandle(result);
+}
+
+void BlockCache::Release(BlockCacheHandle handle) {
+  block_cache_.Release(static_cast<rocksdb::Cache::Handle*>(handle.handle_));
+}
+
+BlockCacheHandle BlockCache::Lookup(CachedBlock& block) {
+  return BlockCacheHandle(block_cache_.Lookup(block.block_id.AsSlice(), rocksdb::kInMultiTouchId));
+}
+
+void BlockCache::Erase(CachedBlock& block) {
+  block_cache_.Erase(block.block_id.AsSlice());
 }
 
 } // namespace yb::hnsw

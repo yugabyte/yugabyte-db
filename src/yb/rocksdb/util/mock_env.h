@@ -92,9 +92,10 @@ class MockEnv : public EnvWrapper {
   virtual Status GetTestDirectory(std::string* path) override;
 
   // Results of these can be affected by FakeSleepForMicroseconds()
-  virtual Status GetCurrentTime(int64_t* unix_time) override;
-  virtual uint64_t NowMicros() override;
-  virtual uint64_t NowNanos() override;
+  Status GetCurrentTime(int64_t* unix_time) override;
+  uint64_t NowMicros() override;
+  uint64_t NowNanos() override;
+  uint64_t NowCpuCycles() override;
 
   // Non-virtual functions, specific to MockEnv
   Status Truncate(const std::string& fname, size_t size);

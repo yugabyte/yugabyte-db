@@ -1,4 +1,4 @@
-CREATE OPERATOR CLASS __API_CATALOG_SCHEMA__.bson_rum_single_path_ops
+CREATE OPERATOR CLASS __API_OPCLASS_SCHEMA__.__EXTENSION_INDEX_OPCLASS__(__API_INDEX_PREFIX_NAME__, single_path_ops)
     DEFAULT FOR TYPE __CORE_SCHEMA__.bson using __EXTENSION_OBJECT__(_rum) AS
         OPERATOR        1       __API_CATALOG_SCHEMA__.@= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
         OPERATOR        2       __API_CATALOG_SCHEMA__.@> (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),

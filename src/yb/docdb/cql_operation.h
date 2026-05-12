@@ -29,17 +29,17 @@ namespace docdb {
 YB_STRONGLY_TYPED_BOOL(IsInsert);
 
 class QLWriteOperation :
-    public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
+    public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestMsg>,
     public DocExprExecutor {
  public:
-  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestMsg> request,
                    SchemaVersion schema_version,
                    DocReadContextPtr doc_read_context,
                    std::shared_ptr<qlexpr::IndexMap> index_map,
                    const std::shared_ptr<dockv::ReaderProjection>& unique_index_key_projection,
                    const TransactionOperationContext& txn_op_context);
 
-  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestMsg> request,
                    SchemaVersion schema_version,
                    DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const qlexpr::IndexMap> index_map,
@@ -49,7 +49,7 @@ class QLWriteOperation :
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  Status Init(QLResponsePB* response);
+  Status Init(QLResponseMsg* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
@@ -58,8 +58,12 @@ class QLWriteOperation :
 
   Status Apply(const DocOperationApplyData& data) override;
 
-  const QLWriteRequestPB& request() const { return request_; }
-  QLResponsePB* response() const { return response_; }
+  const QLWriteRequestMsg& request() const { return request_; }
+  QLResponseMsg* response() const { return response_; }
+
+  const ThreadSafeArenaPtr& index_arena() const {
+    return index_arena_;
+  }
 
   IndexRequests& index_requests() {
     return index_requests_;
@@ -71,7 +75,7 @@ class QLWriteOperation :
   MonoDelta request_ttl() const;
 
  private:
-  using JsonColumnMap = std::unordered_map<ColumnId, std::vector<const QLColumnValuePB*>>;
+  using JsonColumnMap = std::unordered_map<ColumnId, std::vector<const QLColumnValueMsg*>>;
   struct ApplyContext;
 
   Status ApplyForJsonOperators(
@@ -82,24 +86,20 @@ class QLWriteOperation :
     IsInsert is_insert,
     qlexpr::QLTableRow* current_row);
 
-  Status ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+  Status ApplyForSubscriptArgs(const QLColumnValueMsg& column_value,
                                const qlexpr::QLTableRow& current_row,
                                const ApplyContext& context,
                                const ColumnSchema& column,
                                ColumnId column_id);
 
-  Status ApplyForRegularColumns(const QLColumnValuePB& column_value,
+  Status ApplyForRegularColumns(const QLColumnValueMsg& column_value,
                                 const qlexpr::QLTableRow& current_row,
                                 const ApplyContext& context,
                                 const ColumnSchema& column,
                                 ColumnId column_id,
                                 qlexpr::QLTableRow* new_row);
 
-  void ClearResponse() override {
-    if (response_) {
-      response_->Clear();
-    }
-  }
+  void ClearResponse() override;
 
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
   Status InitializeKeys(bool hashed_key, bool primary_key);
@@ -125,10 +125,10 @@ class QLWriteOperation :
   Result<bool> HasDuplicateUniqueIndexValueBackward(
       const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data, const ReadHybridTime& read_time);
-  Result<HybridTime> FindOldestOverwrittenTimestamp(
-      IntentAwareIterator* iter, const dockv::SubDocKey& sub_doc_key,
-      HybridTime min_hybrid_time);
+      const DocOperationApplyData& data, const ReadHybridTime& read_time,
+      IntraTxnWriteId write_id = kMaxWriteId);
+  Result<DocHybridTime> FindOldestOverwrittenTimestamp(
+      IntentAwareIterator* iter, const dockv::SubDocKey& sub_doc_key, HybridTime min_hybrid_time);
 
   // Deletes an element (key/index) from a subscripted column.
   //
@@ -138,7 +138,7 @@ class QLWriteOperation :
   // column_id - the id of the subscripted column.
   Status DeleteSubscriptedColumnElement(
       const DocOperationApplyData& data, const ColumnSchema& column_schema,
-      const QLColumnValuePB& column_value, ColumnId column_id);
+      const QLColumnValueMsg& column_value, ColumnId column_id);
   Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadOperationData& read_operation_data);
 
@@ -159,7 +159,7 @@ class QLWriteOperation :
       const ApplyContext& apply_context,
       const ColumnSchema& column_schema,
       ColumnId column_id,
-      const QLValuePB& value,
+      const QLValueMsg& value,
       bfql::TSOpcode op_code);
 
   const SchemaVersion schema_version_;
@@ -179,8 +179,9 @@ class QLWriteOperation :
   std::optional<dockv::DocKey> pk_doc_key_;
   RefCntPrefix encoded_pk_doc_key_;
 
-  QLResponsePB* response_ = nullptr;
+  QLResponseMsg* response_ = nullptr;
 
+  ThreadSafeArenaPtr index_arena_;
   IndexRequests index_requests_;
 
   const TransactionOperationContext txn_op_context_;
@@ -203,12 +204,13 @@ class QLWriteOperation :
   bool liveness_column_exists_ = false;
 };
 
-Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
+Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     qlexpr::QLExprExecutor* expr_executor,
     bool index_has_write_permission,
     const qlexpr::QLTableRow& existing_row,
     const qlexpr::QLTableRow& new_row,
     const qlexpr::IndexInfo* index,
+    ThreadSafeArena& arena,
     IndexRequests* index_requests,
     bool* has_index_key_changed = nullptr,
     bool* index_pred_new_row = nullptr,
@@ -217,9 +219,10 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
 class QLReadOperation : public DocExprExecutor {
  public:
   QLReadOperation(
-      const QLReadRequestPB& request,
-      const TransactionOperationContext& txn_op_context)
-      : request_(request), txn_op_context_(txn_op_context) {}
+      std::reference_wrapper<const QLReadRequestMsg> request,
+      const TransactionOperationContext& txn_op_context,
+      QLResponseMsg* response = nullptr)
+      : request_(request), response_(response), txn_op_context_(txn_op_context) {}
 
   Status Execute(const YQLStorageIf& ql_storage,
                  const ReadOperationData& read_operation_data,
@@ -245,7 +248,7 @@ class QLReadOperation : public DocExprExecutor {
 
   Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
-  QLResponsePB& response() { return response_; }
+  QLResponseMsg& response() { return *DCHECK_NOTNULL(response_); }
 
  private:
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
@@ -256,9 +259,9 @@ class QLReadOperation : public DocExprExecutor {
                                    const size_t num_rows_skipped,
                                    const ReadHybridTime& read_time);
 
-  const QLReadRequestPB& request_;
+  const QLReadRequestMsg& request_;
+  QLResponseMsg* response_;
   const TransactionOperationContext txn_op_context_;
-  QLResponsePB response_;
 };
 
 }  // namespace docdb

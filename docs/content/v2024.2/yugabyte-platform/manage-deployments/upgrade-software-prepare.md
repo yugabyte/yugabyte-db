@@ -12,6 +12,24 @@ menu:
 type: docs
 ---
 
+## Upgrade limitations
+
+Before starting an upgrade, note the following: 
+
+- It is strongly recommended to upgrade to the latest minor version of every release.
+
+    For example, if you are upgrading from v2.20.2.0, and the latest release in the v2024.2 release series is v2024.2.8.0, then you should upgrade to v2024.2.8.0 (and not v2024.2.1.0 or v2024.2.0.0).
+
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+
+- Upgrades are not supported between preview and stable versions.
+
+## Verify software requirements for nodes
+
+Make sure the universe nodes meet the software requirements for running the version of YugabyteDB you are installing.
+
+Refer to [Software requirements for database nodes](../../prepare/server-nodes-software/).
+
 ## Upgrade the operating system
 
 If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
@@ -20,13 +38,17 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
 
-In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+In particular, cron-based universes are not supported in YugabyteDB Anywhere v2025.2 and later.
 
-However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
+To update your universes to use systemd:
+
+- If you are running YugabyteDB Anywhere v2024.2.2 or later, navigate to **Universe>Actions>Upgrade to Systemd**.
+
+- If you are running YugabyteDB Anywhere v2024.2.1 or earlier, [upgrade YugabyteDB Anywhere](../../upgrade/) to the latest version in the {{<release "2024.2">}} series, then navigate to **Universe>Actions>Upgrade to Systemd**.
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you can upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
 YugabyteDB Anywhere will attempt to automatically update universes. If it is unable to update a universe, make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by navigating to the universe and clicking **Actions>More>Install Node Agent**.
 
@@ -79,7 +101,7 @@ YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from 
 
 ### Upgrading from versions earlier than v2.18.2
 
-The YugabyteDB Anywhere Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Except for Day 0 tasks during initial installation, YugabyteDB Anywhere no longer uses SSH and SCP to manage nodes; instead, YugabyteDB Anywhere connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](/preview/faq/yugabyte-platform/#node-agent).
+The YugabyteDB Anywhere Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Except for Day 0 tasks during initial installation, YugabyteDB Anywhere no longer uses SSH and SCP to manage nodes; instead, YugabyteDB Anywhere connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](/stable/faq/yugabyte-platform/#node-agent).
 
 **Impacts**
 

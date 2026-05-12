@@ -7,29 +7,25 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { ReactElement } from 'react';
-import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
-import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
-import { YCQL_FIELD } from '../ycql-settings/YCQLSettingsField';
+import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
+import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
+import { YSQL_AUTH_FIELD, YSQL_FIELD, YSQL_CONFIRM_PWD, YSQL_PASSWORD_FIELD } from '../FieldNames';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
-
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
-
 interface YSQLProps {
   disabled?: boolean;
 }
-//need to integrate enforceAuth runtime flag
+//TODO :need to integrate enforceAuth runtime flag
 
-export const YSQL_FIELD = 'ysql.enable';
-const YSQL_AUTH_FIELD = 'ysql.enable_auth';
-const YSQL_PASSWORD_FIELD = 'ysql.password';
-const YSQL_CONFIRM_PWD = 'ysql.confirm_pwd';
-
-export const YSQLField = (): ReactElement => {
+export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
   const { control } = useFormContext<DatabaseSettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings'
@@ -38,7 +34,6 @@ export const YSQLField = (): ReactElement => {
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
   const ysqlAuthEnabled = useWatch({ name: YSQL_AUTH_FIELD });
-  const ycqlEnabled = useWatch({ name: YCQL_FIELD });
 
   return (
     <FieldContainer>
@@ -46,19 +41,18 @@ export const YSQLField = (): ReactElement => {
         sx={{ display: 'flex', flexDirection: 'row', padding: '16px 24px', alignItems: 'center' }}
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
-          <YBTooltip
-            title={!ycqlEnabled && !ysqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
-            placement="top-start"
-          >
-            <div>
-              <YBToggleField
-                name={YSQL_FIELD}
-                control={control}
-                label={t('ysqlSettings.toggleLabel')}
-                dataTestId="ysql-settings-field"
-              />
-            </div>
-          </YBTooltip>
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '4px', alignItems: 'center' }}>
+            <YBToggleField
+              name={YSQL_FIELD}
+              control={control}
+              label={t('ysqlSettings.toggleLabel')}
+              dataTestId="ysql-settings-field"
+              disabled={disabled}
+            />
+            <span>
+              <InfoIcon />
+            </span>
+          </div>
         </Box>
       </Box>
       {ysqlEnabled && (
@@ -67,12 +61,22 @@ export const YSQLField = (): ReactElement => {
             display: 'flex',
             flexDirection: 'column',
             borderTop: '1px solid #D7DEE4',
-            padding: '16px 24px 32px 32px'
+            padding: '16px 24px'
           }}
         >
-          <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-            <NextLineIcon />
-            <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '16px',
+              marginBottom: '-5px'
+            }}
+          >
+            <span>
+              <NextLineIcon />
+            </span>
+            <Box sx={{ mr: 1 }}>
               <YBToggleField
                 name={YSQL_AUTH_FIELD}
                 control={control}
@@ -82,7 +86,14 @@ export const YSQLField = (): ReactElement => {
             </Box>
           </Box>
           {ysqlAuthEnabled && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 4, pl: 5 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '24px',
+                padding: '16px 0px 16px 40px'
+              }}
+            >
               <YBPasswordField
                 name={YSQL_PASSWORD_FIELD}
                 control={control}
@@ -90,15 +101,13 @@ export const YSQLField = (): ReactElement => {
                 label={t('ysqlSettings.authPwd')}
                 dataTestId="ysql-settings-auth-pwd-field"
               />
-              <Box sx={{ display: 'flex', flexDirection: 'column', mt: 3, width: '100%' }}>
-                <YBPasswordField
-                  name={YSQL_CONFIRM_PWD}
-                  control={control}
-                  placeholder={t('ysqlSettings.authConfirmPwd')}
-                  label={t('ysqlSettings.authConfirmPwd')}
-                  dataTestId="ysql-settings-auth-confirm-pwd-field"
-                />
-              </Box>
+              <YBPasswordField
+                name={YSQL_CONFIRM_PWD}
+                control={control}
+                placeholder={t('ysqlSettings.authConfirmPwd')}
+                label={t('ysqlSettings.authConfirmPwd')}
+                dataTestId="ysql-settings-auth-confirm-pwd-field"
+              />
             </Box>
           )}
         </Box>

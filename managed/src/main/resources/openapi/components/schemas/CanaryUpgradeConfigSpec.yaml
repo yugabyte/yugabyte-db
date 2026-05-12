@@ -1,0 +1,26 @@
+title: CanaryUpgradeConfigSpec
+description: |
+  Configuration for canary upgrade. Defines AZ order and pause points for
+  primary and optional read-replica clusters. Part of UniverseSoftwareUpgradeStart.
+type: object
+properties:
+  pause_after_masters:
+    description: Whether to pause after all masters are upgraded
+    type: boolean
+    default: false
+  primary_cluster_az_steps:
+    description: |
+      Primary cluster: ordered list of AZ upgrade steps. List order = upgrade order.
+      Each step can optionally pause after tserver upgrade. Null = use default AZ order.
+    type: array
+    items:
+      $ref: "./SoftwareUpgradeAZStep.yaml"
+  read_replica_cluster_az_steps:
+    description: |
+      Read replica cluster: ordered list of AZ upgrade steps. Only applicable if
+      universe has read replica clusters. Null = use default AZ order.
+    type: array
+    items:
+      $ref: "./SoftwareUpgradeAZStep.yaml"
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.1.0.0-b0

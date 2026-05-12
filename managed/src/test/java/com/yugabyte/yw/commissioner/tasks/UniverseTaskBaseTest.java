@@ -38,6 +38,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -89,6 +91,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   public void setup() {
     when(baseTaskDependencies.getTaskExecutor())
         .thenReturn(app.injector().instanceOf(TaskExecutor.class));
+    when(baseTaskDependencies.getConfGetter())
+        .thenReturn(app.injector().instanceOf(RuntimeConfGetter.class));
     when(baseTaskDependencies.getExecutorFactory()).thenReturn(platformExecutorFactory);
     when(platformExecutorFactory.createExecutor(any(), any())).thenReturn(executorService);
     universeTaskBase = new TestUniverseTaskBase();
@@ -319,7 +323,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universe
         .getUniverseDetails()
         .upsertCluster(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            null,
+            placementInfo2,
+            cluster2);
     setupCluster(universe, nodes2, cluster2);
 
     // Test retrieve all nodes from lb1
@@ -402,7 +409,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universe
         .getUniverseDetails()
         .upsertCluster(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            null,
+            placementInfo2,
+            cluster2);
     setupCluster(universe, nodes2, cluster2);
 
     // Test
@@ -475,6 +485,58 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     assertTrue(CommunicationPorts.hasDuplicatePorts(communicationPorts));
   }
 
+  private Universe setupUniverseForSleepTimeTest() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "code", "name", "image");
+    List<NodeDetails> nodes = setupNodeDetails(CloudType.aws, null);
+    PlacementInfo placementInfo =
+        setupPlacementInfo(
+            provider.getUuid(), region, nodes, ImmutableList.of("lb1", "lb1", "lb1"));
+    return setupUniverse(CloudType.aws, customer, placementInfo);
+  }
+
+  @Test
+  public void testGetSleepTimeForProcessUsesRuntimeConfigWhenTaskParamsUnset() {
+    Universe universe = setupUniverseForSleepTimeTest();
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
+
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.sleepAfterTServerRestartMillis = null;
+    universeTaskBase.setTaskParams(params);
+
+    assertEquals(1234, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.MASTER));
+    assertEquals(
+        2345, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.TSERVER));
+  }
+
+  @Test
+  public void testGetSleepTimeForProcessPrefersExplicitTaskParams() {
+    Universe universe = setupUniverseForSleepTimeTest();
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
+
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.sleepAfterMasterRestartMillis = 3456;
+    params.sleepAfterTServerRestartMillis = 4567;
+    universeTaskBase.setTaskParams(params);
+
+    assertEquals(3456, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.MASTER));
+    assertEquals(
+        4567, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.TSERVER));
+  }
+
   private class TestUniverseTaskBase extends UniverseTaskBase {
     private final RunnableTask runnableTask;
 
@@ -487,6 +549,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     @Override
     protected RunnableTask getRunnableTask() {
       return runnableTask;
+    }
+
+    public void setTaskParams(UniverseTaskParams params) {
+      taskParams = params;
     }
 
     @Override

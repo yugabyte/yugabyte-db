@@ -27,8 +27,10 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
+#include <string_view>
 
 #include <boost/intrusive_ptr.hpp>
 
@@ -68,6 +70,10 @@
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
 #define RETURN_NOT_OK_SET_CODE  YB_RETURN_NOT_OK_SET_CODE
 
+// Return the given status if it is not OK, but first clone it and prepend the caller name.
+// This macro helps to identify the exact place of failure for the widely used expression.
+#define RETURN_NOT_OK_PREPEND_FUNC(s) RETURN_NOT_OK_PREPEND((s), __func__)
+
 extern "C" {
 
 struct YbcStatusStruct;
@@ -81,7 +87,6 @@ class Slice;
 YB_STRONGLY_TYPED_BOOL(AddRef);
 
 class StatusErrorCode;
-struct StatusCategoryDescription;
 
 class NODISCARD_CLASS Status;
 
@@ -93,6 +98,13 @@ class UnsafeStatus {
  private:
   friend class Status;
   void* state_ = nullptr;
+};
+
+struct StatusCategoryDescription {
+  uint8_t id{0};
+  std::string_view name;
+  std::function<size_t(const uint8_t*)> decode_size;
+  std::function<std::string(const uint8_t*)> to_string;
 };
 
 class Status {
@@ -232,7 +244,7 @@ class Status {
 
   static void RegisterCategory(const StatusCategoryDescription& description);
 
-  static const std::string& CategoryName(uint8_t category);
+  static std::string_view CategoryName(uint8_t category);
 
   // Adopt status that was previously exported to C interface.
   explicit Status(YbcStatusStruct* state, AddRef add_ref);

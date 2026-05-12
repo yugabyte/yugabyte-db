@@ -561,7 +561,7 @@ explain (costs off) select * from nv_parent where d between '2009-08-01'::date a
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
    ->  Seq Scan on nv_child_2010 nv_parent_2
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_3
+   ->  Seq Scan on nv_child_2009 nv_parent_4
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
 (7 rows)
 
@@ -1419,10 +1419,10 @@ comment on column atacc1.a is 'testing';
 ERROR:  column "a" of relation "atacc1" does not exist
 comment on column atacc1."........pg.dropped.1........" is 'testing';
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
-/* YB: set storage for column not supported #1124
 alter table atacc1 alter a set storage plain;
+ERROR:  column "a" of relation "atacc1" does not exist
 alter table atacc1 alter "........pg.dropped.1........" set storage plain;
-*/ -- YB
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
 alter table atacc1 alter a set statistics 0;
 ERROR:  column "a" of relation "atacc1" does not exist
 alter table atacc1 alter "........pg.dropped.1........" set statistics 0;
@@ -1981,9 +1981,6 @@ drop table another;
 begin;
 create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
 alter table skip_wal_skip_rewrite_index alter c type varchar(20);
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 commit;
 -- We disallow changing table's row type if it's used for storage
 create table at_tab1 (a int, b text);
@@ -2127,6 +2124,8 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 
 alter table at_partitioned alter column name type varchar(127);
 -- Note: these tests currently show the wrong behavior for comments :-(
+-- YB: In YB, the child indexes' comments are actually preserved, since the
+-- indexes were reused. We diverge from PG here.
 select relname,
   c.oid = oldoid as orig_oid,
   case relfilenode
@@ -2139,23 +2138,23 @@ select relname,
   from pg_class c left join old_oids using (relname)
   where relname like 'at_partitioned%'
   order by relname;
-           relname            | orig_oid | storage |     desc     
-------------------------------+----------+---------+--------------
+           relname            | orig_oid | storage |     desc      
+------------------------------+----------+---------+---------------
  at_partitioned               | t        | own     | 
  at_partitioned_0             | t        | own     | 
- at_partitioned_0_id_name_key | f        | own     | parent index
+ at_partitioned_0_id_name_key | t        | own     | child 0 index
  at_partitioned_1             | t        | own     | 
- at_partitioned_1_id_name_key | f        | own     | parent index
- at_partitioned_id_name_key   | f        | own     | parent index
+ at_partitioned_1_id_name_key | t        | own     | child 1 index
+ at_partitioned_id_name_key   | t        | own     | parent index
 (6 rows)
 
 select conname, obj_description(oid, 'pg_constraint') as desc
   from pg_constraint where conname like 'at_partitioned%'
   order by conname;
-           conname            |       desc        
-------------------------------+-------------------
- at_partitioned_0_id_name_key | 
- at_partitioned_1_id_name_key | 
+           conname            |        desc        
+------------------------------+--------------------
+ at_partitioned_0_id_name_key | child 0 constraint
+ at_partitioned_1_id_name_key | child 1 constraint
  at_partitioned_id_name_key   | parent constraint
 (3 rows)
 
@@ -2177,25 +2176,70 @@ alter table recur1 add column f2 int;
 alter table recur1 alter column f2 type recur2; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
 -- SET STORAGE may need to add a TOAST table
-/* YB: storage semantics does not match PG
-create table test_storage (a text);
+create temp table test_storage (a text); -- YB use temp tables instead of regular tables
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
+ has_toast_table 
+-----------------
+ t
+(1 row)
+
 alter table test_storage alter a set storage plain;
 -- rewrite table to remove its TOAST table; need a non-constant column default
 alter table test_storage add b int default random()::int;
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
+ has_toast_table 
+-----------------
+ f
+(1 row)
+
 alter table test_storage alter a set storage extended; -- re-add TOAST table
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
+ has_toast_table 
+-----------------
+ t
+(1 row)
 
 -- test that SET STORAGE propagates to index correctly
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
+select current_setting('data_directory') || 'describe.out' as desc_output_file -- YB remove temp table schema name UUID
+\gset
+\o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage
+\o \\ -- YB remove temp table schema name UUID
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+                                            regexp_replace                                             
+-------------------------------------------------------------------------------------------------------
+                    Table "pg_temp_x.test_storage"                                                    +
+  Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description +
+ --------+---------+-----------+----------+-------------------+----------+--------------+-------------+
+  a      | text    |           |          |                   | external |              |             +
+  b      | integer |           |          | random()::integer | plain    |              |             +
+ Indexes:                                                                                             +
+     "test_storage_idx" btree (b ASC, a ASC)                                                          +
+                                                                                                      +
+ 
+(1 row)
+
+\o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage_idx
-*/ -- YB
+\o \\ -- YB remove temp table schema name UUID
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+                          regexp_replace                          
+------------------------------------------------------------------
+ Index "pg_temp_x.test_storage_idx"                              +
+  Column |  Type   | Key? | Definition | Storage  | Stats target +
+ --------+---------+------+------------+----------+--------------+
+  b      | integer | yes  | b          | plain    |              +
+  a      | text    | yes  | a          | external |              +
+ btree, for table "pg_temp_x.test_storage"                       +
+                                                                 +
+ 
+(1 row)
+
 -- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
 CREATE TABLE test_inh_check (a float check (a > 10.2), b float);
 CREATE TABLE test_inh_check_child() INHERITS(test_inh_check);
@@ -2677,7 +2721,7 @@ select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
 begin; alter table alterlock set (fillfactor = 100);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2685,7 +2729,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock reset (fillfactor);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2693,7 +2737,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock set (toast.autovacuum_enabled = off);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2701,7 +2745,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock set (autovacuum_enabled = off);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2718,7 +2762,8 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 rollback;
 -- test that mixing options with different lock levels works as expected
 begin; alter table alterlock set (autovacuum_enabled = off, fillfactor = 80);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2726,12 +2771,12 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock alter column f2 set storage extended;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: alter table alterlock alter column f2 set storage extended;
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode 
+---------+--------------
+(0 rows)
+
 rollback;
 -- TODO(jason): uncomment when doing issue #9106
 -- begin; alter table alterlock alter column f2 set default 'x';
@@ -2929,9 +2974,6 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
@@ -2973,9 +3015,6 @@ COMMENT ON INDEX comment_test_child_fk IS 'Index backing the FOREIGN KEY of comm
 COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KEY constraint of comment_test_child';
 -- Change column type of parent
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
 DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.

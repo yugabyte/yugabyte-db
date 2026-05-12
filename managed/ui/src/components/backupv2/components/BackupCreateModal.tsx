@@ -7,8 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useMemo, useState } from 'react';
-import { FC } from 'react';
+import React, { FC, useMemo, useState } from 'react';
 import { YBModalForm } from '../../common/forms';
 import * as Yup from 'yup';
 import { Col, Row } from 'react-bootstrap';
@@ -35,7 +34,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import Bulb from '../../universes/images/bulb.svg';
+import Bulb from '../../universes/images/bulb.svg?img';
 import { toast } from 'react-toastify';
 import { createBackup, editBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
@@ -58,7 +57,7 @@ import { handleCACertErrMsg } from '../../customCACerts';
 import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import './BackupCreateModal.scss';
 
-import Close from '../../universes/images/close.svg';
+import Close from '../../universes/images/close.svg?img';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -173,7 +172,8 @@ const initialValues = {
   incremental_backup_frequency: 1,
   incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1],
   isTableByTableBackup: false,
-  useTablespaces: false
+  useTablespaces: false,
+  useRoles: false
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -259,9 +259,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Backup is in progress. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -315,9 +317,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Creating schedule policy. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -827,6 +831,25 @@ function BackupConfigurationForm({
           </Row>
         )}
 
+      {values['api_type'].value === BACKUP_API_TYPES.YSQL && (
+        <Row>
+          <Col lg={8} className="no-padding tablespaces">
+            <Row>
+              <Field
+                name="useRoles"
+                component={YBCheckBox}
+                disabled={isEditMode || isIncrementalBackup}
+                checkState={values['useRoles']}
+              />
+              {'Include roles and grants'}
+            </Row>
+            <div className="tablespaces-subText">
+              Back up roles and grants to preserve database access controls after restore.
+            </div>
+          </Col>
+        </Row>
+      )}
+
       {values['api_type'].value === BACKUP_API_TYPES.YSQL &&
         useTablespacesByDefault?.value === 'false' &&
         isYbcEnabledinCurrentUniverse && (
@@ -890,6 +913,7 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
+
       {isScheduledBackup && !isEditBackupMode && (
         <Row>
           <div>Set backup intervals</div>

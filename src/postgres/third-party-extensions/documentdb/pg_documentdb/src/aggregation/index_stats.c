@@ -72,9 +72,10 @@ command_index_stats_aggregation(PG_FUNCTION_ARGS)
 	if (collection->viewDefinition != NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
-						errmsg("Namespace %s.%s is a view, not a collection",
-							   TextDatumGetCString(databaseName),
-							   TextDatumGetCString(collectionName))));
+						errmsg(
+							"The namespace %s.%s refers to a view object rather than a collection",
+							TextDatumGetCString(databaseName),
+							TextDatumGetCString(collectionName))));
 	}
 
 	IndexStatsCoordinator(databaseName, collectionName, collection, tupleStore,
@@ -136,7 +137,9 @@ IndexStatsWorker(void *fcinfoPointer)
 	if (collection == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Collection not found")));
+						errmsg("Collection '%s.%s' does not exist",
+							   TextDatumGetCString(databaseName),
+							   TextDatumGetCString(collectionName))));
 	}
 
 	/* First step, get the relevant shards on this node (We're already in the query worker) */
@@ -221,13 +224,13 @@ IndexStatsWorker(void *fcinfoPointer)
 				MemoryContext spiContext = MemoryContextSwitchTo(priorMemoryContext);
 
 				bool useLibPq = false;
-				const char *mongoIndexName = ExtensionIndexOidGetIndexName(indexOid,
-																		   useLibPq);
-				if (mongoIndexName != NULL)
+				const char *collectionIndexName = ExtensionIndexOidGetIndexName(indexOid,
+																				useLibPq);
+				if (collectionIndexName != NULL)
 				{
 					pgbsonelement element = { 0 };
-					element.path = mongoIndexName;
-					element.pathLength = strlen(mongoIndexName);
+					element.path = collectionIndexName;
+					element.pathLength = strlen(collectionIndexName);
 					element.bsonValue.value_type = BSON_TYPE_INT64;
 					element.bsonValue.value.v_int64 = indexAccesses;
 
@@ -331,7 +334,7 @@ ParseWorkerResults(List *workerResults)
 
 /*
  * This takes the output from each worker and creates an aggregated view
- * which dumps one row per index in the Mongo compatible format
+ * which dumps one row per index in the wire compatible format
  */
 static void
 MergeWorkerResults(MongoCollection *collection, List *workerResults,

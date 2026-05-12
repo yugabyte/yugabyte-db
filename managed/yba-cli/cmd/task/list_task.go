@@ -34,16 +34,10 @@ var listTaskCmd = &cobra.Command{
 		universeUUID := ""
 		isUniverseUUIDPresent := false
 
-		if len(strings.TrimSpace(universeName)) != 0 {
+		if !util.IsEmptyString(universeName) {
 			r, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"Task",
-					"List - List Universes",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Task", "List - List Universes")
 			}
 			if len(r) < 1 {
 				if util.IsOutputType(formatter.TableFormatKey) {
@@ -58,15 +52,14 @@ var listTaskCmd = &cobra.Command{
 
 		listTasksRequest := authAPI.TasksList()
 
-		if len(strings.TrimSpace(universeUUID)) != 0 {
+		if !util.IsEmptyString(universeUUID) {
 			isUniverseUUIDPresent = true
 			listTasksRequest = listTasksRequest.UUUID(universeUUID)
 		}
 
 		r, response, err := listTasksRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Task", "List")
 		}
 		// filter by uuid
 		taskUUID, err := cmd.Flags().GetString("uuid")

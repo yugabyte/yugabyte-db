@@ -17,11 +17,17 @@
 
 #include "yb/consensus/consensus.messages.h"
 
+#include "yb/common/transaction.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
+
+DEFINE_test_flag(bool, drop_commit_response, false,
+    "When set, after a COMMITTED UpdateTransaction is successfully Raft-replicated, "
+    "return an error to the RPC caller to simulate a lost commit response.");
 
 using namespace std::literals;
 
@@ -72,7 +78,13 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
       .op_id = op_id(),
       .hybrid_time = hybrid_time()
   };
-  return tablet->transaction_coordinator()->ProcessReplicated(data);
+  RETURN_NOT_OK(tablet->transaction_coordinator()->ProcessReplicated(data));
+  if (PREDICT_FALSE(FLAGS_TEST_drop_commit_response) &&
+      request()->status() == TransactionStatus::COMMITTED) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_drop_commit_response) = false;
+    *complete_status = STATUS(IllegalState, "TEST: simulated lost commit response");
+  }
+  return Status::OK();
 }
 
 Status UpdateTxnOperation::DoAborted(const Status& status) {

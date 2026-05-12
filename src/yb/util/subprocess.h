@@ -34,6 +34,7 @@
 #include <signal.h>
 #include <spawn.h>
 
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <string>
@@ -41,12 +42,39 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
 
+namespace google {
+class LogMessage;
+}
+
 namespace yb {
+
+class Thread;
+
+class LogTailerThread {
+ public:
+  LogTailerThread(
+      const std::string& process_name, const int child_fd, int severity);
+
+  ~LogTailerThread();
+
+ private:
+  void Run(const int child_fd);
+
+  std::string SeverityStr() const;
+
+ private:
+  std::atomic<bool> stopped_{false};
+  const std::string process_name_;
+  const int severity_;
+  scoped_refptr<Thread> thread_;
+};
+
 namespace util {
 
 // Handle and log the status code from waitpid().
@@ -206,9 +234,6 @@ class Subprocess {
   // Issues Start() then Wait() and collects the desired streams from the child process
   // into the output parameter(s).
   Status Call(std::string* output, std::string* error = nullptr);
-
-  // Writes pid to cgroup specified by path
-  void AddPIDToCGroup(const std::string& path, pid_t pid);
 
  private:
 

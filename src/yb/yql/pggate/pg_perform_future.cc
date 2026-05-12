@@ -18,6 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 
 namespace yb::pggate {
@@ -72,9 +73,14 @@ Result<PerformFuture::Data> PerformFuture::Get(PgSession& session) {
   auto result = future.Get();
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session.TrySetCatalogReadPoint(result.catalog_read_time);
-  return Data{
-      .response = std::move(result.response),
-      .used_in_txn_limit = result.used_in_txn_limit};
+  auto& metrics = session.metrics();
+  for (const auto& op : result.operations) {
+    const auto* response = op->response();
+    if (response && response->has_metrics()) {
+      metrics.RecordRequestMetrics(response->metrics(), op->is_read());
+    }
+  }
+  return Data{std::move(result.response), result.used_in_txn_limit};
 }
 
 } // namespace yb::pggate

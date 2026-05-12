@@ -37,15 +37,15 @@ SELECT count(*) FROM documentdb_api.collection('collection_management','nonexist
 
 -- SELECT * from a non-existing collection
 SELECT * FROM documentdb_api.collection('collection_management','nonexistent');
- shard_key_value | object_id | document | creation_time 
------------------+-----------+----------+---------------
+ shard_key_value | object_id | document 
+-----------------+-----------+----------
 (0 rows)
 
 -- EXPLAIN of querying a non-existing collection
 EXPLAIN SELECT * FROM documentdb_api.collection('collection_management','nonexistent');
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
- Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=80)
+ Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=72)
 (1 row)
 
 -- try to rename to an already existing name
@@ -196,7 +196,76 @@ EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count'
 -- SELECT change_stream_response->>'ns' as ns, change_stream_response->>'operationType' as operation_type FROM documentdb_data.changes WHERE change_stream_response @@ '{"ns": { "$eq": {"db": "db_collection_management", "coll": "change_feed_collection2"}}}' order by operation_type;
 -- validate collection name for empty
 SELECT documentdb_api.create_collection('db', '');
-ERROR:  Invalid namespace specified 'db.'
+ERROR:  The specified namespace provided 'db.' is invalid.
 CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
 SELECT documentdb_api.find_and_modify('', '{"findAndModify": "", "query": {"a": 1000}, "remove": 0.1, "sort": {"b": -1}}');
-ERROR:  Invalid empty namespace specified
+ERROR:  An invalid and empty namespace has been specified
+-- test documentdb_api.collection()
+-- create/ insert into new collection
+SELECT documentdb_api.insert_one('db','new_coll',' { "_id" :  1, "b" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+\d+ documentdb_data.documents_1909;
+                                     Table "documentdb_data.documents_1909"
+     Column      |         Type         | Collation | Nullable | Default | Storage  | Stats target | Description 
+-----------------+----------------------+-----------+----------+---------+----------+--------------+-------------
+ shard_key_value | bigint               |           | not null |         | plain    |              | 
+ object_id       | documentdb_core.bson |           | not null |         | extended |              | 
+ document        | documentdb_core.bson |           | not null |         | extended |              | 
+Indexes:
+    "collection_pk_1909" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '1909'::bigint)
+
+SELECT * FROM documentdb_api.collection('db','new_coll');
+ shard_key_value |            object_id            |                             document                             
+-----------------+---------------------------------+------------------------------------------------------------------
+            1909 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT document, shard_key_value FROM documentdb_api.collection('db','new_coll');
+                             document                             | shard_key_value 
+------------------------------------------------------------------+-----------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } } |            1909
+(1 row)
+
+-- create/ insert into Lagacy collection
+BEGIN;
+SET LOCAL documentdb.enabledatatablewithoutcreationtime = off;
+SELECT documentdb_api.insert_one('db','lagacy_coll',' { "_id" :  1, "b" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+\d+ documentdb_data.documents_1910;
+                                       Table "documentdb_data.documents_1910"
+     Column      |           Type           | Collation | Nullable | Default | Storage  | Stats target | Description 
+-----------------+--------------------------+-----------+----------+---------+----------+--------------+-------------
+ shard_key_value | bigint                   |           | not null |         | plain    |              | 
+ object_id       | documentdb_core.bson     |           | not null |         | extended |              | 
+ document        | documentdb_core.bson     |           | not null |         | extended |              | 
+ creation_time   | timestamp with time zone |           |          |         | plain    |              | 
+Indexes:
+    "collection_pk_1910" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '1910'::bigint)
+
+SELECT * FROM documentdb_api.collection('db','lagacy_coll');
+ shard_key_value |            object_id            |                             document                             
+-----------------+---------------------------------+------------------------------------------------------------------
+            1910 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT document, shard_key_value FROM documentdb_api.collection('db','lagacy_coll');
+                             document                             | shard_key_value 
+------------------------------------------------------------------+-----------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } } |            1910
+(1 row)
+
+ROLLBACK;

@@ -18,31 +18,41 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/clone/external_functions.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_writer.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/rpc_controller.h"
 
+#include "yb/tablet/tablet.h"
+
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
@@ -50,12 +60,13 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_RUNTIME_bool(enable_db_clone, false, "Enable DB cloning.");
+DEFINE_RUNTIME_AUTO_bool(enable_db_clone, kLocalPersisted, false, true, "Enable DB cloning.");
 TAG_FLAG(enable_db_clone, advanced);
 
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DEFINE_test_flag(bool, fail_clone_pg_schema, false, "Fail clone pg schema operation for testing");
-DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail StartTabletsCloning for testing");
+DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail ImportSnapshotAndStartTabletsCloning for "
+    "testing");
 
 namespace yb {
 namespace master {
@@ -95,6 +106,11 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
         restoration_id, TxnSnapshotId::Nil(), resp);
   }
 
+  Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) override {
+    return master_->snapshot_coordinator().CheckForwardRestoreDisallowed(schedule_id, restore_at);
+  }
+
   // Catalog manager.
   Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override {
     return catalog_manager_->GetTabletInfo(tablet_id);
@@ -119,7 +135,8 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
       AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline) override {
     auto task = std::make_shared<AsyncClonePgSchema>(
         master_, catalog_manager_->AsyncTaskPool(), ts_uuid, source_db_name,
-        target_db_name, restore_ht, pg_source_owner, pg_target_owner, callback, deadline);
+        target_db_name, restore_ht, pg_source_owner, pg_target_owner, std::move(callback),
+        deadline);
     return catalog_manager_->ScheduleTask(task);
   }
 
@@ -151,7 +168,7 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
     return catalog_manager_->DoCreateSnapshot(req, resp, deadline, epoch);
   }
 
-  Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  Result<CatalogManagerIf::CloneSnapshotInfo>
   GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) override {
@@ -176,6 +193,59 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
 
   TSDescriptorVector GetTservers() override {
     return catalog_manager_->GetAllLiveNotBlacklistedTServers();
+  }
+
+  Result<BlacklistSet> GetBlacklist() override {
+    return catalog_manager_->BlacklistSetFromPB();
+  }
+
+  Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time) override {
+    return sys_catalog_->CountPgYbMigrationRows(database_oid, read_time);
+  }
+
+  Result<std::optional<YsqlMajorCatalogUpgradeInfoPB>> GetYsqlMajorCatalogUpgradeInfoAt(
+      std::optional<std::reference_wrapper<const ReadHybridTime>> read_time) override {
+    if (!read_time) {
+      return master_->ysql_manager().GetYsqlCatalogConfig().GetMajorCatalogUpgradePB();
+    }
+    auto tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+    auto doc_read_context = tablet->GetDocReadContext();
+    const auto& schema = doc_read_context->schema();
+    dockv::ReaderProjection projection(schema);
+    auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+        projection, read_time.value(), /* table_id */ "", /* deadline */ CoarseTimePoint::max(),
+        tablet::AllowBootstrappingState::kTrue));
+    auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
+
+    std::optional<YsqlMajorCatalogUpgradeInfoPB> result;
+    // SYS_CONFIG is the type used for catalog entities that store cluster wide metadata. The
+    // corresponding proto message schema is SysConfigEntryPB. The proto schema uses oneof to define
+    // different types of config information. Here we want the SysYSQLCatalogConfigEntryPB proto,
+    // which stores the status of any YSQL major upgrade in progress.
+    RETURN_NOT_OK(EnumerateSysCatalog(
+        doc_iter.get(), schema, SysRowEntryType::SYS_CONFIG,
+        [&](const Slice& id, const Slice& data) -> Status {
+          if (id.ToBuffer() != kYsqlCatalogConfigType) {
+            return Status::OK();
+          }
+          auto config =
+              VERIFY_RESULT(pb_util::ParseFromSlice<SysConfigEntryPB>(data));
+          if (config.has_ysql_catalog_config() &&
+              config.ysql_catalog_config().has_ysql_major_catalog_upgrade_info()) {
+            result = config.ysql_catalog_config()
+              .ysql_major_catalog_upgrade_info();
+          }
+          return Status::OK();
+        }));
+
+    // If the config entry doesn't exist at this read time (e.g. predates its creation), treat
+    // it as DONE, consistent with YsqlCatalogConfig::GetMajorCatalogUpgradeState().
+    return result;
+  }
+
+  bool IsMajorYsqlUpgradeInProgress() override {
+    return master_->ysql_manager().IsMajorUpgradeInProgress();
   }
 
   // Sys catalog.
@@ -268,7 +338,7 @@ Status CloneStateManager::CloneNamespace(
 
 Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
     const NamespaceIdentifierPB& source_namespace_identifier,
-    const HybridTime& restore_time,
+    HybridTime restore_time,
     const std::string& target_namespace_name,
     const std::string& pg_source_owner,
     const std::string& pg_target_owner,
@@ -302,56 +372,119 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
         source_namespace_identifier.name());
   }
 
+  RETURN_NOT_OK(external_funcs_->CheckForwardRestoreDisallowed(
+      snapshot_schedule_id, restore_time));
+
   // Set up clone state.
   // Past this point, we should abort the clone state if we get a non-OK status from any step.
   auto clone_state = VERIFY_RESULT(CreateCloneState(
       epoch, source_namespace, source_namespace_identifier.database_type(),
       target_namespace_name, restore_time));
 
-  // Clone PG Schema objects first in case of PGSQL databases. Tablets cloning is initiated in the
-  // callback of ClonePgSchemaObjects async task.
-  Status status;
-  if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
-    status = ClonePgSchemaObjects(
-        clone_state, source_namespace->name(), target_namespace_name, pg_source_owner,
-        pg_target_owner, snapshot_schedule_id);
-  } else {
-    // For YCQL, start tablets cloning directly.
-    status = StartTabletsCloning(
-        clone_state, snapshot_schedule_id, target_namespace_name, deadline);
-  }
-
+  auto status = TryCloneNamespace(clone_state, snapshot_schedule_id, deadline, source_namespace,
+      target_namespace_name, pg_source_owner, pg_target_owner);
   if (!status.ok()) {
-    RETURN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()));
+    WARN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()), "Failed to mark clone aborted");
   }
   return make_pair(source_namespace->id(), clone_state->LockForRead()->pb.clone_request_seq_no());
 }
 
-Status CloneStateManager::StartTabletsCloning(
+Status CloneStateManager::TryCloneNamespace(
+    CloneStateInfoPtr clone_state,
+    const SnapshotScheduleId& snapshot_schedule_id,
+    CoarseTimePoint deadline,
+    const NamespaceInfoPtr& source_namespace,
+    const std::string& target_namespace_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner) {
+  // Export snapshot info.
+  HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
+  auto clone_snapshot_info = VERIFY_RESULT(
+      external_funcs_->GenerateSnapshotInfoFromScheduleForClone(
+          snapshot_schedule_id, restore_ht, deadline));
+  VLOG(2) << Format(
+      "The generated SnapshotInfoPB as of time: $0, snapshot_info: $1 ",
+      HybridTime(clone_state->LockForRead()->pb.restore_time()), clone_snapshot_info.snapshot_info);
+
+  RETURN_NOT_OK(CheckTabletLimits(clone_snapshot_info.replication_info_and_num_tablets));
+
+  // Clone PG Schema objects first in case of PGSQL databases. Tablets cloning is initiated in the
+  // callback of ClonePgSchemaObjects async task.
+  Status status;
+  if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
+    RETURN_NOT_OK(ValidateYSQLUpgradeStates(source_namespace->id(), restore_ht));
+    status = ClonePgSchemaObjects(
+        clone_state, source_namespace->name(), target_namespace_name, pg_source_owner,
+        pg_target_owner, snapshot_schedule_id, std::move(clone_snapshot_info));
+  } else {
+    // For YCQL, start tablets cloning directly.
+    status = ImportSnapshotAndStartTabletsCloning(
+        clone_state, snapshot_schedule_id, target_namespace_name, std::move(clone_snapshot_info),
+        deadline);
+  }
+  return status;
+}
+
+Status CloneStateManager::ValidateYSQLUpgradeStates(
+    NamespaceIdView source_namespace_id, HybridTime restore_ht) {
+  // Check that we are not doing a major YSQL upgrade right now.
+  if (external_funcs_->IsMajorYsqlUpgradeInProgress()) {
+    return STATUS(NotSupported, "Cannot clone database: YSQL major catalog upgrade is in progress");
+  }
+  auto upgrade_state =
+      VERIFY_RESULT(external_funcs_->GetYsqlMajorCatalogUpgradeInfoAt(std::nullopt));
+  // Check that we weren't in the middle of a major YSQL upgrade at restore_ht.
+  auto restore_read_hybrid_time = ReadHybridTime::SingleTime(restore_ht);
+  auto upgrade_state_at_restore = VERIFY_RESULT(
+      external_funcs_->GetYsqlMajorCatalogUpgradeInfoAt(std::cref(restore_read_hybrid_time)));
+  if (upgrade_state_at_restore &&
+      upgrade_state_at_restore->state() != YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Cannot clone database: YSQL major catalog upgrade was in state $0 at the restore time",
+        YsqlMajorCatalogUpgradeInfoPB::State_Name(upgrade_state_at_restore->state()));
+  }
+
+  // Ensure we didn't do a YSQL major upgrade between restore_ht and now.
+  if (upgrade_state_at_restore.has_value() != upgrade_state.has_value() ||
+      (upgrade_state &&
+       upgrade_state->catalog_version() != upgrade_state_at_restore->catalog_version())) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Cannot clone database: YSQL major catalog upgrade occurred between the restore time and "
+        "now");
+  }
+
+  // Ensure we didn't do a YSQL non-major upgrade between restore_ht and now.
+  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id));
+  auto current_migration_rows =
+      VERIFY_RESULT(external_funcs_->CountPgYbMigrationRows(db_oid, ReadHybridTime()));
+  auto restore_migration_rows =
+      VERIFY_RESULT(external_funcs_->CountPgYbMigrationRows(db_oid, restore_read_hybrid_time));
+  if (current_migration_rows != restore_migration_rows) {
+    return STATUS(
+        NotSupported, "Cannot clone database: YSQL upgrade was performed since the restore time");
+  }
+  return Status::OK();
+}
+
+Status CloneStateManager::ImportSnapshotAndStartTabletsCloning(
     CloneStateInfoPtr clone_state,
     const SnapshotScheduleId& snapshot_schedule_id,
     const std::string& target_namespace_name,
+    CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
     CoarseTimePoint deadline) {
   if (FLAGS_TEST_fail_clone_tablets) {
     return STATUS_FORMAT(RuntimeError, "Failing clone due to test flag fail_clone_tablets");
   }
 
-  // Export snapshot info.
-  HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
-  auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
-      external_funcs_->GenerateSnapshotInfoFromScheduleForClone(
-          snapshot_schedule_id, restore_ht, deadline));
-  auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
-  VLOG(2) << Format(
-      "The generated SnapshotInfoPB as of time: $0, snapshot_info: $1 ",
-      HybridTime(clone_state->LockForRead()->pb.restore_time()), snapshot_info);
   // Import snapshot info.
   NamespaceMap namespace_map;
   UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
   RETURN_NOT_OK(external_funcs_->DoImportSnapshotMeta(
-      snapshot_info, clone_state->Epoch(), target_namespace_name, &namespace_map, &type_map,
-      &tables_data, deadline));
+      clone_snapshot_info.snapshot_info, clone_state->Epoch(), target_namespace_name,
+      &namespace_map, &type_map, &tables_data, deadline));
   if (namespace_map.size() != 1) {
     return STATUS_FORMAT(IllegalState, "Expected 1 namespace, got $0", namespace_map.size());
   }
@@ -388,10 +521,20 @@ Status CloneStateManager::StartTabletsCloning(
       VERIFY_RESULT(FullyDecodeTxnSnapshotId(create_snapshot_resp.snapshot_id()));
 
   // Set up the rest of the clone state fields.
+  auto source_snapshot_id = VERIFY_RESULT(
+      FullyDecodeTxnSnapshotId(clone_snapshot_info.snapshot_info.id()));
   RETURN_NOT_OK(UpdateCloneStateWithSnapshotInfo(
       clone_state, source_snapshot_id, target_snapshot_id, tables_data));
 
-  RETURN_NOT_OK(ScheduleCloneOps(clone_state, not_snapshotted_tablets));
+  RETURN_NOT_OK(ScheduleCloneOps(clone_state, clone_snapshot_info.not_snapshotted_tablets));
+  return Status::OK();
+}
+
+Status CloneStateManager::CheckTabletLimits(
+    const std::vector<std::pair<ReplicationInfoPB, int>>& replication_info_and_num_tablets) {
+  RETURN_NOT_OK(CanCreateTabletReplicas(
+      replication_info_and_num_tablets, external_funcs_->GetTservers(),
+      VERIFY_RESULT(external_funcs_->GetBlacklist())));
   return Status::OK();
 }
 
@@ -401,7 +544,8 @@ Status CloneStateManager::ClonePgSchemaObjects(
     const std::string& target_db_name,
     const std::string& pg_source_owner,
     const std::string& pg_target_owner,
-    const SnapshotScheduleId& snapshot_schedule_id) {
+    const SnapshotScheduleId& snapshot_schedule_id,
+    CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info) {
   if (FLAGS_TEST_fail_clone_pg_schema) {
     return STATUS_FORMAT(RuntimeError, "Failing clone due to test flag fail_clone_pg_schema");
   }
@@ -414,7 +558,8 @@ Status CloneStateManager::ClonePgSchemaObjects(
       ts->permanent_uuid(), source_db_name, target_db_name, pg_source_owner, pg_target_owner,
       HybridTime(clone_state->LockForRead()->pb.restore_time()),
       MakeDoneClonePgSchemaCallback(
-          clone_state, snapshot_schedule_id, target_db_name, ToCoarse(deadline)),
+          clone_state, snapshot_schedule_id, target_db_name, std::move(clone_snapshot_info),
+          ToCoarse(deadline)),
       deadline));
   return Status::OK();
 }
@@ -459,7 +604,7 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
     const NamespaceInfoPtr& source_namespace,
     YQLDatabase database_type,
     const std::string& target_namespace_name,
-    const HybridTime& restore_time) {
+    HybridTime restore_time) {
   // Check if there is an ongoing clone for the source namespace.
   std::lock_guard lock(mutex_);
   auto it = source_clone_state_map_.find(source_namespace->id());
@@ -477,32 +622,25 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
   }
 
   auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
+  auto clone_state_lock = clone_state->LockForWrite();
   clone_state->SetEpoch(epoch);
-
-  if (clone_state->id() < source_namespace->id()) {
-    clone_state->mutable_metadata()->StartMutation();
-  }
 
   auto namespace_lock = source_namespace->LockForWrite();
   auto seq_no = namespace_lock->pb.clone_request_seq_no() + 1;
   namespace_lock.mutable_data()->pb.set_clone_request_seq_no(seq_no);
 
-  if (!clone_state->mutable_metadata()->HasWriteLock()) {
-    clone_state->mutable_metadata()->StartMutation();
-  }
-
-  auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
-  pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
-  pb->set_clone_request_seq_no(seq_no);
-  pb->set_source_namespace_id(source_namespace->id());
-  pb->set_source_namespace_name(source_namespace->name());
-  pb->set_restore_time(restore_time.ToUint64());
-  pb->set_target_namespace_name(target_namespace_name);
-  pb->set_database_type(database_type);
+  auto& pb = clone_state_lock.mutable_data()->pb;
+  pb.set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
+  pb.set_clone_request_seq_no(seq_no);
+  pb.set_source_namespace_id(source_namespace->id());
+  pb.set_source_namespace_name(source_namespace->name());
+  pb.set_restore_time(restore_time.ToUint64());
+  pb.set_target_namespace_name(target_namespace_name);
+  pb.set_database_type(database_type);
   RETURN_NOT_OK(external_funcs_->Upsert(
       clone_state->Epoch().leader_term, clone_state, source_namespace));
   namespace_lock.Commit();
-  clone_state->mutable_metadata()->CommitMutation();
+  clone_state_lock.Commit();
 
   // Add to the in-memory map.
   source_clone_state_map_[source_namespace->id()].insert(clone_state);
@@ -605,6 +743,7 @@ Status CloneStateManager::ScheduleCloneOps(
         clone_state->TargetSnapshotId().data(), clone_state->TargetSnapshotId().size());
     req.set_target_table_id(target_table->id());
     req.set_target_namespace_name(target_table_lock->namespace_name());
+    req.set_target_namespace_id(target_table_lock->namespace_id());
     req.set_clone_request_seq_no(clone_pb_lock->pb.clone_request_seq_no());
     req.set_target_pg_table_id(target_table_lock->pb.pg_table_id());
     if (target_table_lock->pb.has_index_info()) {
@@ -640,14 +779,17 @@ Status CloneStateManager::ScheduleCloneOps(
 AsyncClonePgSchema::ClonePgSchemaCallbackType CloneStateManager::MakeDoneClonePgSchemaCallback(
     CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
     const std::string& target_namespace_name,
+    CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
     CoarseTimePoint deadline) {
-  return [this, clone_state, snapshot_schedule_id, target_namespace_name, deadline]
-      (const Status& pg_schema_cloning_status) -> Status {
+  return [this, clone_state, snapshot_schedule_id, target_namespace_name, deadline,
+          clone_snapshot_info = std::move(clone_snapshot_info)]
+      (const Status& pg_schema_cloning_status) mutable -> Status {
     auto status = pg_schema_cloning_status;
     LOG(INFO) << "Done ClonePgSchema: " << status;
     if (status.ok()) {
-      status = StartTabletsCloning(
-          clone_state, snapshot_schedule_id, target_namespace_name, deadline);
+      status = ImportSnapshotAndStartTabletsCloning(
+          clone_state, snapshot_schedule_id, target_namespace_name, std::move(clone_snapshot_info),
+          deadline);
     }
     if (!status.ok()) {
       RETURN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()));

@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/master/async_rpc_tasks_base.h"
 
 #include "yb/common/constants.h"
@@ -217,6 +219,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
     keep_data_ = value;
   }
 
+  void set_exclude_aborting_transaction_id(TransactionId value) {
+    exclude_aborting_transaction_id_ = value;
+  }
+
   TabletId tablet_id() const override { return tablet_id_; }
 
  protected:
@@ -232,6 +238,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
   tserver::DeleteTabletResponsePB resp_;
   bool hide_only_ = false;
   bool keep_data_ = false;
+  std::optional<TransactionId> exclude_aborting_transaction_id_{std::nullopt};
 
  private:
   Status SetPendingDelete(AddPendingDelete add_pending_delete);
@@ -249,13 +256,21 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       LeaderEpoch epoch)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {}
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>()) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch)
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
-        transaction_id_(transaction_id) {}
+        transaction_id_(transaction_id),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>()) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
@@ -264,7 +279,11 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
         transaction_id_(transaction_id),
         cdc_sdk_stream_id_(cdc_sdk_stream_id),
-        cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff) {}
+        cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>())  {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAlterTable;
@@ -287,6 +306,7 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   TransactionId transaction_id_ = TransactionId::Nil();
   const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
   const bool cdc_sdk_require_history_cutoff_ = false;
+  const ash::WaitStateInfoPtr wait_state_;
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {
@@ -320,6 +340,10 @@ class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
             master, callback_pool, tablet, table, TransactionId::Nil(), std::move(epoch)),
         packed_schema_(packed_schema) {}
 
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kInsertPackedSchemaForXClusterTarget;
+  }
+
   std::string type_name() const override { return "Insert packed schema for xCluster target"; }
 
  protected:
@@ -329,6 +353,35 @@ class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
 
  private:
   SchemaPB packed_schema_;
+};
+
+// Fetch the latest compatible schema version from a single tablet.
+class AsyncGetLatestCompatibleSchemaVersion : public AsyncTabletLeaderTask {
+ public:
+  AsyncGetLatestCompatibleSchemaVersion(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const scoped_refptr<TableInfo>& table, const SchemaPB& schema, LeaderEpoch epoch,
+      std::function<void(const Status&, uint32_t)> callback)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
+        schema_(schema),
+        callback_(std::move(callback)) {}
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kGetCompatibleSchemaVersion;
+  }
+
+  std::string type_name() const override { return "Get Compatible Schema Version"; }
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+ private:
+  SchemaPB schema_;
+  tserver::GetCompatibleSchemaVersionRequestPB req_;
+  tserver::GetCompatibleSchemaVersionResponsePB resp_;
+  // The schema version returned is undefined if the status is not OK.
+  std::function<void(const Status&, SchemaVersion)> callback_;
 };
 
 // Send a Truncate() RPC request.
@@ -467,13 +520,13 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
       const TabletInfoPtr& tablet,
       const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid,
-      bool should_remove,
+      bool also_remove_replica,
       LeaderEpoch epoch,
       const std::string& reason,
       const std::string& new_leader_uuid = "")
       : CommonInfoForRaftTask(
             master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)),
-        should_remove_(should_remove),
+        also_remove_replica_(also_remove_replica),
         new_leader_uuid_(new_leader_uuid),
         reason_(reason) {}
 
@@ -494,7 +547,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
 
-  const bool should_remove_;
+  const bool also_remove_replica_;
   const std::string new_leader_uuid_;
   const std::string reason_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
@@ -562,14 +615,16 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTaskWithTable {
 class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
  public:
   struct Data {
-    const std::string& split_encoded_key;
-    const std::string& split_partition_key;
+    // TODO(nway-tsplit): Consider avoiding the cost of string copy by storing references.
+    std::vector<std::string> split_encoded_keys;
+    std::vector<std::string> split_partition_keys;
   };
   using DataCallbackType = std::function<void(const Result<Data>&)>;
 
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      ManualSplit is_manual_split, LeaderEpoch epoch, DataCallbackType result_cb);
+      ManualSplit is_manual_split, int split_factor, LeaderEpoch epoch,
+      DataCallbackType result_cb);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kGetTabletSplitKey;
@@ -593,9 +648,9 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  public:
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      LeaderEpoch epoch);
+      const std::vector<TabletId>& new_tablet_ids,
+      const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kSplitTablet;

@@ -14,7 +14,7 @@ import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS } from '../constants';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg?img';
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { INPUT_FIELD_WIDTH_PX, XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../../constants';
 import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';

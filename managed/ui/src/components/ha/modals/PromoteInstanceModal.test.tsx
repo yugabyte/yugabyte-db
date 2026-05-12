@@ -1,13 +1,17 @@
+import type { Mock } from 'vitest';
 import { browserHistory } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'react-toastify';
-import { render, waitFor } from '../../../test-utils';
+import { render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { Provider } from 'react-redux';
+import { createStore } from 'redux';
 import { api } from '../../../redesign/helpers/api';
 import { PromoteInstanceModal } from './PromoteInstanceModal';
 import { ThemeProvider } from '@material-ui/core';
 import { mainTheme } from '../../../redesign/theme/mainTheme';
 
-jest.mock('../../../redesign/helpers/api');
+vi.mock('../../../redesign/helpers/api');
 
 const fakeConfigId = 'aaa-111';
 const fakeInstanceId = 'bbb-222';
@@ -17,20 +21,38 @@ const fakeBackupsList = [
   'backup_21-03-24-21-27.tgz'
 ];
 const PROMOTE_CONFIRMATION_STRING = 'PROMOTE';
+
 const setup = () => {
-  const onClose = jest.fn();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const store = createStore(() => ({
+    customer: { currentUser: { data: { timezone: 'UTC' } } }
+  }));
+  const onClose = vi.fn();
   const component = render(
-    <ThemeProvider theme={mainTheme}>
-      <PromoteInstanceModal
-        visible
-        onClose={onClose}
-        configId={fakeConfigId}
-        instanceId={fakeInstanceId}
-      />
-    </ThemeProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={mainTheme}>
+          <PromoteInstanceModal
+            visible
+            onClose={onClose}
+            configId={fakeConfigId}
+            instanceId={fakeInstanceId}
+          />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </Provider>
   );
 
   return { component, onClose };
+};
+
+/** Helper: wait for the loading spinner to disappear */
+const waitForLoaded = async (component: ReturnType<typeof render>) => {
+  await waitFor(() => {
+    expect(component.queryByText(/loading/i)).not.toBeInTheDocument();
+  });
 };
 
 describe('HA promote instance modal', () => {
@@ -40,63 +62,72 @@ describe('HA promote instance modal', () => {
     expect(component.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it('should trigger onClose by Cancel button click', () => {
+  it('should trigger onClose by Cancel button click', async () => {
     const { component, onClose } = setup();
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(onClose).toBeCalled();
   });
 
   it('should load backups and pre-select first item', async () => {
-    (api.getHABackups as jest.Mock).mockResolvedValue(fakeBackupsList);
-    setup();
-    // for some reason hidden input could be accessed via document.querySelector() only
-    expect(document.querySelector('input[name="backupFile"]')).toHaveValue('');
+    (api.getHABackups as Mock).mockResolvedValue(fakeBackupsList);
+    const { component } = setup();
+    // Wait for loading to complete and the API to be called
+    await waitForLoaded(component);
     await waitFor(() => expect(api.getHABackups).toBeCalledWith(fakeConfigId));
-    expect(document.querySelector('input[name="backupFile"]')).toHaveValue(fakeBackupsList[0]);
+    // After loading, the first backup should be pre-selected in the hidden react-select input
+    await waitFor(() => {
+      expect(document.querySelector('input[name="backupFile"]')).toHaveValue(fakeBackupsList[0]);
+    });
   });
 
   it('should show validation error when no backup selected', async () => {
-    (api.getHABackups as jest.Mock).mockResolvedValue([]);
+    (api.getHABackups as Mock).mockResolvedValue([]);
     const { component } = setup();
-    userEvent.type(
+    // Wait for loading to complete before interacting with form
+    await waitForLoaded(component);
+    await userEvent.type(
       component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
       PROMOTE_CONFIRMATION_STRING
     );
-    userEvent.click(component.getByRole('button', { name: /continue/i }));
+    await userEvent.click(component.getByRole('button', { name: /continue/i }));
     expect(await component.findByText(/backup file is required/i)).toBeInTheDocument();
   });
 
   it('should make API call and close modal', async () => {
     // mock environment
-    const browserHistoryPush = jest.fn();
-    jest.spyOn(browserHistory, 'push').mockImplementation(browserHistoryPush);
-    const promise = Promise;
-    (api.promoteHAInstance as jest.Mock).mockReturnValue(promise);
-    (api.getHABackups as jest.Mock).mockResolvedValue(fakeBackupsList);
+    const browserHistoryPush = vi.fn();
+    vi.spyOn(browserHistory, 'push').mockImplementation(browserHistoryPush);
+    // Use a deferred promise so the mutation stays pending until we resolve it
+    let resolvePromote!: () => void;
+    const pendingPromise = new Promise<void>((resolve) => {
+      resolvePromote = resolve;
+    });
+    (api.promoteHAInstance as Mock).mockReturnValue(pendingPromise);
+    (api.getHABackups as Mock).mockResolvedValue(fakeBackupsList);
 
-    // render component and resolve backups list mocked api call
+    // render component and wait for backups to load
     const { component, onClose } = setup();
-    await waitFor(() => api.getHABackups);
+    await waitForLoaded(component);
 
-    // click continue button without entering confirmation text
-    userEvent.click(component.getByRole('button', { name: /continue/i }));
-    await waitFor(() => expect(api.promoteHAInstance).not.toBeCalled());
+    // click continue button without entering confirmation text - button is disabled
+    await userEvent.click(component.getByRole('button', { name: /continue/i }));
+    expect(api.promoteHAInstance).not.toBeCalled();
     expect(browserHistoryPush).not.toBeCalled();
 
     // enter confirmation text and then click continue button
-    userEvent.type(
+    await userEvent.type(
       component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
       PROMOTE_CONFIRMATION_STRING
     );
-    userEvent.click(component.getByRole('button', { name: /continue/i }));
+    await userEvent.click(component.getByRole('button', { name: /continue/i }));
 
     // make sure modal can't be closed while API response is pending
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(onClose).not.toBeCalled();
 
-    // resolve mocked api call
+    // resolve the mocked API call
+    resolvePromote();
     await waitFor(() => {
-      promise.resolve();
       expect(api.promoteHAInstance).toBeCalledWith(
         fakeConfigId,
         fakeInstanceId,
@@ -108,23 +139,21 @@ describe('HA promote instance modal', () => {
   });
 
   it('should show an error toast on promotion API call failure', async () => {
-    const browserHistoryPush = jest.fn();
-    jest.spyOn(browserHistory, 'push').mockImplementation(browserHistoryPush);
-    const toastError = jest.fn();
-    jest.spyOn(toast, 'error').mockImplementation(toastError);
-    (api.promoteHAInstance as jest.Mock).mockRejectedValue(
-      new Error('Could not find leader instance')
-    );
-    (api.getHABackups as jest.Mock).mockResolvedValue(fakeBackupsList);
+    const browserHistoryPush = vi.fn();
+    vi.spyOn(browserHistory, 'push').mockImplementation(browserHistoryPush);
+    const toastError = vi.fn();
+    vi.spyOn(toast, 'error').mockImplementation(toastError);
+    (api.promoteHAInstance as Mock).mockRejectedValue(new Error('Could not find leader instance'));
+    (api.getHABackups as Mock).mockResolvedValue(fakeBackupsList);
 
     const { component } = setup();
-    await waitFor(() => api.getHABackups);
+    await waitForLoaded(component);
 
-    userEvent.type(
+    await userEvent.type(
       component.getByTestId('PromoteInstanceModal-ConfirmTextInputField'),
       PROMOTE_CONFIRMATION_STRING
     );
-    userEvent.click(component.getByRole('button', { name: /continue/i }));
+    await userEvent.click(component.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => {
       expect(api.promoteHAInstance).toBeCalledWith(

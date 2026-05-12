@@ -145,8 +145,6 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
     return use_fast_backward_scan_;
   }
 
-  Result<Slice> FetchDirect(Slice key) override;
-
  private:
   void CheckInitOnce();
 
@@ -243,7 +241,7 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   bool has_bound_key_ = false;
   dockv::KeyBytes bound_key_;
 
-  std::unique_ptr<IntentAwareIterator> db_iter_;
+  IntentAwareIteratorPtr db_iter_;
   std::unique_ptr<ScanChoices> scan_choices_;
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that

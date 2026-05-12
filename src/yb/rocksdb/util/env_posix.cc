@@ -384,6 +384,27 @@ class PosixEnv : public Env {
 
   virtual Status NewLogger(const std::string& fname,
                            std::shared_ptr<Logger>* result) override {
+#if defined(__APPLE__)
+    // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+    int fd;
+    {
+      IOSTATS_TIMER_GUARD(open_nanos);
+      fd = open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    }
+    if (fd < 0) {
+      result->reset();
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+      if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024) != 0) {
+        LOG(WARNING) << STATUS_IO_ERROR(fname, errno);
+      }
+#endif
+      SetFD_CLOEXEC(fd, nullptr);
+      result->reset(new PosixLogger(fname, fd, &PosixEnv::gettid, this));
+      return Status::OK();
+    }
+#else
     FILE* f;
     {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -403,6 +424,7 @@ class PosixEnv : public Env {
       result->reset(new PosixLogger(fname, f, &PosixEnv::gettid, this));
       return Status::OK();
     }
+#endif // defined(__APPLE__)
   }
 
   uint64_t NowMicros() override {
@@ -427,6 +449,10 @@ class PosixEnv : public Env {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
        std::chrono::steady_clock::now().time_since_epoch()).count();
 #endif
+  }
+
+  uint64_t NowCpuCycles() override {
+    return CycleClock::Now();
   }
 
   void SleepForMicroseconds(int micros) override { usleep(micros); }
@@ -578,6 +604,22 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
                            std::unique_ptr<SequentialFile>* result,
                            const EnvOptions& options) override {
     result->reset();
+#if defined(__APPLE__)
+    // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+    int fd = -1;
+    do {
+      IOSTATS_TIMER_GUARD(open_nanos);
+      fd = open(fname.c_str(), O_RDONLY);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
+      *result = nullptr;
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+      SetFD_CLOEXEC(fd, &options);
+      *result = std::make_unique<yb::PosixSequentialFile>(fname, fd, options);
+      return Status::OK();
+    }
+#else
     FILE* f = nullptr;
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -592,6 +634,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
       *result = std::make_unique<yb::PosixSequentialFile>(fname, f, options);
       return Status::OK();
     }
+#endif // defined(__APPLE__)
   }
 
   Status NewRandomAccessFile(const std::string& fname,

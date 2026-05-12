@@ -45,12 +45,14 @@ DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(TEST_name_transaction_tables_with_tablespace_id);
+DECLARE_int32(min_leader_stepdown_retry_interval_ms);
+DECLARE_bool(skip_prefix_locks);
 
 namespace yb::client {
 namespace {
 
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000) * kTimeMultiplier;
-const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000) * kTimeMultiplier;
+const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(60000) * kTimeMultiplier;
 
 }
 
@@ -65,7 +67,7 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
   // These don't get set in automatically in tests.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_cloud) = "cloud0";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "rack1";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "region1";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
   // Put everything in the same cloud.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 14;
@@ -77,6 +79,9 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_removals) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves_per_table) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 0;
+  // disable skip_prefix_locks because serializable is being used
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
 
   pgwrapper::PgMiniTestBase::SetUp();
   InitTransactionManagerAndPool();
@@ -110,7 +115,7 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   replicas->set_num_replicas(1);
   auto pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region(strings::Substitute("rack$0", region));
+  pb->mutable_cloud_info()->set_placement_region(strings::Substitute("region$0", region));
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -154,12 +159,12 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   replicas->set_num_replicas(3);
   auto pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region("rack1");
+  pb->mutable_cloud_info()->set_placement_region("region1");
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region("rack2");
+  pb->mutable_cloud_info()->set_placement_region("region2");
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -178,7 +183,7 @@ void GeoTransactionsTestBase::SetupTablespaces() {
           "num_replicas": 1,
           "placement_blocks":[{
             "cloud": "cloud0",
-            "region": "rack$0",
+            "region": "region$0",
             "zone": "zone",
             "min_num_replicas": 1
           }]
@@ -265,11 +270,11 @@ void GeoTransactionsTestBase::WaitForLoadBalanceCompletion() {
 }
 
 Status GeoTransactionsTestBase::StartTabletServersByRegion(int region) {
-  return StartTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
+  return StartTabletServers(yb::Format("region$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServersByRegion(int region) {
-  return ShutdownTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
+  return ShutdownTabletServers(yb::Format("region$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::StartTabletServers(
@@ -303,6 +308,10 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
         tserver->Shutdown();
       } else {
         LOG(INFO) << "Starting tserver #" << i;
+        // With object locking enabled, pg connections would succeed only after RF tservers are up
+        // since opening a connection acquires few locks, which needs the capability of creating
+        // YBTransaction(s), which in turn requires the existence of YB transaction table. Hence
+        // dont't wait for pg connections here.
         RETURN_NOT_OK(tserver->Start(tserver::WaitTabletsBootstrapped::kFalse));
       }
     }
@@ -317,7 +326,7 @@ void GeoTransactionsTestBase::ValidateAllTabletLeaderInZone(std::vector<TabletId
 
 bool GeoTransactionsTestBase::AllTabletLeaderInZone(
     std::vector<TabletId> tablet_uuids, int region) {
-  std::string region_str = Format("rack$0", region);
+  std::string region_str = Format("region$0", region);
   std::sort(tablet_uuids.begin(), tablet_uuids.end());
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
@@ -383,11 +392,10 @@ Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
 
 Status GeoTransactionsTestBase::WarmupTablespaceCache(
     pgwrapper::PGConn& conn, std::string_view table) {
-  // Force tablespace information into cache. Since SERIALIZABLE replicates reads, this also
-  // serves to ensure transaction is not reused (for object locking enabled cases).
-  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 1", table));
-  return conn.RollbackTransaction();
+  // Force tablespace information into cache.
+  // The purpose of ROLLBACK is to to ensure that in case object locking is enabled YB txn
+  // will not be reused.
+  return conn.ExecuteFormat("BEGIN;SELECT * FROM $0 LIMIT 1;ROLLBACK", table);
 }
 
 } // namespace yb::client

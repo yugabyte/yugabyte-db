@@ -50,7 +50,6 @@ class CharSet {
   // Deliberately an implicit constructor, so anything that takes a CharSet
   // can also take an explicit list of characters.
   CharSet(const char* characters);  // NOLINT(runtime/explicit)
-  explicit CharSet(const CharSet& other);
 
   // Add or remove a character from the set.
   void Add(unsigned char c) { bits_[Word(c)] |= BitMask(c); }

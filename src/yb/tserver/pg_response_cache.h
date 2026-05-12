@@ -52,21 +52,16 @@ class PgResponseCache {
   ~PgResponseCache();
 
   struct Response {
-    Response(
-        PgPerformResponsePB response_, std::vector<RefCntSlice> rows_data_)
-        : response(std::move(response_)),
-          rows_data(std::move(rows_data_)) {
-      DCHECK_EQ(response.responses_size(), rows_data.size());
-    }
+    Response(const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_);
 
-    PgPerformResponsePB response;
+    std::shared_ptr<LWPgPerformResponsePB> response;
     std::vector<RefCntSlice> rows_data;
   };
 
   using Setter = std::function<void(Response&&)>;
 
   Result<Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline,
+      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
       const PgResponseCacheWaiterPtr& waiter);
 
   struct DisablerType;

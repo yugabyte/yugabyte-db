@@ -22,6 +22,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -30,6 +32,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 
 using std::string;
 using std::vector;
@@ -79,7 +82,7 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
   return Status::OK();
 }
 
-ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
+Result<ReplicationInfoPB> CatalogManagerUtil::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table,
     const std::shared_ptr<const YsqlTablespaceManager>
         tablespace_manager,
@@ -96,15 +99,13 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     }
   }
 
-  // For system catalog tables, return cluster config replication info.
+  // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
-    auto result = tablespace_manager->GetTableReplicationInfo(table);
-    if (!result.ok()) {
-      LOG(WARNING) << result.status();
-    } else if (*result) {
+    auto repl_info_opt = VERIFY_RESULT(tablespace_manager->GetTableReplicationInfo(table));
+    if (repl_info_opt) {
       VLOG(3) << "Returning table replication info obtained from pg_tablespace: "
-              << (*result)->ShortDebugString() << " for table " << table->id();
-      return **result;
+              << repl_info_opt->ShortDebugString() << " for table " << table->id();
+      return *repl_info_opt;
     }
   }
 
@@ -139,7 +140,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
     }
 
     const auto replication_info =
-        GetTableReplicationInfo(table, tablespace_manager, cluster_replication_info);
+        VERIFY_RESULT(GetTableReplicationInfo(table, tablespace_manager, cluster_replication_info));
 
     std::unordered_set<std::string> accepting_leader_load;
 
@@ -406,7 +407,7 @@ Status ValidateAndAddPreferredZone(
         cloud_info_str);
   }
 
-  if (!PlacementInfoContainsCloudInfo(placement_info, cloud_info)) {
+  if (!CloudInfoMatchesPlacementInfo(cloud_info, placement_info)) {
     return STATUS_FORMAT(
         InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
         placement_info);
@@ -495,6 +496,15 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
+Result<bool> CatalogManagerUtil::GetIsTruncateTableDone(
+    const TableInfoPtr& table, IsTruncateTableDoneResponsePB* resp) {
+  LOG(INFO) << "Run IsTruncateTableDone for table id " << table->id();
+  TRACE("Locking table");
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(),
+                                                        DCHECK_NOTNULL(resp)));
+  return !table->HasTasks(server::MonitoredTaskType::kTruncateTablet);
+}
+
 void CatalogManagerUtil::FillTableInfoPB(
     const TableId& table_id, const std::string& table_name, const TableType& table_type,
     const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
@@ -517,6 +527,13 @@ void CatalogManagerUtil::FillTableInfoPB(
   pb->mutable_schema()->CopyFrom(schema);
   pb->set_schema_version(schema_version);
   pb->mutable_partition_schema()->CopyFrom(partition_schema);
+}
+
+size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replication_info) {
+  if (replication_info.has_live_replicas()) {
+    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
+  }
+  return FLAGS_replication_factor;
 }
 
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(
@@ -595,6 +612,38 @@ Status ExecutePgsqlStatements(
 bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
+
+template <class LoadState>
+Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+  auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
+
+  for (const auto& tablet : tablets) {
+    // Ignore if tablet is not running.
+    {
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->is_running()) {
+        continue;
+      }
+    }
+    auto replica_locs = tablet->GetReplicaLocations();
+
+    for (const auto& loc : *replica_locs) {
+      // Ignore replica if not present in the tserver list passed.
+      if (state->per_ts_replica_load_.count(loc.first) == 0) {
+        continue;
+      }
+      // Account for this load.
+      state->per_ts_replica_load_[loc.first]++;
+    }
+  }
+  return Status::OK();
+}
+
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
 
 } // namespace master
 } // namespace yb

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_revoke
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_revoke/
 type: docs
 ---
 

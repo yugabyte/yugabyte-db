@@ -26,6 +26,8 @@
 #include <algorithm>
 #include <chrono>
 
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/rocksdb/port/sys_time.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/murmurhash.h"
@@ -703,6 +705,11 @@ uint64_t MockEnv::NowMicros() {
 
 uint64_t MockEnv::NowNanos() {
   return EnvWrapper::NowNanos() + fake_sleep_micros_.load() * 1000;
+}
+
+uint64_t MockEnv::NowCpuCycles() {
+  return EnvWrapper::NowCpuCycles() + fake_sleep_micros_.load() * base::CyclesPerSecond() /
+                                          UnitsInSecond(TimeResolution::kMicros);
 }
 
 // Non-virtual functions, specific to MockEnv

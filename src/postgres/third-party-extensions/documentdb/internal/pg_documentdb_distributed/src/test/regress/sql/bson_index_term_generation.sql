@@ -3,8 +3,6 @@ SET citus.next_shard_id TO 370000;
 SET documentdb.next_collection_id TO 3700;
 SET documentdb.next_collection_index_id TO 3700;
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
-
 -- now get terms for a simple document ( { a: { b : 1 }})
 -- test root, 'a', 'a.b', 'a.b.1' with wildcard/non-wildcard
 SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '', true);
@@ -237,5 +235,3 @@ SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 6, "a" : {
 SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', NULL);
 SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', NULL);
 SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', NULL);
-
-SET documentdb.enableIndexTermTruncationOnNestedObjects TO off;

@@ -10,54 +10,54 @@ ERROR:  dbName cannot be NULL
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}', true);
 ERROR:  BSON field 'createIndexes.unknown_field' is an unknown field
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);
-ERROR:  collection name has invalid type null
+ERROR:  Collection name contains an invalid data type null
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}', true);
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'null'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 5}', true);
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'int'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": []}', true);
-ERROR:  Must specify at least one index to create
+ERROR:  You must provide at least one index in order to proceed with creation
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1"}', true);
-ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+ERROR:  The BSON field 'createIndexes.indexes' is required but was not provided
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{}', true);
-ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+ERROR:  The BSON field 'createIndexes.indexes' is required but was not provided
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": 1}', true);
-ERROR:  collection name has invalid type int
+ERROR:  Collection name contains an invalid data type int
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 1}', true);
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'int'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [1,2]}', true);
-ERROR:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
+ERROR:  The BSON field 'createIndexes.indexes.0' has an incorrect type 'int'; it should be of type 'object'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": 1}]}', true);
-ERROR:  Error in specification { "key" : 1 } :: caused by :: The field 'key' must be an object, but got int
+ERROR:  Error in specification { "key" : 1 }:The field 'key' is required to be an object type, however, it received a int instead.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": 1}]}', true);
-ERROR:  Error in specification { "name" : 1 } :: caused by :: The field 'name' must be an string, but got int
+ERROR:  Error in specification { "name" : 1 }:The field 'name' is required to be an string type, however, it received a int instead.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unique": "1"}]}', true);
-ERROR:  Error in specification { "unique" : "1" } :: caused by :: The field 'unique' has value unique: "1", which is not convertible to bool
+ERROR:  Error in specification { "unique" : "1" }:The field 'unique' has value unique: "1", which is not convertible to bool
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 } } :: caused by :: The 'name' field is a required property of an index specification
+ERROR:  Error in specification { "key" : { "a" : 1 } }:The 'name' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}', true);
-ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+ERROR:  Error in specification { "name" : "my_idx" }:The 'key' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unknown_field": "111"}]}', true);
-ERROR:  Error in specification { "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "unknown_field" : "111" }
+ERROR:  Error in specification { "unknown_field" : "111" }:The field 'unknown_field' cannot be used in an index specification. Provided specification: { "unknown_field" : "111" }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "_name_", "unknown_field": "111"}]}', true);
-ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "name" : "_name_", "unknown_field" : "111" }
+ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" }:The field 'unknown_field' cannot be used in an index specification. Provided specification: { "name" : "_name_", "unknown_field" : "111" }
 ---- createIndexes - indexes.key - parse error ----
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"": 1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 1, "b": -1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" }:wildcard indexes do not allow compounding
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".$**": 1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": "bad"}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" } :: caused by :: Unknown index plugin "bad"
+ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" }:Unknown plugin index specified: "bad"
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 0}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be 0.
+ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" }:Index key pattern values are not allowed to be zero.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": ""}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be empty strings
+ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" }:Index key pattern values must not contain empty strings
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": {"a": 1}}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" } :: caused by :: Values in v:2 index key pattern cannot be of type object. Only numbers > 0, numbers < 0, and strings are allowed.
+ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" }:Values in v:2 index key pattern must not be of type object; acceptable types include numbers greater than zero, numbers less than zero, and strings.
 -- note that those are valid ..
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**foo": 1}, "name": "my_idx_1"}]}', true);
 NOTICE:  creating collection
@@ -111,11 +111,11 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- invalid sparse indexes
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": true}]}', true);
-ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true } :: caused by :: Index type 'wildcard' does not support the sparse option
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true }:Index type 'wildcard' does not support the sparse option
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": "true"}]}', true);
-ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" } :: caused by :: The field 'sparse' has value sparse: "true", which is not convertible to bool
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" }:The field 'sparse' has value sparse: "true", which is not convertible to bool
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.a": 1}, "name": "my_sparse_with_pfe_idx", "sparse": true, "partialFilterExpression": { "rating": { "$gt": 5 } }}]}', true);
-ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } } :: caused by :: cannot mix "partialFilterExpression" and "sparse" options
+ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } }:cannot mix "partialFilterExpression" and "sparse" options
 -- sparse can create index for same key with different sparse options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_sparse_a_b_idx", "sparse": true}]}', true);
                                                                                                     create_indexes_non_concurrently                                                                                                    
@@ -162,13 +162,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- invalid hash indexes
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}', true);
-ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
+ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" }:Index type 'hashed' does not support the unique option.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": "hashed" }, "name": "invalid_hashed"}]}', true);
-ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" }:A maximum of one index field is allowed to be hashed but found 2
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": 1, "d": "hashed" }, "name": "invalid_hashed"}]}', true);
-ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" }:A maximum of one index field is allowed to be hashed but found 2
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b.$**": "hashed" }, "name": "invalid_hashed"}]}', true);
-ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" }:Index key has an invalid field name because it begins with an operators symbol.
 -- can't create index on same key with same sparse options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx1"}]}', true);
 ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
@@ -191,9 +191,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createI
 
 -- invalid index names
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "*"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" } :: caused by :: The index name '*' is not valid
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" }:The index name '*' is not valid
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "name\u0000field"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" } :: caused by :: The index name cannot contain embedded nulls
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" }:The index name must not include any embedded null characters
 -- For the next test, show the commands that we internally execute to build
 -- & clean-up the collection indexes.
 SET client_min_messages TO DEBUG1;
@@ -268,33 +268,33 @@ ORDER BY indexrelid;
 
 -- .., but those are not
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**foo": 1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" }:Index key includes an invalid or prohibited field name
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**.foo": 1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" }:Index key includes an invalid or prohibited field name
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": -1, "a.$**": 1}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" }:wildcard indexes do not allow compounding
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {}, "name": "my_idx"}]}', true);
-ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}', true);
-ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+ERROR:  Error in specification { "name" : "my_idx" }:The 'key' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**foo": 1}, "name": "my_idx_13"}]}', true);
-ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"..": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.$**": 1}, "name": "my_idx_10"}]}', true);
-ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.foo": 1}, "name": "my_idx_11"}]}', true);
-ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$a": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b.$**": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.": 1}, "name": "my_idx_12"}]}', true);
-ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 -- show that we didn't leave any invalid collection indexes behind
 SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
  collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
@@ -360,9 +360,9 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 
 -- creating the same index should noop
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14"}]}', true);
-                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+                                                                                                                            create_indexes_non_concurrently                                                                                                                             
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "19" }, "numIndexesAfter" : { "$numberInt" : "19" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "19" }, "numIndexesAfter" : { "$numberInt" : "19" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1')  WHERE index_spec_as_bson OPERATOR(documentdb_api_catalog.@@) '{"name": "my_idx_14"}' ORDER BY collection_id, index_id;
@@ -374,7 +374,7 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 -- not the same index since this specifies partialFilterExpression
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14", "partialFilterExpression": {"a": 1}}]}', true);
 ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "start_path" : 1 }, "name" : "my_idx_14", "partialFilterExpression" : { "a" : 1 } }, existing index: { "v" : 2, "key" : { "start_path" : 1 }, "name" : "my_idx_14" }
--- valid mongo index type in specification, which are not supported yet
+-- valid index type in the reference implementation, which are not supported yet
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "2d"}, "name": "my_idx_2d"}]}', true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
@@ -395,13 +395,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- test "v"
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.1234, "name": "invalid_v"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 2.1234000000000001762, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got 2.123400
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 2.1234000000000001762, "name" : "invalid_v" }:Index version must be representable as a 32-bit integer, but got 2.123400
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 10000000000000000, "name": "invalid_v"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 10000000000000000, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got 10000000000000000.000000
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 10000000000000000, "name" : "invalid_v" }:Index version must be representable as a 32-bit integer, but got 10000000000000000.000000
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": -10000000000000000, "name": "invalid_v"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : -10000000000000000, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got -10000000000000000.000000
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : -10000000000000000, "name" : "invalid_v" }:Index version must be representable as a 32-bit integer, but got -10000000000000000.000000
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 100, "name": "invalid_v"}]}', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" } :: caused by :: Invalid index specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" }; cannot create an index with v=100
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" }:Invalid index specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" }; unable to create an index using v=100
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.0, "name": "valid_v"}]}', true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
@@ -410,16 +410,16 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- same index since 2.0 == 2
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2, "name": "valid_v"}]}', true);
-                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+                                                                                                                            create_indexes_non_concurrently                                                                                                                             
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- following are assumed to be identical to built-in _id index even if their names are different than "_id_"
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1}, "name" : "_id_1"}, {"key": {"_id": 1.0}, "name" : "_id_2"}]}', true);
-                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+                                                                                                                            create_indexes_non_concurrently                                                                                                                             
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- but this is not identical to built-in _id index, so we will create it
@@ -498,7 +498,7 @@ SELECT documentdb_api.insert_one('db','dropdups_ignore','{"_id": "2", "a": "dup"
 SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "dropdups_ignore", "indexes": [{"key": {"a": 1}, "name": "dropdups_ignore_idx_1", "dropDups": true, "unique": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
 ERROR:  could not create exclusion constraint "documents_rum_index_11032_110068"
 DETAIL:  Key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "1", "a" : "dup" }, (11004,"{ ""_id"" : ""1"", ""a"" : ""dup"" }")) conflicts with key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "2", "a" : "dup" }, (11004,"{ ""_id"" : ""2"", ""a"" : ""dup"" }")).
-CONTEXT:  SQL statement "ALTER TABLE documentdb_data.documents_11004 ADD CONSTRAINT documents_rum_index_11032 EXCLUDE USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='a', generateNotFoundTerm=true) WITH OPERATOR(documentdb_api_catalog.=?=), ((shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops(path='a') WITH OPERATOR(documentdb_api_catalog.=)) "
+CONTEXT:  SQL statement "ALTER TABLE documentdb_data.documents_11004 ADD CONSTRAINT documents_rum_index_11032 EXCLUDE USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='a',generateNotFoundTerm=true) WITH OPERATOR(documentdb_api_catalog.=?=), ((shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops(path='a') WITH OPERATOR(documentdb_api_catalog.=)) "
 select documentdb_api.delete('db', '{"delete":"dropdups_ignore", "deletes":[{"q":{"_id": "2"}, "limit": 0 } ] }');
                                          delete                                         
 ---------------------------------------------------------------------
@@ -515,18 +515,18 @@ SET documentdb.enable_large_unique_index_keys TO true;
 -- tests with ignoreUnknownIndexOptions
 -- -- invalid values of ignoreUnknownIndexOptions
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "ignoreUnknownIndexOptions": "hello" }', true);
-ERROR:  BSON field 'createIndexes.ignoreUnknownIndexOptions' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'createIndexes.ignoreUnknownIndexOptions' has an incorrect type 'string'; it should be one of the following valid types: [bool, long, int, decimal, double]
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "ignoreUnknownIndexOptions": {"b":1} }', true);
-ERROR:  BSON field 'createIndexes.ignoreUnknownIndexOptions' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'createIndexes.ignoreUnknownIndexOptions' has an incorrect type 'object'; it should be one of the following valid types: [bool, long, int, decimal, double]
 -- -- ignoreUnknownIndexOptions of false (default value) will trigger error if there is any unknown field in index options. (unknown field is "dog" in these examples)
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}] }', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }:The field 'dog' cannot be used in an index specification. Provided specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": false }', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }:The field 'dog' cannot be used in an index specification. Provided specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": 0.0 }', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }:The field 'dog' cannot be used in an index specification. Provided specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": null }', true);
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }:The field 'dog' cannot be used in an index specification. Provided specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
 -- -- ignoreUnknownIndexOptions of true will ignore any unknown field in index options. (unknown field is "dog" in these examples)
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": true }', true);
 NOTICE:  creating collection
@@ -691,9 +691,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "
 -- tests with blocking
 -- -- invalid values of blocking
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "blocking": "hello" }', true);
-ERROR:  BSON field 'blocking' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'blocking' has an incorrect type 'string'; it should be one of the following valid types: [bool, long, int, decimal, double]
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"b": 1}, "name": "b_1"}], "blocking": {"b":1} }', true);
-ERROR:  BSON field 'blocking' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'blocking' has an incorrect type 'object'; it should be one of the following valid types: [bool, long, int, decimal, double]
 -- -- blocking of false (default value) will trigger create index concurrently.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"c": 1}, "name": "c_1"}] }', true);
 NOTICE:  creating collection
@@ -742,7 +742,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 (1 row)
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"j": 1}, "name": "j_1"}], "blocking": false }');
-ERROR:  Cannot create new indexes on existing collection db.blocking_index in a multi-document transaction.
+ERROR:  Creation of new indexes on the specified existing collection db.blocking_index is not permitted within a multi-document transaction.
 SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'blocking_index') ORDER BY collection_id, index_id;
  collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
 ---------------------------------------------------------------------

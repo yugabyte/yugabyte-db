@@ -39,6 +39,7 @@
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 
@@ -225,14 +226,16 @@ class TestRandomAccess : public YBTabletTest {
     QLReadRequestPB req;
     auto* condition = req.mutable_where_expr()->mutable_condition();
     QLSetInt32Condition(condition, kFirstColumnId, QL_OP_EQUAL, key);
-    QLReadRequestResult result;
+    ThreadSafeArena arena;
+    QLReadRequestResult result(arena);
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, &req);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        docdb::ReadOperationData::FromReadTime(read_time), req, transaction, &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), LWQLReadRequestPB(&arena, req),
+        LWTransactionMetadataPB(&arena, transaction), &result, &rows_data));
 
-    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
+    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response->status());
 
     auto row_block = qlexpr::CreateRowBlock(
         QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());

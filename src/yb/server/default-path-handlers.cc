@@ -45,11 +45,13 @@
 
 #include <sys/stat.h>
 
+#include <chrono>
 #include <fstream>
 #include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include <set>
@@ -74,7 +76,6 @@
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/html_print_helper.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver.h"
@@ -83,18 +84,20 @@
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
+#include "yb/util/html_print_helper.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
-#include "yb/util/jsonwriter.h"
-#include "yb/util/result.h"
-#include "yb/util/status_log.h"
-#include "yb/util/stack_trace_tracker.h"
-#include "yb/util/string_case.h"
 #include "yb/util/path_util.h"
-#include "yb/util/subprocess.h"
+#include "yb/util/perf_util.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/stack_trace_tracker.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_case.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
 
@@ -330,9 +333,9 @@ static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
     jw.String("peak_consumption_bytes");
     jw.Int64(tracker->peak_consumption());
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (data.consumption_excluded_from_ancestors && !data.tracker->UpdateConsumption()) {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       jw.String("full_consumption_bytes");
       jw.Int64(tracker->consumption() + data.consumption_excluded_from_ancestors);
     }
@@ -359,7 +362,7 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
                                   int max_depth,
                                   bool use_full_path) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
-  *output << "<table class='table table-striped' id='memtrackerstable'>\n";
+  *output << "<table class='table table-striped collapsable-table'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
   for (auto it = trackers.begin(); it != trackers.end(); it++) {
@@ -402,14 +405,14 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
       *output << "    <td>" << tracker_id << "</td>";
     }
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
-      *output << Format("<td>$0</td>", current_consumption_str);
-    } else {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       auto full_consumption_str = HumanReadableNumBytes::ToString(
           tracker->consumption() + data.consumption_excluded_from_ancestors);
       *output << Format("<td>$0 ($1)</td>", current_consumption_str, full_consumption_str);
+    } else {
+      *output << Format("<td>$0</td>", current_consumption_str);
     }
     *output << Format("<td>$0</td><td>$1</td>\n", peak_consumption_str, limit_str);
     *output << "  </tr>\n";
@@ -478,7 +481,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
-  opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
+  opts.max_metric_entries = FLAGS_max_prometheus_metric_entries;
   ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
@@ -531,7 +534,7 @@ static void StackTraceTrackerHandler(
     WeightFormatter format_weight = {}) {
   std::stringstream& output = resp->output;
 
-  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (!FLAGS_track_stack_traces) {
     output << "track_stack_traces must be turned on to use this page.";
     return;
   }
@@ -604,99 +607,45 @@ static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::
                << "<a href=\"javascript:window.location=document.referrer\">Back</a>";
 }
 
-// Logs the command that was run to the webpage_stream, and returns the output of the command that
-// was run or a not-ok status if the command failed.
-Result<std::string> LogAndRunCommand(
-    const std::vector<std::string>& cmd, std::stringstream& webpage_stream) {
-  std::string out, err;
-  webpage_stream << Format("$0: running $1<br>", CoarseMonoClock::Now(), AsString(cmd));
-  auto status = Subprocess::Call(cmd, &out, &err);
-  LOG(INFO) << "Command: " << AsString(cmd) << " output: " << out << " error: " << err;
-  RETURN_NOT_OK_PREPEND(status, err);
-  return out;
-}
-
-// Run perf to record a profile and generate a flamegraph and print it to output.
-// storage_dir is the directory to store the profile data and flamegraph.
-Status RunPerf(
-    std::stringstream& output, int seconds, int freq, const std::string& storage_dir) {
-  const pid_t target_pid = getpid();
-  const auto perf_record_path = Format("$0/profile.data", storage_dir);
-  const auto perf_script_path = Format("$0/profile-script.txt", storage_dir);
-  const auto collapsed_stacks_name = "profile-collapsed.txt";
-  const auto collapsed_stacks_path = Format("$0/$1", storage_dir, collapsed_stacks_name);
-
-  // There are two newer flows listed on
-  // https://www.brendangregg.com/blog/2016-04-30/linux-perf-folded.html. Neither works for us.
-  // 1. Using perf report to directly report stacks still requires the same number of commands since
-  //    we need to write the awk command too.
-  // 2. BCC tools 'profile' requires sudo.
-
-  // Test to see if perf is installed.
-  // TODO(#28918): Change this to link to an official YB docs page once the endpoint is stable.
-  auto status = LogAndRunCommand({"perf", "--version"}, output);
-  if (!status.ok()) {
-    return STATUS(NotFound,
-      "Failed to get perf version. Consider running: sudo yum install perf && "
-      "sudo sysctl kernel.perf_event_paranoid=0 && sudo sysctl kernel.kptr_restrict=0");
-  }
-
-  // Record profile.
-  std::vector<std::string> record_cmd = {
-      "perf", "record",
-      "-F", std::to_string(freq),
-      "-p", std::to_string(target_pid),
-      "-g",
-      "-o", perf_record_path,
-      "--", "sleep", std::to_string(seconds)
-  };
-  VERIFY_RESULT(LogAndRunCommand(record_cmd, output));
-
-  // Run perf script to generate stacks.
-  std::vector<std::string> script_cmd = {"perf", "script", "-i", perf_record_path};
-  auto script_out = VERIFY_RESULT(LogAndRunCommand(script_cmd, output));
-  RETURN_NOT_OK_PREPEND(WriteStringToFile(Env::Default(), script_out, perf_script_path),
-      Format("Failed to write perf script output to '$0'", perf_script_path));
-
-  // Collapse stacks.
-  std::vector<std::string> collapse_cmd =
-      {VERIFY_RESULT(path_utils::GetToolPath("stackcollapse-perf.pl")), perf_script_path};
-  auto collapsed_out = VERIFY_RESULT(LogAndRunCommand(collapse_cmd, output));
-  RETURN_NOT_OK_PREPEND(WriteStringToFile(Env::Default(), collapsed_out, collapsed_stacks_path),
-      "Failed to write collapsed stacks output to '" + collapsed_stacks_path + "'");
-  // Output a download link for the collapsed stacks file.
-  output << Format(
-        "<br><a href=\"/$0\" download>Download collapsed stacks</a><br>", collapsed_stacks_name);
-
-  // Generate flamegraph.
-  std::vector<std::string> flamegraph_cmd =
-      {VERIFY_RESULT(path_utils::GetToolPath("flamegraph.pl")), collapsed_stacks_path};
-  output << VERIFY_RESULT(LogAndRunCommand(flamegraph_cmd, output));
-  return Status::OK();
-}
-
 static void PerfHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp,
     const std::string& storage_dir) {
-  std::stringstream* output = &resp->output;
+  std::stringstream& output = resp->output;
 
   const std::string seconds_str = FindWithDefault(req.parsed_args, "seconds", "1");
   const std::string freq_str = FindWithDefault(req.parsed_args, "freq", "99");
 
   int seconds, freq;
   if (!safe_strto32(seconds_str, &seconds) || seconds <= 0) {
-    *output << "Invalid 'seconds' value: " << seconds_str;
+    output << "Invalid 'seconds' value: " << seconds_str;
     return;
   }
   if (!safe_strto32(freq_str, &freq) || freq <= 0) {
-    *output << "Invalid 'freq' value: " << freq_str;
+    output << "Invalid 'freq' value: " << freq_str;
     return;
   }
 
-  auto s = RunPerf(*output, seconds, freq, storage_dir);
+  PerfProfiler profiler;
+  auto s = profiler.Start(freq, storage_dir);
   if (!s.ok()) {
-    *output << s.ToString();
+    output << s.ToString();
     return;
+  }
+
+  std::this_thread::sleep_for(std::chrono::seconds(seconds));
+
+  auto stop_result = profiler.Stop();
+  if (!stop_result.ok()) {
+    output << stop_result.status().ToString();
+    return;
+  } else {
+    // Output a download link for the collapsed stacks file.
+    output << Format(
+        "<br><a href=\"/$0\" download>Download collapsed stacks</a> (to load into another viewer "
+        "like Speedscope, or for archiving)<br>",
+        stop_result->collapsed_stacks_name);
+    // Output flamegraph.
+    output << stop_result->flamegraph;
   }
 }
 

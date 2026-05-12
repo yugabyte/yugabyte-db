@@ -33,6 +33,11 @@
 
 #include <memory>
 
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
@@ -67,6 +72,9 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 
+using yb::cdc::CDCServiceProxy;
+using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
+using yb::cdc::UpdateCdcReplicatedIndexResponsePB;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftConfigPB;
 using yb::consensus::StartRemoteBootstrapRequestPB;
@@ -82,6 +90,8 @@ using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
 using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::ClearUniverseUuidRequestPB;
 using yb::tserver::ClearUniverseUuidResponsePB;
+using yb::tserver::ClearYCQLMetaDataCacheOnServerRequestPB;
+using yb::tserver::ClearYCQLMetaDataCacheOnServerResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::DeleteTabletRequestPB;
@@ -106,7 +116,6 @@ const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
 const char* const kValidateFlagValueOp = "validate_flag_value";
 const char* const kRefreshFlagsOp = "refresh_flags";
-const char* const kDumpTabletOp = "dump_tablet";
 const char* const kTabletStateOp = "get_tablet_state";
 const char* const kDeleteTabletOp = "delete_tablet";
 const char* const kUnsafeConfigChange = "unsafe_config_change";
@@ -124,7 +133,10 @@ const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
+const char* const kClearYCQLMetaDataCacheOnServerOp = "clear_ycql_metadatacache";
 const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
+const char* const kDumpTabletDataOp = "dump_tablet_data";
+const char* const kCdcReleaseBarriersOnTabletOp = "cdc_release_barriers_on_tablet";
 
 DEFINE_NON_RUNTIME_string(server_address,
     "localhost", "Address of server to run against");
@@ -133,10 +145,15 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set a flag "
     "which is not explicitly marked as runtime-settable. Such flag changes may be "
-    "simply ignored on the server, or may cause the server to crash.\n"
+    "simply ignored on the server, or may cause the server to crash. "
     "delete_tablet: If true, command will delete the tablet and remove the tablet "
     "from the memory, otherwise tablet metadata will be kept in memory with state "
     "TOMBSTONED.");
+
+DEFINE_NON_RUNTIME_bool(
+    flag_validate, true,
+    "set_flag: If true (default), validates the flag value "
+    "before setting it. Use --novalidate to skip validation and force the change.");
 
 DEFINE_NON_RUNTIME_bool(
     remove_corrupt_data_blocks_unsafe, false,
@@ -222,9 +239,6 @@ class TsAdminClient {
   // Get the schema for the given tablet.
   Status GetTabletSchema(const std::string& tablet_id, SchemaPB* schema);
 
-  // Dump the contents of the given tablet, in key order, to the console.
-  Status DumpTablet(const std::string& tablet_id);
-
   // Print the consensus state to the console.
   Status PrintConsensusState(const std::string& tablet_id);
 
@@ -276,11 +290,18 @@ class TsAdminClient {
 
   Status ClearAllMetaCachesOnServer();
 
+  Status ClearYCQLMetaDataCacheOnServer();
+
   // Clear Universe Uuid.
   Status ClearUniverseUuid();
 
   Status ReleaseAllLocksForTxn(
       const std::string& txn_id_str, const std::string& subtxn_id);
+
+  Status DumpTabletData(
+      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht);
+
+  Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 
  private:
   Status FlushOrCompactsTabletsImpl(
@@ -298,6 +319,7 @@ class TsAdminClient {
   std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::unique_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
+  std::unique_ptr<cdc::CDCServiceProxy> cdc_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -328,6 +350,7 @@ Status TsAdminClient::Init() {
   ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
   ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
   cons_proxy_.reset(new ConsensusServiceProxy(&proxy_cache, host_port));
+  cdc_proxy_.reset(new CDCServiceProxy(&proxy_cache, host_port));
   initted_ = true;
 
   VLOG(1) << "Connected to " << addr_;
@@ -415,10 +438,18 @@ Status TsAdminClient::ValidateFlagValue(const std::string& flag, const std::stri
   RpcController rpc;
 
   rpc.set_timeout(timeout_);
-  req.set_flag_name(flag);
-  req.set_flag_value(val);
+  auto* flag_pb = req.add_flags();
+  flag_pb->set_name(flag);
+  flag_pb->set_value(val);
 
-  return generic_proxy_->ValidateFlagValue(req, &resp, &rpc);
+  RETURN_NOT_OK(generic_proxy_->ValidateFlagValue(req, &resp, &rpc));
+  if (resp.errors_size() > 0) {
+    const auto& first_error = *resp.errors().begin();
+    return STATUS_FORMAT(
+        InvalidArgument, "Flag validation failed for '$0': $1", first_error.first,
+        first_error.second);
+  }
+  return Status::OK();
 }
 
 Status TsAdminClient::RefreshFlags() {
@@ -495,38 +526,6 @@ Status TsAdminClient::PrintConsensusState(const std::string& tablet_id) {
             << " Leader-UUID ";
   std::cout << PBEnumToString(cons_resp_pb.leader_lease_status()) << "\t\t"
             << cons_resp_pb.cstate().leader_uuid();
-
-  return Status::OK();
-}
-
-Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
-  SchemaPB schema_pb;
-  RETURN_NOT_OK(GetTabletSchema(tablet_id, &schema_pb));
-  Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(schema_pb, &schema));
-
-  tserver::ReadRequestPB req;
-  tserver::ReadResponsePB resp;
-
-  req.set_tablet_id(tablet_id);
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK_PREPEND(ts_proxy_->Read(req, &resp, &rpc), "Read() failed");
-
-  if (resp.has_error()) {
-    return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
-  }
-
-  qlexpr::QLRowBlock row_block(schema);
-  auto data_buffer = VERIFY_RESULT(rpc.ExtractSidecar(0));
-  auto data = data_buffer.AsSlice();
-  if (!data.empty()) {
-    RETURN_NOT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
-  }
-
-  for (const auto& row : row_block.rows()) {
-    std::cout << row.ToString() << std::endl;
-  }
 
   return Status::OK();
 }
@@ -763,6 +762,20 @@ Status TsAdminClient::ClearAllMetaCachesOnServer() {
   return Status::OK();
 }
 
+Status TsAdminClient::ClearYCQLMetaDataCacheOnServer() {
+  CHECK(initted_);
+  tserver::ClearYCQLMetaDataCacheOnServerRequestPB req;
+  tserver::ClearYCQLMetaDataCacheOnServerResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->ClearYCQLMetaDataCacheOnServer(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status TsAdminClient::ClearUniverseUuid() {
   CHECK(initted_);
   ClearUniverseUuidRequestPB req;
@@ -802,6 +815,67 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
   return Status::OK();
 }
 
+Status TsAdminClient::DumpTabletData(
+    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht) {
+  CHECK(initted_);
+  tserver::DumpTabletDataRequestPB req;
+  tserver::DumpTabletDataResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_tablet_id(tablet_id);
+  if (!dest_path.empty()) {
+    req.set_dest_path(dest_path);
+  }
+  if (read_ht > 0) {
+    req.set_read_ht(read_ht);
+  }
+  RETURN_NOT_OK(ts_proxy_->DumpTabletData(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  if (!dest_path.empty()) {
+    std::cout << "Successfully dumped tablet data for tablet " << tablet_id << " to " << dest_path
+              << std::endl;
+  }
+  std::cout << "Row count: " << resp.row_count() << std::endl;
+  std::cout << "XOR hash: " << resp.xor_hash() << std::endl;
+  return Status::OK();
+}
+
+Status TsAdminClient::CdcReleaseBarriersOnTablet(const TabletId& tablet_id) {
+  CHECK(initted_);
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+  const auto& peer_uuid = status_pb.node_instance().permanent_uuid();
+
+  UpdateCdcReplicatedIndexRequestPB req;
+  UpdateCdcReplicatedIndexResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  req.add_tablet_ids(tablet_id);
+  req.add_replicated_indices(std::numeric_limits<int64_t>::max());
+  req.add_replicated_terms(std::numeric_limits<int64_t>::max());
+  OpId::Max().ToPB(req.add_cdc_sdk_consumed_ops());
+  req.add_cdc_sdk_ops_expiration_ms(0);
+  req.add_cdc_sdk_safe_times(HybridTime::kInvalid.ToUint64());
+  req.set_initial_retention_barrier(false);
+
+  RETURN_NOT_OK_PREPEND(
+      cdc_proxy_->UpdateCdcReplicatedIndex(req, &resp, &rpc),
+      "CdcReleaseBarriersOnTablet() failed");
+  if (resp.has_error()) {
+    auto status = StatusFromPB(resp.error().status());
+    std::cout << "Failed to release CDC retention barriers on tablet: " << tablet_id
+              << " at peer: " << peer_uuid << ". Reason: " << status.ToString() << std::endl;
+    return status;
+  }
+
+  std::cout << "Successfully released CDC retention barriers on tablet: " << tablet_id
+            << " at peer: " << peer_uuid << "." << std::endl;
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -812,11 +886,10 @@ void SetUsage(const char* argv0) {
       << "  " << kListTabletsOp << "\n"
       << "  " << kAreTabletsRunningOp << "\n"
       << "  " << kIsServerReadyOp << "\n"
-      << "  " << kSetFlagOp << " [-force] <flag> <value>\n"
+      << "  " << kSetFlagOp << " [-force] [-novalidate] <flag> <value>\n"
       << "  " << kValidateFlagValueOp << " <flag> <value>\n"
       << "  " << kRefreshFlagsOp << "\n"
       << "  " << kTabletStateOp << " <tablet_id>\n"
-      << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " [-force] <tablet_id> <reason string>\n"
       << "  " << kUnsafeConfigChange << " <tablet_id> <peer1> [<peer2>...]\n"
       << "  " << kCurrentHybridTime << "\n"
@@ -824,8 +897,7 @@ void SetUsage(const char* argv0) {
       << "  " << kCountIntents << "\n"
       << "  " << kFlushTabletOp << " <tablet_id>\n"
       << "  " << kFlushAllTabletsOp << "\n"
-      << "  " << kFlushVectorIndexOp
-      << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
+      << "  " << kFlushVectorIndexOp << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
       << "  " << kCompactAllTabletsOp << "\n"
       << "  " << kCompactVectorIndexOp
@@ -835,8 +907,12 @@ void SetUsage(const char* argv0) {
       << "  " << kReloadCertificatesOp << "\n"
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
+      << "  " << kClearAllMetaCachesOnServerOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
-      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
+      << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
+      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
+      << "  " << kDumpTabletDataOp << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht]\n"
+      << "  " << kCdcReleaseBarriersOnTabletOp << " <tablet_id>\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -949,6 +1025,16 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kSetFlagOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
 
+    if (FLAGS_flag_validate) {
+      auto s = client.ValidateFlagValue(argv[2], argv[3]);
+      if (!s.ok()) {
+        std::cerr << "Flag not set, validation failed: " << s.message().ToBuffer() << std::endl;
+        std::cerr << "Use --flag_validate=false to skip validation and set the flag anyway."
+                  << std::endl;
+        return 1;
+      }
+    }
+
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.SetFlag(argv[2], argv[3], FLAGS_force),
                                     "Unable to set flag");
 
@@ -970,12 +1056,6 @@ static int TsCliMain(int argc, char** argv) {
     std::string tablet_id = argv[2];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.PrintConsensusState(tablet_id), "Unable to print tablet state");
-  } else if (op == kDumpTabletOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
-
-    std::string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DumpTablet(tablet_id),
-                                    "Unable to dump tablet");
   } else if (op == kDeleteTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
 
@@ -1073,6 +1153,11 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.ClearUniverseUuid(), "Unable to clear universe uuid on " + addr);
+  } else if (op == kClearYCQLMetaDataCacheOnServerOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.ClearYCQLMetaDataCacheOnServer(),
+        "Unable to clear the YCQL metadata-cache on tablet server with address " + addr);
   } else if (op == kReleaseAllLocksForTxnOp) {
     if (argc < 3) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
@@ -1081,6 +1166,26 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.ReleaseAllLocksForTxn(argv[2], subtxn),
         "Unable to release all locks for given transaction");
+  } else if (op == kDumpTabletDataOp) {
+    if (argc < 4) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+    }
+    int64_t read_ht = -1;
+    if (argc > 4) {
+      read_ht = std::stoll(argv[4]);
+    }
+    std::string dest_path = argv[3];
+    if (dest_path == "HASH_ONLY") {
+      dest_path = "";
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.DumpTabletData(argv[2], dest_path, read_ht), "Unable to dump tablet data");
+  } else if (op == kCdcReleaseBarriersOnTabletOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.CdcReleaseBarriersOnTablet(argv[2]),
+        "Unable to release CDC retention barriers on tablet");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);

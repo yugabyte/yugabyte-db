@@ -249,8 +249,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           if (currentUserIntent.providerType == Common.CloudType.azu) {
             InstanceType currentInstanceType =
                 InstanceType.getOrBadRequest(provider.getUuid(), currentInstanceTypeCode);
-            if (newInstanceType.isAzureWithLocalDisk()
-                != currentInstanceType.isAzureWithLocalDisk())
+            if (newInstanceType.isAzureDiskless() != currentInstanceType.isAzureDiskless())
               return String.format(
                   "Cannot switch between instances with and without local disk (%s and %s)",
                   currentInstanceTypeCode, newInstanceTypeCode);
@@ -398,6 +397,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       }
 
       if (!newDeviceInfo.equals(currentDeviceInfoCloned)) {
+        log.error(
+            "newDeviceInfo: {}\ncurrentDeviceInfoCloned: {}",
+            newDeviceInfo,
+            currentDeviceInfoCloned);
         errorConsumer.accept(
             "Smart resize only supports modifying volumeSize, diskIops, throughput");
       }

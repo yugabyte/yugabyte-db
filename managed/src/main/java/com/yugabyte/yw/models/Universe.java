@@ -102,6 +102,7 @@ public class Universe extends Model {
   public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
   public static final String K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG =
       "k8sSetMasterJoinExistingUniverseGflag";
+  public static final String VOLUME_MIGRATED = "volumeMigrated";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -763,6 +764,19 @@ public class Universe extends Model {
     return filteredServers;
   }
 
+  public List<NodeDetails> getRunningTserversinCluster(UUID clusterUUID) {
+    List<NodeDetails> servers = getTserversInCluster(clusterUUID);
+    List<NodeDetails> filteredServers =
+        servers.stream().filter(NodeDetails::isConsideredRunning).collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace(
+          "No Running nodes for getRunningTserversInPrimaryCluster in universe {}",
+          getUniverseUUID());
+    }
+    return filteredServers;
+  }
+
   /**
    * Return the list of YQL servers for this universe.
    *
@@ -1286,6 +1300,17 @@ public class Universe extends Model {
     return universe.getUniverseDetails().universePaused;
   }
 
+  public static void loadUniverseDetails(Iterable<Universe> universes) {
+    if (universes == null) {
+      return;
+    }
+    for (Universe universe : universes) {
+      if (universe != null) {
+        fillUniverseDetails(universe);
+      }
+    }
+  }
+
   private static Universe fillUniverseDetails(Universe universe) {
     JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
     universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
@@ -1299,7 +1324,7 @@ public class Universe extends Model {
       UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
       PlacementInfo placementInfo =
           Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
-      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+      universe.universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
     }
     return universe;
   }

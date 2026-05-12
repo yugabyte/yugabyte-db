@@ -83,6 +83,8 @@ Linux OS root permissions are required for the server, see [Servers for YBA](../
 
 When installing YugabyteDB Anywhere on an Azure VM, no cloud permissions are required.
 
+If you attach a Managed Identity (IAM role) or Service Principal with the appropriate permissions to the VM instance where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's Managed Identity or Service Principal when setting up node servers, key management services, and backup storage. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-azure/), [Permissions to use encryption at rest](../cloud-permissions-ear/), and [Permissions to back up and restore](../cloud-permissions-storage/).
+
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 
   </div>

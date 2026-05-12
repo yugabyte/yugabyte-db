@@ -88,6 +88,7 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 class MetricEntity;
 
@@ -121,7 +122,8 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
-struct AdminCompactionOptions {
+struct ManualCompactionOptions {
+  rocksdb::CompactionReason compaction_reason = rocksdb::CompactionReason::kUnknown;
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
   VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
@@ -176,7 +178,7 @@ class Tablet : public AbstractTablet,
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<qlexpr::IndexInfo>& indexes,
+      const qlexpr::IndexInfo& index,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -185,6 +187,7 @@ class Tablet : public AbstractTablet,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
+      double* num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -222,7 +225,8 @@ class Tablet : public AbstractTablet,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
       const bool is_main_table,
-      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* consistency_stats);
@@ -230,14 +234,16 @@ class Tablet : public AbstractTablet,
   Status FlushVerifyBatchIfRequired(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
   Status FlushVerifyBatch(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
@@ -265,6 +271,7 @@ class Tablet : public AbstractTablet,
       const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -274,11 +281,13 @@ class Tablet : public AbstractTablet,
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      const ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -329,18 +338,23 @@ class Tablet : public AbstractTablet,
 
   Status GetIntentsForCDC(
       const TransactionId& id,
+      const SubtxnSet& aborted,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
+
+  Status UpdateOpIdForOperation(WriteOperation* operation);
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -350,7 +364,7 @@ class Tablet : public AbstractTablet,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers& frontiers,
+      const storage::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -368,33 +382,30 @@ class Tablet : public AbstractTablet,
 
   Status HandleRedisReadRequest(
       const docdb::ReadOperationData& read_operation_data,
-      const RedisReadRequestPB& redis_read_request,
-      RedisResponsePB* response) override;
+      const RedisReadRequestMsg& redis_read_request,
+      RedisResponseMsg* response) override;
 
   //------------------------------------------------------------------------------------------------
   // CQL Request Processing.
   Status HandleQLReadRequest(
       const docdb::ReadOperationData& read_operation_data,
-      const QLReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata,
+      const QLReadRequestMsg& ql_read_request,
+      const TransactionMetadataMsg& transaction_metadata,
       QLReadRequestResult* result,
       WriteBuffer* rows_data) override;
 
   Status CreatePagingStateForRead(
-      const QLReadRequestPB& ql_read_request, const size_t row_count,
-      QLResponsePB* response) const override;
-
-  // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  void KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteQuery> query);
+      const QLReadRequestMsg& ql_read_request, const size_t row_count,
+      QLResponseMsg* response) const override;
 
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
   Status HandlePgsqlReadRequest(
       const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
-      const PgsqlReadRequestPB& pgsql_read_request,
-      const TransactionMetadataPB& transaction_metadata,
-      const SubTransactionMetadataPB& subtransaction_metadata,
+      const PgsqlReadRequestMsg& pgsql_read_request,
+      const TransactionMetadataMsg& transaction_metadata,
+      const SubTransactionMetadataMsg& subtransaction_metadata,
       PgsqlReadRequestResult* result) override;
 
   Status DoHandlePgsqlReadRequest(
@@ -402,14 +413,14 @@ class Tablet : public AbstractTablet,
       TabletMetrics* metrics,
       const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
-      const PgsqlReadRequestPB& pgsql_read_request,
-      const TransactionMetadataPB& transaction_metadata,
-      const SubTransactionMetadataPB& subtransaction_metadata,
+      const PgsqlReadRequestMsg& pgsql_read_request,
+      const TransactionMetadataMsg& transaction_metadata,
+      const SubTransactionMetadataMsg& subtransaction_metadata,
       PgsqlReadRequestResult* result);
 
   Status CreatePagingStateForRead(
-      const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
-      PgsqlResponsePB* response) const override;
+      const PgsqlReadRequestMsg& pgsql_read_request, const size_t row_count,
+      PgsqlResponseMsg* response) const override;
 
   Status PreparePgsqlWriteOperations(WriteQuery* query);
   void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteQuery> query);
@@ -418,7 +429,7 @@ class Tablet : public AbstractTablet,
   // being removed while the object is alive. It is necessary to hold
   // a RequestScope when scanning with IntentAwareIterator to prevent missing entries
   // due to intent removal.
-  Result<RequestScope> CreateRequestScope();
+  Result<RequestScope> CreateRequestScope(bool allow_when_closing = false);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
@@ -512,6 +523,10 @@ class Tablet : public AbstractTablet,
   const RaftGroupMetadata *metadata() const { return metadata_.get(); }
   RaftGroupMetadata *metadata() { return metadata_.get(); }
 
+  Env& env() const {
+    return *tablet_options_.env;
+  }
+
   rocksdb::Env& rocksdb_env() const;
 
   const std::string& tablet_id() const override;
@@ -558,7 +573,7 @@ class Tablet : public AbstractTablet,
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query);
 
-  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // Given a proposed "history cutoff" timestamp, returns either that value, if possible, or a
   // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
   // that data needed by active read operations is not compacted away.
   //
@@ -627,6 +642,9 @@ class Tablet : public AbstractTablet,
     return intents_db_.get();
   }
 
+  // Set per-task cgroup on both regular and intents RocksDB instances for per-DB compaction mode.
+  void SetRocksDbTaskCgroup(Cgroup* cgroup);
+
   // The only way to make any conclusion that a tablet is a product of a split is to check its key
   // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
   const docdb::KeyBounds& key_bounds() const {
@@ -642,19 +660,29 @@ class Tablet : public AbstractTablet,
         .metrics = metrics ? metrics : metrics_.get() };
   }
 
-  // Returns approximate middle key for tablet split:
-  // - for hash-based partitions: encoded hash code in order to split by hash code.
-  // - for range-based partitions: encoded doc key in order to split by row.
-  // If `partition_split_key` is specified it will be updated with partition middle key for
-  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
-  // range-based partitions always matches the returned middle key.
-  Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
+  struct SplitKeysData {
+    std::vector<std::string> encoded_keys;
+    std::vector<std::string> partition_keys;
+  };
+
+  // Returns a set of split keys that split the tablet data into split_factor number of
+  // approximately even partitions.
+  // - When the split_factor is 2, an approximate middle key is determined.
+  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
+  //   logic returns a set of split keys.
+  Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
-      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   void TEST_DocDBDumpToContainer(
-      docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      std::unordered_set<std::string>& out, docdb::IncludeIntents include_intents,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
+
+  void TEST_DocDBDumpToContainer(
+    std::vector<std::string>& out, docdb::IncludeIntents include_intents,
+    docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents);
@@ -663,10 +691,10 @@ class Tablet : public AbstractTablet,
 
   Status CreateReadIntents(
       IsolationLevel level,
-      const TransactionMetadataPB& transaction_metadata,
-      const SubTransactionMetadataPB& subtransaction_metadata,
-      const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
-      const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
+      const TransactionMetadataMsg& transaction_metadata,
+      const SubTransactionMetadataMsg& subtransaction_metadata,
+      const QLReadRequestMsgs& ql_batch,
+      const PgsqlReadRequestMsgs& pgsql_batch,
       docdb::LWKeyValueWriteBatchPB* out);
 
   uint64_t GetCurrentVersionSstFilesSize() const;
@@ -697,6 +725,10 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
+
+  // Returns true if any backing RocksDB (regular_db or intents_db) is in a hard write stop.
+  // Lightweight check on atomic counters, safe to call from outside consensus locks.
+  bool AreWritesStopped();
 
   Status TEST_SwitchMemtable();
 
@@ -736,6 +768,9 @@ class Tablet : public AbstractTablet,
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
 
+  // May modify the flushed op_id of intents db.
+  Status MayModifyIntentsDbFlushedOpId();
+
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
@@ -746,6 +781,10 @@ class Tablet : public AbstractTablet,
   }
 
   TabletVectorIndexes& vector_indexes() {
+    return *vector_indexes_;
+  }
+
+  const TabletVectorIndexes& vector_indexes() const {
     return *vector_indexes_;
   }
 
@@ -824,7 +863,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
+  Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
 
   bool HasActiveFullCompaction();
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
@@ -885,6 +924,11 @@ class Tablet : public AbstractTablet,
       const TransactionMetadataPB& transaction_metadata,
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const LWTransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
@@ -959,7 +1003,7 @@ class Tablet : public AbstractTablet,
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
-      WriteBuffer* keys_buffer, const TableId& colocated_table_id = "") const;
+      WriteBuffer* keys_buffer, TableIdView colocated_table_id = "") const;
 
   Status TEST_GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
@@ -970,7 +1014,8 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
-  Status AbortActiveTransactions(CoarseTimePoint deadline) const;
+  Status AbortActiveTransactions(
+      CoarseTimePoint deadline, std::optional<TransactionId>&& exclude_txn_id = std::nullopt) const;
 
   // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
@@ -993,6 +1038,21 @@ class Tablet : public AbstractTablet,
 
   void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
 
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time, CoarseTimePoint deadline,
+      docdb::ReadOperationData& read_operation_data) const;
+
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time,
+      docdb::ReadOperationData& read_operation_data) const {
+    return GetSafeTimeReadOperationData(
+        read_hybrid_time, CoarseTimePoint::max(), read_operation_data);
+  }
+
+  Status DumpTabletData(
+      WritableFile* file, uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash,
+      uint64_t& row_count) const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1009,16 +1069,20 @@ class Tablet : public AbstractTablet,
   std::vector<ColumnId> GetColumnSchemasForIndex(
       const std::vector<qlexpr::IndexInfo>& indexes);
 
-  void DocDBDebugDump(std::vector<std::string> *lines);
+  void DocDBDebugDump(std::vector<std::string>* lines);
 
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
-      const rocksdb::UserFrontiers& frontiers);
+      const storage::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata) const;
 
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
   // wait for all such pending read/write operations to finish.
@@ -1038,17 +1102,17 @@ class Tablet : public AbstractTablet,
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
   bool MayTargetMultipleTablets(
-      const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const;
+      const PgsqlReadRequestMsg& pgsql_read_request, size_t row_count) const;
 
-  const std::string* NextReadPartitionKey(const PgsqlReadRequestPB& pgsql_read_request) const;
+  const std::string* NextReadPartitionKey(const PgsqlReadRequestMsg& pgsql_read_request) const;
 
   Status TriggerManualCompactionSyncUnsafe(
       rocksdb::CompactionReason reason,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
-  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
-    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
-  }
+  Status TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& options);
+
+  Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
   Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
@@ -1077,10 +1141,36 @@ class Tablet : public AbstractTablet,
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
-      std::function<void(Slice key)> callback, const TableId& colocated_table_id) const;
+      std::function<void(Slice key)> callback, TableIdView colocated_table_id) const;
+
+  // Returns approximate middle key for tablet split:
+  // - for hash-based partitions: encoded hash code in order to split by hash code.
+  // - for range-based partitions: encoded doc key in order to split by row.
+  // If `partition_split_key` is specified it will be updated with partition middle key for
+  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
+  // range-based partitions always matches the returned middle key.
+  Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Refer to Tablet::GetSplitKeys(...) for the description.
+  Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
-      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+      const LWPgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+
+  template <class TransactionMetadata, class SubTransactionMetadata>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const TransactionMetadata& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const SubTransactionMetadata* subtransaction_metadata) const;
+
+  template <class SubTransactionPB>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const SubTransactionPB* subtransaction_metadata) const;
+
+  template <class Out>
+  void TEST_DocDBDumpToContainerImpl(
+      Out& out, docdb::IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time);
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -1107,9 +1197,19 @@ class Tablet : public AbstractTablet,
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
-  std::shared_ptr<MemTracker> regulardb_mem_tracker_;
-  std::shared_ptr<MemTracker> intentdb_mem_tracker_;
+  // Specifies parent tserver-wise mem trackers under which per-tablet BlockBasedTable and
+  // BlockBasedTableBuilder mem trackers would be grouped.
+  // parent_block_based_table_builder_mem_tracker_ is optional, if not set, BlockBasedTableBuilder
+  // mem tracker will be added under corresponding per-RocksDB mem tracker (as of 2026-03-11:
+  // [Regular|Intents]DB->tablet-<tablet_id>->Tablets_overhead->server->root).
+  std::shared_ptr<MemTracker> parent_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> parent_block_based_table_builder_mem_tracker_;
+  // Mem trackers for BlockBasedTable and BlockBasedTableBuilder components for each of RegularDB
+  // and IntentsDB.
+  std::shared_ptr<MemTracker> regulardb_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> regulardb_block_based_table_builder_mem_tracker_;
+  std::shared_ptr<MemTracker> intentsdb_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> intentsdb_block_based_table_builder_mem_tracker_;
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
@@ -1243,7 +1343,8 @@ class Tablet : public AbstractTablet,
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
-  HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
+  docdb::CompactionHybridTimeConstraints CompactionHybridTimeConstraints(
+      const std::vector<rocksdb::FileMetaData*>& inputs);
 
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);

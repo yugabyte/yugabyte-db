@@ -23,6 +23,7 @@
 #include "utils/query_utils.h"
 #include "commands/parse_error.h"
 #include "metadata/metadata_cache.h"
+#include "api_hooks.h"
 
 extern bool EnableShardRebalancer;
 
@@ -50,7 +51,13 @@ command_rebalancer_status(PG_FUNCTION_ARGS)
 	bool isNull = false;
 	Datum result = ExtensionExecuteQueryViaSPI(
 		FormatSqlQuery(
-			"WITH r1 AS (SELECT jsonb_build_object('jobId', job_id, 'state', state::text, 'startedAt', started_at::text, 'finishedAt', finished_at::text, 'details', details) AS obj FROM citus_rebalance_status()),"
+			"WITH r1 AS (SELECT jsonb_build_object("
+			"  'state', state::text,"
+			"  'startedAt', started_at::text,"
+			"  'finishedAt', finished_at::text,"
+			"  'task_state_counts', details->'task_state_counts',"
+			"  'tasks', (SELECT jsonb_agg(task - 'LSN' - 'command' - 'hosts' - 'task_id') FROM jsonb_array_elements(details->'tasks') AS task)) AS obj"
+			" FROM citus_rebalance_status()),"
 			" r2 AS (SELECT jsonb_build_object('rows', jsonb_agg(r1.obj)) AS obj FROM r1)"
 			" SELECT %s.bson_json_to_bson(r2.obj::text) FROM r2",
 			CoreSchemaName), readOnly, SPI_OK_SELECT, &isNull);
@@ -92,6 +99,13 @@ command_rebalancer_start(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("starting the shard rebalancer is not supported yet")));
+	}
+
+	if (IsChangeStreamFeatureAvailableAndCompatible())
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+						errmsg(
+							"starting the shard rebalancer is not supported when change streams is enabled")));
 	}
 
 	pgbson *startArgs = PG_GETARG_PGBSON(0);

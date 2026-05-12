@@ -29,7 +29,7 @@ For information on networking and port requirements, refer to [Networking](../pr
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB universe. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL and YCQL APIs.
 
-You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Enable database authentication](authorization-platform/#enable-database-authentication).
+You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Enable database endpoints and authorization](authorization-platform/#enable-database-endpoints-and-authorization).
 
 YugabyteDB Anywhere and YugabyteDB also support LDAP and OIDC for managing authentication. See [Database authentication](authentication/).
 

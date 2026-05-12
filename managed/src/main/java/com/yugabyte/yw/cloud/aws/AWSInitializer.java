@@ -18,6 +18,8 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.GROUP_EBS_IOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.GROUP_EBS_THROUGHPUT;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_SIZE;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_COMPUTE_INSTANCE;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_PROVISIONED_THROUGHPUT;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_STORAGE;
@@ -26,6 +28,7 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_GENERAL_PURP
 import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_GP2;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_GP3;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_IO1;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_IO2;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_TYPE_PROVISIONED_IOPS;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -202,6 +205,7 @@ public class AWSInitializer extends AbstractInitializer {
             JsonNode volumeType = attributesJson.get("volumeType");
             if (VOLUME_TYPE_PROVISIONED_IOPS.equals(volumeType.textValue())) {
               storeEBSPriceComponent(context, sku, IO1_SIZE, region, onDemandJson);
+              storeEBSPriceComponent(context, sku, IO2_SIZE, region, onDemandJson);
             } else if (VOLUME_API_GENERAL_PURPOSE.equals(volumeType.textValue())) {
               JsonNode volumeApiName = attributesJson.get("volumeApiName");
               if (VOLUME_API_NAME_GP2.equals(volumeApiName.textValue())) {
@@ -216,6 +220,8 @@ public class AWSInitializer extends AbstractInitializer {
               JsonNode volumeApiName = attributesJson.get("volumeApiName");
               if (VOLUME_API_NAME_IO1.equals(volumeApiName.textValue())) {
                 storeEBSPriceComponent(context, sku, IO1_PIOPS, region, onDemandJson);
+              } else if (VOLUME_API_NAME_IO2.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(context, sku, IO2_PIOPS, region, onDemandJson);
               } else if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
                 storeEBSPriceComponent(context, sku, GP3_PIOPS, region, onDemandJson);
               }

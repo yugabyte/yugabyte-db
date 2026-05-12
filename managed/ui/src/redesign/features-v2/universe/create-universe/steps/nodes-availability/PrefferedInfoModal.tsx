@@ -1,11 +1,12 @@
 import { FC } from 'react';
-import { styled } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { YBModal, mui } from '@yugabyte-ui-library/core';
-import { HelpOutline } from '@material-ui/icons';
-import { ReactComponent as BookIcon } from '../../../../../assets/documentation.svg';
 
-const { Box, Typography } = mui;
+//icons
+import { HelpOutline } from '@material-ui/icons';
+import BookIcon from '../../../../../assets/blue-book.svg';
+
+const { Box, Typography, styled } = mui;
 
 interface PreferredInfoProps {
   open: boolean;
@@ -38,7 +39,6 @@ const StyledUL = styled('ul')(({ theme }) => ({
 }));
 
 const InfoArea = styled(Box)(({ theme }) => ({
-  marginTop: '16px',
   padding: '16px',
   display: 'flex',
   flexDirection: 'column',
@@ -61,10 +61,10 @@ export const PreferredInfoModal: FC<PreferredInfoProps> = ({ open, onClose }) =>
       title={t('title')}
       titleIcon={<HelpIcon />}
       titleSeparator
-      overrideHeight={400}
+      overrideHeight={'auto'}
       overrideWidth={600}
     >
-      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <Typography variant="body1">{t('prefferedQues')}</Typography>
         <Typography variant="body2">{t('prefferedAns')}</Typography>
         <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>

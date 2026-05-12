@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -26,8 +27,8 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.nodeagent.PingResponse;
 import com.yugabyte.yw.nodeagent.ServerInfo;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
@@ -67,28 +68,34 @@ public class NodeAgentPoller {
 
   private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "ybp_nodeagent_version_mismatch";
   private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
-      Gauge.build(NODE_AGENT_VERSION_MISMATCH_NAME, "Has Node Agent version mismatched")
+      Gauge.builder()
+          .name(NODE_AGENT_VERSION_MISMATCH_NAME)
+          .help("Has Node Agent version mismatched")
           .labelNames(
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   private static final String NODE_AGENT_SERVER_CERT_EXPIRING_NAME =
       "ybp_nodeagent_server_cert_expiring";
   private static final Gauge NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE =
-      Gauge.build(NODE_AGENT_SERVER_CERT_EXPIRING_NAME, "Is Node Agent server cert expiring")
+      Gauge.builder()
+          .name(NODE_AGENT_SERVER_CERT_EXPIRING_NAME)
+          .help("Is Node Agent server cert expiring")
           .labelNames(
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
-      Gauge.build(NODE_AGENT_CONNECTION_NAME, "Is Node Agent connection successful")
+      Gauge.builder()
+          .name(NODE_AGENT_CONNECTION_NAME)
+          .help("Is Node Agent connection successful")
           .labelNames(
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
@@ -169,8 +176,9 @@ public class NodeAgentPoller {
         } catch (RejectedExecutionException e) {
           stateRef.set(PollerTaskState.IDLE);
           log.warn(
-              "Failed to schedule poller task for {}. Will be retried later",
-              param.getNodeAgentUuid());
+              "Failed to schedule poller task for {} - {}. Will be retried later",
+              param.getNodeAgentUuid(),
+              e.getMessage());
         }
       }
     }
@@ -257,6 +265,37 @@ public class NodeAgentPoller {
           }
         } finally {
           stateRef.set(PollerTaskState.IDLE);
+        }
+      }
+    }
+
+    private ServerInfo waitForServerRestart(NodeAgent nodeAgent) {
+      Stopwatch watch = Stopwatch.createStarted();
+      while (true) {
+        PingResponse pingResponse =
+            nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
+        ServerInfo serverInfo = pingResponse.getServerInfo();
+        if (serverInfo.getRestartNeeded()) {
+          long elapsedMillis = watch.elapsed().toMillis();
+          Duration waitTime =
+              confGetter.getGlobalConf(GlobalConfKeys.nodeAgentUpgradeRestartWaitTime);
+          if (elapsedMillis > waitTime.toMillis()) {
+            log.warn(
+                "Node agent {} has not restarted after waiting for {}ms", nodeAgent, elapsedMillis);
+            return serverInfo;
+          }
+          try {
+            Thread.sleep(300);
+          } catch (InterruptedException e) {
+            log.warn(
+                "Interrupted while waiting for node agent {} to restart - {}",
+                nodeAgent,
+                e.getMessage());
+            Thread.currentThread().interrupt();
+          }
+        } else {
+          log.info("Restarted node agent {}", nodeAgent);
+          return serverInfo;
         }
       }
     }
@@ -408,11 +447,9 @@ public class NodeAgentPoller {
         log.info("Finalizing upgrade for node agent {}", nodeAgent);
         // Inform the node agent to restart and load the new cert and key on restart.
         String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
-        PingResponse pingResponse =
-            nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
-        ServerInfo serverInfo = pingResponse.getServerInfo();
+        ServerInfo serverInfo = waitForServerRestart(nodeAgent);
         if (serverInfo.getRestartNeeded()) {
-          log.info("Server restart is needed for node agent {}", nodeAgent);
+          log.info("Server restart is still needed for node agent {}", nodeAgent);
         } else {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
@@ -461,7 +498,7 @@ public class NodeAgentPoller {
 
   private static void publishMetric(NodeAgent nodeAgent, Gauge guage, double value) {
     guage
-        .labels(
+        .labelValues(
             nodeAgent.getUuid().toString(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
         .set(value);
@@ -483,29 +520,38 @@ public class NodeAgentPoller {
           ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
       nodeAgentClient.executeCommand(nodeAgent, command).processErrors();
     }
-    installerFiles.getCopyFileInfos().stream()
-        .forEach(
-            f -> {
-              log.info(
-                  "Uploading {} to {} on node agent {}",
-                  f.getSourcePath(),
-                  f.getTargetPath(),
-                  nodeAgent);
-              int perm = 0;
-              if (StringUtils.isNotBlank(f.getPermission())) {
-                try {
-                  perm = Integer.parseInt(f.getPermission().trim(), 8);
-                } catch (NumberFormatException e) {
+    try {
+      installerFiles.getCopyFileInfos().stream()
+          .forEach(
+              f -> {
+                log.info(
+                    "Uploading {} to {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    nodeAgent);
+                int perm = 0;
+                if (StringUtils.isNotBlank(f.getPermission())) {
+                  try {
+                    perm = Integer.parseInt(f.getPermission().trim(), 8);
+                  } catch (NumberFormatException e) {
+                    log.warn(
+                        "Invalid permission {} for file {} - {}. Using default",
+                        f.getPermission(),
+                        f.getSourcePath(),
+                        e.getMessage());
+                  }
                 }
-              }
-              nodeAgentClient.uploadFile(
-                  nodeAgent,
-                  f.getSourcePath().toString(),
-                  f.getTargetPath().toString(),
-                  null /*user*/,
-                  perm,
-                  null /*timeout*/);
-            });
+                nodeAgentClient.uploadFile(
+                    nodeAgent,
+                    f.getSourcePath().toString(),
+                    f.getTargetPath().toString(),
+                    null /*user*/,
+                    perm,
+                    null /*timeout*/);
+              });
+    } finally {
+      installerFiles.cleanupCopiedFiles();
+    }
   }
 
   void syncNodeAgentTargetJsons() {

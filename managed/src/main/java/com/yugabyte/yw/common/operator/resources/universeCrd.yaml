@@ -24,6 +24,16 @@ spec:
                 rule: self.replicationFactor <= self.numNodes
               - message: placementInfo cannot be removed once set.
                 rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
+              - message: >
+                  tserverVolume cannot be present if deviceInfo or masterDeviceInfo is present.
+                  The new volume fields are mutually exclusive with the old deviceInfo fields.
+                rule: >
+                  !has(self.tserverVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
+              - message: >
+                  masterVolume cannot be present if deviceInfo or masterDeviceInfo is present.
+                  The new volume fields are mutually exclusive with the old deviceInfo fields.
+                rule: >
+                  !has(self.masterVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
             properties:
               universeName:
                 type: string
@@ -43,13 +53,24 @@ spec:
               placementInfo:
                 description: Placement information for the universe.
                 type: object
+                x-kubernetes-validations:
+                  - message: defaultRegion cannot be removed once set.
+                    rule: has(self.defaultRegion) || !has(oldSelf.defaultRegion)
+                required:
+                - regions
                 properties:
                   defaultRegion:
                     type: string
                     description: Default region for the universe.
+                    x-kubernetes-validations:
+                    - message: defaultRegion cannot be changed once set.
+                      rule: self == oldSelf
                   regions:
                     type: array
                     description: Regions for the universe.
+                    required:
+                    - code
+                    - zones
                     items:
                       type: object
                       properties:
@@ -59,6 +80,9 @@ spec:
                         zones:
                           type: array
                           description: Zones for the region.
+                          required:
+                          - code
+                          - numNodes
                           items:
                             type: object
                             properties:
@@ -143,6 +167,12 @@ spec:
               ybSoftwareVersion:
                 description: Version of DB software to use in the universe.
                 type: string
+              useYbdbInbuiltYbc:
+                description: >
+                  Use YBDB inbuilt YBC (immutable YBC) for the universe. When true, YBC runs from
+                  the same container image as the database instead of being installed at runtime.
+                type: boolean
+                default: false
               providerName:
                 description: Preexisting Provider name to use in the universe.
                 type: string
@@ -151,8 +181,8 @@ spec:
                   rule: self == oldSelf
               zoneFilter:
                 description: >
-                  Only deploy yugabytedb nodes in these zones mentioned in the list.
-                  Defaults to all zones if unspecified.
+                  Filter the zones to be added by the auto-provider.
+                  Only used when providerName is not specified.
                 type: array
                 x-kubernetes-validations:
                 - message: zoneFilter cannot be changed
@@ -214,6 +244,8 @@ spec:
                   Enable LoadBalancer access to the universe.
                   Creates a service with Type:LoadBalancer
                   in the universe for tserver and masters.
+                  WARNING: Enabling LoadBalancer may expose universe servers via public IPs.
+                  Use with caution. To use an internal LoadBalancer, ensure you set appropriate Kubernetes overrides to avoid exposing nodes publicly.
                 type: boolean
                 default: false
                 x-kubernetes-validations:
@@ -224,6 +256,7 @@ spec:
                   Device information for the tservers in universe to
                   refer to storage information for volume,
                   storage classes etc.
+                  DEPRECATED: Use tserverVolume instead. deviceInfo and tserverVolume are mutually exclusive.
                 properties:
                   volumeSize:
                     type: integer
@@ -237,14 +270,18 @@ spec:
                   storageClass:
                     type: string
                     x-kubernetes-validations:
-                      - message:   StorageClass cannot be changed once set.
+                      - message: StorageClass cannot be changed once set.
                         rule: self == oldSelf
+                    description: >
+                      Storage class for the volumes. Only used when providerName is not specified
+                      to populate storageClass of generated auto-provider.
                 type: object
               masterDeviceInfo:
                 description: >
                   Device information for the masters in universe to
                   refer to storage information for volume,
                   storage classes etc.
+                  DEPRECATED: Use masterVolume instead. masterDeviceInfo and masterVolume are mutually exclusive.
                 properties:
                   volumeSize:
                     type: integer
@@ -260,7 +297,136 @@ spec:
                     x-kubernetes-validations:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
+                    description: Storage class for the volumes. Only used when providerName is not specified.
                 type: object
+              tserverVolume:
+                description: >
+                  Volume configuration for tservers in the universe.
+                  This replaces deviceInfo. deviceInfo and tserverVolume are mutually exclusive.
+                type: object
+                properties:
+                  volumeSize:
+                    type: integer
+                    description: Volume size in GiB( defaults to 100 )
+                    default: 100
+                  numVolumes:
+                    type: integer
+                    description: >
+                      Number of volumes per tserver( defaults to 2 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
+                    default: 2
+                  storageClass:
+                    type: string
+                    description: >
+                      Storage class for the volumes. Provider storage class takes precedence over this
+                      since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
+                  perAZ:
+                    description: >
+                      Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                      This takes precedence over provider/base volume configuration.  Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base tserverVolume. This
+                      can be set to {} to make all AZs use base tserverVolume.
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        volumeSize:
+                          type: integer
+                          description: Volume size in GiB for this AZ
+                        numVolumes:
+                          type: integer
+                          description: >
+                            Number of volumes per tserver for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
+                        storageClass:
+                          type: string
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
+                x-kubernetes-validations:
+                  - message: tserverVolume cannot be removed once set.
+                    rule: self != null || oldSelf == null
+                  - message: perAZ in tserverVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
+              masterVolume:
+                description: >
+                  Volume configuration for masters in the universe.
+                  This replaces masterDeviceInfo. masterDeviceInfo and masterVolume are mutually exclusive.
+                type: object
+                properties:
+                  volumeSize:
+                    type: integer
+                    description: Volume size in GiB( defaults to 50 )
+                    default: 50
+                  numVolumes:
+                    type: integer
+                    description: >
+                      Number of volumes per master( defaults to 1 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
+                    default: 1
+                  storageClass:
+                    type: string
+                    description: >
+                      Storage class for the volumes. Provider storage class takes precedence over this
+                      since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
+                  perAZ:
+                    description: >
+                      Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                      This takes precedence over provider/base volume configuration. Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base masterVolume. This 
+                      can be set to {} to make all AZs use base masterVolume.
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        volumeSize:
+                          type: integer
+                          description: Volume size in GiB for this AZ
+                        numVolumes:
+                          type: integer
+                          description: >
+                            Number of volumes per master for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
+                        storageClass:
+                          type: string
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
+                x-kubernetes-validations:
+                  - message: masterVolume cannot be removed once set.
+                    rule: self != null || oldSelf == null
+                  - message: perAZ in masterVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
+              tserverResourceSpec:
+                description: >
+                  Resource specification for the tserver pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the tserver pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the tserver pods.
+                    minimum: 1
+              masterResourceSpec:
+                description: >
+                  Resource specification for the master pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the master pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the master pods.
+                    minimum: 1
               paused:
                 description: >
                   If the universe is paused. A paused universe will have its statefulsets scaled
@@ -270,6 +436,133 @@ spec:
                   is resumed.
                 type: boolean
                 default: false
+              readReplica:
+                type: object
+                x-kubernetes-validations:
+                  - message: placementInfo for read replica cannot be removed once set.
+                    rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
+                  - message: deviceInfo and tserverVolume are mutually exclusive in readReplica. Only one can be provided.
+                    rule: >
+                      !has(self.deviceInfo) || !has(self.tserverVolume)
+                required:
+                - numNodes
+                - replicationFactor
+                properties:
+                  numNodes:
+                    type: integer
+                  replicationFactor:
+                    type: integer
+                  deviceInfo:
+                    description: >
+                      Device information for the readReplica tservers.
+                      DEPRECATED: Use tserverVolume instead. deviceInfo and tserverVolume are mutually exclusive.
+                    type: object
+                    required:
+                    - numVolumes
+                    properties:
+                      volumeSize:
+                        type: integer
+                        default: 50
+                      numVolumes:
+                        type: integer
+                        x-kubernetes-validations:
+                          - message: numVolumes cannot be changed once set.
+                            rule: "self == oldSelf"
+                  tserverVolume:
+                    description: >
+                      Volume configuration for tservers in the read replica.
+                      This replaces deviceInfo. deviceInfo and tserverVolume are mutually exclusive.
+                    type: object
+                    properties:
+                      volumeSize:
+                        type: integer
+                        description: Volume size in GiB
+                      numVolumes:
+                        type: integer
+                        description: >
+                          Number of volumes per tserver. Modifying values supported with 
+                          DB software versions 2026.1.0 and above.
+                      storageClass:
+                        type: string
+                        description: >
+                          Storage class for the volumes. Provider storage class takes precedence over this
+                          since it is at AZ level. To use this, provider storage class values should be empty.
+                          Modifying values supported with DB software versions 2026.1.0 and above.
+                      perAZ:
+                        description: >
+                          Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                          This takes precedence over provider/base volume configuration.  Once this is used, the
+                          provider values are no longer used for volume configuration. If some
+                          AZs are not provided as overrides, the values are picked from base tserverVolume. This 
+                          can be set to {} to make all AZs use base tserverVolume.
+                        type: object
+                        additionalProperties:
+                          type: object
+                          properties:
+                            volumeSize:
+                              type: integer
+                              description: Volume size in GiB for this AZ
+                            numVolumes:
+                              type: integer
+                              description: >
+                                Number of volumes per tserver for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
+                            storageClass:
+                              type: string
+                              description: >
+                                Storage class for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
+                    x-kubernetes-validations:
+                      - message: tserverVolume cannot be removed once set.
+                        rule: self != null || oldSelf == null
+                      - message: perAZ in readReplica tserverVolume cannot be removed once set.
+                        rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
+                  tserverResourceSpec:
+                    description: >
+                      Resource specification for the tserver pods in the universe.
+                    type: object
+                    properties:
+                      cpu:
+                        type: number
+                        description: CPU core count for the tserver pods.
+                        minimum: 1
+                      memory:
+                        type: number
+                        description: Memory in GiB for the tserver pods.
+                        minimum: 1
+                  placementInfo:
+                    description: Placement information for the universe.
+                    type: object
+                    required:
+                    - regions
+                    properties:
+                      regions:
+                        type: array
+                        description: Regions for the universe.
+                        required:
+                        - code
+                        - zones
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                              description: Code for the region.
+                            zones:
+                              type: array
+                              description: Zones for the region.
+                              required:
+                              - code
+                              - numNodes
+                              items:
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                    description: Code for the zone.
+                                  numNodes:
+                                    type: integer
+                                    description: Number of nodes for the zone.
               ybcThrottleParameters:
                 description: >
                   YBC throttle parameters for the universe. These throttle parameters can be used to
@@ -353,6 +646,7 @@ spec:
                                 x-kubernetes-int-or-string: true
                   master:
                     type: object
+                    x-kubernetes-preserve-unknown-fields: true
                     properties:
                       affinity:
                         description: Pod scheduling affinity settings
@@ -773,9 +1067,6 @@ spec:
                                   type: array
                                   items:
                                     type: string
-
-
-
                       extraEnv:
                         type: array
                         items:
@@ -854,6 +1145,7 @@ spec:
                               type: string
                   tserver:
                     type: object
+                    x-kubernetes-preserve-unknown-fields: true
                     properties:
                       affinity:
                         description: Pod scheduling affinity settings

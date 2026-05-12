@@ -114,6 +114,9 @@ struct ArenaTraits {
 template <class Traits>
 class ArenaComponent;
 
+template <class Traits>
+class ArenaObjectFactory;
+
 // A helper class for storing variable-length blobs (e.g. strings). Once a blob
 // is added to the arena, its index stays fixed. No reallocation happens.
 // Instead, the arena keeps a list of buffers. When it needs to grow, it
@@ -171,6 +174,14 @@ class ArenaBase {
     return Slice(AddSlice(value), value.size());
   }
 
+  Slice CatSlices(Slice slice1, Slice slice2) {
+    auto full_size = slice1.size() + slice2.size();
+    auto start = static_cast<std::byte*>(AllocateBytes(full_size));
+    memcpy(start, slice1.data(), slice1.size());
+    memcpy(start + slice1.size(), slice2.data(), slice2.size());
+    return Slice(start, full_size);
+  }
+
   // Handy wrapper for placement-new
   template<class T, class... Args>
   T *NewObject(Args&&... args);
@@ -179,6 +190,8 @@ class ArenaBase {
   T *NewArenaObject(Args&&... args) {
     return NewObject<T>(this, std::forward<Args>(args)...);
   }
+
+  internal::ArenaObjectFactory<Traits> ArenaObjectFactory();
 
   // Allocate shared_ptr object.
   template<class TObject, typename... TypeArgs>
@@ -246,6 +259,8 @@ class ArenaBase {
   // Returns how many bytes are used by this arena. This excludes any empty space in the last
   // component.
   size_t UsedBytes();
+
+  bool Contains(const void* ptr);
 
  private:
   typedef typename Traits::mutex_type mutex_type;
@@ -452,6 +467,10 @@ class ArenaComponent {
     return result;
   }
 
+  bool Contains(const void* ptr) {
+    return ptr >= begin() && ptr < end();
+  }
+
  private:
   uint8_t* begin_of_this() {
     return pointer_cast<uint8_t*>(this);
@@ -500,10 +519,34 @@ class ArenaObjectDeleter {
 };
 
 template <class Traits>
-template<class TObject>
+template <class TObject>
 std::shared_ptr<TObject> ArenaBase<Traits>::ToShared(TObject *raw_ptr) {
   ArenaAllocatorBase<TObject, Traits> allocator(this);
   return std::shared_ptr<TObject>(raw_ptr, ArenaObjectDeleter(), allocator);
+}
+
+template <class Traits>
+class ArenaObjectFactory {
+ public:
+  explicit ArenaObjectFactory(ArenaBase<Traits>* arena) : arena_(arena) {}
+
+  template <class T>
+  operator T*() const {
+    return arena_->template NewArenaObject<T>();
+  }
+
+  template <class T>
+  operator T&() const {
+    return *arena_->template NewArenaObject<T>();
+  }
+
+ private:
+  ArenaBase<Traits>* arena_;
+};
+
+template <class Traits>
+ArenaObjectFactory<Traits> ArenaBase<Traits>::ArenaObjectFactory() {
+  return internal::ArenaObjectFactory<Traits>(this);
 }
 
 } // namespace internal
@@ -515,8 +558,12 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
-using ArenaPtr = std::shared_ptr<Arena>;
-using ThreadSafeArenaPtr = std::shared_ptr<ThreadSafeArena>;
+template <class Result, class Traits, class... Args>
+std::shared_ptr<Result> MakeSharedArenaObject(
+    const std::shared_ptr<internal::ArenaBase<Traits>>& arena, Args&&... args) {
+  auto result = arena->template NewArenaObject<Result>(std::forward<Args>(args)...);
+  return std::shared_ptr<Result>(arena, result);
+}
 
 ThreadSafeArenaPtr SharedThreadSafeArena();
 ArenaPtr SharedArena();

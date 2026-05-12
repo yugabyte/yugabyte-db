@@ -13,10 +13,8 @@
 
 #include "yb/util/pg_util.h"
 
-#include <algorithm>
 #include <string>
-
-#include "yb/util/logging.h"
+#include <boost/algorithm/string/replace.hpp>
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"

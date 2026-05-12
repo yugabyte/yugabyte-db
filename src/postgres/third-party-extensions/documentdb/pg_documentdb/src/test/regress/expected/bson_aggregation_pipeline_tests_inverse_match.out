@@ -99,11 +99,11 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airp
 
 -- Validate errors
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"pathRule": "rule", "input": {"flight_type": "private"} }}]}');
-ERROR:  unrecognized argument to $inverseMatch: 'pathRule'
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'pathRule'
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "inputValue": {"flight_type": "private"} }}]}');
-ERROR:  unrecognized argument to $inverseMatch: 'inputValue'
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'inputValue'
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "", "input": {"flight_type": "private"} }}]}');
-ERROR:  Missing 'path' parameter to $inverseMatch
+ERROR:  Path parameter is missing for the operator $inverseMatch
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": ["flight_type", "private"] }}]}');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [{"flight_type": "private"}, ""] }}]}');
@@ -119,7 +119,7 @@ SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id"
 
 -- any inverseMatch that queries that path should fail
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
-ERROR:  unknown operator: $allValues
+ERROR:  Unrecognized operator specified: $allValues
 -- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
                                                                                                          document                                                                                                          
@@ -264,18 +264,18 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 
 -- negative cases
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": {}, "input": "$roles"}} ], "cursor": {} }');
-ERROR:  BSON field '$inverseMatch.path' is the wrong type 'object', expected type 'string'
+ERROR:  The BSON field '$inverseMatch.path' has an incorrect type 'object'; it should be of type 'string'.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "", "input": "$roles"}} ], "cursor": {} }');
-ERROR:  Missing 'path' parameter to $inverseMatch
+ERROR:  Path parameter is missing for the operator $inverseMatch
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [true]}} ], "cursor": {} }');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: bool
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": true}} ], "cursor": {} }');
-ERROR:  $inverseMatch requires that 'input' be a document or an array of documents, found: bool
+ERROR:  The $inverseMatch requires 'input' to be either a single document or an array of documents, but instead received: bool
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}, "from": "collection"}} ], "cursor": {} }');
 ERROR:  'input' and 'from' can't be used together in an $inverseMatch stage.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "collection"}} ], "cursor": {} }');
 ERROR:  'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"rule": "rule"}} ], "cursor": {} }');
-ERROR:  unrecognized argument to $inverseMatch: 'rule'
+ERROR:  Unrecognized parameter supplied to $inverseMatch: 'rule'
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "mycoll", "pipeline": []}} ], "cursor": {} }');
-ERROR:  'from' collection: 'invmatch.mycoll' doesn't exist.
+ERROR:  The 'from' collection 'invmatch.mycoll' could not be found.

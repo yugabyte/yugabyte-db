@@ -16,6 +16,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
@@ -42,17 +43,20 @@ void PgWriteFloat(Value value, Buffer* buffer) {
   PgWriteInt(bit_cast<Int>(value), buffer);
 }
 
-template <bool NullTerminated, class Buffer>
+template <bool kNullTerminated, class Buffer>
 void PgWriteBytes(const Slice& value, Buffer* buffer) {
-  auto length = value.size() + NullTerminated;
+  auto length = value.size() + kNullTerminated;
   PgWriteInt<uint64_t>(length, buffer);
-  buffer->Append(value.cdata(), length);
+  buffer->Append(value);
+  if constexpr (kNullTerminated) {
+    buffer->PushBack(0);
+  }
 }
 
-template <class Buffer>
-Status DoWriteColumn(const QLValuePB& col_value, Buffer* buffer) {
+template <class Value, class Buffer>
+Status DoWriteColumn(const Value& col_value, Buffer* buffer) {
   // Write data header.
-  if (QLValue::IsNull(col_value)) {
+  if (IsNull(col_value)) {
     PgWireDataHeader header;
     header.set_null();
     char buf[PgWireDataHeader::kSerializedSize];
@@ -139,6 +143,14 @@ Status WriteColumn(const QLValuePB& col_value, WriteBuffer* buffer) {
 }
 
 Status WriteColumn(const QLValuePB& col_value, ValueBuffer* buffer) {
+  return DoWriteColumn(col_value, buffer);
+}
+
+Status WriteColumn(const LWQLValuePB& col_value, WriteBuffer* buffer) {
+  return DoWriteColumn(col_value, buffer);
+}
+
+Status WriteColumn(const LWQLValuePB& col_value, ValueBuffer* buffer) {
   return DoWriteColumn(col_value, buffer);
 }
 

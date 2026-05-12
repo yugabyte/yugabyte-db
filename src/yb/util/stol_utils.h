@@ -13,12 +13,14 @@
 
 #pragma once
 
+#include <charconv>
 #include <cmath>
 #include <optional>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strip.h"
 
+#include "yb/util/concepts.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -26,9 +28,12 @@
 namespace yb {
 
 Result<int64_t> CheckedStoll(Slice slice);
-Result<uint64_t> CheckedStoull(Slice slice);
+Result<uint64_t> CheckedStoull(Slice slice, int base = 10);
+Result<uint32_t> CheckedStoul(Slice slice, int base = 10);
+
 Result<int64_t> DoCheckedStol(Slice value, int64_t*);
 Result<uint64_t> DoCheckedStol(Slice value, uint64_t*);
+Result<uint64_t> DoCheckedStol(Slice value, uint32_t*);
 
 template <class T>
 Result<T> CheckedStol(Slice value) {
@@ -96,20 +101,18 @@ Result<T> CheckedParseNumber(Slice slice) {
       return *maybe_special_value;
     }
   }
-  if constexpr (std::is_same_v<T, int32_t> ||
-                std::is_same_v<T, uint32_t>) {
+  if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, uint32_t>) {
     return CheckedStoInt<T>(slice);
   } else if constexpr (std::is_same_v<T, int64_t>) {
     return CheckedStoll(slice);
-  } else if constexpr (std::is_same_v<T, uint64_t> ||
-                       std::is_same_v<T, size_t>) {
+  } else if constexpr (std::is_same_v<T, uint64_t> || std::is_same_v<T, size_t>) { // NOLINT
     static_assert(sizeof(uint64_t) == sizeof(size_t),
                   "Assuming size_t is the same as uint64_t");
     return CheckedStoull(slice);
   } else if constexpr (std::is_same_v<T, long double>) {
     // For double, use CheckedStold directly
     return CheckedStold(slice);
-  } else if constexpr (std::is_floating_point_v<T>) {
+  } else if constexpr (std::is_floating_point_v<T>) { // NOLINT
     // For float and double, parse as double and cast
     auto long_double_value = VERIFY_RESULT(CheckedStold(slice));
     T result = static_cast<T>(long_double_value);
@@ -127,7 +130,7 @@ Result<T> CheckedParseNumber(Slice slice) {
 
 // Generalized function to parse comma-separated lists of numbers of a supported type into an
 // arbitrary container and enforce inclusive lower and upper bounds.
-template<ParseableNumber T, ContainerOf<T> Container>
+template<ParseableNumber T, ContainerOf<T> Container = std::vector<T>>
 Result<Container> ParseCommaSeparatedListOfNumbers(
     const std::string& input,
     std::optional<T> lower_bound = std::nullopt,

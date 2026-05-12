@@ -21,7 +21,7 @@ import {
 } from '../../../../../v2/api/authentication/authentication';
 import { GetGroupContext } from './GroupUtils';
 import { Pages } from './GroupContext';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 type DeleteGroupProps = {
   open: boolean;

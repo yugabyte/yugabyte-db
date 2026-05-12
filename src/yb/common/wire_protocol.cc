@@ -31,9 +31,6 @@
 //
 #include "yb/common/wire_protocol.h"
 
-#include <string>
-#include <vector>
-
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/wire_protocol.messages.h"
@@ -55,7 +52,6 @@
 #include "yb/util/flags.h"
 
 using google::protobuf::RepeatedPtrField;
-using std::vector;
 
 DEFINE_UNKNOWN_string(use_private_ip, "never",
               "When to use private IP for connection. "
@@ -212,7 +208,7 @@ void StatusToPB(const Status& status, LWAppStatusPB* pb) {
 }
 
 struct WireProtocolTabletServerErrorTag {
-  static constexpr uint8_t kCategory = 5;
+  static constexpr CategoryDescriptor kCategory{5, {}};
 
   enum Value {};
 
@@ -241,7 +237,7 @@ Status StatusFromOldPB(const PB& pb) {
     auto error_code = static_cast<Tag::Value>((value)); \
     auto size = 2 + Tag::EncodedSize(error_code); \
     uint8_t* buffer = static_cast<uint8_t*>(alloca(size)); \
-    buffer[0] = Tag::kCategory; \
+    buffer[0] = Tag::kCategory.id; \
     Tag::Encode(error_code, buffer + 1); \
     buffer[size - 1] = 0; \
     return status_factory(Slice(buffer, size)); \
@@ -454,11 +450,6 @@ const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
       registration.broadcast_addresses(), registration.private_rpc_addresses(),
       registration.cloud_info(), connect_from);
 }
-
-static const std::string kSplitChildTabletIdsCategoryName = "split child tablet IDs";
-
-StatusCategoryRegisterer split_child_tablet_ids_category_registerer(
-    StatusCategoryDescription::Make<SplitChildTabletIdsTag>(&kSplitChildTabletIdsCategoryName));
 
 std::string SplitChildTabletIdsTag::ToMessage(const Value& value) {
   return Format("Split child tablet IDs: $0", value);

@@ -4260,8 +4260,6 @@ YbPlanStateTryGetAggrefs(PlanState *ps)
 {
 	switch (nodeTag(ps))
 	{
-		case T_ForeignScanState:
-			return &castNode(ForeignScanState, ps)->yb_fdw_aggrefs;
 		case T_IndexOnlyScanState:
 			return &castNode(IndexOnlyScanState, ps)->yb_ioss_aggrefs;
 		case T_IndexScanState:

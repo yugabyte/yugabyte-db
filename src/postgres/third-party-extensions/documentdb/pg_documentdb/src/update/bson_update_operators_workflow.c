@@ -62,10 +62,10 @@ typedef enum PositionalType
 	/* It is not a positional update */
 	PositionalType_None = 0,
 
-	/* Corresponds to the $[] path */
+	/* Matches the $[] path */
 	PositionalType_All,
 
-	/* Corresponds to the $ path */
+	/* Matches the specified value $ path */
 	PositionalType_QueryFilter,
 
 	/* Corresponds to the $[identifier] path */
@@ -217,7 +217,7 @@ typedef struct UpdateArrayWriter
 	bool isValid;
 
 	/* Whether or not the array writer modified something */
-	bool modified;
+	ModifyType modifyType;
 } UpdateArrayWriter;
 
 
@@ -238,18 +238,12 @@ typedef struct UpdateOperatorWriter
 	const char *relativePath;
 
 	/* whether or not the value was modified */
-	bool modified;
+	ModifyType modifyType;
 
 	/* the underlying array writer if one is requested */
 	UpdateArrayWriter updateArrayWriter;
 } UpdateOperatorWriter;
 
-/* --------------------------------------------------------- */
-/* Global hooks */
-/* --------------------------------------------------------- */
-NotifyUpdatedField_HookType notify_updated_field_hook = NULL;
-NotifyUpdatedFieldPathView_HookType notify_updated_field_path_view_hook = NULL;
-NotifyRemovedField_HookType notify_remove_field_hook = NULL;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -305,10 +299,11 @@ static void HandleSetOnInsertUpdateTree(BsonIntermediatePathNode *tree,
 static uint32_t ArrayFiltersKeyHash(const void *key, Size keysize);
 static int ArrayFiltersKeyCompare(const void *obj1, const void *obj2, Size objsize);
 static void WriteCurrentArrayFilterValue(pgbson_writer *writer, bson_value_t *entryValue);
-static HTAB * BuildExpressionForArrayFilters(pgbson *arrayFilters);
-static void PostValidateArrayFilters(HTAB *arrayFiltersHash, pgbson *updateSpec);
+static HTAB * BuildExpressionForArrayFilters(const bson_value_t *arrayFilters);
+static void PostValidateArrayFilters(HTAB *arrayFiltersHash, const
+									 bson_value_t *updateSpec);
 
-/* Value writer functions */
+/* Functions for writing values */
 static bool HandleUpdateDocumentId(pgbson_writer *writer,
 								   const BsonUpdateIntermediatePathNode *root,
 								   const CurrentDocumentState *state);
@@ -357,24 +352,132 @@ static void * HandlePullWriterGetState(const bson_value_t *tree);
 
 static MongoUpdateOperatorSpec MongoUpdateOperators[] =
 {
-	{ "$set", HandleBasicUpdateTree, HandleUpdateDollarSet, NULL },
-	{ "$inc", HandleBasicUpdateTree, HandleUpdateDollarInc, NULL },
-	{ "$min", HandleBasicUpdateTree, HandleUpdateDollarMin, NULL },
-	{ "$max", HandleBasicUpdateTree, HandleUpdateDollarMax, NULL },
-	{ "$unset", HandleUnsetUpdateTree, HandleUpdateDollarUnset, NULL },
-	{ "$push", HandleBasicUpdateTree, HandleUpdateDollarPush, NULL },
-	{ "$pop", HandleBasicUpdateTree, HandleUpdateDollarPop, NULL },
-	{ "$rename", HandleRenameUpdateTree, HandleUpdateDollarRename, NULL },
-	{ "$setOnInsert", HandleSetOnInsertUpdateTree, HandleUpdateDollarSetOnInsert, NULL },
-	{ "$pullAll", HandleBasicUpdateTree, HandleUpdateDollarPullAll, NULL },
-	{ "$addToSet", HandleBasicUpdateTree, HandleUpdateDollarAddToSet, NULL },
-	{ "$mul", HandleBasicUpdateTree, HandleUpdateDollarMul, NULL },
-	{ "$bit", HandleBasicUpdateTree, HandleUpdateDollarBit, NULL },
-	{ "$currentDate", HandleBasicUpdateTree, HandleUpdateDollarCurrentDate, NULL },
-	{ "$pull", HandleBasicUpdateTree, HandleUpdateDollarPull, HandlePullWriterGetState },
-	{ NULL, NULL, NULL, NULL },
-	{ NULL, NULL, NULL, NULL },
-	{ NULL, NULL, NULL, NULL },
+	{
+		.operatorName = "$set",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarSet,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_SET
+	},
+	{
+		.operatorName = "$inc",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarInc,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_INC
+	},
+	{
+		.operatorName = "$min",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarMin,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_MIN
+	},
+	{
+		.operatorName = "$max",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarMax,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_MAX
+	},
+	{
+		.operatorName = "$unset",
+		.updateTreeFunc = HandleUnsetUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarUnset,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_UNSET
+	},
+	{
+		.operatorName = "$push",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarPush,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_PUSH
+	},
+	{
+		.operatorName = "$pop",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarPop,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_POP
+	},
+	{
+		.operatorName = "$rename",
+		.updateTreeFunc = HandleRenameUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarRename,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_RENAME
+	},
+	{
+		.operatorName = "$setOnInsert",
+		.updateTreeFunc = HandleSetOnInsertUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarSetOnInsert,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_SET_ON_INSERT
+	},
+	{
+		.operatorName = "$pullAll",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarPullAll,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_PULLALL
+	},
+	{
+		.operatorName = "$addToSet",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarAddToSet,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_ADDTOSET
+	},
+	{
+		.operatorName = "$mul",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarMul,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_MUL
+	},
+	{
+		.operatorName = "$bit",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarBit,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_BIT
+	},
+	{
+		.operatorName = "$currentDate",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarCurrentDate,
+		.updateWriterGetState = NULL,
+		.featureId = FEATURE_UPDATE_OPERATOR_CURRENTDATE
+	},
+	{
+		.operatorName = "$pull",
+		.updateTreeFunc = HandleBasicUpdateTree,
+		.updateWriterFunc = HandleUpdateDollarPull,
+		.updateWriterGetState = HandlePullWriterGetState,
+		.featureId = FEATURE_UPDATE_OPERATOR_PULL
+	},
+	{
+		.operatorName = NULL,
+		.updateTreeFunc = NULL,
+		.updateWriterFunc = NULL,
+		.updateWriterGetState = NULL,
+		.featureId = MAX_FEATURE_INDEX
+	},
+	{
+		.operatorName = NULL,
+		.updateTreeFunc = NULL,
+		.updateWriterFunc = NULL,
+		.updateWriterGetState = NULL,
+		.featureId = MAX_FEATURE_INDEX
+	},
+	{
+		.operatorName = NULL,
+		.updateTreeFunc = NULL,
+		.updateWriterFunc = NULL,
+		.updateWriterGetState = NULL,
+		.featureId = MAX_FEATURE_INDEX
+	}
 };
 
 static const int MaxNumberOfUpdateOperators = sizeof(MongoUpdateOperators) /
@@ -474,14 +577,16 @@ WriteCurrentNode(const BsonUpdateLeafNode *leaf, const bson_value_t *currentValu
 	/* If the update operator did not modify the document
 	 * and there is a value to be written,
 	 * write out the original value.
+	 * Exclude MODIFY_TYPE_ORIGINAL_REWRITE since that means the existing
+	 * value is already written on the new document.
 	 */
-	if (!updateWriter.modified &&
+	if (updateWriter.modifyType == MODIFY_TYPE_NOCHANGE &&
 		currentValue->value_type != BSON_TYPE_EOD)
 	{
 		PgbsonElementWriterWriteValue(writer, currentValue);
 	}
 
-	return updateWriter.modified;
+	return updateWriter.modifyType == MODIFY_TYPE_CHANGED;
 }
 
 
@@ -605,6 +710,14 @@ RegisterUpdateOperatorExtension(const MongoUpdateOperatorSpec *extensibleDefinit
 							   extensibleDefinition->operatorName)));
 	}
 
+	if (extensibleDefinition->featureId < 0 ||
+		extensibleDefinition->featureId >= MAX_FEATURE_INDEX)
+	{
+		ereport(ERROR, (errmsg("Invalid featureId %d for operator name %s",
+							   extensibleDefinition->featureId,
+							   extensibleDefinition->operatorName)));
+	}
+
 	MongoUpdateOperators[NumberOfUpdateOperators] = *extensibleDefinition;
 	NumberOfUpdateOperators++;
 }
@@ -615,18 +728,17 @@ RegisterUpdateOperatorExtension(const MongoUpdateOperatorSpec *extensibleDefinit
  * and can be reused in processing document updates.
  */
 const BsonIntermediatePathNode *
-GetOperatorUpdateState(pgbson *updateSpec, pgbson *querySpec,
-					   pgbson *arrayFilters, bool isUpsert)
+GetOperatorUpdateState(const bson_value_t *updateSpec, const bson_value_t *querySpec,
+					   const bson_value_t *arrayFilters, bool isUpsert)
 {
-	bson_iter_t updateIterator;
-	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
-	if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator) ||
-		!bson_iter_recurse(&updateIterator, &updateIterator))
+	if (updateSpec->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Update should be a document")));
 	}
 
+	bson_iter_t updateIterator;
+	BsonValueInitIterator(updateSpec, &updateIterator);
 	HTAB *arrayFilterHash = BuildExpressionForArrayFilters(arrayFilters);
 	PositionalUpdateSpec positionalSpec =
 	{
@@ -679,7 +791,7 @@ ProcessUpdateOperatorWithState(pgbson *sourceDoc,
 
 	PgbsonInitIterator(sourceDoc, &docIterator);
 
-	/* Do the update */
+	/* Update */
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 
@@ -735,12 +847,7 @@ void
 UpdateWriterWriteModifiedValue(UpdateOperatorWriter *writer, const bson_value_t *value)
 {
 	PgbsonElementWriterWriteValue(writer->writer, value);
-	writer->modified = true;
-
-	if (notify_updated_field_hook != NULL)
-	{
-		notify_updated_field_hook(writer->updateTracker, writer->relativePath, value);
-	}
+	writer->modifyType = MODIFY_TYPE_CHANGED;
 }
 
 
@@ -751,11 +858,7 @@ UpdateWriterWriteModifiedValue(UpdateOperatorWriter *writer, const bson_value_t 
 void
 UpdateWriterSkipValue(UpdateOperatorWriter *writer)
 {
-	writer->modified = true;
-	if (notify_remove_field_hook != NULL)
-	{
-		notify_remove_field_hook(writer->updateTracker, writer->relativePath);
-	}
+	writer->modifyType = MODIFY_TYPE_CHANGED;
 }
 
 
@@ -769,7 +872,7 @@ UpdateWriterGetArrayWriter(UpdateOperatorWriter *writer)
 	{
 		PgbsonElementWriterStartArray(writer->writer, &writer->updateArrayWriter.writer);
 		writer->updateArrayWriter.isValid = true;
-		writer->updateArrayWriter.modified = false;
+		writer->updateArrayWriter.modifyType = MODIFY_TYPE_NOCHANGE;
 	}
 
 	return &writer->updateArrayWriter;
@@ -794,8 +897,20 @@ UpdateArrayWriterWriteOriginalValue(UpdateArrayWriter *writer, const bson_value_
 void
 UpdateArrayWriterWriteModifiedValue(UpdateArrayWriter *writer, const bson_value_t *value)
 {
+	UpdateArrayWriterWriteValueWithModifyType(writer, value, MODIFY_TYPE_CHANGED);
+}
+
+
+/*
+ * Writes a value to the arrayWriter with the specified modify type.
+ */
+void
+UpdateArrayWriterWriteValueWithModifyType(UpdateArrayWriter *writer,
+										  const bson_value_t *value,
+										  ModifyType modifyType)
+{
 	PgbsonArrayWriterWriteValue(&writer->writer, value);
-	writer->modified = true;
+	writer->modifyType = modifyType;
 }
 
 
@@ -806,7 +921,7 @@ UpdateArrayWriterWriteModifiedValue(UpdateArrayWriter *writer, const bson_value_
 void
 UpdateArrayWriterSkipValue(UpdateArrayWriter *writer)
 {
-	writer->modified = true;
+	writer->modifyType = MODIFY_TYPE_CHANGED;
 }
 
 
@@ -818,21 +933,8 @@ void
 UpdateArrayWriterFinalize(UpdateOperatorWriter *writer, UpdateArrayWriter *arrayWriter)
 {
 	PgbsonElementWriterEndArray(writer->writer, &arrayWriter->writer);
-
-	if (writer->updateTracker != NULL &&
-		arrayWriter->modified)
-	{
-		bson_value_t value = PgbsonElementWriterGetValue(writer->writer);
-
-		if (notify_updated_field_hook != NULL)
-		{
-			notify_updated_field_hook(writer->updateTracker, writer->relativePath,
-									  &value);
-		}
-	}
-
 	writer->updateArrayWriter.isValid = false;
-	writer->modified = writer->modified || arrayWriter->modified;
+	writer->modifyType = Max(writer->modifyType, arrayWriter->modifyType);
 }
 
 
@@ -879,17 +981,21 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 				const bson_value_t *updateItrVal = bson_iter_value(updateIterator);
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
-									"Modifiers operate on fields but we found type %s instead. "
-									"For example: {$mod: {<field>: ...}} not {%s: %s}",
+									"Modifiers work only with fields, but the provided value is of type %s. Expected format: {$mod: {<field>: ...}}, but received: {%s: %s}.",
 									BsonTypeName(updateItrVal->value_type),
 									MongoUpdateOperators[i].operatorName,
 									BsonValueToJsonForLogging(
 										updateItrVal)),
 								errdetail_log(
-									"Modifiers operate on fields but we found type %s instead "
-									"for operator name: %s",
+									"Modifiers work only with fields, but the provided value is of type %s. Expected $mod but received operator name: %s.",
 									BsonTypeName(updateItrVal->value_type),
 									MongoUpdateOperators[i].operatorName)));
+			}
+
+			if (MongoUpdateOperators[i].featureId >= 0 &&
+				MongoUpdateOperators[i].featureId < MAX_FEATURE_INDEX)
+			{
+				ReportFeatureUsage(MongoUpdateOperators[i].featureId);
 			}
 
 			MongoUpdateOperators[i].updateTreeFunc(root, &operatorIterator,
@@ -907,7 +1013,7 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
-								"Unknown modifier: %s. Expected a valid update modifier or "
+								"Unknown modifier: %s. Please use a valid update modifier or "
 								"pipeline-style update specified as an array",
 								updateOperator)));
 		}
@@ -1101,7 +1207,7 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 		if (value->value_type != BSON_TYPE_UTF8)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-								"Rename target should be a string")));
+								"The rename destination must be provided as a string value")));
 		}
 
 		/* For the rename target, we map the "value" to the path of the rename source */
@@ -1243,14 +1349,14 @@ ValidateSpecPathForUpdateTree(const StringView *updatePath)
 	if (updatePath->length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EMPTYFIELDNAME), errmsg(
-							"An empty update path is not valid")));
+							"The update path cannot be empty and is therefore invalid")));
 	}
 
 	if (updatePath->string[updatePath->length - 1] == '.')
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EMPTYFIELDNAME),
 						errmsg(
-							"An update path '%s' contains an empty field name, which is not allowed.",
+							"Empty field name detected at path '%s'",
 							updatePath->string)));
 	}
 
@@ -1266,14 +1372,15 @@ ValidateSpecPathForUpdateTree(const StringView *updatePath)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
-								"Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '%s'",
+								"Array filter identifier usage (e.g., '$[<id>]') "
+								"is not permitted at the starting position of the specified path '%s'",
 								updatePath->string)));
 		}
 		else if (StringViewEquals(&path, &PositionalFilterString))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
-								"Cannot have positional (i.e. '$') element in the first position in path '%s'",
+								"Positional element (i.e. '$') cannot appear at the beginning of the path '%s'.",
 								updatePath->string)));
 		}
 	}
@@ -1331,7 +1438,7 @@ ValidateNodePathInTree(const StringView *path, const char *relativePath)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"An empty path '%s' contains an empty field name, which is not allowed.",
+							"A path '%s' is empty because it holds a field name with no content, which is not permitted.",
 							relativePath)));
 	}
 }
@@ -1356,7 +1463,9 @@ GetNodePositionalDataFromPath(const StringView *path,
 		if (state->positionalSpec->processedQuerySpec == NULL)
 		{
 			PositionalUpdateSpec *spec = (PositionalUpdateSpec *) state->positionalSpec;
-			spec->processedQuerySpec = GetPositionalQueryData(spec->querySpec);
+			const char *collationString = NULL;
+			spec->processedQuerySpec = GetPositionalQueryData(spec->querySpec,
+															  collationString);
 		}
 
 		return (PositionalData) {
@@ -1388,8 +1497,9 @@ GetNodePositionalDataFromPath(const StringView *path,
 		if (!found || hashEntry == NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("No array filter found for identifier %.*s",
-								   identifier.length, identifier.string)));
+							errmsg(
+								"array filter identifier %.*s must match an entry in arrayFilters (no match found)",
+								identifier.length, identifier.string)));
 		}
 
 		/* Mark the filter as used in the query */
@@ -1499,7 +1609,7 @@ HandleUpdateDocumentId(pgbson_writer *writer,
 		case NodeType_Intermediate:
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-								"_id cannot be an object/array")));
+								"_id value cannot be an object or array")));
 		}
 
 		case NodeType_LeafIncluded:
@@ -1521,7 +1631,8 @@ HandleUpdateDocumentId(pgbson_writer *writer,
 
 		default:
 		{
-			ereport(ERROR, (errmsg("Unexpected node type for _id: %d", node->nodeType)));
+			ereport(ERROR, (errmsg("Encountered an unsupported node type for _id: %d",
+								   node->nodeType)));
 		}
 	}
 }
@@ -1567,7 +1678,7 @@ TraverseDocumentAndApplyUpdate(bson_iter_t *sourceDocIterator,
 			continue;
 		}
 
-		/* Process the current field in the document */
+		/* Process the current field within the document */
 		PgbsonInitObjectElementWriter(writer, &elementWriter, fieldPath.string,
 									  fieldPath.length);
 		bool fieldModified = HandleCurrentIteratorPosition(sourceDocIterator, tree,
@@ -1624,11 +1735,9 @@ TraverseArrayAndApplyUpdate(bson_iter_t *sourceDocIterator,
 	 * See use of trackArrayValue.
 	 */
 	BsonUpdateTracker *trackerInner = tracker;
-	bool trackArrayValue = false;
 	if (tree->hasPositionalChildren)
 	{
 		trackerInner = NULL;
-		trackArrayValue = true;
 	}
 
 	int32_t index = 0;
@@ -1656,16 +1765,6 @@ TraverseArrayAndApplyUpdate(bson_iter_t *sourceDocIterator,
 	if (fieldHandledBitmapSet != NULL)
 	{
 		bms_free(fieldHandledBitmapSet);
-	}
-
-	if (modified && trackArrayValue && notify_updated_field_hook != NULL)
-	{
-		bson_value_t value = PgbsonArrayWriterGetValue(writer);
-
-		/* The relative path reported here is the relative path until the array */
-		StringView relativePathToNode = GetRelativePathUntilField((const
-																   BsonPathNode *) tree);
-		notify_updated_field_path_view_hook(tracker, &relativePathToNode, &value);
 	}
 
 	return modified;
@@ -1772,7 +1871,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 					if (isArray)
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-											"Cannot create field '%s' in element {%s : %s}",
+											"Failed to create the field '%s' within the element specified by {%s : %s}",
 											path.string, path.string,
 											BsonValueToJsonForLogging(bson_iter_value(
 																		  documentIterator)))));
@@ -1783,7 +1882,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_PATHNOTVIABLE),
 										errmsg(
-											"Cannot create field '%s' in element {%s : %s}",
+											"Failed to create the field '%s' within the element specified by {%s : %s}",
 											path.string, path.string,
 											BsonValueToJsonForLogging(bson_iter_value(
 																		  documentIterator)))));
@@ -1798,7 +1897,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_PATHNOTVIABLE),
 									errmsg(
-										"Cannot create field '%s' in element {%s : %s}",
+										"Failed to create the field '%s' within the element specified by {%s : %s}",
 										path.string, path.string,
 										BsonValueToJsonForLogging(bson_iter_value(
 																	  documentIterator)))));
@@ -1834,7 +1933,7 @@ ThrowPositionalOnNonArrayPathError(const BsonPathNode * node,
 {
 	const char *elementValue = BsonValueToJsonForLogging(currentValue);
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-						"Cannot apply array updates to non-array element %.*s: { %.*s: %s }",
+						"Array updates cannot be applied to an element that is not an array %.*s: { %.*s: %s }",
 						node->parent->baseNode.field.length,
 						node->parent->baseNode.field.string,
 						fieldPath->length,
@@ -1867,7 +1966,7 @@ IsNodeMatchForIteratorPath(const BsonPathNode *node,
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
-										"The positional operator did not find the match needed from the query.")));
+										"The positional operator failed to locate the required match within the provided query.")));
 				}
 
 				state->indexOfPositionalTypeQueryFilter = matchedIndex;
@@ -1971,7 +2070,7 @@ HandleUnresolvedDocumentFields(const BsonUpdateIntermediatePathNode *tree,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"The path '%.*s' must exist in the document in order to apply array updates.",
+							"The specified path '%.*s' does not exist within the document. Cannot apply array update operations.",
 							tree->base.baseNode.field.length,
 							tree->base.baseNode.field.string)));
 	}
@@ -2131,7 +2230,7 @@ HandleUnresolvedArrayFields(const BsonUpdateIntermediatePathNode *tree,
 	if (maxIndex - currentMaxIndex > 1500000)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTBACKFILLARRAY), errmsg(
-							"can't backfill more than 1500000 elements")));
+							"Backfilling is not possible for more than 1500000 elements.")));
 	}
 
 	for (int index = currentMaxIndex; index <= maxIndex; index++)
@@ -2275,7 +2374,7 @@ HandlePullWriterGetState(const bson_value_t *updateValue)
 				if (hasDollarField)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-										"unknown operator: %s", field)));
+										"Unrecognized operator specified: %s", field)));
 				}
 			}
 		}
@@ -2318,7 +2417,7 @@ ArrayFiltersKeyCompare(const void *obj1, const void *obj2, Size objsize)
  * a QueryFilterPathAndValue.
  */
 static HTAB *
-BuildExpressionForArrayFilters(pgbson *arrayFilters)
+BuildExpressionForArrayFilters(const bson_value_t *arrayFilters)
 {
 	if (arrayFilters == NULL)
 	{
@@ -2334,11 +2433,8 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 		hash_create("Bson array filter hash table", 32, &hashBuilderInfo,
 					DefaultExtensionHashFlags);
 
-	pgbsonelement arrayFiltersElement;
 	bson_iter_t arrayIterator;
-	PgbsonToSinglePgbsonElement(arrayFilters, &arrayFiltersElement);
-
-	BsonValueInitIterator(&arrayFiltersElement.bsonValue, &arrayIterator);
+	BsonValueInitIterator(arrayFilters, &arrayIterator);
 
 	while (bson_iter_next(&arrayIterator))
 	{
@@ -2357,7 +2453,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
-								"Cannot use an expression without a top-level field name in"
+								"Expression missing a required top-level field name in"
 								" arrayFilters")));
 		}
 
@@ -2436,7 +2532,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
-								"Found multiple array filters with the same top-level field name %.*s",
+								"Multiple array filters detected using identical top-level field name %.*s",
 								topLevelKey.length, topLevelKey.string)));
 		}
 
@@ -2502,7 +2598,7 @@ WriteCurrentArrayFilterValue(pgbson_writer *writer, bson_value_t *entryValue)
  * by at least 1 update entry.
  */
 static void
-PostValidateArrayFilters(HTAB *arrayFiltersHash, pgbson *updateSpec)
+PostValidateArrayFilters(HTAB *arrayFiltersHash, const bson_value_t *updateSpec)
 {
 	if (arrayFiltersHash == NULL)
 	{
@@ -2517,13 +2613,10 @@ PostValidateArrayFilters(HTAB *arrayFiltersHash, pgbson *updateSpec)
 	{
 		if (!entry->filterUsed)
 		{
-			bson_iter_t updateSpecIter;
-			PgbsonInitIteratorAtPath(updateSpec, "", &updateSpecIter);
-			const bson_value_t *bsonValue = bson_iter_value(&updateSpecIter);
-			const char *updateSpecStr = FormatBsonValueForShellLogging(bsonValue);
+			const char *updateSpecStr = FormatBsonValueForShellLogging(updateSpec);
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
-								"The array filter for identifier \'%.*s\' was not used in the update %s",
+								"The filter array for identifier '%.*s' was ignored during the %s update process",
 								entry->identifier.length, entry->identifier.string,
 								updateSpecStr)));
 		}

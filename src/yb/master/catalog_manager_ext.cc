@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -19,7 +20,6 @@
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -27,6 +27,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_type.h"
@@ -51,9 +52,11 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -142,6 +145,12 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
+
+DECLARE_bool(enable_ysql);
+DECLARE_string(initial_sys_catalog_snapshot_path);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;
@@ -450,6 +459,8 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
+  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
+  // expose this.
   std::optional<TableId> colocation_parent_table_id;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
@@ -496,12 +507,14 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     const auto tablet_id = tablet_id_slice.ToString();
     SysTabletsEntryPB tablet_pb =
         VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(metadata_slice));
-
-    if (tablet_pb.state() != SysTabletsEntryPB::RUNNING) {
+    // TODO(Yamen): Handle split tablet issue GH-29059.
+    if (tablet_pb.state() == SysTabletsEntryPB::DELETED ||
+        tablet_pb.state() == SysTabletsEntryPB::REPLACED) {
       return Status::OK();
     }
 
-    if (tables_to_tablets.contains(tablet_pb.table_id())) {
+    if (tables_to_tablets.contains(tablet_pb.table_id()) &&
+        tablet_pb.split_tablet_ids_size() == 0) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << "Including tablet " << tablet_id << " for table "
                                    << tablet_pb.table_id() << " as of time " << read_time;
       tables_to_tablets[tablet_pb.table_id()].tablets_entries.push_back(
@@ -566,12 +579,12 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   // 2. The user did not specify any Ttl value explicitly.
   int32_t retention_duration_hours = req.has_retention_duration_hours()
                                          ? req.retention_duration_hours()
-                                         : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+                                         : FLAGS_default_snapshot_retention_hours;
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::CreateSnapshotReceived");
 
   // When only the namespace_id is specified, the master snapshot coordinator collects the snapshot
   // entries as of the snapshot_hybrid_time
-  if (GetAtomicFlag(&FLAGS_enable_namespace_snapshot_workflow) && req.tables_size() == 1) {
+  if (FLAGS_enable_namespace_snapshot_workflow && req.tables_size() == 1) {
     const auto& filter = req.tables(0);
     if (filter.table_name().empty() && filter.table_id().empty() && filter.has_namespace_() &&
         filter.namespace_().has_id() && filter.namespace_().database_type() == YQL_DATABASE_PGSQL) {
@@ -616,7 +629,7 @@ Status CatalogManager::RepackSnapshotsForBackup(
   TRACE("Acquired catalog manager lock");
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+    auto format_version = FLAGS_enable_export_snapshot_using_relfilenode &&
                                   include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
@@ -629,15 +642,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
 
     unordered_set<TableId> tables_to_skip;
     for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-
       // Setup BackupRowEntryPB fields.
       // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
       // in different schema have same name.
+      std::optional<string> pg_schema_name_to_set;
       if (entry.type() == SysRowEntryType::TABLE) {
         // Skip repacking the special table sequences_data as sequences are backed up in ysql_dump
         if (entry.id() == kPgSequencesDataTableId) {
-          snapshot.mutable_backup_entries()->RemoveLast();
           // Keep track of table so we skip its tablets as well. Note, since tablets always
           // follow their table in sys_entry, we don't need to check previous tablet entries.
           tables_to_skip.insert(entry.id());
@@ -678,7 +689,6 @@ Status CatalogManager::RepackSnapshotsForBackup(
             if (res.status().IsNotFound() &&
                 MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
-              snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets
               // always follow their table in sys_entry, we don't need to check previous
               // tablet entries.
@@ -691,7 +701,45 @@ Status CatalogManager::RepackSnapshotsForBackup(
           }
           const string pg_schema_name = res.get();
           VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-          backup_entry->set_pg_schema_name(pg_schema_name);
+          // If this DocDB table is an index, check pg_index.indisvalid as of the snapshot time and
+          // skip exporting invalid indexes.
+          if (table_info->is_index()) {
+            const auto oids = VERIFY_RESULT(table_info->GetPgTableAllOids());
+            const bool is_valid = VERIFY_RESULT(GetYsqlManager().GetPgIndexStatus(
+                oids.database_oid, oids.pg_table_oid, "indisvalid", snapshot_hybrid_time));
+            if (!is_valid) {
+              LOG(INFO) << "Skipping backup of invalid index table " << table_info->id();
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+          }
+          pg_schema_name_to_set = pg_schema_name;
+
+          // Repair schema version skew between the snapshotted SysTablesEntryPB and the current
+          // in-memory state. The snapshot coordinator may have captured an older schema version
+          // for the table while tablets later advanced to a newer version due to an ALTER TABLE
+          // that raced with CREATE_ON_TABLET snapshot operations. At restore time, we rely on
+          // the invariant that the latest schema version in the snapshot is at least as large as
+          // the schema versions persisted on tablets. To restore this invariant for backups, if
+          // the in-memory schema version is greater than the snapshotted version, override the
+          // version fields in the snapshotted SysTablesEntryPB.
+          SysTablesEntryPB snapshotted_table_pb =
+              VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+          const auto current_version = l->pb.version();
+          const auto snapshotted_version = snapshotted_table_pb.version();
+          if (current_version > snapshotted_version) {
+            LOG(INFO) << Format(
+                "Overriding snapshotted schema version for table $0 from $1 to $2 "
+                "during snapshot repack for backup",
+                table_info->id(), snapshotted_version, current_version);
+            snapshotted_table_pb.set_version(current_version);
+            std::string serialized;
+            snapshotted_table_pb.AppendToString(&serialized);
+            entry.set_data(serialized);
+          }
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.
@@ -699,12 +747,14 @@ Status CatalogManager::RepackSnapshotsForBackup(
         if (tables_to_skip.contains(meta.table_id())) {
           LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
                        << meta.table_id() << " was skipped.";
-          snapshot.mutable_backup_entries()->RemoveLast();
           continue;
         }
       }
 
-      // Init BackupRowEntryPB::entry.
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+      if (pg_schema_name_to_set.has_value()) {
+        backup_entry->set_pg_schema_name(*pg_schema_name_to_set);
+      }
       backup_entry->mutable_entry()->Swap(&entry);
     }
 
@@ -743,70 +793,10 @@ Status CatalogManager::RestoreSnapshot(
   }
   LOG(INFO)
       << "Servicing RestoreSnapshot request: " << txn_snapshot_id
-      << (ht ? Format(" to restore to time ", ht) : "");
+      << (ht ? Format(" to restore to time $0 ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
-  return Status::OK();
-}
-
-Status CatalogManager::RestoreEntry(
-    const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch) {
-  switch (entry.type()) {
-    case SysRowEntryType::NAMESPACE: { // Restore NAMESPACES.
-      TRACE("Looking up namespace");
-      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-      if (ns == nullptr) {
-        // Restore Namespace.
-        // TODO: implement
-        LOG(INFO) << "Restoring: NAMESPACE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring namespace: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLE: { // Restore TABLES.
-      TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = tables_->FindTableOrNull(entry.id());
-      if (table == nullptr) {
-        // Restore Table.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring table: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLET: { // Restore TABLETS.
-      TRACE("Looking up tablet");
-      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
-      if (tablet == nullptr) {
-        // Restore Tablet.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLET id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring tablet: id=$0", entry.type()));
-      } else {
-        TRACE("Locking tablet");
-        auto l = tablet->LockForRead();
-
-        LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
-        // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        auto task = CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-            epoch, TabletSnapshotOperationCallback());
-        ScheduleTabletSnapshotOp(task);
-      }
-      break;
-    }
-    default:
-      return STATUS_FORMAT(
-          InternalError, "Unexpected entry type in the snapshot: $0", entry.type());
-  }
-
   return Status::OK();
 }
 
@@ -899,6 +889,24 @@ Status CatalogManager::DoImportSnapshotMeta(
       }
     }
   }
+  // For YSQL restores (both backup/restore and clone), we would have run ysql_dump before
+  // ImportSnapshot. It is important to invalidate the TServer's OID cache after ImportSnapshot so
+  // that the TServer is aware of all objects that were created. Otherwise, the following order of
+  // events is possible:
+  // 1. The dump script creates a table with OID 16384 because that is what the dump script says
+  //    to use (using binary_upgrade_set_next_heap_relfilenode). This does not go through the
+  //    TServer's oid allocator.
+  // 2. The dump script creates an object that needs a new OID (e.g., a CHECK constraint). To get a
+  //    new OID, the TServer calls ReservePgsqlOids, which returns 16384-17000 as available OIDs.
+  // 3. The constraint is created with OID 16385 because that is the first free OID in the range.
+  // 4. A snapshot schedule is created for the restored database.
+  // 5. The table is dropped (actually hidden, because of the snapshot schedule).
+  // 6. The table is recreated with OID 16384, which PG thinks is a free OID because the table is
+  //    not in pg_class anymore. This fails on master because the original table with this OID still
+  //    exists.
+  // Invalidating the OID cache forces the TServer to refresh its OID cache on the next heartbeat
+  // it receives from the master.
+  RETURN_NOT_OK(InvalidateTserverOidCaches());
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -973,6 +981,12 @@ Status CatalogManager::ImportSnapshotPreprocess(
           if (data.old_table_id.empty()) {
             data.old_table_id = entry.id();
             data.table_entry_pb = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+            // Mark tables undergoing DDL at backup time to skip schema validation at import.
+            if (data.table_entry_pb.ysql_ddl_txn_verifier_state_size() > 0) {
+            data.validate_schema = false;
+            LOG_WITH_FUNC(INFO) << "Marking table " << data.old_table_id
+                                << " to skip schema validation due to DDL verifier state.";
+            }
             if (backup_entry.has_pg_schema_name()) {
               data.pg_schema_name = backup_entry.pg_schema_name();
             }
@@ -987,11 +1001,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
               }
               const NamespaceId new_namespace_id = ns_it->second.new_namespace_id;
               bool legacy_colocated_database;
-              {
-                SharedLock lock(mutex_);
-                legacy_colocated_database = (colocated_db_tablets_map_.find(new_namespace_id)
-                                             != colocated_db_tablets_map_.end());
-              }
+              legacy_colocated_database = IsColocatedNamespace(new_namespace_id);
               if (!legacy_colocated_database) {
                 // Colocation migration.
                 // Check if the default tablegroup exists.
@@ -1329,7 +1339,7 @@ Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapsho
   return snapshot_info;
 }
 
-Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+Result<CatalogManagerIf::CloneSnapshotInfo>
 CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
     const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
     CoarseTimePoint deadline) {
@@ -1371,8 +1381,9 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
   snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
 
   // Set backup_entries based on what entries were running in the sys catalog as of read_time.
-  *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
+  auto backup_entries = VERIFY_RESULT(
       GetBackupEntriesAsOfTime(snapshot_id, source_ns_id, read_time));
+  *snapshot_info.mutable_backup_entries() = std::move(backup_entries.backup_entries);
   VLOG_WITH_FUNC(1) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
 
   // Compute the set of tablets that were running as of read_time but were not snapshotted because
@@ -1384,10 +1395,13 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
       not_snapshotted_tablets.insert(backup_entry.entry().id());
     }
   }
-  return std::make_pair(std::move(snapshot_info), std::move(not_snapshotted_tablets));
+  return CatalogManagerIf::CloneSnapshotInfo{
+      std::move(snapshot_info),
+      std::move(not_snapshotted_tablets),
+      std::move(backup_entries.replication_info_and_num_tablets)};
 }
 
-Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfTime(
+Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBackupEntriesAsOfTime(
     const TxnSnapshotId& snapshot_id, const NamespaceId& source_ns_id, HybridTime read_time) {
   // Open a temporary on-the-side DocDB for the sys.catalog using the data files of snapshot_id and
   // read sys.catalog data as of export_time to get the list of tablets that were running at that
@@ -1435,14 +1449,13 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
-  std::optional<std::string> colocation_parent_table_id;
-  bool found_colocated_user_table = false;
+  std::unordered_map<std::string, bool> colocated_parent_tables;
   docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
+      [&source_ns_id, &tables_to_tablets, &colocated_parent_tables](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         // Skip including tables in PREPARING state, even though they are normally considered
@@ -1462,9 +1475,9 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
-              colocation_parent_table_id = id_str;
+              colocated_parent_tables.try_emplace(id_str, false);
             } else {
-              found_colocated_user_table = true;
+              colocated_parent_tables[pb.parent_table_id()] = true;
             }
           }
           // Tables and tablets will be added to backup entries at the end.
@@ -1487,7 +1500,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         // We always clone the set of active children as of the snapshot time. If tablet splits
         // occurred between the restore time and snapshot time, this means we will have more
         // children after the clone than were present at clone time, but:
-        // 1. The children still contain the correct data because history retention is preserved
+        // 1. The children still contain the correct data because history retention is preserved.
         // 2. This allows us to clone from a snapshot instead of active rocksdb (like we do for
         //    cloning deleted tables), which is safer because it is more targeted.
         // Ignore DELETED / REPLACED tablets since they would otherwise cause partition conflicts
@@ -1504,23 +1517,33 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       }));
   // Order SysTabletsEntries in each SysTableEntry by partition start_key as CreateTable relies on
   // the order of tablets.
-  for (auto& sys_table_entry : tables_to_tablets) {
-    sys_table_entry.second.OrderTabletsByPartitions();
+  std::vector<std::pair<ReplicationInfoPB, int>> replication_info_and_num_tablets;
+  for (auto& [table_id, table_with_tablets] : tables_to_tablets) {
+    table_with_tablets.OrderTabletsByPartitions();
+    // Populate the replication info for the tablet limit pre-checks.
+    auto table_ptr = GetTableInfo(table_id);
+    if (!table_ptr) {
+      return STATUS_FORMAT(NotFound, "Failed to get table info for table $0", table_id);
+    }
+    replication_info_and_num_tablets.push_back({
+        GetTableReplicationInfoWithDefault(table_ptr),
+        table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
-  // Start with the colocation_parent_table_id if the database is colocated.
-  if (colocation_parent_table_id) {
-    // Only create the colocated parent table if there are colocated user tables.
-    if (found_colocated_user_table) {
-      tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-          colocation_parent_table_id.value(), backup_entries);
+  // Start with all colocated parent tables that have children.
+  // The import snapshot flow is broken if colocated children preceed their parents.
+  for (const auto& [parent_table_id, has_child] : colocated_parent_tables) {
+    if (has_child) {
+      tables_to_tablets[parent_table_id].AddToBackupEntries(
+          parent_table_id, backup_entries);
     }
-    tables_to_tablets.erase(colocation_parent_table_id.value());
+    tables_to_tablets.erase(parent_table_id);
   }
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
   }
-  return backup_entries;
+  return BackupEntriesAndTabletLimitInfo{
+      std::move(backup_entries), std::move(replication_info_and_num_tablets)};
 }
 
 Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
@@ -1566,7 +1589,7 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
 Status CatalogManager::ImportNamespaceEntry(
     const SysRowEntry& entry,
     const LeaderEpoch& epoch,
-    const std::optional<string>& clone_target_namespace_name,
+    const std::optional<std::string>& clone_target_namespace_name,
     NamespaceMap* namespace_map) {
   LOG_IF(DFATAL, entry.type() != SysRowEntryType::NAMESPACE)
       << "Unexpected entry type: " << entry.type();
@@ -1576,65 +1599,48 @@ Status CatalogManager::ImportNamespaceEntry(
   ns_data.db_type = GetDatabaseType(meta);
 
   TRACE("Looking up namespace");
-  // First of all try to find the namespace by ID. It will work if we are restoring the backup
-  // on the original cluster where the backup was created.
-  scoped_refptr<NamespaceInfo> ns;
-  {
-    SharedLock lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-  }
-
+  // For backup/restore, we first try to find the namespace by ID. This will succeed if we are
+  // restoring the backup in-place on the original cluster where the backup was created. This is
+  // actually deprecated behaviour as of 2026/02/24.
+  //
+  // For clones, we must find the clone source namespace by ID.
+  auto ns_result = FindNamespaceById(entry.id());
   bool is_clone = clone_target_namespace_name.has_value();
-  bool found_matching_ns_by_id = ns != nullptr &&
-                                 ns->name() == meta.name() &&
-                                 ns->state() == SysNamespaceEntryPB::RUNNING;
-  if (found_matching_ns_by_id && !is_clone) {
+  bool found_running_ns_by_id =
+      ns_result.ok() && (*ns_result)->state() == SysNamespaceEntryPB::RUNNING;
+  if (!is_clone && found_running_ns_by_id && (*ns_result)->name() == meta.name()) {
     ns_data.new_namespace_id = entry.id();
     return Status::OK();
   }
 
-  if (is_clone && !found_matching_ns_by_id) {
+  if (is_clone && !found_running_ns_by_id) {
+    // We cannot clone successfully if we didn't find the source namespace.
     return STATUS_FORMAT(
         IllegalState, "Could not find running namespace $0 to clone from.", meta.name());
   }
 
-  // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
-  // deleted and created again. In both cases the namespace can be found by NAME.
+  // For backup/restore, at this point we haven't found the namespace. We need to find it by name
+  // (YSQL) / create it (YCQL).
+  //
+  // For clone, we've found the source namespace of the clone and now we need to find (YSQL) /
+  // create (YCQL) the target namespace.
+  const std::string& new_namespace_name = is_clone ? *clone_target_namespace_name : meta.name();
   if (ns_data.db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
-    std::string new_namespace_name;
-    if (is_clone) {
-      new_namespace_name = *clone_target_namespace_name;
-    } else {
-      new_namespace_name = meta.name();
-    }
-    {
-      SharedLock lock(mutex_);
-      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], new_namespace_name);
-    }
-    if (ns == nullptr) {
-      const string msg = Format("YSQL database must exist: $0", new_namespace_name);
+    ns_result = FindNamespaceByName(ns_data.db_type, new_namespace_name);
+    if (!ns_result.ok() || (*ns_result)->state() != SysNamespaceEntryPB::RUNNING) {
+      const std::string msg =
+          !ns_result.ok() ? Format("YSQL database must exist: $0", new_namespace_name)
+                          : Format("Found YSQL database must be running: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
-    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-      const string msg = Format("Found YSQL database must be running: $0", new_namespace_name);
-      LOG_WITH_FUNC(WARNING) << msg;
-      return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
-    }
-
-    auto ns_lock = ns->LockForRead();
-    ns_data.new_namespace_id = ns->id();
+    ns_data.new_namespace_id = (*ns_result)->id();
   } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
-    if (is_clone) {
-      req.set_name(*clone_target_namespace_name);
-    } else {
-      req.set_name(meta.name());
-    }
+    req.set_name(new_namespace_name);
     const Status s = CreateNamespace(&req, &resp, nullptr, epoch);
-
     if (s.ok()) {
       // The namespace was successfully re-created.
       ns_data.just_created = true;
@@ -1870,19 +1876,14 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
       req.set_indexed_table_id(it->second.new_table_id);
     }
 
-    scoped_refptr<TableInfo> indexed_table;
-    {
-      SharedLock lock(mutex_);
-      // Try to find the specified indexed table by id.
-      indexed_table = tables_->FindTableOrNull(req.indexed_table_id());
-    }
+    auto indexed_table_result = FindTableById(req.indexed_table_id());
 
-    if (indexed_table == nullptr) {
+    if (!indexed_table_result.ok()) {
       const string msg = Format("Indexed table not found by id: $0", req.indexed_table_id());
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
-
+    const auto& indexed_table = *indexed_table_result;
     LOG_WITH_FUNC(INFO) << "Found indexed table by id " << req.indexed_table_id();
 
     // Ensure the main table schema (including column ids) was not changed.
@@ -1959,6 +1960,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     // whole process. Consequently, we hold it through some steps that require mutex_, but since
     // taking mutex_ after TableInfo pb lock is prohibited for deadlock reasons, acquire mutex_
     // first, then release it when it is no longer needed, still holding table pb lock.
+    //
+    // todo(GH29185): This code holds `CatalogManager::mutex_` exclusively while acquiring COW write
+    // locks.
     TableInfo::WriteLock table_lock;
     {
       LockGuard lock(mutex_);
@@ -2112,7 +2116,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 //
 // table: internal table's info
 // snapshot_data: external table's snapshot data
-Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
+Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>& table,
                                                  ExternalTableSnapshotData* snapshot_data) {
   auto table_lock = table->LockForRead();
 
@@ -2195,11 +2199,8 @@ Status CatalogManager::ImportTableEntry(
     // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
     // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
-    {
-      SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_data->new_table_id);
-    }
-    if (!table) {
+    auto table_result = FindTableById(table_data->new_table_id);
+    if (!table_result.ok()) {
       LOG(WARNING) << Format(
           "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
@@ -2219,15 +2220,13 @@ Status CatalogManager::ImportTableEntry(
   }
   // The destination table should be found or created by now.
   TRACE("Looking up new table");
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(table_data->new_table_id);
-  }
-  if (table == nullptr) {
+  auto table_result = FindTableById(table_data->new_table_id);
+  if (!table_result.ok()) {
     const string msg = Format("Created table not found: $0", table_data->new_table_id);
     LOG_WITH_FUNC(WARNING) << msg;
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
+  table = std::move(*table_result);
 
   std::optional<int> schema_version;
 
@@ -2268,9 +2267,10 @@ Status CatalogManager::ImportTableEntry(
     // Additionally, for indexes, we compare the column ids as we expect them to be
     // preserved.
     const vector<ColumnId>& column_ids = schema.column_ids();
-    if (!persisted_schema.Equals(schema, comparator)
-        || persisted_schema.column_ids().size() != column_ids.size()
-        || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
+    if (table_data->validate_schema &&
+        (!persisted_schema.Equals(schema, comparator) ||
+         persisted_schema.column_ids().size() != column_ids.size() ||
+         (table->is_index() && persisted_schema.column_ids() != column_ids))) {
       const string msg = Format(
           "Invalid created $0 table '$1' in namespace id $2: schema={$3}, expected={$4}",
           TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
@@ -2402,31 +2402,32 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the current schema version of the target table as follows:
-    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
-    // current schema version is greater than all schema versions that might exist in the snapshot
-    // used for clone.
-    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
-    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
-    // schema version found in snapshotInfo is the maximum schema version that can be found in the
-    // snapshot at backup creation time.
-    if (is_clone) {
-      // The Source table should be found as we are cloning from it.
+    // Bump up the current schema version of the target table
+    // CQL index tables always have schema version 0 because we do not support dropping or
+    // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
+    // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
+    // checked against the table schema_version when applying the write. Therefore we must never
+    // bump the schema version for CQL index tables.
+    if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
+      SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
+    } else if (is_clone) {
+      // Bump the schema version to 1 + the current schema version of source table. This ensures
+      // that the current schema version is greater than all schema versions that might exist in the
+      //  snapshot used for clone.
       TRACE("Looking up source table");
       TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
-      if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
-          source_table_lock->is_index()) {
-        // CQL index tables as of November 2024 always have schema version 0 because we do not
-        // support dropping or renaming columns yet. CQL index deletes depend on this because they
-        // implicitly use a schema_version of 0 (by not setting the field in the protobuf write
-        // request). This is checked against the table schema_version when applying the write.
-        SCHECK_EQ(meta.version() == 0, true, IllegalState, "CQL index table should have version 0");
-      } else {
-        schema_version = source_table_lock->pb.version() + 1;
-      }
-    } else if (meta.version() > table->LockForRead()->pb.version()) {
-      schema_version = meta.version();
+      schema_version = source_table_lock->pb.version() + 1;
+    } else if (meta.version() >= table->LockForRead()->pb.version()) {
+      // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
+      // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
+      // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
+      // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
+      // at tserver side. At the tserver, all schema packings from the snapshot will be used in
+      // tablet-meta and the last schema will have the correct committed schema created at restore
+      // side as part of executing the SQL dump. The last schema is sent from master to tservers
+      // during ImportSnapshot.
+      schema_version = meta.version() + 1;
     }
 
     if (schema_version) {
@@ -2513,30 +2514,28 @@ Result<bool> CatalogManager::ImportTableEntryByName(
   bool is_parent_colocated_table = false;
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    {
-        SharedLock lock(mutex_);
-        table = tables_->FindTableOrNull(table_data->old_table_id);
-    }
+    auto table_result = FindTableById(table_data->old_table_id);
 
-    if (table != nullptr) {
-        VLOG_WITH_PREFIX(3) << "Begin first search";
-        // At this point, namespace id and table id match. Check other properties, like whether the
-        // table is active and whether table name matches.
-        SharedLock lock(mutex_);
-        if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+    if (table_result.ok()) {
+      table = std::move(*table_result);
+      VLOG_WITH_PREFIX(3) << "Begin first search";
+      // At this point, namespace id and table id match. Check other properties, like whether the
+      // table is active and whether table name matches.
+      SharedLock lock(mutex_);
+      if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
         if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
           // Parent colocated tables don't have partition info, so make sure to mark them.
           is_parent_colocated_table = true;
         }
-        } else {
+      } else {
         // A property did not match, so this search by ids failed.
         auto table_lock = table->LockForRead();
         LOG_WITH_FUNC(WARNING) << "Existing table " << table->ToString()
                                << " not suitable: " << table_lock->pb.ShortDebugString()
                                << ", name: " << table->name() << " vs " << meta.name();
         table.reset();
-        }
+      }
     }
   }
 
@@ -2662,9 +2661,7 @@ Result<TableId> CatalogManager::GetRestoreTargetParentTableForLegacyColocatedDb(
   // <namespace_id>.colocated.parent.uuid
   // Case 2: Restored DB uses the new colocation database format:
   // <tablegroup_id>.colocation.parent.uuid
-  SharedLock lock(mutex_);
-  bool legacy_colocated_database = colocated_db_tablets_map_.find(restore_target_namespace_id) !=
-                                   colocated_db_tablets_map_.end();
+  bool legacy_colocated_database = IsColocatedNamespace(restore_target_namespace_id);
   if (legacy_colocated_database) {
     return GetColocatedDbParentTableId(restore_target_namespace_id);
   } else {
@@ -2761,8 +2758,7 @@ Status CatalogManager::ImportTabletEntry(
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    SharedLock lock(mutex_);
-    if (tablet_map_->contains(entry.id())) {
+    if (GetTabletInfo(entry.id()).ok()) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
@@ -3002,7 +2998,7 @@ Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
     Status* complete_status) {
   Status s;
-  if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+  if (FLAGS_enable_fast_pitr) {
     s = RestoreSysCatalogFastPitr(restoration, tablet);
   } else {
     s = RestoreSysCatalogSlowPitr(restoration, tablet);
@@ -3117,6 +3113,22 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
+bool CatalogManager::SkipRemovalOfHiddenColocatedTableFromTablet(
+    const TableInfoPtr& table, const TabletInfo& tablet_info,
+    const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table &&
+      CDCSDKShouldRetainHiddenColocatedTable(table->id())) {
+    return true;
+  }
+
+  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
+          *table, tablet_info, schedule_min_restore_time)) {
+    return true;
+  }
+
+  return false;
+}
+
 void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
@@ -3131,10 +3143,11 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     return;
   }
   for (const auto& tablet_info : *list) {
-    if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
-            *table, *tablet_info, schedule_min_restore_time)) {
+    if (SkipRemovalOfHiddenColocatedTableFromTablet(
+            table, *tablet_info, schedule_min_restore_time)) {
       continue;
     }
+
     LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
@@ -3158,6 +3171,7 @@ void CatalogManager::CleanupHiddenTables(
   }
 
   std::vector<TableInfoPtr> expired_tables;
+  std::unordered_set<TableId> expired_table_ids;
   for (auto& table : tables) {
     if (table->IsSecondaryTable()) {
       // Table is colocated or a vector index and still registered with its hosting tablet(s).
@@ -3168,10 +3182,12 @@ void CatalogManager::CleanupHiddenTables(
     if (table->IsHiddenButNotDeleting()) {
       auto tablets_deleted_result = table->AreAllTabletsDeleted();
       if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_table_ids.insert(table->id());
         expired_tables.push_back(std::move(table));
       }
     }
   }
+
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
   std::sort(
@@ -3206,6 +3222,25 @@ void CatalogManager::CleanupHiddenTables(
   for (auto& lock : locks) {
     lock.Commit();
   }
+
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+    // A hidden table, with all the tablets deleted can be removed from the stream metadata of
+    // CDCSDK streams. If FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is set, then we add such
+    // table to the 'dropped_table_id' list of the associated CDCSDK streams' metadata. Otherwise we
+    // mark the streams as DELETING_METADATA. The catalog manager's background task will remove the
+    // tables from such streams' metadata.
+    Status s;
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      s = HandleDroppedTablesForCDCSDKStreams(expired_table_ids);
+    } else {
+      s = DropCDCSDKStreams(expired_table_ids);
+    }
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to handle dropped hidden tables for CDCSDK streams: "
+                               << AsString(expired_table_ids) << ", Status: " << s;
+      return;
+    }
+  }
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -3238,19 +3273,24 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
         STATUS(NotSupported, "Only one filter can be set on a snapshot schedule"));
   }
   auto& filter = req->options().filter().tables().tables(0).namespace_();
-  if (!filter.has_id()) {
+  scoped_refptr<NamespaceInfo> ns_info;
+  if (filter.has_id()) {
+    ns_info = VERIFY_RESULT(FindNamespaceById(filter.id()));
+  } else {
     NamespaceIdentifierPB ns_id;
     ns_id.set_database_type(filter.database_type());
     ns_id.set_name(filter.name());
-    auto ns = VERIFY_RESULT(FindNamespace(ns_id));
-    LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns->ToString();
-    TableIdentifierPB* ns_req =
-        req_with_ns_id.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables(0);
-    ns_req->mutable_namespace_()->set_id(ns->id());
-    ns_req->mutable_namespace_()->set_name(ns->name());
-    ns_req->mutable_namespace_()->set_database_type(ns->database_type());
-    LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
+    ns_info = VERIFY_RESULT(FindNamespace(ns_id));
   }
+  LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns_info->ToString();
+  auto* ns_identifier = req_with_ns_id.mutable_options()
+                            ->mutable_filter()
+                            ->mutable_tables()
+                            ->mutable_tables(0)
+                            ->mutable_namespace_();
+  ns_identifier->set_id(ns_info->id());
+  ns_identifier->set_database_type(ns_info->database_type());
+  ns_identifier->clear_name();
 
   auto id = VERIFY_RESULT(master_->snapshot_coordinator().CreateSchedule(
       req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
@@ -3263,7 +3303,33 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
                                              rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  return master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp);
+  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp));
+
+  // The namespace name stored in the schedule filter may be stale if the database was renamed.
+  // Look up each namespace by ID and overwrite the name with the current one.
+  for (auto& schedule : *resp->mutable_schedules()) {
+    if (!schedule.has_options() || !schedule.options().has_filter() ||
+        !schedule.options().filter().has_tables()) {
+      continue;
+    }
+    for (auto& table :
+         *schedule.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables()) {
+      if (!table.has_namespace_() || table.namespace_().id().empty()) {
+        continue;
+      }
+      auto ns_result = FindNamespaceById(table.namespace_().id());
+      if (!ns_result.ok()) {
+        LOG(WARNING) << Format(
+            "Could not find namespace $0 referenced by snapshot schedule $1: $2",
+            table.namespace_().id(), TryFullyDecodeSnapshotScheduleId(schedule.id()),
+            ns_result.status());
+        continue;
+      }
+      table.mutable_namespace_()->set_name((*ns_result)->name());
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
@@ -3294,8 +3360,11 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
-
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForSnapshotRestore(
+    deadline, kPitrFeatureName));
+  LOG(INFO)
+      << "Servicing RestoreSnapshotSchedule request. id: " << id
+      << " restore_ht: " << ht;
   return master_->snapshot_coordinator().RestoreSnapshotSchedule(
       id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3321,6 +3390,7 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  FillHeartbeatResponseClusterConfig(cluster_config, req, resp);
   RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
@@ -3340,6 +3410,16 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
   RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
 
   return Status::OK();
+}
+
+void CatalogManager::FillHeartbeatResponseClusterConfig(
+  const SysClusterConfigEntryPB& cluster_config,
+  const TSHeartbeatRequestPB& req,
+  TSHeartbeatResponsePB* resp) {
+  if (req.cluster_config_version() < cluster_config.version()) {
+    resp->set_cluster_config_version(cluster_config.version());
+    *resp->mutable_cluster_replication_info() = cluster_config.replication_info();
+  }
 }
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
@@ -3365,7 +3445,7 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   VLOG(1) << "Get the table: " << req->table().table_id()
           << " specific schema from system catalog with read hybrid time: " << req->read_time();
   Schema schema;
-  uint32_t schema_version;
+  uint32_t schema_version = 0;
   auto status = sys_catalog_->GetTableSchema(
       req->table().table_id(), ReadHybridTime::FromUint64(read_time), &schema, &schema_version);
   if (!status.ok()) {
@@ -3376,6 +3456,26 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   }
   SchemaToPB(schema, resp->mutable_schema());
   resp->set_version(schema_version);
+
+  const auto& table_id = req->table().table_id();
+  auto table_result = FindTableById(table_id);
+  if (table_result.ok() && (*table_result)->GetTableType() == PGSQL_TABLE_TYPE) {
+    auto pg_tbl_oids = (*table_result)->GetPgTableAllOids();
+    if (pg_tbl_oids.ok()) {
+      // pgschema_name inside that schema object comes from SchemaPB.DEPRECATED_pgschema_name.
+      // So, instead we query the pgschema_name from the pg_class+pg_namespace tables.
+      auto pgschema_name = GetYsqlManager().GetPgSchemaName(
+          *pg_tbl_oids, ReadHybridTime::FromUint64(read_time));
+      if (pgschema_name.ok() && !pgschema_name->empty()) {
+        resp->set_pgschema_name(std::move(*pgschema_name));
+      } else {
+        LOG(WARNING) << "Unable to find schema name for YSQL table "
+                     << (*table_result)->name() << " id " << table_id
+                     << " due to error: " << pgschema_name.status();
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3491,6 +3591,21 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
+}
+
+Status CatalogManager::GetYsqlYbSystemTableInfo(
+    const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  DCHECK(req->has_namespace_oid());
+  DCHECK(req->has_table_name());
+
+  PgOid oid = kPgInvalidOid;
+  PgOid relfilenode = kPgInvalidOid;
+  RETURN_NOT_OK(sys_catalog_->GetYsqlYbSystemTableInfo(
+      req->namespace_oid(), req->table_name(), &oid, &relfilenode));
+  resp->set_table_oid(oid);
+  resp->set_relfilenode(relfilenode);
+  return Status::OK();
 }
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(

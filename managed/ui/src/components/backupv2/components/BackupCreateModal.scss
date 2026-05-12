@@ -6,7 +6,7 @@
 }
 
 .backup-configuration-form {
-  &>.row {
+  & > .row {
     margin-bottom: 24px;
   }
 
@@ -129,21 +129,24 @@
     margin-bottom: 6px;
     color: #67666c;
 
-    >span {
+    > span {
       margin-right: 10px;
     }
   }
 
   .tablespaces {
     border-radius: 8px;
-    border: 1px solid #E5E5E9;
-    background: #FFF;
+    border: 1px solid #e5e5e9;
+    background: #fff;
     padding: 10px !important;
+
     label: {
       margin-right: 8px;
     }
-    .tablespaces-subText{
-      color: #67666C;
+
+    .tablespaces-subText {
+      color: #67666c;
+      margin-left: 22px;
     }
   }
 }

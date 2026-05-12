@@ -61,6 +61,17 @@ static int mm_epoll_shutdown(mm_poll_t *poll)
 	return 0;
 }
 
+static inline int mm_epoll_is_read_event(const struct epoll_event *ev)
+{
+	return ev->events & EPOLLIN;
+}
+
+static inline int mm_epoll_is_write_event(const struct epoll_event *ev)
+{
+	return ev->events & EPOLLOUT || ev->events & EPOLLERR ||
+	       ev->events & EPOLLHUP;
+}
+
 static int mm_epoll_step(mm_poll_t *poll, int timeout)
 {
 	mm_epoll_t *epoll = (mm_epoll_t *)poll;
@@ -74,63 +85,69 @@ static int mm_epoll_step(mm_poll_t *poll, int timeout)
 	while (i < count) {
 		struct epoll_event *ev = &epoll->list[i];
 		mm_fd_t *fd = ev->data.ptr;
-		if (fd->on_read) {
-			if (ev->events & EPOLLIN)
-				fd->on_read(fd);
+
+		if (mm_epoll_is_read_event(ev) && (fd->mask & MM_R)) {
+			assert(fd->on_read);
+			fd->on_read(fd);
 		}
-		if (fd->on_write) {
-			if (ev->events & EPOLLOUT || ev->events & EPOLLERR ||
-			    ev->events & EPOLLHUP) {
-				fd->on_write(fd);
-			}
+
+		if (mm_epoll_is_write_event(ev) && (fd->mask & MM_W)) {
+			assert(fd->on_write);
+			fd->on_write(fd);
 		}
+
 		i++;
 	}
 	return count;
 }
 
-static int mm_epoll_add(mm_poll_t *poll, mm_fd_t *fd, int mask)
-{
-	mm_epoll_t *epoll = (mm_epoll_t *)poll;
-	if ((epoll->count + 1) > epoll->size) {
-		int size = epoll->size * 2;
-		void *ptr =
-			realloc(epoll->list, sizeof(struct epoll_event) * size);
-		if (ptr == NULL)
-			return -1;
-		epoll->list = ptr;
-		epoll->size = size;
-	}
-	struct epoll_event ev;
-	ev.events = 0;
-	fd->mask = mask;
-	if (fd->mask & MM_R)
-		ev.events |= EPOLLIN;
-	if (fd->mask & MM_W)
-		ev.events |= EPOLLOUT;
-	ev.data.ptr = fd;
-	int rc = epoll_ctl(epoll->fd, EPOLL_CTL_ADD, fd->fd, &ev);
-	if (rc == -1)
-		return -1;
-	epoll->count++;
-	return 0;
-}
-
 static inline int mm_epoll_modify(mm_poll_t *poll, mm_fd_t *fd, int mask)
 {
+	if (fd->mask == mask)
+		return 0;
 	mm_epoll_t *epoll = (mm_epoll_t *)poll;
 	struct epoll_event ev;
+	int rc;
+
 	ev.events = 0;
 	if (mask & MM_R)
 		ev.events |= EPOLLIN;
 	if (mask & MM_W)
 		ev.events |= EPOLLOUT;
 	ev.data.ptr = fd;
-	int rc = epoll_ctl(epoll->fd, EPOLL_CTL_MOD, fd->fd, &ev);
+	if (fd->mask == 0) {
+		mm_epoll_t *epoll = (mm_epoll_t *)poll;
+		if ((epoll->count + 1) > epoll->size) {
+			int size = epoll->size * 2;
+			void *ptr = realloc(epoll->list,
+					    sizeof(struct epoll_event) * size);
+			if (ptr == NULL)
+				return -1;
+			epoll->list = ptr;
+			epoll->size = size;
+		}
+
+		rc = epoll_ctl(epoll->fd, EPOLL_CTL_ADD, fd->fd, &ev);
+		if (rc != -1) {
+			epoll->count++;
+		}
+	} else if (mask == 0) {
+		rc = epoll_ctl(epoll->fd, EPOLL_CTL_DEL, fd->fd, &ev);
+		if (rc != -1) {
+			epoll->count--;
+		}
+	} else {
+		rc = epoll_ctl(epoll->fd, EPOLL_CTL_MOD, fd->fd, &ev);
+	}
 	if (rc == -1)
 		return -1;
 	fd->mask = mask;
 	return 0;
+}
+
+static int mm_epoll_add(mm_poll_t *poll, mm_fd_t *fd, int mask)
+{
+	return mm_epoll_modify(poll, fd, mask);
 }
 
 static int mm_epoll_read(mm_poll_t *poll, mm_fd_t *fd, mm_fd_callback_t on_read,
@@ -170,7 +187,7 @@ static int mm_epoll_read_write(mm_poll_t *poll, mm_fd_t *fd,
 	if (enable)
 		mask |= MM_W | MM_R;
 	else
-		mask &= ~MM_W | MM_R;
+		mask &= ~(MM_W | MM_R);
 	fd->on_write = on_event;
 	fd->on_write_arg = arg;
 	fd->on_read = on_event;
@@ -182,22 +199,7 @@ static int mm_epoll_read_write(mm_poll_t *poll, mm_fd_t *fd,
 
 static int mm_epoll_del(mm_poll_t *poll, mm_fd_t *fd)
 {
-	mm_epoll_t *epoll = (mm_epoll_t *)poll;
-	struct epoll_event ev;
-	ev.events = 0;
-	if (fd->mask & MM_R)
-		ev.events |= EPOLLIN;
-	if (fd->mask & MM_W)
-		ev.events |= EPOLLOUT;
-	ev.data.ptr = fd;
-	fd->mask = 0;
-	fd->on_write = NULL;
-	fd->on_write_arg = NULL;
-	fd->on_read = NULL;
-	fd->on_read_arg = NULL;
-	epoll->count--;
-	assert(epoll->count >= 0);
-	return epoll_ctl(epoll->fd, EPOLL_CTL_DEL, fd->fd, &ev);
+	return mm_epoll_read_write(poll, fd, NULL, NULL, 0);
 }
 
 mm_pollif_t mm_epoll_if = { .name = "epoll",

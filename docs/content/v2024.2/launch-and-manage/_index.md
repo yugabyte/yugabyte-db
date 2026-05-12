@@ -13,7 +13,7 @@ type: indexpage
     title="Deploy"
     body="Deploy to any public cloud or private data center."
     href="../deploy/"
-    icon="/images/section_icons/index/deploy.png">}}
+    icon="fa-thin fa-rocket-launch">}}
 
   {{<index/item
     title="Advanced capabilities"
@@ -25,18 +25,24 @@ type: indexpage
     title="Manage"
     body="Manage YugabyteDB clusters."
     href="../manage/"
-    icon="/images/section_icons/quick_start/sample_apps.png">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Monitor"
     body="Make the best use of YugabyteDB metrics and alerts."
     href="monitor-and-alert/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-chart-column">}}
+
+  {{<index/item
+    title="Best practices"
+    body="Operations tips for YugabyteDB databases."
+    href="../best-practices-operations/"
+    icon="fa-thin fa-thumbs-up">}}
 
   {{<index/item
     title="Troubleshoot"
     body="Diagnose and solve YugabyteDB cluster and node issues."
-    href="/preview/troubleshoot/"
-    icon="/images/section_icons/index/troubleshoot.png">}}
+    href="/stable/troubleshoot/"
+    icon="fa-thin fa-toolbox">}}
 
 {{</index/block>}}

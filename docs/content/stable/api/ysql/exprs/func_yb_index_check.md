@@ -3,8 +3,6 @@ title: yb_index_check() function [YSQL]
 headerTitle: yb_index_check()
 linkTitle: yb_index_check()
 description: Checks if the given index is consistent with its base relation.
-tags:
-  feature: early-access
 menu:
   stable_api:
     identifier: api-ysql-exprs-yb_index_check
@@ -12,6 +10,8 @@ menu:
     weight: 9
 type: docs
 ---
+
+## Synopsis
 
 `yb_index_check()` is a utility function that checks if an index is consistent with its base relation. It is useful to detect inconsistencies that can creep in due to faulty storage, faulty RAM, data files being overwritten or modified by unrelated software, or hypothetical undiscovered bugs in YugabytedDB.
 
@@ -163,7 +163,7 @@ There is no general method of repairing problems that `yb_index_check()` detects
 
 `yb_index_check()` is not concerned with read-after-commit-visibility. It picks up a read time (and an associated snapshot) and uses it to scan both the index and base relation. Even if a write that committed before the chosen read time is missing from the snapshot due to clock skew, that's acceptable—its effects will be absent from both the index and the base table scans.
 
-If [`Restart read required error`](https://docs.yugabyte.com/preview/architecture/transactions/read-restart-error/) is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
+If '[Restart read required error](../../../../architecture/transactions/read-restart-error/)' is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
 
 ```sql
 SET yb_read_after_commit_visibility=relaxed;

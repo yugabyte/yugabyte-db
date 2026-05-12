@@ -6,7 +6,6 @@ package hashicorp
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -41,7 +40,7 @@ var createHashicorpVaultEITCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(token)) == 0 {
+		if util.IsEmptyString(token) {
 			token, err = util.HashicorpVaultTokenFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -52,7 +51,7 @@ var createHashicorpVaultEITCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(address)) == 0 {
+		if util.IsEmptyString(address) {
 			address, err = util.HashicorpVaultAddressFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

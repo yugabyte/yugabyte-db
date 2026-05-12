@@ -32,11 +32,12 @@
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
@@ -74,15 +75,14 @@ namespace {
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
     const docdb::ReadOperationData& read_operation_data,
-    const RedisReadRequestPB& redis_read_request,
-    RedisResponsePB* response,
-    const std::function<void(const Status& s)>& status_cb
-) {
-  status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
+    const RedisReadRequestMsg* redis_read_request,
+    RedisResponseMsg* response,
+    const std::function<void(const Status& s)>& status_cb) {
+  status_cb(tablet->HandleRedisReadRequest(read_operation_data, *redis_read_request, response));
 }
 
 Result<IsolationLevel> GetIsolationLevel(
-    const ReadRequestPB& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
+    const ReadRequestMsg& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
   if (!req.has_transaction()) {
     return IsolationLevel::NON_TRANSACTIONAL;
   }
@@ -106,8 +106,8 @@ Result<IsolationLevel> GetIsolationLevel(
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
  public:
   ReadQuery(
-      TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
-      ReadResponsePB* resp, rpc::RpcContext context)
+      TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestMsg* req,
+      ReadResponseMsg* resp, rpc::RpcContext context)
       : server_(*server),
         read_tablet_provider_(*read_tablet_provider),
         req_(req),
@@ -181,8 +181,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   TabletServerIf& server_;
   ReadTabletProvider& read_tablet_provider_;
-  const ReadRequestPB* req_;
-  ReadResponsePB* resp_;
+  const ReadRequestMsg* req_;
+  ReadResponseMsg* resp_;
   rpc::RpcContext context_;
 
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
@@ -191,7 +191,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   HybridTime safe_ht_to_read_;
   ReadHybridTime used_read_time_;
   tablet::RequireLease require_lease_ = tablet::RequireLease::kFalse;
-  HostPortPB host_port_pb_;
+  LWHostPortPB* host_port_pb_;
   bool allow_retry_ = false;
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
@@ -225,7 +225,7 @@ Status ReadQuery::PickReadTime(server::Clock* clock) {
 
 bool ReadQuery::IsForBackfill() const {
   if (req_->pgsql_batch_size() > 0) {
-    if (req_->pgsql_batch(0).is_for_backfill()) {
+    if (req_->pgsql_batch().front().is_for_backfill()) {
       // Currently, read requests for backfill should only come by themselves, not in batches.
       DCHECK_EQ(req_->pgsql_batch_size(), 1);
       return true;
@@ -242,7 +242,7 @@ Status ReadQuery::DoPerform() {
   }
   ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
-  TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
+  TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id().ToBuffer());
 
   TabletPeerTablet peer_tablet;
   const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
@@ -279,21 +279,29 @@ Status ReadQuery::DoPerform() {
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
-  auto tablet_peer = peer_tablet.tablet_peer;
 
-  if (serializable_isolation || has_row_mark) {
+  if (serializable_isolation || has_row_mark || req_->has_leader_term()) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = VERIFY_RESULT(LookupLeaderTablet(
         server_.tablet_peer_lookup(), req_->tablet_id(), resp_, std::move(peer_tablet)));
-    // Serializable read adds intents, i.e. writes data.
-    // We should check for memory pressure in this case.
-    RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
     abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet());
+
+    if (serializable_isolation || has_row_mark) {
+      // Serializable read adds intents, i.e. writes data.
+      // We should check for memory pressure in this case.
+      RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
+    }
+
+    if (req_->has_leader_term()) {
+      SCHECK_EQ(
+          req_->leader_term(), leader_peer.leader_term, InvalidArgument,
+          Format("Tablet $0 leader changed during async write", req_->tablet_id()));
+    }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
-        req_->tablet_id(), std::move(peer_tablet.tablet_peer),
-        req_->consistency_level(), AllowSplitTablet::kFalse, resp_));
+        req_->tablet_id(), std::move(peer_tablet.tablet_peer), req_->consistency_level(),
+        AllowSplitTablet::kFalse, resp_));
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 
@@ -310,6 +318,7 @@ Status ReadQuery::DoPerform() {
   }
 
   // For virtual tables held at master the tablet peer may not be found.
+  auto tablet_peer = peer_tablet.tablet_peer;
   if (!tablet_peer) {
     tablet_peer = ResultToValue(
         server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});
@@ -391,25 +400,32 @@ Status ReadQuery::DoPerform() {
     // now cause intents_db scans to become less performant. Moving this initialization to only
     // cover cases where we avoid writes may cause inconsistency issues, as exposed by
     // PgOnConflictTest.OnConflict which fails if we move this code below.
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(
+        tablet()->transaction_participant(), /* allow_when_closing= */ false));
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
     read_time_.serial_no = request_scope_.request_id();
   }
 
   const auto& remote_address = context_.remote_address();
-  host_port_pb_.set_host(remote_address.address().to_string());
-  host_port_pb_.set_port(remote_address.port());
+  host_port_pb_ = req_->arena().NewArenaObject<LWHostPortPB>();
+  host_port_pb_->dup_host(remote_address.address().to_string());
+  host_port_pb_->set_port(remote_address.port());
 
   if (serializable_isolation || has_row_mark) {
+    tserver::WriteResponseMsg* response = nullptr;
+    const bool use_async_write = req_->use_async_write();
+    if (use_async_write) {
+      response = req_->arena().ArenaObjectFactory();
+    }
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term,
-        context_.GetClientDeadline(),
-        leader_peer.peer.get(),
-        leader_peer.tablet,
-        nullptr /* rpc_context */);
+        leader_peer.leader_term, context_.GetClientDeadline(), leader_peer.peer.get(),
+        leader_peer.tablet, nullptr /* rpc_context */, response);
 
     auto& write = *query->operation().AllocateRequest();
+    if (use_async_write) {
+      query->set_use_async_write(true);
+    }
     auto& write_batch = *write.mutable_write_batch();
     *write_batch.mutable_transaction() = req_->transaction();
     if (has_row_mark) {
@@ -434,10 +450,14 @@ Status ReadQuery::DoPerform() {
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 
-    query->set_callback([peer = leader_peer.peer, self = shared_from_this()](const Status& status) {
+    query->set_callback([peer = leader_peer.peer, self = shared_from_this(), response]
+        (const Status& status) {
       if (!status.ok()) {
         self->RespondFailure(status);
       } else {
+        if (response && response->has_async_write_op_id()) {
+          *self->resp_->mutable_async_write_op_id() = response->async_write_op_id();
+        }
         self->retained_self_ = self;
         peer->Enqueue(self.get());
       }
@@ -480,7 +500,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.local_limit = current_safe_time;
     }
     if (IsPgsqlFollowerReadAtAFollower()) {
-      if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
+      if (FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time &&
           current_safe_time < read_time_.read) {
         // We are given a read time. However, for Follower reads, it may be better
         // to redirect the query to the Leader instead of waiting on it.
@@ -519,8 +539,7 @@ Status ReadQuery::Complete() {
     const auto result = VERIFY_RESULT(DoRead());
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
-          << __func__ << ", restarting read with the same read time: " << result.restart_time
-          << THROTTLE_MSG;
+          << __func__ << ", restarting read with the same read time: " << result.restart_time;
       allow_retry_ = false;
     }
     read_time_ = result.restart_time;
@@ -547,7 +566,7 @@ Status ReadQuery::Complete() {
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
       tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
-      resp_->set_restart_read_key(result.key);
+      resp_->dup_restart_read_key(result.key);
       break;
     }
 
@@ -557,7 +576,7 @@ Status ReadQuery::Complete() {
     }
   }
   if (req_->include_trace() && Trace::CurrentTrace() != nullptr) {
-    resp_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+    resp_->dup_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
 
   // In case read time was not specified (i.e. allow_retry is true)
@@ -630,6 +649,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
     read_operation_data.read_time = read_time_;
   } else {
     if (!read_time_) {
+      LOG(DFATAL) << "Read time must be picked by now!";
       tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     }
     read_tx = VERIFY_RESULT(
@@ -643,8 +663,8 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
     auto count = req_->redis_batch_size();
     std::vector<Status> rets(count);
     CountDownLatch latch(count);
-    for (int idx = 0; idx < count; idx++) {
-      const RedisReadRequestPB& redis_read_req = req_->redis_batch(idx);
+    size_t idx = 0;
+    for (const auto& redis_read_req : req_->redis_batch()) {
       Status &failed_status_ = rets[idx];
       auto cb = [&latch, &failed_status_] (const Status &status) -> void {
                   if (!status.ok())
@@ -655,7 +675,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
           &HandleRedisReadRequestAsync,
           Unretained(abstract_tablet_.get()),
           read_operation_data,
-          redis_read_req,
+          &redis_read_req,
           Unretained(resp_->add_redis_batch()),
           cb);
 
@@ -668,6 +688,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       if (!s.ok() || !run_async) {
         func.Run();
       }
+      ++idx;
     }
     latch.Wait();
     std::vector<Status> failed;
@@ -689,17 +710,13 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   if (!req_->ql_batch().empty()) {
     // Assert the primary table is a YQL table.
     DCHECK_EQ(abstract_tablet_->table_type(), TableType::YQL_TABLE_TYPE);
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
-    for (QLReadRequestPB& ql_read_req : *mutable_req->mutable_ql_batch()) {
+    auto* mutable_req = const_cast<ReadRequestMsg*>(req_);
+    for (auto& ql_read_req : *mutable_req->mutable_ql_batch()) {
       // Update the remote endpoint.
-      ql_read_req.set_allocated_remote_endpoint(&host_port_pb_);
-      ql_read_req.set_allocated_proxy_uuid(mutable_req->mutable_proxy_uuid());
-      auto se = ScopeExit([&ql_read_req] {
-        (void) ql_read_req.release_remote_endpoint();
-        (void) ql_read_req.release_proxy_uuid();
-      });
+      ql_read_req.ref_remote_endpoint(host_port_pb_);
+      ql_read_req.ref_proxy_uuid(mutable_req->proxy_uuid());
 
-      tablet::QLReadRequestResult result;
+      tablet::QLReadRequestResult result(req_->arena());
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
           read_operation_data, ql_read_req, req_->transaction(), &result,
@@ -708,9 +725,9 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       if (result.read_restart_data.is_valid()) {
         return FormReadRestartInfo(result.read_restart_data);
       }
-      result.response.set_rows_data_sidecar(
+      result.response->set_rows_data_sidecar(
           narrow_cast<int32_t>(context_.sidecars().Complete()));
-      resp_->add_ql_batch()->Swap(&result.response);
+      resp_->mutable_ql_batch()->push_back_ref(result.response);
     }
     return ReadRestartInfo();
   }
@@ -718,7 +735,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   if (!req_->pgsql_batch().empty()) {
     size_t total_num_rows_read = 0;
     for (const auto& pgsql_read_req : req_->pgsql_batch()) {
-      tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
+      tablet::PgsqlReadRequestResult result(resp_->arena(), &context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
           read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req,
@@ -730,9 +747,9 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       if (result.read_restart_data.is_valid()) {
         return FormReadRestartInfo(result.read_restart_data);
       }
-      result.response.set_rows_data_sidecar(
+      result.response->set_rows_data_sidecar(
           narrow_cast<int32_t>(context_.sidecars().Complete()));
-      resp_->add_pgsql_batch()->Swap(&result.response);
+      resp_->mutable_pgsql_batch()->push_back_ref(result.response);
     }
 
     if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
@@ -754,7 +771,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
 void PerformRead(
     TabletServerIf* server, ReadTabletProvider* read_tablet_provider,
-    const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) {
+    const ReadRequestMsg* req, ReadResponseMsg* resp, rpc::RpcContext context) {
   auto read_query = std::make_shared<ReadQuery>(
       server, read_tablet_provider, req, resp, std::move(context));
   read_query->Perform();

@@ -133,7 +133,7 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableClientToNodeEncrypt = true;
     userIntent.enableNodeToNodeEncrypt = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 

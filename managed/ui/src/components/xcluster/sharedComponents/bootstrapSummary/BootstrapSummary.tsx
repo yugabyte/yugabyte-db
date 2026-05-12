@@ -4,7 +4,7 @@ import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg?img';
 import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 import { I18N_KEY_PREFIX_XCLUSTER_TERMS, INPUT_FIELD_WIDTH_PX } from '../../constants';
 import { BootstrapCategoryCard } from './BootstrapCategoryCard';

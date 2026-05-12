@@ -614,4 +614,8 @@ extern void VirtualXactLockTableInsert(VirtualTransactionId vxid);
 extern void VirtualXactLockTableCleanup(void);
 extern bool VirtualXactLock(VirtualTransactionId vxid, bool wait);
 
+extern bool YbLockHeldOnObjectBySession(const LOCKTAG *locktag);
+#ifdef USE_ASSERT_CHECKING
+extern int	YbGetNumTxnLocks();
+#endif
 #endif							/* LOCK_H_ */

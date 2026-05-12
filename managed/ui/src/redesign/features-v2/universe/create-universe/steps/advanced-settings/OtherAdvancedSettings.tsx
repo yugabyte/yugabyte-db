@@ -9,11 +9,7 @@
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods,
-  StepsRef
-} from '../../CreateUniverseContext';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAccordion } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
@@ -23,11 +19,17 @@ import {
   TimeSyncField,
   InstanceARNField,
   SystemDField,
-  AccessKeyField
+  AccessKeyField,
+  NetworkAcessField
 } from '../../fields';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods,
+  StepsRef
+} from '../../CreateUniverseContext';
+import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { OtherAdvancedProps } from './dtos';
-
-// import { useTranslation } from 'react-i18next';
+import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 
 const { Box } = mui;
 
@@ -37,18 +39,24 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
+  const provider = generalSettings?.providerConfiguration;
+
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings'
   });
 
   const methods = useForm<OtherAdvancedProps>({
+    resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
     defaultValues: {
-      instanceTags: [
-        {
-          name: '',
-          value: ''
-        }
-      ],
+      ...(provider?.code !== CloudType.kubernetes && {
+        instanceTags: [
+          {
+            name: '',
+            value: ''
+          }
+        ],
+        useTimeSync: true
+      }),
       ...otherAdvancedSettings
     },
     mode: 'onChange'
@@ -58,7 +66,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        methods.handleSubmit((data) => {
+        return methods.handleSubmit((data) => {
           saveOtherAdvancedSettings(data);
           moveToNextPage();
         })();
@@ -72,11 +80,12 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   return (
     <FormProvider {...methods}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px', mb: 3 }}>
-        <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
-          {generalSettings?.providerConfiguration?.code &&
-          databaseSettings?.ysql &&
-          databaseSettings?.ycql ? (
+      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
+        {provider &&
+        provider?.code !== CloudType.kubernetes &&
+        databaseSettings?.ysql &&
+        databaseSettings?.ycql ? (
+          <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
             <DeploymentPortsField
               disabled={false}
               providerCode={generalSettings?.providerConfiguration?.code}
@@ -84,26 +93,32 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
               ycql={databaseSettings?.ycql}
               enableConnectionPooling={databaseSettings?.enableConnectionPooling}
             />
-          ) : (
-            <></>
-          )}
-        </YBAccordion>
-        <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
-          <UserTagsField disabled={false} />
-        </YBAccordion>
+          </YBAccordion>
+        ) : (
+          <></>
+        )}
+        {provider?.code !== CloudType.kubernetes && (
+          <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
+            <UserTagsField disabled={false} />
+          </YBAccordion>
+        )}
       </Box>
       <StyledPanel>
         <StyledHeader>{t('additionalSettingsHeader')}</StyledHeader>
-        <StyledContent>
-          {generalSettings?.providerConfiguration?.code && (
-            <TimeSyncField disabled={false} provider={generalSettings?.providerConfiguration} />
+        <StyledContent sx={{ gap: '16px' }}>
+          {provider && provider?.code !== CloudType.kubernetes && (
+            <TimeSyncField disabled={false} provider={provider} />
           )}
-          <AccessKeyField
-            disabled={false}
-            provider={generalSettings?.providerConfiguration?.uuid ?? ''}
-          />
-          <InstanceARNField disabled={false} />
-          <SystemDField disabled={false} />
+          {provider?.code !== CloudType.kubernetes && (
+            <AccessKeyField
+              disabled={false}
+              provider={generalSettings?.providerConfiguration?.uuid ?? ''}
+            />
+          )}
+          {provider?.code === CloudType.aws && <InstanceARNField disabled={false} />}
+          {provider?.code !== CloudType.kubernetes && <SystemDField disabled={false} />}
+
+          {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
         </StyledContent>
       </StyledPanel>
     </FormProvider>

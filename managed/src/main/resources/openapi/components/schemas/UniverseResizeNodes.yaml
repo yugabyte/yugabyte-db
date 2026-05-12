@@ -1,0 +1,18 @@
+title: UniverseResizeNodes
+description: |
+  UniverseResizeNodes
+
+  Request payload to update the size of nodes in a universe. Update the instance type and storage
+  spec of the nodes. Part of UniverseResizeNodesReq
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    properties:
+      clusters:
+        items:
+          $ref: "./UniverseResizeNodesCluster.yaml"
+      roll_max_batch_size:
+        description: Suggested number of tservers to roll during resize if available.
+        $ref: "./RollMaxBatchSize.yaml"
+        x-yba-api-visibility: internal

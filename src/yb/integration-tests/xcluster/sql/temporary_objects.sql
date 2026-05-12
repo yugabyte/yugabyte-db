@@ -93,16 +93,15 @@ CREATE TEMP TABLE temp_table_for_check (
 ALTER TABLE temp_table_for_check DROP CONSTRAINT temp_table_for_check_age_check;
 
 -- Create a temporary table and enable RLS
--- Uncomment as part of #25885
--- CREATE TEMP TABLE temp_table_for_rls (
---     id INT PRIMARY KEY,
---     sensitive_data TEXT
--- );
--- ALTER TABLE temp_table_for_rls ENABLE ROW LEVEL SECURITY;
--- -- Create a policy
--- CREATE POLICY temp_my_policy ON temp_table_for_rls USING (id > 1);
--- -- Drop the policy
--- DROP POLICY temp_my_policy ON temp_table_for_rls;
+CREATE TEMP TABLE temp_table_for_rls (
+    id INT PRIMARY KEY,
+    sensitive_data TEXT
+);
+ALTER TABLE temp_table_for_rls ENABLE ROW LEVEL SECURITY;
+-- Create a policy
+CREATE POLICY temp_my_policy ON temp_table_for_rls USING (id > 1);
+-- Drop the policy
+DROP POLICY temp_my_policy ON temp_table_for_rls;
 
 
 --
@@ -129,26 +128,36 @@ CREATE INDEX temp_index_on_value ON temp_complex_table (value);
 ALTER TABLE temp_complex_table ENABLE ROW LEVEL SECURITY;
 
 -- Add a Row-Level Security Policy
--- Uncomment as part of #25885
--- CREATE POLICY temp_policy ON temp_complex_table 
---     FOR SELECT USING (id > 0);
+CREATE POLICY temp_policy ON temp_complex_table 
+    FOR SELECT USING (id > 0);
 
--- Attach a trigger to the table
--- Uncomment as part of #25885
--- CREATE FUNCTION temp_trigger_function() RETURNS trigger AS $$
--- BEGIN
---     NEW.value := UPPER(NEW.value);
---     RETURN NEW;
--- END;
--- $$ LANGUAGE plpgsql;
--- CREATE TRIGGER temp_trigger
---     BEFORE INSERT ON temp_complex_table
---     FOR EACH ROW EXECUTE FUNCTION temp_trigger_function();
+-- Attach a trigger to the table; function here is a temporary object as well.
+CREATE FUNCTION pg_temp.temp_trigger_function() RETURNS trigger AS $$
+BEGIN
+    NEW.value := UPPER(NEW.value);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER temp_trigger
+    BEFORE INSERT ON temp_complex_table
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.temp_trigger_function();
 
 -- Create a sequence and attach it to a column
--- Uncomment this as part of #24080
--- CREATE TEMP SEQUENCE temp_sequence START 1;
--- ALTER TABLE temp_complex_table ALTER COLUMN id SET DEFAULT nextval('temp_sequence');
+CREATE TEMP SEQUENCE temp_sequence START 1;
+ALTER TABLE temp_complex_table ALTER COLUMN id SET DEFAULT nextval('temp_sequence');
 
 -- Finally, DROP everything using CASCADE
 DROP TABLE temp_complex_table CASCADE;
+DROP FUNCTION pg_temp.temp_trigger_function;
+
+
+-- Temporary rule case:
+CREATE TEMP TABLE temp_table_for_rule (
+    id INT PRIMARY KEY
+);
+-- Create a rule
+CREATE RULE _test_temp_rule AS
+    ON UPDATE TO temp_table_for_rule
+    DO INSTEAD NOTHING;
+-- Drop the rule
+DROP RULE _test_temp_rule ON temp_table_for_rule;

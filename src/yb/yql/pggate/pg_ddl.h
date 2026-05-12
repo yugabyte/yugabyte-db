@@ -25,12 +25,12 @@ namespace yb::pggate {
 
 class PgDdl : public PgStatement {
  protected:
-  explicit PgDdl(const PgSession::ScopedRefPtr& pg_session) : PgStatement(pg_session) {}
+  explicit PgDdl(const PgSessionPtr& pg_session) : PgStatement(pg_session) {}
 };
 
 class PgCreateDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kCreateDatabase> {
  public:
-  PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
+  PgCreateDatabase(const PgSessionPtr& pg_session,
                    const char* database_name,
                    PgOid database_oid,
                    PgOid source_database_oid,
@@ -49,7 +49,7 @@ class PgCreateDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kCreate
 class PgDropDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kDropDatabase> {
  public:
   PgDropDatabase(
-      const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid);
+      const PgSessionPtr& pg_session, const char* database_name, PgOid database_oid);
 
   Status Exec();
 
@@ -61,7 +61,7 @@ class PgDropDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kDropData
 class PgAlterDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterDatabase> {
  public:
   PgAlterDatabase(
-      const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid);
+      const PgSessionPtr& pg_session, const char* database_name, PgOid database_oid);
 
   void RenameDatabase(const char *newname);
 
@@ -74,7 +74,7 @@ class PgAlterDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterDa
 class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCreateTablegroup> {
  public:
   PgCreateTablegroup(
-      const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid,
+      const PgSessionPtr& pg_session, const char* database_name, PgOid database_oid,
       PgOid tablegroup_oid, PgOid tablespace_oid, bool use_regular_transaction_block);
 
   Status Exec();
@@ -86,7 +86,7 @@ class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCrea
 class PgDropTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTablegroup> {
  public:
   PgDropTablegroup(
-      const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+      const PgSessionPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
       bool use_regular_transaction_block);
 
   Status Exec();
@@ -123,7 +123,7 @@ class PgCreateTableBase : public PgDdl {
   Status Exec();
 
  protected:
-  PgCreateTableBase(const PgSession::ScopedRefPtr& pg_session,
+  PgCreateTableBase(const PgSessionPtr& pg_session,
                     const char* database_name,
                     const char* schema_name,
                     const char* table_name,
@@ -154,7 +154,7 @@ class PgCreateTableBase : public PgDdl {
 class PgCreateTable final : public PgStatementLeafBase<PgCreateTableBase, StmtOp::kCreateTable> {
  public:
   PgCreateTable(
-      const PgSession::ScopedRefPtr& pg_session,
+      const PgSessionPtr& pg_session,
       const char* database_name,
       const char* schema_name,
       const char* table_name,
@@ -178,7 +178,7 @@ class PgCreateTable final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
 class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp::kCreateIndex> {
  public:
   PgCreateIndex(
-      const PgSession::ScopedRefPtr& pg_session,
+      const PgSessionPtr& pg_session,
       const char* database_name,
       const char* schema_name,
       const char* table_name,
@@ -205,7 +205,7 @@ class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
 class PgDropTable final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTable> {
  public:
   PgDropTable(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id, bool if_exist,
       bool use_regular_transaction_block);
 
   Status Exec();
@@ -218,7 +218,7 @@ class PgDropTable final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTable> 
 
 class PgTruncateTable final : public PgStatementLeafBase<PgDdl, StmtOp::kTruncateTable> {
  public:
-  PgTruncateTable(const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id);
+  PgTruncateTable(const PgSessionPtr& pg_session, const PgObjectId& table_id);
 
   Status Exec();
 
@@ -229,7 +229,7 @@ class PgTruncateTable final : public PgStatementLeafBase<PgDdl, StmtOp::kTruncat
 class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> {
  public:
   PgDropIndex(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
+      const PgSessionPtr& pg_session, const PgObjectId& index_id, bool if_exist,
       bool ddl_rollback_enabled, bool use_regular_transaction_block);
 
   Status Exec();
@@ -243,7 +243,7 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
 
 class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable> {
  public:
-  PgAlterTable(const PgSession::ScopedRefPtr& pg_session,
+  PgAlterTable(const PgSessionPtr& pg_session,
                const PgObjectId& table_id,
                bool use_transaction,
                bool use_regular_transaction_block);
@@ -277,7 +277,7 @@ class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable
 
 class PgDropSequence final : public PgStatementLeafBase<PgDdl, StmtOp::kDropSequence> {
  public:
-  PgDropSequence(const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid sequence_oid);
+  PgDropSequence(const PgSessionPtr& pg_session, PgOid database_oid, PgOid sequence_oid);
 
   Status Exec();
 
@@ -288,7 +288,7 @@ class PgDropSequence final : public PgStatementLeafBase<PgDdl, StmtOp::kDropSequ
 
 class PgDropDBSequences final : public PgStatementLeafBase<PgDdl, StmtOp::kDropDbSequences> {
  public:
-  PgDropDBSequences(const PgSession::ScopedRefPtr& pg_session, PgOid database_oid);
+  PgDropDBSequences(const PgSessionPtr& pg_session, PgOid database_oid);
 
   Status Exec();
 
@@ -300,7 +300,7 @@ class PgCreateReplicationSlot final : public PgStatementLeafBase<
                                                  PgDdl, StmtOp::kCreateReplicationSlot> {
  public:
   PgCreateReplicationSlot(
-      const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
+      const PgSessionPtr& pg_session, const char* slot_name, const char* plugin_name,
       PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action,
       YbcLsnType lsn_type, YbcOrderingMode yb_ordering_mode);
 
@@ -313,7 +313,7 @@ class PgCreateReplicationSlot final : public PgStatementLeafBase<
 class PgDropReplicationSlot final : public PgStatementLeafBase<
                                                PgDdl, StmtOp::kDropReplicationSlot> {
  public:
-  PgDropReplicationSlot(const PgSession::ScopedRefPtr& pg_session, const char *slot_name);
+  PgDropReplicationSlot(const PgSessionPtr& pg_session, const char *slot_name);
 
   Status Exec();
 

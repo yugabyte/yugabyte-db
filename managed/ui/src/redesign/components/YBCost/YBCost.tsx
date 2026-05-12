@@ -45,7 +45,7 @@ export const YBCost: FC<YBCostProps> = ({
     <YBFormattedNumber
       value={finalCost}
       maximumFractionDigits={2}
-      formattedNumberStyle="currency"
+      formatStyle="currency"
       currency="USD"
       multiplier={multiplier}
     />

@@ -1,22 +1,22 @@
-import { ReactElement, useContext, useEffect } from 'react';
+import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { getK8DeviceInfo } from '@app/redesign/features-v2/universe/create-universe/fields/k8-volume-info/K8VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import { parsePositiveIntegerInput } from '@app/redesign/features-v2/universe/create-universe/helpers/instanceNumericInput';
+
+//icons
+import Close from '@app/redesign/assets/close.svg';
 
 const { Box } = mui;
 
@@ -25,24 +25,20 @@ interface K8VolumeInfoFieldProps {
   disableVolumeSize: boolean;
   maxVolumeCount: number;
   disabled: boolean;
+  provider?: ProviderType;
 }
 
 export const K8VolumeInfoField = ({
   isMaster,
   disableVolumeSize,
   maxVolumeCount,
-  disabled
+  disabled,
+  provider
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation();
 
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
-
-  // watchers
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
   const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
   // To set value based on master or tserver field in dedicated mode
@@ -63,12 +59,33 @@ export const K8VolumeInfoField = ({
 
   const onVolumeSizeChanged = (value: any) => {
     if (!fieldValue) return;
-    setValue(UPDATE_FIELD, { ...fieldValue, volumeSize: Number(value) });
+    const defaults = getK8DeviceInfo(providerRuntimeConfigs);
+    const dv = Number(defaults.volumeSize);
+    const defaultSize = Math.max(
+      1,
+      Number.isFinite(dv) && dv > 0
+        ? dv
+        : fieldValue.volumeSize && fieldValue.volumeSize > 0
+          ? fieldValue.volumeSize
+          : 1
+    );
+    const volumeSize = parsePositiveIntegerInput(String(value), defaultSize);
+    setValue(UPDATE_FIELD, { ...fieldValue, volumeSize });
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
     if (!fieldValue) return;
-    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    const defaults = getK8DeviceInfo(providerRuntimeConfigs);
+    const dnv = Number(defaults.numVolumes);
+    const defaultNum = Math.max(
+      1,
+      Number.isFinite(dnv) && dnv > 0
+        ? dnv
+        : fieldValue.numVolumes && fieldValue.numVolumes > 0
+          ? fieldValue.numVolumes
+          : 1
+    );
+    const volumeCount = parsePositiveIntegerInput(String(numVolumes), defaultNum, maxVolumeCount);
     setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
@@ -77,8 +94,8 @@ export const K8VolumeInfoField = ({
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('universeForm.validation.required', {
-          field: t('universeForm.instanceConfig.instanceType')
+        required: t('createUniverseV2.instanceSettings.validation.required', {
+          field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
       render={() => {
@@ -86,7 +103,9 @@ export const K8VolumeInfoField = ({
           <Box display="flex" flexDirection="column">
             <Box display="flex">
               <Box>
-                <YBLabel>{t('provisionedThroughputPerPod')}</YBLabel>
+                <YBLabel>
+                  {t('createUniverseV2.instanceSettings.provisionedThroughputPerPod')}
+                </YBLabel>
               </Box>
             </Box>
             <Box display="flex" width="100%">
@@ -148,7 +167,7 @@ export const K8VolumeInfoField = ({
                   marginBottom: 1
                 })}
               >
-                {t('k8VolumeSizeUnit')}
+                {t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')}
               </Box>
             </Box>
           </Box>

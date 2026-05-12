@@ -21,16 +21,16 @@ SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c":
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"b": {"$filter": {"input": [{"a": 10, "b": 8}, {"a": 7, "b": 8}], "as": "CURRENT", "cond": {"$and": [{"$gt": ["$a", 8]}, {"$gt": ["$b", 7]}]}}}}');
 
 -- $reduce with multiple documents in a collection to ensure variable context is reset between every row evaluation
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 1, "a": ["a", "b", "c"]}');
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 2, "a": ["d", "e", "f"]}');
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 3, "a": ["g", "h", "i"]}');
+SELECT documentdb_api.insert_one('db', 'remove_variable_tests', '{"_id": 1, "a": ["a", "b", "c"]}');
+SELECT documentdb_api.insert_one('db', 'remove_variable_tests', '{"_id": 2, "a": ["d", "e", "f"]}');
+SELECT documentdb_api.insert_one('db', 'remove_variable_tests', '{"_id": 3, "a": ["g", "h", "i"]}');
 
-select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }') from documentdb_api.collection('db', 'variable_tests');
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }') from documentdb_api.collection('db', 'remove_variable_tests');
 
 -- $$REMOVE should not be written
 select bson_dollar_project('{}', '{"result": "$$REMOVE" }');
-select bson_dollar_project(document, '{"result": [ "$a", "$$REMOVE", "final" ]  }') from documentdb_api.collection('db', 'variable_tests');
-select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$REMOVE", "$$this"] } } } }') from documentdb_api.collection('db', 'variable_tests');
+select bson_dollar_project(document, '{"result": [ "$a", "$$REMOVE", "final" ]  }') from documentdb_api.collection('db', 'remove_variable_tests');
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$REMOVE", "$$this"] } } } }') from documentdb_api.collection('db', 'remove_variable_tests');
 
 -- $let aggregation operator
 -- verify that defined variables work
@@ -136,34 +136,27 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "other": "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$NOW" ]} }, "let": { "varRef": "3" } }');
 
 -- $$NOW in $lookup 
-SELECT documentdb_api.insert_one('db','now_test_pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
-SELECT documentdb_api.insert_one('db','now_test_pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT documentdb_api.insert_one('db','now_test_from','{"_id":1,"a":"alpha","b":["x","y"],"c":10,"d":["m","n"]}',NULL);
+SELECT documentdb_api.insert_one('db','now_test_from','{"_id":2,"a":"beta","b":["p","q"],"c":20,"d":["z"]}',NULL);
 
-SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House", "qval": 100 }', NULL);
-SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade", "qval": 120 }', NULL);
-SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda", "qval": 140 }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_to','{"_id":1,"x":"x","a":"alpha","c":10}',NULL);
+SELECT documentdb_api.insert_one('db','now_test_to','{"_id":2,"x":"p","a":"beta","y":"t","c":20}',NULL);
+SELECT documentdb_api.insert_one('db','now_test_to','{"_id":3,"x":"p","a":"beta","y":"z","c":30}',NULL);
 
-SELECT documentdb_api.insert_one('db','now_test_pipelinefrom_second',' {"_id": 1, "country": "America", "qq": 100 }', NULL);
-SELECT documentdb_api.insert_one('db','now_test_pipelinefrom_second','{ "_id": 2, "country": "Canada", "qq": 120 }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_from_2','{"_id":1,"z":"val1","c":10}',NULL);
+SELECT documentdb_api.insert_one('db','now_test_from_2','{"_id":2,"z":"val2","c":20}',NULL);
 
-SELECT time_system_variables_test.mask_time_value($q$ SELECT document from bson_aggregation_pipeline('db', 
-  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQval": "$$qval", "nowField": "$$NOW" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }') $q$);
+SELECT time_system_variables_test.mask_time_value($q$ SELECT document FROM bson_aggregation_pipeline('db','{"aggregate":"now_test_to","pipeline":[{"$lookup":{"from":"now_test_from","pipeline":[{"$match":{"$expr":{"$eq":["$c","$$c"]}}},{"$addFields":{"newC":"$$c","now":"$$NOW"}}],"as":"joined","localField":"a","foreignField":"a","let":{"c":"$c"}}}],"cursor":{}}') $q$);
 
--- Add a $lookup with let but add a subquery stage
-SELECT time_system_variables_test.mask_time_value($q$ SELECT document from bson_aggregation_pipeline('db', 
-  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$NOW" ] } }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }') $q$);
+SELECT time_system_variables_test.mask_time_value($q$ SELECT document FROM bson_aggregation_pipeline('db','{"aggregate":"now_test_to","pipeline":[{"$lookup":{"from":"now_test_from","pipeline":[{"$sort":{"_id":1}},{"$match":{"$expr":{"$eq":["$c","$$NOW"]}}}],"as":"joined","localField":"a","foreignField":"a","let":{"c":"$c"}}}],"cursor":{}}') $q$);
 
--- $$NOW in nested lookup
-SELECT time_system_variables_test.mask_time_value($Q$ SELECT document from bson_aggregation_pipeline('db', 
-  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_pipeline('db','{"aggregate":"now_test_to","pipeline":[{"$lookup":{"from":"now_test_from","pipeline":[{"$addFields":{"extra":"$$NOW"}},{"$lookup":{"from":"now_test_from_2","localField":"z","foreignField":"c","as":"inner","let":{"v":"$c"},"pipeline":[{"$match":{"$expr":{"$eq":["$z","$$v"]}}}]}}],"as":"joined","localField":"a","foreignField":"a"}}],"cursor":{}}') $Q$);
 
-SELECT time_system_variables_test.mask_time_value($Q$ SELECT document from bson_aggregation_pipeline('db', 
-  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$$NOW" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_pipeline('db','{"aggregate":"now_test_to","pipeline":[{"$lookup":{"from":"now_test_from","pipeline":[{"$addFields":{"extra":"$$NOW"}},{"$lookup":{"from":"now_test_from_2","localField":"z","foreignField":"c","as":"inner","let":{"v":"$$NOW"},"pipeline":[{"$match":{"$expr":{"$eq":["$z","$$v"]}}}]}}],"as":"joined","localField":"a","foreignField":"a"}}],"cursor":{}}') $Q$);
 
-SELECT document from bson_aggregation_pipeline('db', 
-  '{ "aggregate": "now_test_pipelineto", "pipeline": [ {"$match": {"_id": 3}},  { "$addFields": { "nowField1": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "nowField2": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') \gset
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate":"now_test_to", "pipeline":[{ "$match":{ "_id":3 }},{ "$addFields":{ "nowField1":"$$NOW" }},{ "$lookup":{ "from":"now_test_from", "pipeline":[{ "$addFields":{ "nowField2":"$$NOW" }},{ "$lookup":{ "from":"now_test_from_2", "localField":"z", "foreignField":"c", "as":"inner", "let":{ "v":"$c" }, "pipeline":[{ "$match":{ "$expr":{ "$eq":["$z","$$v"] }}}] }}], "as":"joined", "localField":"a", "foreignField":"a" }}], "cursor":{} }') \gset
 \set result0 :document
-SELECT :'result0'::json->>'nowField1' = :'result0'::json->'myMatch'->0->>'nowField2';
+SELECT :'result0'::json->>'nowField1' = :'result0'::json->'joined'->0->>'nowField2';
 
 -- $$NOW in transactions. We expect same values.
 SELECT documentdb_api.insert_one('db','now_test_2','{"_id": 0}', NULL);
@@ -356,3 +349,151 @@ SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 12
 SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 12, pageSize => 1, pipeline => '{ "": [{ "$project": { "a": 1, "nowField": "$$NOW" } }]}');
 SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 4, pageSize => 3, pipeline => '{ "": [{ "$project": { "a": 1, "nowField": "$$NOW" } }]}', singleBatch => TRUE);
 SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 4, pageSize => 100000, pipeline => '{ "": [{ "$project": { "nowField": "$$NOW" } }, { "$limit": 3 }]}');
+
+
+-- Should be more than 1 document in collection
+SELECT documentdb_api.insert_one('db','coll001','{"_id":1,"a":1}');
+SELECT documentdb_api.insert_one('db','coll001','{"_id":2,"a":1}');
+SELECT documentdb_api.insert_one('db','coll001','{"_id":3,"a":1}');
+
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "g": "ab", "u": "mb" },
+              "in":  "$$g"
+            }
+          }
+        }
+      }
+    ]
+  }'
+);
+
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "g": "ab", "u": "mb" },
+              "in": { "$eq": ["$$g", "$$u"] }
+            }
+          }
+        }
+      }
+    ]
+  }'
+);
+
+
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "va": "$a", "vb": "$b" },
+              "in": { "$and": ["$$va"] }
+            }
+          }
+        }
+      }
+    ]
+  }'
+);
+
+-- nested $let
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "var1": "outer", "var2": "inner" },
+              "in": {
+                "$let": {
+                  "vars": { "var3": "$$var2" },
+                  "in": { "$concat": ["$$var1", "-", "$$var3"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }'
+);
+
+--- nested $let with $map
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "prefix": "item-" },
+              "in": {
+                "$map": {
+                  "input": [1, 2, 3],
+                  "as": "num",
+                  "in": { "$concat": ["$$prefix", { "$toString": "$$num" }] }
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }'
+);
+
+--- nested $let with $filter
+SELECT document
+FROM bson_aggregation_pipeline(
+  'db',
+  '{
+    "aggregate": "coll001", 
+    "pipeline": [
+      {
+        "$project": {
+          "result": {
+            "$let": {
+              "vars": { "threshold": 1 },
+              "in": {
+                "$filter": {
+                  "input": [0, 1, 2, 3, 4],
+                  "as": "num",
+                  "cond": { "$gt": ["$$num", "$$threshold"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }'
+);  
+

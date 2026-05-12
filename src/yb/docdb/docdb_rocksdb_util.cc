@@ -34,7 +34,6 @@
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
@@ -54,6 +53,7 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/priority_thread_pool.h"
@@ -104,9 +104,9 @@ DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
 DEFINE_RUNTIME_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
     "Use to control write rate of flush and compaction.");
 DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
-    "Allows to control rate limit sharing/calculation across RocksDB instances\n"
-    "  tserver - rate limit is shared across all RocksDB instances at tabset server level\n"
-    "  none - rate limit is calculated independently for every RocksDB instance");
+    "Controls rate limit sharing across RocksDB instances: "
+    "tserver - rate limit is shared across all instances at the tserver level; "
+    "none - rate limit is calculated independently for every instance.");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
     "Threshold beyond which compaction is considered large.");
 DEFINE_RUNTIME_uint64(rocksdb_max_file_size_for_compaction, 0,
@@ -191,7 +191,7 @@ DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
 DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
     "Controls the number of data blocks to be indexed inside an index block.");
 
-DEFINE_UNKNOWN_bool(prioritize_tasks_by_disk, false,
+DEFINE_NON_RUNTIME_bool(prioritize_tasks_by_disk, false,
     "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
@@ -250,11 +250,6 @@ DEFINE_validator(compression_type,
 DEFINE_validator(regular_tablets_data_block_key_value_encoding,
     FLAG_OK_VALIDATOR(yb::docdb::GetConfiguredKeyValueEncodingFormat(_value)));
 
-using std::shared_ptr;
-using std::string;
-using std::unique_ptr;
-using strings::Substitute;
-
 namespace yb {
 namespace docdb {
 
@@ -292,7 +287,6 @@ void SetupBloomFilter(rocksdb::ReadOptions& read_options, const BloomFilterOptio
 }
 
 rocksdb::ReadOptions PrepareReadOptions(
-    rocksdb::DB* rocksdb,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
@@ -325,12 +319,12 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(
-      rocksdb, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
-unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+IntentAwareIteratorPtr CreateIntentAwareIterator(
     const DocDB& doc_db,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
@@ -345,7 +339,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(
-      doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
       doc_db, read_opts, read_operation_data, txn_op_context,
@@ -358,18 +352,25 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     const KeyBounds* docdb_key_bounds,
     const Slice* iterate_upper_bound,
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
-    rocksdb::Statistics* statistics) {
-  auto min_running_ht = status_manager->MinRunningHybridTime();
-  if (min_running_ht == HybridTime::kMax) {
-    VLOG(4) << "No transactions running";
-    return {};
+    rocksdb::Statistics* statistics,
+    bool use_ht_file_filter) {
+  std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr;
+
+  if (use_ht_file_filter) {
+    auto min_running_ht = status_manager->MinRunningHybridTime();
+    if (min_running_ht == HybridTime::kMax) {
+      VLOG(4) << "No transactions running";
+      return {};
+    }
+    file_filter = CreateIntentHybridTimeFileFilter(min_running_ht);
   }
+
   return CreateRocksDBIterator(
       intentsdb,
       docdb_key_bounds,
       docdb::BloomFilterOptions::Inactive(),
       rocksdb::kDefaultQueryId,
-      CreateIntentHybridTimeFileFilter(min_running_ht),
+      file_filter,
       iterate_upper_bound,
       cache_restart_block_keys,
       statistics);
@@ -380,7 +381,7 @@ namespace {
 std::mutex rocksdb_flags_mutex;
 
 int32_t GetMaxBackgroundFlushes() {
-  const auto kNumCpus = base::NumCPUs();
+  const auto kNumCpus = NumEffectiveCPUs();
   if (FLAGS_rocksdb_max_background_flushes == -1) {
     constexpr auto kCpusPerFlushThread = 8;
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
@@ -411,7 +412,7 @@ int32_t GetMaxBackgroundCompactions() {
     return rocksdb_max_background_compactions;
   }
 
-  const auto kNumCpus = base::NumCPUs();
+  const auto kNumCpus = NumEffectiveCPUs();
   if (kNumCpus <= 4) {
     rocksdb_max_background_compactions = 1;
   } else if (kNumCpus <= 8) {
@@ -626,7 +627,7 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     // over that value.
     priority_thread_pool_size = GetMaxBackgroundCompactions();
   } else {
-    const int kNumCpus = base::NumCPUs();
+    const int kNumCpus = NumEffectiveCPUs();
     // If we did not override the per-rocksdb queue size, then just use a production friendly
     // formula.
     //
@@ -636,7 +637,7 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     } else if (kNumCpus < 8) {
       priority_thread_pool_size = 2;
     } else {
-      priority_thread_pool_size = (int32_t) std::floor(kNumCpus * 3.5 / 8.0);
+      priority_thread_pool_size = static_cast<int32_t>(std::floor(kNumCpus * 3.5 / 8.0));
     }
   }
 
@@ -654,7 +655,7 @@ PriorityThreadPool* GetGlobalPriorityThreadPool() {
 }
 
 void InitRocksDBBaseOptions(
-    rocksdb::Options* options, const string& log_prefix, const TabletId& tablet_id,
+    rocksdb::Options* options, const std::string& log_prefix, const TabletId& tablet_id,
     const tablet::TabletOptions& tablet_options, const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   options->tablet_id = tablet_id;
@@ -778,9 +779,9 @@ void InitRocksDBOptionsTableFactory(
 }
 
 void InitRocksDBOptions(
-    rocksdb::Options* options, const string& log_prefix,
+    rocksdb::Options* options, const std::string& log_prefix,
     const TabletId& tablet_id,
-    const shared_ptr<rocksdb::Statistics>& statistics,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
@@ -932,9 +933,9 @@ class RocksDBPatcher::Impl {
       auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
       // If all the data in the file is already as of old time, no need to set any filter.
       if (consensus_frontier.hybrid_time() <= value) {
-        LOG(INFO) << "No need to set hybrid time filter since the largest frontier is already"
-                  << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
-                  << ", filter HT " << value;
+        LOG(DETAIL) << "No need to set hybrid time filter since the largest frontier is already"
+                    << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
+                    << ", filter HT " << value;
         return;
       }
       if (db_oid) {

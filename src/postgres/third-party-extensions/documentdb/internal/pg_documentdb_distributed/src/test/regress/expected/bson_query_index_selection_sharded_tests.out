@@ -25,7 +25,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 
 -- Now, do an explain with an OR query that each uses 1 of the indexes.
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
-                                                                                                                                                                               QUERY PLAN                                                                                                                                                                               
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -45,7 +45,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
 (15 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$and": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
-                                                                                                                                                                              QUERY PLAN                                                                                                                                                                               
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -67,7 +67,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
 BEGIN;
 set local citus.enable_local_execution to off;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
-                                                                                                                                                                               QUERY PLAN                                                                                                                                                                               
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -94,11 +94,12 @@ SELECT documentdb_api.shard_collection('db', 'test_index_selection_sharded', '{ 
  
 (1 row)
 
+ANALYZE documentdb_data.documents_3610;
 -- rerun the query
 BEGIN;
 set local enable_seqscan to off;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
-                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -118,8 +119,9 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
 (15 rows)
 
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
+SET LOCAL documentdb_rum.enable_custom_cost_estimate to off;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$and": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
-                                                                                                                                                  QUERY PLAN                                                                                                                                                   
+                                                                                                                                                               QUERY PLAN                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document

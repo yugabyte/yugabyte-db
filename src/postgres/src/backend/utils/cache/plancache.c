@@ -451,7 +451,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
 	/* YB: If the planner txn uses a pg relation, so will the execution txn */
-	plansource->usesPostgresRel = YbCurrentTxnUsesTempRel();
+	plansource->yb_plan_references_pg_rel = YbCurrentTxnUsesTempRel();
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -559,6 +559,77 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
 		plansource->gplan = NULL;
 		ReleaseCachedPlan(plan, NULL);
 	}
+}
+
+/*
+ * YB: YbIsCachedQueryValid: lightweight check of whether a cached query is
+ * still valid, used by YSQL Connection Manager while deallocating a prepared
+ * statement.
+ *
+ * This function is derived from RevalidateCachedQuery and performs only its
+ * first two invalidation checks:
+ *   1. Whether the saved search_path still matches the current environment.
+ *   2. Whether any RLS dependency has changed (role or row_security setting).
+ *
+ * Unlike RevalidateCachedQuery, this function does not acquire locks, mutate
+ * any plan cache state, or trigger re-analysis.  It is a pure validity check.
+ * CLOSE and DEALLOCATE can be frequent operations with connection-manager on a backend,
+ * so we need to check the validity of the prepared statement quickly by avoiding the
+ * expensive revalidation.
+ *
+ * Even if the prepare statement becomes valid after re-planning, proceeding
+ * with the deallocation is still safe on receiving the CLOSE packet or DEALLOCATE sql.
+ */
+bool
+YbIsCachedQueryValid(CachedPlanSource *plansource)
+{
+	Assert(YbIsClientYsqlConnMgr());
+	/*
+	 * For one-shot plans, we do not support revalidation checking; it's
+	 * assumed the query is parsed, planned, and executed in one transaction,
+	 * so that no lock re-acquisition is necessary.  Also, if the statement
+	 * type can't require revalidation, we needn't do anything (and we mustn't
+	 * risk catalog accesses when handling, eg, transaction control commands).
+	 */
+	if (plansource->is_oneshot || !StmtPlanRequiresRevalidation(plansource))
+	{
+		Assert(plansource->is_valid);
+		return true;
+	}
+
+	/*
+	 * If the query is currently valid, there could be a race condition that an invalidation
+	 * message arrives after we checked the validity. Therefore, client has to deallocate the
+	 * prepared statement again.
+	 */
+	bool is_valid = plansource->is_valid;
+
+	/*
+	 * If the query is currently valid, we should have a saved search_path ---
+	 * check to see if that matches the current environment.
+	 */
+	if (is_valid)
+	{
+		Assert(plansource->search_path != NULL);
+		/*
+		 * YB: Unlike RevalidateCachedQuery, this does not force replanning.
+		 * A search_path mismatch means the cached plan may resolve names
+		 * to wrong schemas, so treat the statement as invalid.
+		 */
+		if (!OverrideSearchPathMatchesCurrent(plansource->search_path))
+			return false;
+	}
+
+	/*
+	 * If the query rewrite phase had a possible RLS dependency, we must redo
+	 * it if either the role or the row_security setting has changed.
+	 */
+	if (is_valid && plansource->dependsOnRLS &&
+		(plansource->rewriteRoleId != GetUserId() ||
+		 plansource->rewriteRowSecurity != row_security))
+		return false;
+
+	return is_valid;
 }
 
 /*
@@ -1228,6 +1299,13 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
 	qlist = RevalidateCachedQuery(plansource, queryEnv);
+
+	/*
+	 * YB: If the planner found a pg relation in this plan, set the appropriate
+	 * flag for the execution txn.
+	 */
+	if (plansource->yb_plan_references_pg_rel)
+		YbSetTxnUsesTempRel();
 
 	/* Decide whether to use a custom plan */
 	customplan = choose_custom_plan(plansource, boundParams);

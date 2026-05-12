@@ -36,6 +36,9 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Run yb-ctl-test
+        env:
+          # yb-ctl-test.sh copies only scripts/installation; python unit tests live under python/.
+          YB_CTL_REPO_ROOT: ${{ github.workspace }}
         run: |
           set -x
           tmpdir=$(mktemp -d)

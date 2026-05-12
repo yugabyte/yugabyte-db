@@ -32,7 +32,7 @@ void DocPath::AddSubKey(KeyEntryValue&& subkey) {
   subkeys_.emplace_back(std::move(subkey));
 }
 
-DocPath DocPath::DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey) {
+DocPath DocPath::DocPathFromRedisKey(uint16_t hash, std::string_view key, std::string_view subkey) {
   DocPath doc_path(DocKey::FromRedisKey(hash, key).Encode());
   if (!subkey.empty()) {
     doc_path.AddSubKey(KeyEntryValue(subkey));

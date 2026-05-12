@@ -51,7 +51,11 @@ class SplitOperation
 
   static Status RejectionStatus(
       OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
-      const TabletId& child1, const TabletId& child2);
+      const std::vector<TabletId>& children);
+
+  bool use_mvcc() const override {
+    return true;
+  }
 
  private:
   Status Prepare(IsLeaderSide is_leader_side) override;

@@ -77,7 +77,7 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
 - Migrate from on-premises data centers to the cloud gradually and with confidence
 - Align the specific features and capabilities of different clouds with the requirements of your applications
 
---> [Explore hybrid- and multi-cloud capabilities](/preview/develop/multi-cloud/)
+--> [Explore hybrid- and multi-cloud capabilities](/stable/develop/multi-cloud/)
 
 ## Next steps
 
@@ -86,7 +86,7 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
     title="Quick start"
     description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
     buttonText="Get Started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    buttonUrl="/stable/quick-start-yugabytedb-managed/"
   >}}
 
   {{< sections/bottom-image-box

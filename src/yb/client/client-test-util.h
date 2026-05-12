@@ -36,6 +36,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -72,7 +73,8 @@ YBSchema YBSchemaFromSchema(const Schema& schema);
 
 // Creates an operation to read value from `value_column` for hashed key `key` for the `table`.
 std::shared_ptr<YBqlReadOp> CreateReadOp(
-    int32_t key, const TableHandle& table, const std::string& value_column);
+    const ThreadSafeArenaPtr& arena, int32_t key, const TableHandle& table,
+    const std::string& value_column);
 
 Result<std::string> GetNamespaceIdByNamespaceName(
     YBClient* client, const std::string& namespace_name);

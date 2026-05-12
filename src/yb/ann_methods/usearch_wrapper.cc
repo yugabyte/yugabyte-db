@@ -22,6 +22,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
@@ -30,9 +31,6 @@
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vectorann_util.h"
-
-DEFINE_test_flag(bool, usearch_exact, false,
-    "Use exact search in usearch wrapper to guarantee deterministic results.");
 
 namespace unum::usearch {
 
@@ -156,6 +154,10 @@ class UsearchIndex :
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
+    static std::once_flag log_once;
+    std::call_once(log_once, [index = &index_]() {
+      LOG(INFO) << "Usearch metric: " << index->metric().isa_name();
+    });
     return Status::OK();
   }
 
@@ -185,7 +187,7 @@ class UsearchIndex :
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2)
         << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
-    if (backend_ == HnswBackend::YB_HNSW) {
+    if (backend_ == HnswBackend::YB_HNSW_USEARCH) {
       return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_);
     }
     try {
@@ -228,7 +230,7 @@ class UsearchIndex :
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search_with_ef(
         query_vector.data(), options.max_num_results, options.filter, options.ef,
-        IndexImpl::any_thread(), FLAGS_TEST_usearch_exact);
+        IndexImpl::any_thread());
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
@@ -318,7 +320,7 @@ class UsearchIndex :
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
-  HnswBackend backend_;
+  const HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
   MemTrackerPtr mem_tracker_;
@@ -334,7 +336,9 @@ vector_index::VectorIndexIfPtr<Vector, DistanceResult>
     UsearchIndexFactory<Vector, DistanceResult>::Create(
     vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
     const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
-  if (backend == HnswBackend::YB_HNSW && mode == vector_index::FactoryMode::kLoad) {
+  LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
+      "Invalid backed for usearch index: " << HnswBackend_Name(backend);
+  if (backend == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
     return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
   }
   return std::make_shared<UsearchIndex<Vector, DistanceResult>>(

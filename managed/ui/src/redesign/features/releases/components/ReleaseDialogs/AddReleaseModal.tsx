@@ -35,9 +35,9 @@ import {
 import { FILE_SIZE_LIMIT, REFETCH_URL_METADATA_MS } from '../../helpers/constants';
 import { isEmptyString, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 
-import PathIcon from '../../../../../redesign/assets/path.svg';
-import PathDownIcon from '../../../../../redesign/assets/path-down.svg';
-import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
+import PathIcon from '../../../../../redesign/assets/path.svg?img';
+import PathDownIcon from '../../../../../redesign/assets/path-down.svg?img';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg?img';
 
 interface AddReleaseModalProps {
   open: boolean;

@@ -15,6 +15,7 @@
 
 #include <openssl/sha.h>
 
+#include <fstream>
 #include <mutex>
 #include <thread>
 
@@ -23,6 +24,7 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -30,12 +32,16 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/cql_pg_util.h"
+#include "yb/util/csv_util.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
@@ -45,11 +51,14 @@
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/util/flags.h"
 
+#include "ybgate/ybgate_cpp_util.h"
+
 using namespace std::placeholders;
 using namespace yb::size_literals;
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_int32(cql_update_system_query_cache_msecs);
+DECLARE_string(tmp_dir);
 
 DEFINE_UNKNOWN_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
@@ -70,18 +79,75 @@ DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
             "Limit the number of statements that are dumped at the /statements endpoint.");
 DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
             "Limit the number of unprepared statements that are being tracked.");
+DEFINE_RUNTIME_int32(cql_batch_stmts_entries_limit, 500,
+            "Limit the number of batch statements that are being tracked.");
+
+DEFINE_NON_RUNTIME_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
+
+DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
+    "Users that are authenticated via the local password"
+    " check instead of JWT (if ycql_use_jwt_auth=true). This is a comma separated list.");
+TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
+
+DEFINE_NON_RUNTIME_string(ycql_jwt_conf, "",
+    "The space-separated list of options to configure JWT authentication. "
+    "The format is a list of 'key=value' pairs separated by space. "
+    "Valid keys are: "
+    "  * jwt_jwks_url: The URL from where to fetch the Json Web Key Set of the Identity Provider "
+    "(IDP). "
+    "  * jwt_audiences: The list of accepted audiences. One of the items within the list must match"
+    " the 'aud' claim present in the token. Multiple values can be provided as a comma-separated "
+    "list. "
+    "  * jwt_issuers: The comma-separated list of issuers (IDP) that are valid. One of the items "
+    "within the list must match the 'iss' claim present in the token. "
+    "  * jwt_matching_claim_key: Key of the claim which represents the identity of the user on the "
+    "Identity Provider (IDP). Some common values are 'sub', 'email', 'groups', 'roles' etc. The "
+    "default value is 'sub'.");
+
+DEFINE_NON_RUNTIME_string(ycql_ident_conf_csv, "",
+    "CSV formatted line representing a list of identity mapping rules (in order). "
+    "Each line contains two fields separated by space - IDP username and YCQL username. "
+    "Only applicable in JWT authentication i.e. when ycql_use_jwt_auth=true.");
 
 namespace yb {
 namespace cqlserver {
 
 const char* const kRoleColumnNameSaltedHash = "salted_hash";
 const char* const kRoleColumnNameCanLogin = "can_login";
+const char* const kJwtAuthJwksUrl = "jwt_jwks_url";
+const char* const kJwtAudiences = "jwt_audiences";
+const char* const kJwtIssuers = "jwt_issuers";
+const char* const kJwtMatchingClaimKey = "jwt_matching_claim_key";
+const char* const kJwtIdentMapName = "YCQL_IDENT_MAPNAME";
 
 using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
+
+namespace {
+
+int32_t StatementEntriesLimit(StmtType stmt_type) {
+  switch (stmt_type) {
+    case StmtType::kPrepared:
+      return -1;
+    case StmtType::kUnprepared:
+      return FLAGS_cql_unprepared_stmts_entries_limit;
+    case StmtType::kBatch:
+      return FLAGS_cql_batch_stmts_entries_limit;
+  }
+  FATAL_INVALID_ENUM_VALUE(StmtType, stmt_type);
+}
+
+bool ShouldTrackStatement(StmtType stmt_type) {
+  if (stmt_type == StmtType::kPrepared) {
+    return true;
+  }
+  return FLAGS_ycql_enable_stat_statements && StatementEntriesLimit(stmt_type) != 0;
+}
+
+}  // namespace
 
 class ParserFactory {
  public:
@@ -182,8 +248,10 @@ const std::shared_ptr<client::YBMetaDataCache>& CQLServiceImpl::metadata_cache()
   return metadata_cache_;
 }
 
-void CQLServiceImpl::CompleteInit() {
+Status CQLServiceImpl::CompleteInit() {
   stmts_mem_tracker_->AddGarbageCollector(shared_from_this());
+  RETURN_NOT_OK(InitJwtAuth());
+  return Status::OK();
 }
 
 void CQLServiceImpl::Shutdown() {
@@ -272,26 +340,38 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
   next_available_processor_ = pos;
 }
 
+CQLServiceImpl::StatementCacheRefs CQLServiceImpl::GetStatementCacheRefs(StmtType stmt_type) {
+  switch (stmt_type) {
+    case StmtType::kPrepared:
+      return {prepared_stmts_map_, prepared_stmts_list_, prepared_stmts_mutex_};
+    case StmtType::kUnprepared:
+      return {unprepared_stmts_map_, unprepared_stmts_list_, unprepared_stmts_mutex_};
+    case StmtType::kBatch:
+      return {batch_stmts_map_, batch_stmts_list_, batch_stmts_mutex_};
+  }
+  FATAL_INVALID_ENUM_VALUE(StmtType, stmt_type);
+}
+
 shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
     const ql::CQLMessage::QueryId& query_id, const string& query,
-    ql::QLEnv* ql_env, IsPrepare is_prepare) {
+    ql::QLEnv* ql_env, StmtType stmt_type, std::optional<bool> is_prepared) {
   shared_ptr<CQLStatement> stmt;
-  if (!is_prepare &&
-      (!FLAGS_ycql_enable_stat_statements || FLAGS_cql_unprepared_stmts_entries_limit == 0)) {
+  if (!ShouldTrackStatement(stmt_type)) {
     return stmt;
   }
   // Get exclusive lock before allocating a statement and updating the LRU list.
-  std::lock_guard guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+  auto cache_refs = GetStatementCacheRefs(stmt_type);
+  std::lock_guard guard(cache_refs.mutex);
 
-  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
-  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
+  CQLStatementMap& stmts_map = cache_refs.map;
+  CQLStatementList& stmts_list = cache_refs.list;
 
   const auto itr = stmts_map.find(query_id);
   bool is_new_stmt = (itr == stmts_map.end());
 
   if (!is_new_stmt) {
     stmt = itr->second;
-    if (is_prepare) {
+    if (stmt_type == StmtType::kPrepared) {
       const Result<bool> is_altered_res = stmt->IsYBTableAltered(ql_env);
       // The table is not available if (!is_altered_res.ok()).
       // Usually it happens if the table was deleted.
@@ -303,14 +383,14 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
   }
 
   if (is_new_stmt) {
-    // Before inserting, in case of unprepared statements, if the limit for the maximum number of
-    // statements stored in the cache is reached, delete the least recently used statement from
-    // the cache.
-    if (!is_prepare &&
-        static_cast<int>(stmts_list.size()) >= FLAGS_cql_unprepared_stmts_entries_limit) {
+    // Before inserting, if the limit for the maximum number of statements stored in the cache is
+    // reached, delete the least recently used statement from the cache. Only unprepared and batch
+    // caches are bounded (StatementEntriesLimit); prepared statements use no entry limit (-1).
+    const auto entries_limit = StatementEntriesLimit(stmt_type);
+    if (entries_limit > 0 && static_cast<int>(stmts_list.size()) >= entries_limit) {
       DeleteLruStatementUnlocked(stmts_list.back(), &stmts_list, &stmts_map);
-      VLOG(1) << "InsertStatement: deleted the least recent unprepared statement due to CQL cache"
-              << " limit = " << FLAGS_cql_unprepared_stmts_entries_limit;
+      VLOG(1) << "InsertStatement: deleted the least recent " << ToString(stmt_type)
+              << " statement due to CQL cache limit = " << entries_limit;
     }
 
     // Allocate the prepared statement placeholder that multiple clients trying to prepare the same
@@ -323,7 +403,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
                                  stmts_list.end(), stmts_mem_tracker_))
                .first->second;
     std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(
-        query, ql_env->CurrentKeyspace());
+        query, ql_env->CurrentKeyspace(), stmt_type == StmtType::kPrepared);
     stmt->SetCounters(stmt_counters);
     InsertLruStatementUnlocked(stmt, &stmts_list);
   } else {
@@ -332,8 +412,15 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
     MoveLruStatementUnlocked(stmt, &stmts_list);
   }
 
-  VLOG(1) << "InsertStatement: CQL " << (is_prepare ? "" : "un") << "prepared "
-          << "statement cache count = " << stmts_map.size() << "/"
+  // is_prepared is only supplied for kBatch (true iff every child statement was prepared).
+  if (is_prepared.has_value()) {
+    if (auto counters = stmt->GetWritableCounters()) {
+      counters->is_prepared = *is_prepared;
+    }
+  }
+
+  VLOG(1) << "InsertStatement: CQL " << ToString(stmt_type)
+          << " statement cache count = " << stmts_map.size() << "/"
           << stmts_list.size() << ", memory usage = " << stmts_mem_tracker_->consumption();
 
   return stmt;
@@ -379,14 +466,15 @@ Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement
 }
 
 void CQLServiceImpl::DeleteStatement(
-    const shared_ptr<const CQLStatement>& stmt, const IsPrepare is_prepare) {
-  // Get exclusive lock before deleting the prepared statement.
-  std::lock_guard guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
-  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
-  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+    const shared_ptr<const CQLStatement>& stmt, StmtType stmt_type) {
+  // Get exclusive lock before deleting the statement.
+  auto cache_refs = GetStatementCacheRefs(stmt_type);
+  std::lock_guard guard(cache_refs.mutex);
+  CQLStatementList& stmts_list = cache_refs.list;
+  CQLStatementMap& stmts_map = cache_refs.map;
   DeleteLruStatementUnlocked(stmt, &stmts_list, &stmts_map);
 
-  VLOG(1) << "DeleteStatement: CQL " << (is_prepare ? "" : "un") << "prepared statement"
+  VLOG(1) << "DeleteStatement: CQL " << ToString(stmt_type) << " statement"
           << " cache count = " << stmts_map.size() << "/" << stmts_list.size()
           << ", memory usage = " << stmts_mem_tracker_->consumption();
 }
@@ -461,21 +549,29 @@ void CQLServiceImpl::DeleteLruStatementUnlocked(
 }
 
 void CQLServiceImpl::CollectGarbage(size_t required) {
-  // Remove an element from a bigger collection.
-  const IsPrepare is_prepare(prepared_stmts_list_.size() > unprepared_stmts_list_.size());
+  // List sizes are read without locks intentionally: this is a best-effort heuristic to evict
+  // from the largest cache. A stale read may pick a slightly suboptimal cache, which is harmless.
+  const std::pair<StmtType, size_t> caches[] = {
+      {StmtType::kPrepared,   prepared_stmts_list_.size()},
+      {StmtType::kUnprepared, unprepared_stmts_list_.size()},
+      {StmtType::kBatch,      batch_stmts_list_.size()},
+  };
+  const auto largest = std::max_element(
+      std::begin(caches), std::end(caches),
+      [](const auto& a, const auto& b) { return a.second < b.second; });
+  const StmtType stmt_type = largest->first;
 
-  // Get exclusive lock before deleting the least recently used statement at the end of the LRU
-  // list from the cache.
-  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+  auto cache_refs = GetStatementCacheRefs(stmt_type);
+  std::lock_guard<std::mutex> guard(cache_refs.mutex);
 
-  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
-  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+  CQLStatementList& stmts_list = cache_refs.list;
+  CQLStatementMap& stmts_map = cache_refs.map;
 
   if (!stmts_list.empty()) {
     DeleteLruStatementUnlocked(stmts_list.back(), &stmts_list, &stmts_map);
   }
 
-  VLOG(1) << "DeleteLruStatement: CQL "<< (is_prepare ? "" : "un") << "prepared statement cache "
+  VLOG(1) << "DeleteLruStatement: CQL " << ToString(stmt_type) << " statement cache "
           << "count = "<< stmts_map.size() << "/" << stmts_list.size()
           << ", memory usage = " << stmts_mem_tracker_->consumption();
 }
@@ -494,10 +590,13 @@ void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEn
 
 void CQLServiceImpl::DumpStatementMetricsAsJson(JsonWriter* jw) {
   jw->StartObject();
-  for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
-    jw->String(is_prepare ? "prepared_statements" : "unprepared_statements");
+  for (const auto& [stmt_type, json_key] :
+       {std::pair{StmtType::kPrepared, "prepared_statements"},
+        std::pair{StmtType::kUnprepared, "unprepared_statements"},
+        std::pair{StmtType::kBatch, "batch_statements"}}) {
+    jw->String(json_key);
     jw->StartArray();
-    const StmtCountersMap stmt_counters = GetStatementCountersForMetrics(is_prepare);
+    const StmtCountersMap stmt_counters = GetStatementCountersForMetrics(stmt_type);
     for (auto& stmt : stmt_counters) {
       stmt.second.WriteAsJson(jw, stmt.first);
     }
@@ -506,12 +605,13 @@ void CQLServiceImpl::DumpStatementMetricsAsJson(JsonWriter* jw) {
   jw->EndObject();
 }
 
-StmtCountersMap CQLServiceImpl::GetStatementCountersForMetrics(const IsPrepare& is_prepare) {
+StmtCountersMap CQLServiceImpl::GetStatementCountersForMetrics(StmtType stmt_type) {
   auto const statement_limit = FLAGS_cql_dump_statement_metrics_limit;
   int64_t num_statements = 0;
   StmtCountersMap stmts_counters;
-  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
-  const CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+  auto cache_refs = GetStatementCacheRefs(stmt_type);
+  std::lock_guard<std::mutex> guard(cache_refs.mutex);
+  const CQLStatementMap& stmts_map = cache_refs.map;
   for (auto& stmt : stmts_map) {
     shared_ptr<StmtCounters> stmt_counters = stmt.second->GetWritableCounters();
     if (stmt_counters) {
@@ -528,16 +628,18 @@ StmtCountersMap CQLServiceImpl::GetStatementCountersForMetrics(const IsPrepare& 
 }
 
 void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
-    double execute_time_in_msec, IsPrepare is_prepare) {
-  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
-  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+    double execute_time_in_msec, StmtType stmt_type) {
+  auto cache_refs = GetStatementCacheRefs(stmt_type);
+  std::lock_guard<std::mutex> guard(cache_refs.mutex);
+  CQLStatementMap& stmts_map = cache_refs.map;
 
   auto itr = stmts_map.find(query_id);
   if (itr == stmts_map.end()) {
-    if (is_prepare) {
-      LOG(WARNING) << "Prepared Statement not found in LRU cache.";
+    if (stmt_type == StmtType::kPrepared) {
+      LOG(WARNING) << ToString(stmt_type) << " statement not found in LRU cache: "
+                   << b2a_hex(query_id);
     } else {
-      VLOG(1) << "Unprepared Statement not found in LRU cache.";
+      VLOG(1) << ToString(stmt_type) << " statement not found in LRU cache.";
     }
     return;
   }
@@ -584,9 +686,16 @@ shared_ptr<StmtCounters> CQLServiceImpl::GetWritablePrepStmtCounters(const std::
 
 void CQLServiceImpl::ResetStatementsCounters() {
   ResetPreparedStatementsCounters();
-  // Clear the unprepared statements.
-  std::lock_guard<std::mutex> guard(unprepared_stmts_mutex_);
-  unprepared_stmts_map_.clear();
+  {
+    std::lock_guard<std::mutex> guard(unprepared_stmts_mutex_);
+    unprepared_stmts_map_.clear();
+    unprepared_stmts_list_.clear();
+  }
+  {
+    std::lock_guard<std::mutex> batch_guard(batch_stmts_mutex_);
+    batch_stmts_map_.clear();
+    batch_stmts_list_.clear();
+  }
 }
 
 void CQLServiceImpl::ResetPreparedStatementsCounters() {
@@ -601,14 +710,16 @@ void CQLServiceImpl::ResetPreparedStatementsCounters() {
 
 Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) {
-  for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
-    const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(is_prepare);
+  for (const auto stmt_type : List(static_cast<StmtType*>(nullptr))) {
+    const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(stmt_type);
     for (auto &stmt : stmt_counters) {
       auto &stmt_pb = *resp->add_statements();
       stmt_pb.set_keyspace(stmt.second.keyspace);
       stmt_pb.set_queryid(ql::CQLMessage::QueryIdAsUint64(stmt.first));
       stmt_pb.set_query(stmt.second.query);
-      stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);
+      // is_prepared: true for kPrepared entries, false for kUnprepared; for kBatch, true only when
+      // the batch consisted solely of prepared child statements (see AllocateStatement).
+      stmt_pb.set_is_prepared(stmt.second.is_prepared);
       stmt_pb.set_calls(stmt.second.num_calls);
       stmt_pb.set_total_time(stmt.second.total_time_in_msec);
       stmt_pb.set_min_time(stmt.second.min_time_in_msec);
@@ -618,6 +729,124 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
       stmt_pb.set_stddev_time(stddev_time);
     }
   }
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
+  auto jwt_options = StringSplit(FLAGS_ycql_jwt_conf, ' ');
+
+  for (const auto& option : jwt_options) {
+    auto option_kv = StringSplit(option, '=');
+    if (option_kv.size() != 2) {
+      return STATUS(InvalidArgument, "Invalid JWT option format");
+    }
+
+    // Handle optional double quotes around the value.
+    std::string value = option_kv[1];
+    TrimString(&value, "\"");
+
+    if (option_kv[0] == kJwtAuthJwksUrl) {
+      DCHECK(jwks_url);
+      *jwks_url = value;
+    } else if (option_kv[0] == kJwtAudiences) {
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_audience_));
+    } else if (option_kv[0] == kJwtIssuers) {
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_issuers_));
+    } else if (option_kv[0] == kJwtMatchingClaimKey) {
+      jwt_matching_claim_key_ = value;
+    } else {
+      return STATUS_FORMAT(InvalidArgument, "Unknown JWT option $0", option_kv[0]);
+    }
+  }
+
+  VLOG(4) << "Loaded JWT Options: "
+          << "JWKS URL=" << *jwks_url << ", "
+          << "Audiences=" << CollectionToString(jwt_allowed_audience_) << ", "
+          << "Issuers=" << CollectionToString(jwt_allowed_issuers_) << ", "
+          << "Matching Claim Key=" << jwt_matching_claim_key_;
+
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadJwtJwks(const std::string& jwks_url) {
+  LOG(INFO) << "Fetching JWT JWKS from URL: " << jwks_url;
+  EasyCurl curl;
+  faststring buf_ret;
+  RETURN_NOT_OK(curl.FetchURL(jwks_url, &buf_ret));
+  jwt_jwks_ = buf_ret.ToString();
+  LOG(INFO) << "Loaded JWKS for JWT auth: " << jwt_jwks_;
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadIdentConf() {
+  PG_RETURN_NOT_OK(YbgCreateMemoryContext(nullptr, "ycql_jwt_ident_memctx_", &jwt_ident_memctx_));
+
+  if (FLAGS_ycql_ident_conf_csv.empty()) {
+    LOG(INFO) << "Found empty ycql_ident_conf_csv";
+    return Status::OK();
+  }
+
+  std::vector<std::string> ident_conf_lines;
+  RETURN_NOT_OK(ReadCSVValues(FLAGS_ycql_ident_conf_csv, &ident_conf_lines));
+  LOG(INFO) << "Read FLAGS_ycql_ident_conf_csv lines: " << CollectionToString(ident_conf_lines);
+
+  const auto conf_path = JoinPathSegments(FLAGS_tmp_dir, "ycql_ident.conf");
+  std::ofstream conf_file;
+  conf_file.open(conf_path, std::ios_base::out | std::ios_base::trunc);
+  if (!conf_file) {
+    return STATUS_FORMAT(
+        IOError,
+        "Failed to write ycql_ident file '%s': errno=$0: $1",
+        conf_path,
+        errno,
+        ErrnoToString(errno));
+  }
+
+  conf_file << "# This is an autogenerated file, do not edit manually!" << std::endl;
+  conf_file << "# MAPNAME IDP-USERNAME YB-USERNAME" << std::endl;
+  for (const auto& line : ident_conf_lines) {
+      conf_file << kJwtIdentMapName << " " << line << std::endl;
+  }
+  conf_file.close();
+  LOG(INFO) << "Wrote ycql_ident.conf file at " << conf_path;
+
+  ScopedSetMemoryContext set_memctx(jwt_ident_memctx_);
+  YbgStatus s = YbgLoadIdent(conf_path.c_str(), jwt_ident_memctx_);
+  if (YbgStatusIsError(s)) {
+    LOG(ERROR) << "Error in loading JWT Ident file: " << YbgStatusGetMessage(s);
+    YbgDeleteMemoryContext();
+    PG_RETURN_NOT_OK(s);
+  }
+  LOG(INFO) << "Successfully loaded Ident file for JWT auth";
+  return Status::OK();
+}
+
+Status CQLServiceImpl::InitJwtAuth() {
+  if (!FLAGS_ycql_use_jwt_auth) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Initializing JWT authentication";
+  std::string jwks_url;
+  RETURN_NOT_OK(LoadJwtOptions(&jwks_url));
+  RETURN_NOT_OK(LoadJwtJwks(jwks_url));
+  RETURN_NOT_OK(LoadIdentConf());
+  return ValidateJwtConfig();
+}
+
+Status CQLServiceImpl::ValidateJwtConfig() {
+  if (jwt_jwks_.empty()) {
+    return STATUS(InvalidArgument, Format("JWKS received from the jwt_jwks_url cannot be empty"));
+  }
+
+  if (jwt_allowed_audience_.empty()) {
+    return STATUS(InvalidArgument, "jwt_audiences cannot be empty");
+  }
+
+  if (jwt_allowed_issuers_.empty()) {
+    return STATUS(InvalidArgument, "jwt_issuers cannot be empty");
+  }
+
   return Status::OK();
 }
 

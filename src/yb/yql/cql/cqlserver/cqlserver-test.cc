@@ -27,6 +27,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
@@ -122,8 +123,7 @@ void TestCQLService::SetUp() {
 void TestCQLService::TearDown() {
   EXPECT_OK(client_sock_.Close());
   DeleteTable();
-  WARN_NOT_OK(mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Stop(),
-              "Failed to stop heartbeater");
+  mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
   server_->Shutdown();
   server_.reset();
   YBTableTestBase::TearDown();
@@ -598,10 +598,10 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
-  cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, IsPrepare::kTrue);
-  cql_service->UpdateStmtCounters("dummyqueryid", 1, IsPrepare::kTrue);
+  cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, StmtType::kPrepared);
+  cql_service->UpdateStmtCounters("dummyqueryid", 1, StmtType::kPrepared);
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", yb::ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
@@ -609,16 +609,14 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
 
   // reset the counters and verify
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              ToString(addr)), &buf));
+                                              yb::ToString(addr)), &buf));
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              ToString(addr)), &buf));
+                                              yb::ToString(addr)), &buf));
 
-  JsonReader json_post_reset(buf.ToString());
-  ASSERT_OK(json_post_reset.Init());
-  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
-  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
-                                               &stmt_stats_post_reset));
-  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
+  JsonDocument doc;
+  auto json_post_reset = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto size = ASSERT_RESULT(json_post_reset["unprepared_statements"].size());
+  ASSERT_EQ(size, 0);
 }
 
 TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
@@ -631,13 +629,13 @@ TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
   // Create two prepared statements.
   const string dummyqueryid1 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery1");
   const string dummyqueryid2 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery2");
-  cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, IsPrepare::kTrue);
-  cql_service->UpdateStmtCounters(dummyqueryid1, 1, IsPrepare::kTrue);
-  cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, IsPrepare::kTrue);
-  cql_service->UpdateStmtCounters(dummyqueryid2, 1, IsPrepare::kTrue);
+  cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, StmtType::kPrepared);
+  cql_service->UpdateStmtCounters(dummyqueryid1, 1, StmtType::kPrepared);
+  cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, StmtType::kPrepared);
+  cql_service->UpdateStmtCounters(dummyqueryid2, 1, StmtType::kPrepared);
 
   // Dump should only return one prepared statement.
-  StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(IsPrepare::kTrue);
+  StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(StmtType::kPrepared);
   ASSERT_EQ(1, counters.size());
   const CQLMessage::QueryId query_id = counters.begin()->first;
   ASSERT_TRUE(query_id == dummyqueryid1 || query_id == dummyqueryid2);
@@ -685,9 +683,9 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
       calls = counters->num_calls;
       total_time = counters->total_time_in_msec;
     } else {
-      cql_service->AllocateStatement(query_id, query_text, &ql_env, IsPrepare::kTrue);
+      cql_service->AllocateStatement(query_id, query_text, &ql_env, StmtType::kPrepared);
     }
-    cql_service->UpdateStmtCounters(query_id, execute_time_in_msec, IsPrepare::kTrue);
+    cql_service->UpdateStmtCounters(query_id, execute_time_in_msec, StmtType::kPrepared);
     counters = cql_service->GetWritablePrepStmtCounters(query_id); // Store the updated counters.
     ASSERT_ONLY_NOTNULL(counters.get());
     ASSERT_EQ(calls + 1, counters->num_calls);

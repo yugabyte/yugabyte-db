@@ -63,7 +63,7 @@ DROP TABLE pk_tbl;
 
 -- Verify cache cleanup of table names when TABLE RENAME fails.
 CREATE TABLE rename_test (id int);
-SET yb_test_fail_next_ddl TO true;
+SET yb_test_fail_next_ddl TO 1;
 ALTER TABLE rename_test RENAME TO foobar;
 -- The table name must be unchanged.
 SELECT * FROM rename_test;
@@ -232,3 +232,10 @@ ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk; -- should fail due to FK const
 BEGIN;
 SELECT * from pk;
 COMMIT;
+
+-- verify error message for alter primary key index change owner
+CREATE TABLE yb_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX yb_foo_pkey OWNER TO postgres;
+-- for temp table we get same error as in PG
+CREATE TEMP TABLE pg_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX pg_foo_pkey OWNER TO postgres;

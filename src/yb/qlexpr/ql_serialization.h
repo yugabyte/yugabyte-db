@@ -25,7 +25,11 @@ class WriteBuffer;
 namespace yb::qlexpr {
 
 void SerializeValue(
-    const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
+    const std::shared_ptr<QLType>& ql_type, QLClient client, const QLValuePB& pb,
+    WriteBuffer* buffer);
+
+void SerializeValue(
+    const std::shared_ptr<QLType>& ql_type, QLClient client, const LWQLValuePB& pb,
     WriteBuffer* buffer);
 
 }  // namespace yb::qlexpr

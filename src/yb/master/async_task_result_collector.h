@@ -48,7 +48,7 @@ class TaskResultCollector {
  private:
   explicit TaskResultCollector(size_t num_tasks): latch_(num_tasks) {}
 
-  mutable simple_spinlock mutex_;
+  mutable std::mutex mutex_;
   CountDownLatch latch_;
   size_t num_tasks_ GUARDED_BY(mutex_);
   std::unordered_map<TabletServerId, TaskRespType> resps_ GUARDED_BY(mutex_);

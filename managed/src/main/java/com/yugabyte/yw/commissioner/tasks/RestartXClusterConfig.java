@@ -9,7 +9,9 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -29,12 +31,15 @@ import org.yb.master.MasterDdlOuterClass;
 @Retryable(enabled = false)
 public class RestartXClusterConfig extends EditXClusterConfig {
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
   protected RestartXClusterConfig(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -44,6 +49,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    boolean taskSucceeded = false;
     try {
       // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
@@ -204,6 +210,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
+      taskSucceeded = true;
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
 
@@ -254,6 +261,12 @@ public class RestartXClusterConfig extends EditXClusterConfig {
     } finally {
       // Unlock the source universe.
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
+      if (xClusterConfig.isUsedForDr()) {
+        DrConfig drConfig = xClusterConfig.getDrConfig();
+        drConfig.refresh();
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
+      }
     }
 
     log.info("Completed {}", getName());

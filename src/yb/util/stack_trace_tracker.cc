@@ -88,14 +88,14 @@ class GlobalStackTraceTracker {
 
   std::mutex mutex_;
   MonoTime last_reset_ GUARDED_BY(mutex_);
-  UnorderedStringMap<StackTraceEntry> traces_ GUARDED_BY(mutex_);
+  UnorderedStringMap<std::string, StackTraceEntry> traces_ GUARDED_BY(mutex_);
   std::unordered_map<std::thread::id, ThreadStackTraceTracker*> thread_trackers_ GUARDED_BY(mutex_);
 };
 
 static GlobalStackTraceTracker global_tracker;
 
 void TrackStackTraceToggleCallback() {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     global_tracker.ResetTrackedStackTraces();
   }
 }
@@ -151,7 +151,7 @@ class ThreadStackTraceTracker {
   };
 
   std::mutex mutex_;
-  UnorderedStringMap<LocalCounts> counts_ GUARDED_BY(mutex_);
+  UnorderedStringMap<std::string, LocalCounts> counts_ GUARDED_BY(mutex_);
 };
 
 thread_local ThreadStackTraceTracker thread_tracker;
@@ -192,7 +192,7 @@ void GlobalStackTraceTracker::MergeLocalTracker(ThreadStackTraceTracker* tracker
 } // namespace
 
 void TrackStackTrace(StackTraceTrackingGroup group, size_t weight) {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     thread_tracker.Trace(group, weight);
   }
 }

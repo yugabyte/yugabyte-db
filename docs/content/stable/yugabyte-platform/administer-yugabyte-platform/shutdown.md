@@ -29,16 +29,6 @@ $ sudo yba-ctl start
 
 The service should automatically start up after a reboot.
 
-## Replicated
-
-If you installed YugabyteDB Anywhere using Replicated, stop the application via the Replicated console.
-
-You can also use the following command:
-
-```sh
-replicatedctl app stop
-```
-
 ## Kubernetes
 
 For Kubernetes, node patching doesn't require YugabyteDB Anywhere coordination.

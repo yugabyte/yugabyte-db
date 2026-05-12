@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.AlertConfiguration;
@@ -20,13 +19,9 @@ import javax.inject.Inject;
 
 public class RemoveUniverseEntry extends UniverseTaskBase {
 
-  private final HealthChecker healthChecker;
-
   @Inject
-  protected RemoveUniverseEntry(
-      BaseTaskDependencies baseTaskDependencies, HealthChecker healthChecker) {
+  protected RemoveUniverseEntry(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.healthChecker = healthChecker;
   }
 
   @Override

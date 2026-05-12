@@ -26,7 +26,8 @@ namespace yb::master {
 
 static const auto kXClusterDDLExtensionName = xcluster::kDDLQueuePgSchemaName;
 
-bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
+bool IsTableEligibleForXClusterReplication(
+    const master::TableInfo& table, bool is_automatic_ddl_mode) {
   if (!table.LockForRead()->visible_to_client()) {
     // Ignore dropped tables.
     return false;
@@ -44,9 +45,10 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
     return true;
   }
 
-  if (table.is_matview()) {
-    // Materialized views need not be replicated, since they are not modified. Every time the view
-    // is refreshed, new tablets are created. The same refresh can just run on the target universe.
+  if (table.is_matview() && !is_automatic_ddl_mode) {
+    // For non-automatic modes, materialized views are not replicated, since they are not modified
+    // after creation. Refresh materialized view will recreate the view, and needs to be rerun on
+    // the target.
     return false;
   }
 
@@ -103,17 +105,17 @@ std::string TableDesignator::ToString() const {
 
 Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
     const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
-    bool include_sequences_data) {
+    bool automatic_ddl_mode) {
   auto table_infos = VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(namespace_id));
 
   std::vector<TableDesignator> table_designators{};
   for (const auto& table_info : table_infos) {
-    if (IsTableEligibleForXClusterReplication(*table_info)) {
+    if (IsTableEligibleForXClusterReplication(*table_info, automatic_ddl_mode)) {
       table_designators.emplace_back(table_info);
     }
   }
 
-  if (include_sequences_data) {
+  if (automatic_ddl_mode) {
     auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
     if (sequence_table_info) {
       // Due to a bug with the CreateTable code, it is possible for GetTableInfo to return a

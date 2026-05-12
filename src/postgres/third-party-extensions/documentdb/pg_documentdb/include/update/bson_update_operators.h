@@ -17,6 +17,31 @@
 
 
 /*
+ * Represent the type of modification done to a value
+ * while applying an update operator.
+ */
+typedef enum ModifyType
+{
+	/* No change after applying the update operator
+	 */
+	MODIFY_TYPE_NOCHANGE = 0,
+
+	/* No change to the original value, but we rewrite the original value
+	 * in the new document. This is still tracked as no change.
+	 * e.g. $addToSet,
+	 *
+	 * Only difference with this and the `NOCHANGE` is that in this case we
+	 * don't attempt to write the original value again which is known to be added.
+	 */
+	MODIFY_TYPE_ORIGINAL_REWRITE,
+
+	/* Update has resulted in a change and this change is written to the new document.
+	 */
+	MODIFY_TYPE_CHANGED
+} ModifyType;
+
+
+/*
  * State that is passed to the update operators when writing the
  * update values. Contains global state that is pertinent to the
  * current document being updated.
@@ -101,6 +126,9 @@ void UpdateArrayWriterWriteOriginalValue(UpdateArrayWriter *writer,
 										 const bson_value_t *value);
 void UpdateArrayWriterWriteModifiedValue(UpdateArrayWriter *writer,
 										 const bson_value_t *value);
+void UpdateArrayWriterWriteValueWithModifyType(UpdateArrayWriter *writer,
+											   const bson_value_t *value,
+											   ModifyType modifyType);
 void UpdateArrayWriterSkipValue(UpdateArrayWriter *writer);
 void UpdateArrayWriterFinalize(UpdateOperatorWriter *writer,
 							   UpdateArrayWriter *arrayWriter);

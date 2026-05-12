@@ -15,7 +15,9 @@
 #include <string>
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -81,24 +83,33 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching, false,
-    "If true, does selection of transactional backends based on logical client version");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching_connect_higher_version, true,
-    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
-    "server if this flag is set to true");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
+
+DEFINE_NON_RUNTIME_PREVIEW_string(
+    ysql_conn_mgr_alter_guc_adoption_strategy, "fluctuating",
+    "Defines strategy used by connection manager to adopt settings of ALTER statements modifying "
+    "GUCs. The possible values are 'fluctuating', 'gradual' and 'connection_static'. 'fluctuating'"
+    "means no handling is done, 'gradual' means existing sessions are gradually shifted to newer "
+    "backends i.e. they'll see new GUC settings done by ALTERS and 'connection_static' means "
+    "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
+    "modes, new sessions will always see effects of ALTERs executed before they were created");
+
+DEFINE_NON_RUNTIME_PREVIEW_int32(
+    ysql_conn_mgr_alter_guc_stale_backend_ttl_ms, -1,
+    "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
+    "positive value, stale backends will be terminated uniformly till the TTL period after "
+    "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
+    "idle backends are destroyed immediately after execution of ALTER and stale active backends "
+    "are destroyed when they get idle");
 
 DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
     "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
     "roles are not already in use.");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
+DEPRECATE_FLAG(bool, ysql_enable_pg_export_snapshot, "01_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
@@ -122,9 +133,19 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
     "disconnected. Instead an internal super user connection is made to perform the "
     "relcache init file rebuild.");
 
+DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
+    "Bypass the yb-tserver-key authentication method check when connecting using "
+    "yb_auto_analyze backend type.");
+
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
+
+DEFINE_test_flag(
+    bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -133,7 +154,6 @@ DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
@@ -154,6 +174,9 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
 }  // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
+DEFINE_validator(
+    ysql_conn_mgr_alter_guc_adoption_strategy,
+    FLAG_IN_SET_VALIDATOR("fluctuating", "gradual", "connection_static"));
 
 namespace yb::pggate {
 
@@ -190,8 +213,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
-      .ysql_enable_db_catalog_version_mode =
-          &FLAGS_ysql_enable_db_catalog_version_mode,
       .TEST_hide_details_for_pg_regress =
           &FLAGS_TEST_hide_details_for_pg_regress,
       .TEST_generate_ybrowid_sequentially =
@@ -204,21 +225,17 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
-      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
-      .ysql_conn_mgr_version_matching_connect_higher_version =
-          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
       .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
-      .TEST_ysql_yb_enable_ddl_savepoint_support =
-          &FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_yb_enable_ddl_savepoint_support =
+          &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -227,8 +244,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_conn_mgr_stats_interval,
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
-      .ysql_yb_enable_implicit_dynamic_tables_logical_replication =
-          &FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
       .timestamp_history_retention_interval_sec =
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
@@ -236,7 +251,10 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
       .placement_cloud = FLAGS_placement_cloud.c_str(),
       .placement_region = FLAGS_placement_region.c_str(),
-      .placement_zone = FLAGS_placement_zone.c_str()
+      .placement_zone = FLAGS_placement_zone.c_str(),
+      .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
+      .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on
   return &accessor;

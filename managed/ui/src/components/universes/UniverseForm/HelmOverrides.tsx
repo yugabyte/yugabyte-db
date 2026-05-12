@@ -18,9 +18,13 @@ import { isEmpty } from 'lodash';
 import { Field, FieldArray, FormikProps } from 'formik';
 import { YBModalForm } from '../../common/forms';
 import { YBLoading } from '../../common/indicators';
-import { YBButton as YBRedesignedButton } from '../../../redesign/components';
+import {
+  YBButton as YBRedesignedButton,
+  YBCheckbox,
+  YBInput,
+  YBLabel
+} from '../../../redesign/components';
 import { YBButton, YBCheckBox, YBModal } from '../../common/forms/fields';
-import { YBCheckbox, YBInput, YBLabel } from '../../../redesign/components';
 import { validateHelmYAML, fetchNodeDetails } from '../../../actions/universe';
 import {
   createErrorMessage,
@@ -31,7 +35,7 @@ import {
 } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { useIsTaskNewUIEnabled } from '../../../redesign/features/tasks/TaskUtils';
-import Close from '../../universes/images/close.svg';
+import Close from '../../universes/images/close.svg?img';
 import './HelmOverrides.scss';
 
 interface HelmOverridesType {

@@ -48,11 +48,15 @@ public class PlatformMetricsProcessor {
       PlatformScheduler platformScheduler,
       MetricService metricService,
       UniverseMetricProvider universeMetricProvider,
+      ProviderMetricProvider providerMetricProvider,
+      PACollectorMetricProvider paCollectorMetricProvider,
       SwamperHelper swamperHelper) {
     this.platformScheduler = platformScheduler;
     this.metricService = metricService;
     this.swamperHelper = swamperHelper;
     this.metricsProviderList.add(universeMetricProvider);
+    this.metricsProviderList.add(providerMetricProvider);
+    this.metricsProviderList.add(paCollectorMetricProvider);
   }
 
   public void start() {

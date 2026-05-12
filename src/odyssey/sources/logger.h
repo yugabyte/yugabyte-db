@@ -15,7 +15,8 @@ typedef enum { OD_LOG, OD_ERROR, OD_DEBUG, OD_FATAL } od_logger_level_t;
 
 struct od_logger {
 	od_pid_t *pid;
-	int log_debug;
+	/* YB: Use _Atomic type to support config reload */
+	_Atomic int log_debug;
 	int log_stdout;
 	int log_syslog;
 	char *format;

@@ -293,6 +293,8 @@ export interface MetadataFields {
   apiToken: string;
   platformUrl: string;
   metricsUrl: string;
+  metricsUsername: string;
+  metricsPassword: string;
   metricsScrapePeriodSec: number;
   dataMountPoints: string[];
   otherMountPoints: string[];

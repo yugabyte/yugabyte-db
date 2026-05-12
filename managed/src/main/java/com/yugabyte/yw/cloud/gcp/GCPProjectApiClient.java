@@ -18,6 +18,7 @@ import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
 import com.google.api.services.compute.Compute;
+import com.google.api.services.compute.model.AllocationSpecificSKUReservation;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.Firewall;
@@ -40,6 +41,9 @@ import com.google.api.services.compute.model.InstanceWithNamedPorts;
 import com.google.api.services.compute.model.Network;
 import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
+import com.google.api.services.compute.model.Reservation;
+import com.google.api.services.compute.model.ReservationAggregatedList;
+import com.google.api.services.compute.model.ReservationsScopedList;
 import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.oauth2.ComputeEngineCredentials;
@@ -49,6 +53,7 @@ import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Provider;
@@ -60,6 +65,7 @@ import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -145,7 +151,7 @@ public class GCPProjectApiClient {
     try {
       compute = buildComputeClient(cloudInfo);
     } catch (GeneralSecurityException | IOException e) {
-      log.error(e.getMessage());
+      log.error("Error in building GCP client", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to initialilze GCP service.");
     }
@@ -165,9 +171,11 @@ public class GCPProjectApiClient {
     try {
       instanceGroup = compute.instanceGroups().get(project, zone, instanceGroupName).execute();
     } catch (GoogleJsonResponseException e) {
+      log.error("Error in fetching instance groups", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch instance group name: " + instanceGroupName);
     } catch (IOException e) {
+      log.error("Error in fetching instance groups", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (instanceGroup == null) {
@@ -184,7 +192,7 @@ public class GCPProjectApiClient {
           compute.instanceTemplates().list(project).setFilter(filter).execute();
       return instanceTemplateList.getItems() != null;
     } catch (Exception e) {
-      log.error("Error in retrieving instance template: ", e);
+      log.error("Error in retrieving instance template", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
     }
@@ -207,10 +215,10 @@ public class GCPProjectApiClient {
       backendService =
           compute.regionBackendServices().get(project, region, backendServiceName).execute();
     } catch (GoogleJsonResponseException e) {
-      log.error("Response error = " + e.getMessage());
+      log.error("Error in getting region backend services", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } catch (IOException e) {
-      log.error("IO Exception = " + e.toString());
+      log.error("Error in getting region backend services", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (backendService == null) {
@@ -374,9 +382,11 @@ public class GCPProjectApiClient {
           compute.regionHealthChecks().get(project, region, healthCheckName).execute();
       return healthCheck;
     } catch (GoogleJsonResponseException e) {
+      log.error("Error in getting region health checks", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch health check for name: " + healthCheckName);
     } catch (IOException e) {
+      log.error("Error in getting region health checks", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to fetch health check " + healthCheckName);
     }
@@ -488,9 +498,11 @@ public class GCPProjectApiClient {
       log.info("Sucessfully fetched all forwarding rules");
       return forwardingRules;
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch forwarding rules for region {}", region, e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch forwarding rules for region: " + region);
     } catch (IOException e) {
+      log.error("Failed to fetch forwarding rules for region {}", region, e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to fetch forwarding rules for backend " + backendUrl);
     }
@@ -525,8 +537,10 @@ public class GCPProjectApiClient {
         }
       } while (response.getNextPageToken() != null);
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch instances in zone {}", zone, e);
       throw new PlatformServiceException(BAD_REQUEST, "Failed to fetch instances in zone: " + zone);
     } catch (IOException e) {
+      log.error("Failed to fetch instances in zone {}", zone, e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (instances.size() != nodeNames.size()) {
@@ -546,7 +560,7 @@ public class GCPProjectApiClient {
    */
   public List<InstanceReference> getInstancesForInstanceGroup(
       String zone, String instanceGroupName) {
-    List<InstanceReference> instances = new ArrayList();
+    List<InstanceReference> instances = new ArrayList<>();
     if (instanceGroupName == null || zone == null) {
       return instances;
     }
@@ -568,9 +582,11 @@ public class GCPProjectApiClient {
       } while (response.getNextPageToken() != null);
       log.info("Sucessfully fetched instances for instance group " + instanceGroupName);
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch instances for instance group " + instanceGroupName, e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch instances for instance group: " + instanceGroupName);
     } catch (IOException e) {
+      log.error("Failed to fetch instances for instance group " + instanceGroupName, e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Error in getting instances for group " + instanceGroupName);
     }
@@ -626,7 +642,7 @@ public class GCPProjectApiClient {
 
       return firewallTagsList;
     } catch (Exception e) {
-      log.error("Error in retrieving tags: ", e);
+      log.error("Error in retrieving tags", e);
       String errorMsg = "Error in retrieving tags [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -638,7 +654,7 @@ public class GCPProjectApiClient {
       NetworkList network = compute.networks().list(vpcProject).setFilter(filter).execute();
       return network.getItems() != null;
     } catch (Exception e) {
-      log.error("Error in retrieving vpc: ", e);
+      log.error("Error in retrieving vpc", e);
       String errorMsg = "Error in retrieving vpc [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -667,7 +683,7 @@ public class GCPProjectApiClient {
       }
       return reqPermissions;
     } catch (Exception e) {
-      log.error("Error in testing permissions: ", e);
+      log.error("Error in testing permissions", e);
       String errorMsg = "Error in testing permissions of the SA [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -680,7 +696,7 @@ public class GCPProjectApiClient {
       // Validate existence in the specified image project
       compute.images().get(imageProject, imageName).execute();
     } catch (Exception e) {
-      log.error("Error in retrieving images: ", e);
+      log.error("Error in retrieving images", e);
       String errorMsg = "Error in retrieving images [check logs for more info]";
       if (e instanceof GoogleJsonResponseException) {
         errorMsg =
@@ -716,7 +732,7 @@ public class GCPProjectApiClient {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (Exception e) {
-      log.error("Error in retrieving subnets: ", e);
+      log.error("Error in retrieving subnets", e);
       errorMsg = "Error in retrieving subnets [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -745,7 +761,7 @@ public class GCPProjectApiClient {
       log.info("Sucessfully fetched all firewall rules");
       return firewalls;
     } catch (Exception e) {
-      log.error("Error in retrieving firewall rules: ", e);
+      log.error("Error in retrieving firewall rules", e);
       String errorMsg = "Error in retrieving firewall rules [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -806,7 +822,7 @@ public class GCPProjectApiClient {
       }
       return policy;
     } catch (Exception e) {
-      log.error("Error in retrieving firewall policy: ", e);
+      log.error("Error in retrieving firewall policy", e);
       String errorMsg = "Error in retrieving firewall policy [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -818,12 +834,175 @@ public class GCPProjectApiClient {
         Network network = compute.networks().get(vpcProject, vpcNetwork).execute();
         return network.getNetworkFirewallPolicyEnforcementOrder();
       } catch (Exception e) {
-        log.error("Error in retrieving firewall policy enforcement order: ", e);
+        log.error("Error in retrieving firewall policy enforcement order", e);
         String errorMsg =
             "Error in retrieving firewall policy enforcement order [check logs for more info]";
         throw new PlatformServiceException(BAD_REQUEST, errorMsg);
       }
     }
     return "";
+  }
+
+  /*
+   * @param reservationName Name of the reservation
+   * @param zone GCP zone (e.g., "us-central1-a")
+   * @param instanceType Instance type (e.g., "n1-standard-4")
+   * @param count Number of instances to reserve
+   * @return The reservation name
+   * @throws IOException when connection to GCP fails
+   */
+  public String createCapacityReservation(
+      String reservationName, String zone, String instanceType, int count, Map<String, String> tags)
+      throws IOException {
+
+    // Create the reservation object using the older API models
+    com.google.api.services.compute.model.Reservation reservation =
+        new com.google.api.services.compute.model.Reservation();
+    reservation.setName(reservationName);
+
+    // Set up specific reservation details
+    com.google.api.services.compute.model.AllocationSpecificSKUReservation specificReservation =
+        new com.google.api.services.compute.model.AllocationSpecificSKUReservation();
+    specificReservation.setCount(Long.valueOf(count));
+
+    com.google.api.services.compute.model.AllocationSpecificSKUAllocationReservedInstanceProperties
+        instanceProperties =
+            new com.google.api.services.compute.model
+                .AllocationSpecificSKUAllocationReservedInstanceProperties();
+    instanceProperties.setMachineType(instanceType);
+
+    specificReservation.setInstanceProperties(instanceProperties);
+    reservation.setSpecificReservation(specificReservation);
+
+    // Set TTL for auto-deletion
+    Duration ttl = runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpCapacityReservationTtl);
+    Map<String, Object> deleteAfterDuration = new HashMap<>();
+    deleteAfterDuration.put("seconds", String.valueOf(ttl.getSeconds()));
+    reservation.set("deleteAfterDuration", deleteAfterDuration);
+
+    if (tags != null && !tags.isEmpty()) {
+      String description =
+          tags.entrySet().stream()
+              .map(e -> e.getKey() + "=" + e.getValue())
+              .collect(Collectors.joining("\n"));
+      reservation.setDescription(description);
+    }
+
+    log.debug("Creating capacity reservation: " + reservationName + " in zone: " + zone);
+    Operation response = compute.reservations().insert(project, zone, reservation).execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info(
+        "Successfully created capacity reservation: "
+            + reservationName
+            + " in zone: "
+            + zone
+            + " with "
+            + count
+            + " instances and TTL of "
+            + ttl);
+
+    return reservationName;
+  }
+
+  /**
+   * Deletes a capacity reservation from a particular zone based on deleteOnlyIfFullyUtilized. A
+   * reservation is fully utilized when inUseCount equals count.
+   *
+   * @param reservationName Name of the reservation to delete
+   * @param zone GCP zone where the reservation exists
+   * @param deleteOnlyIfFullyUtilized Whether to delete only if the reservation is fully utilized
+   * @return true if reservation was deleted, false if not fully utilized
+   * @throws IOException when connection to GCP fails
+   */
+  public boolean deleteCapacityReservation(
+      String reservationName, String zone, boolean deleteOnlyIfFullyUtilized) throws IOException {
+    log.debug(
+        "Checking utilization of capacity reservation: " + reservationName + " in zone: " + zone);
+
+    // Get the reservation to check utilization
+    com.google.api.services.compute.model.Reservation reservation =
+        compute.reservations().get(project, zone, reservationName).execute();
+
+    if (reservation == null) {
+      log.warn("Reservation not found: " + reservationName + " in zone: " + zone);
+      return false;
+    }
+
+    com.google.api.services.compute.model.AllocationSpecificSKUReservation specificReservation =
+        reservation.getSpecificReservation();
+
+    Long count = specificReservation.getCount();
+    Long inUseCount = specificReservation.getInUseCount();
+
+    if (deleteOnlyIfFullyUtilized
+        && (inUseCount == null || count == null || !inUseCount.equals(count))) {
+      log.info(
+          "Reservation "
+              + reservationName
+              + " is not fully utilized (inUseCount: "
+              + inUseCount
+              + ", count: "
+              + count
+              + "). Skipping deletion.");
+      return false;
+    }
+
+    log.debug("Deleting capacity reservation: " + reservationName + " in zone: " + zone);
+    Operation response = compute.reservations().delete(project, zone, reservationName).execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info("Successfully deleted capacity reservation: " + reservationName + " in zone: " + zone);
+    return true;
+  }
+
+  /**
+   * Lists all capacity reservations across all zones in the project. Uses aggregatedList to fetch
+   * reservations from every zone in a single paginated call.
+   *
+   * @return Map from zone name (e.g., "us-central1-a") to list of Reservation objects in that zone
+   * @throws IOException when connection to GCP fails
+   */
+  public Map<String, List<Reservation>> listAllCapacityReservations() throws IOException {
+    Map<String, List<Reservation>> result = new HashMap<>();
+    try {
+      Compute.Reservations.AggregatedList request = compute.reservations().aggregatedList(project);
+      ReservationAggregatedList response;
+      do {
+        response = request.execute();
+        if (response.getItems() != null) {
+          for (Map.Entry<String, ReservationsScopedList> entry : response.getItems().entrySet()) {
+            ReservationsScopedList scopedList = entry.getValue();
+            if (scopedList.getReservations() != null) {
+              // Key is like "zones/us-central1-a", extract zone name
+              String zone = CloudAPI.getResourceNameFromResourceUrl(entry.getKey());
+              result
+                  .computeIfAbsent(zone, k -> new ArrayList<>())
+                  .addAll(scopedList.getReservations());
+            }
+          }
+        }
+        request.setPageToken(response.getNextPageToken());
+      } while (response.getNextPageToken() != null);
+    } catch (GoogleJsonResponseException e) {
+      log.error("Failed to list capacity reservations", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed to list capacity reservations: " + e.getMessage());
+    }
+    return result;
+  }
+
+  /**
+   * Checks if a reservation is fully utilized (all reserved instances are in use).
+   *
+   * @param reservation The reservation to check
+   * @return true if inUseCount equals count, false otherwise
+   */
+  public static boolean isReservationFullyUtilized(Reservation reservation) {
+    if (reservation == null || reservation.getSpecificReservation() == null) {
+      return false;
+    }
+    AllocationSpecificSKUReservation specificReservation = reservation.getSpecificReservation();
+    Long count = specificReservation.getCount();
+    Long inUseCount = specificReservation.getInUseCount();
+    return count != null && inUseCount != null && inUseCount.equals(count);
   }
 }

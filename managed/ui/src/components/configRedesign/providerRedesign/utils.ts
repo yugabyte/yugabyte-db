@@ -17,7 +17,7 @@ import {
 } from './constants';
 import { SupportedAZField, SupportedRegionField } from './forms/configureRegion/types';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
-import { AccessKey, K8sRegionCloudInfo, YBAvailabilityZone, YBProvider, YBRegion } from './types';
+import { AccessKey, YBAvailabilityZone, YBProvider, YBRegion } from './types';
 
 export const getNtpSetupType = (providerConfig: YBProvider): NTPSetupType => {
   if (

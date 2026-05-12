@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.HookScope;
 import com.yugabyte.yw.models.TaskInfo;
@@ -32,6 +33,13 @@ import org.mockito.Mockito;
 
 @Slf4j
 public class MockUpgrade extends UpgradeTaskBase {
+
+  // Task types that are created per node and should be added as simultaneous tasks
+  public static final Set<TaskType> NODE_LEVEL_PRECHECK_TASKS =
+      Set.of(
+          TaskType.CheckServiceLiveness,
+          TaskType.CheckNodeCommandExecution,
+          TaskType.CheckNodeDataDirDiskSpace);
 
   private UpgradeContext context = DEFAULT_CONTEXT;
   private final UUID userTaskUUID = UUID.randomUUID();
@@ -170,12 +178,22 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   public MockUpgrade precheckTasks(TaskType... taskTypes) {
-    return precheckTasks(true, taskTypes);
+    return precheckTasks(true, universe.getUniverseDetails().nodeDetailsSet.size(), taskTypes);
   }
 
   public MockUpgrade precheckTasks(boolean enableYSQL, TaskType... taskTypes) {
+    return precheckTasks(
+        enableYSQL, universe.getUniverseDetails().nodeDetailsSet.size(), taskTypes);
+  }
+
+  public MockUpgrade precheckTasks(boolean enableYSQL, int nodeCount, TaskType... taskTypes) {
     for (TaskType taskType : taskTypes) {
-      addTask(taskType, null);
+      if (NODE_LEVEL_PRECHECK_TASKS.contains(taskType)) {
+        // Node-level precheck tasks are created per node, so add them as simultaneous tasks
+        addSimultaneousTasks(taskType, nodeCount);
+      } else {
+        addTask(taskType, null);
+      }
     }
     if (enableYSQL) {
       addTask(TaskType.UpdateConsistencyCheck, null);
@@ -204,6 +222,146 @@ public class MockUpgrade extends UpgradeTaskBase {
       UpgradeTaskParams.UpgradeOption upgradeOption, boolean stopBothProcesses) {
     UpgradeRound upgradeRound = new UpgradeRound(upgradeOption, stopBothProcesses);
     return upgradeRound;
+  }
+
+  /**
+   * Expected task sequence for rolling software upgrade with {@link
+   * com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB}: separate master and tserver
+   * rolling flows (as in {@code createMasterUpgradeFlowTasks} / {@code
+   * createTServerUpgradeFlowTasks}) with {@link TaskType#SaveSoftwareUpgradeProgress} before/after
+   * each, matching production.
+   */
+  public MockUpgrade rollingSoftwareUpgradeWithProgressSaves(
+      UpgradeTaskParams.UpgradeOption upgradeOption,
+      UpgradeContext ctx,
+      TaskType configureTask,
+      boolean ybcPresent) {
+    return rollingSoftwareUpgradeWithProgressSaves(
+        upgradeOption, ctx, configureTask, ybcPresent, null, null);
+  }
+
+  /**
+   * Same as {@link #rollingSoftwareUpgradeWithProgressSaves(UpgradeTaskParams.UpgradeOption,
+   * UpgradeContext, TaskType, boolean)} but only upgrades nodes whose {@link NodeDetails#nodeName}
+   * is in the given sets (empty set means no nodes of that type).
+   */
+  public MockUpgrade rollingSoftwareUpgradeWithProgressSaves(
+      UpgradeTaskParams.UpgradeOption upgradeOption,
+      UpgradeContext ctx,
+      TaskType configureTask,
+      boolean ybcPresent,
+      Set<String> masterNames,
+      Set<String> tserverNames) {
+    if (upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
+      throw new IllegalArgumentException("Only rolling upgrade supported: " + upgradeOption);
+    }
+    UpgradeRound ur = new UpgradeRound(upgradeOption, false);
+    ur.context = ctx;
+    ur.ybcPresent = ybcPresent;
+    ur.task(configureTask);
+    List<NodeDetails> masters = fetchMasterNodes(upgradeOption);
+    List<NodeDetails> tservers = fetchTServerNodes(upgradeOption);
+    if (masterNames != null) {
+      masters =
+          masters.stream()
+              .filter(n -> masterNames.contains(n.nodeName))
+              .collect(Collectors.toList());
+    }
+    if (tserverNames != null) {
+      tservers =
+          tservers.stream()
+              .filter(n -> tserverNames.contains(n.nodeName))
+              .collect(Collectors.toList());
+    }
+
+    // Matches SoftwareUpgradeYB.createMastersPhase: inactive masters first (activeRole false),
+    // then active masters, each wrapped in SaveSoftwareUpgradeProgress when non-empty.
+    if (ctx.isProcessInactiveMaster()) {
+      List<NodeDetails> inactiveMasterNodes = getNonMasterNodes(masters, tservers);
+      if (!inactiveMasterNodes.isEmpty()) {
+        addTasks(TaskType.SaveSoftwareUpgradeProgress);
+        createRollingUpgradeTaskFlow(
+            ur::applyUpgradeOnNodes,
+            inactiveMasterNodes,
+            UniverseTaskBase.ServerType.MASTER,
+            ctx,
+            false,
+            ybcPresent);
+        addTasks(TaskType.SaveSoftwareUpgradeProgress);
+      }
+    }
+
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    createRollingUpgradeTaskFlow(
+        ur::applyUpgradeOnNodes,
+        masters,
+        UniverseTaskBase.ServerType.MASTER,
+        ctx,
+        true,
+        ybcPresent);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    createRollingUpgradeTaskFlow(
+        ur::applyUpgradeOnNodes,
+        tservers,
+        UniverseTaskBase.ServerType.TSERVER,
+        ctx,
+        true,
+        ybcPresent);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    return this;
+  }
+
+  /**
+   * Non-rolling software upgrade: master batch then tserver batch with progress saves, like {@code
+   * SoftwareUpgradeYB}.
+   */
+  public MockUpgrade nonRollingSoftwareUpgradeWithProgressSaves(
+      UpgradeContext ctx, TaskType configureTask, boolean ybcPresent) {
+    UpgradeTaskParams.UpgradeOption option = UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE;
+    UpgradeRound ur = new UpgradeRound(option, false);
+    ur.context = ctx;
+    ur.ybcPresent = ybcPresent;
+    ur.task(configureTask);
+    List<NodeDetails> masters = fetchMasterNodes(option);
+    List<NodeDetails> tservers = fetchTServerNodes(option);
+
+    // Matches SoftwareUpgradeYB: inactive masters (activeRole false) then active masters, each
+    // wrapped in SaveSoftwareUpgradeProgress, not the dual-list overload alone.
+    if (ctx.isProcessInactiveMaster()) {
+      List<NodeDetails> inactiveMasterNodes = getNonMasterNodes(masters, tservers);
+      if (!inactiveMasterNodes.isEmpty()) {
+        addTasks(TaskType.SaveSoftwareUpgradeProgress);
+        createNonRollingUpgradeTaskFlow(
+            ur::applyUpgradeOnNodes,
+            inactiveMasterNodes,
+            UniverseTaskBase.ServerType.MASTER,
+            ctx,
+            false,
+            ybcPresent);
+        addTasks(TaskType.SaveSoftwareUpgradeProgress);
+      }
+    }
+
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    createNonRollingUpgradeTaskFlow(
+        ur::applyUpgradeOnNodes,
+        masters,
+        UniverseTaskBase.ServerType.MASTER,
+        ctx,
+        true,
+        ybcPresent);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    createNonRollingUpgradeTaskFlow(
+        ur::applyUpgradeOnNodes,
+        tservers,
+        UniverseTaskBase.ServerType.TSERVER,
+        ctx,
+        true,
+        ybcPresent);
+    addTasks(TaskType.SaveSoftwareUpgradeProgress);
+    return this;
   }
 
   public class ExpectedTaskDetails {
@@ -395,7 +553,7 @@ public class MockUpgrade extends UpgradeTaskBase {
       return MockUpgrade.this;
     }
 
-    private void applyUpgradeOnNodes(List<NodeDetails> nodes, Set<ServerType> processTypes) {
+    void applyUpgradeOnNodes(List<NodeDetails> nodes, Set<ServerType> processTypes) {
       log.debug("Apply {} {}", processTypes, nodes);
       List<ExpectedTaskDetails> lst =
           expectedTasksList.stream()

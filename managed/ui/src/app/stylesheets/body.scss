@@ -9,6 +9,8 @@ body {
   font-size: 13px;
   font-weight: 400;
   line-height: 1.471;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 html {
   &:before {

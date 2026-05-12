@@ -14,10 +14,12 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
 import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -63,8 +65,9 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
       StorageUtilFactory storageUtilFactory,
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil,
+      AZUtil azUtil,
       GCPUtil gcpUtil) {
-    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, gcpUtil);
+    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, azUtil, gcpUtil);
 
     lenient()
         .when(s3Client.headBucket(any(Consumer.class)))
@@ -151,9 +154,9 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
 
   @Override
   public BlobContainerClient createBlobContainerClient(
-      String azUrl, String azSasToken, String container) {
+      CustomerConfigStorageAzureData configData, String azureUrl, String container) {
     if (refuseKeys) {
-      when(blobStorageException.getMessage()).thenReturn("Invalid SAS token!");
+      when(blobStorageException.getMessage()).thenReturn("Invalid credentials!");
       throw blobStorageException;
     }
     return blobContainerClient;

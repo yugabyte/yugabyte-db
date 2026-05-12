@@ -63,6 +63,16 @@ public class Release extends Model {
   @DbArray
   private Set<String> sensitiveGflags;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @Column(name = "is_kubernetes_operator_controlled")
+  private boolean isKubernetesOperatorControlled = false;
+
+  public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
+    this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
+    this.save();
+  }
+
   public enum ReleaseState {
     ACTIVE,
     DISABLED,

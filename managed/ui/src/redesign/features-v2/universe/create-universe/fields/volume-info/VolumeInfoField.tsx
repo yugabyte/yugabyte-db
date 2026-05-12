@@ -1,9 +1,16 @@
-import { FC, useContext, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
-import { YBInput, YBLabel, YBSelect, mui } from '@yugabyte-ui-library/core';
+import {
+  YBInput,
+  YBLabel,
+  YBSelect,
+  YBHelper,
+  YBHelperVariants,
+  mui
+} from '@yugabyte-ui-library/core';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import {
   getDeviceInfoFromInstance,
@@ -19,18 +26,16 @@ import {
   isEphemeralAwsStorageInstance,
   useGetZones
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import {
   CloudType,
   Placement,
   StorageType,
   VolumeType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -38,14 +43,29 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import { parsePositiveIntegerInput } from '@app/redesign/features-v2/universe/create-universe/helpers/instanceNumericInput';
 
-const { Box, MenuItem } = mui;
+//icons
+import Close from '@app/redesign/assets/close.svg';
+
+const { Box, MenuItem, Link, styled } = mui;
+
+const StyledLink = styled(Link)(({ theme }) => ({
+  color: theme.palette.warning[900],
+  textDecorationColor: theme.palette.warning[900],
+  '&:hover': {
+    color: theme.palette.warning[900],
+    textDecoration: 'underline'
+  }
+}));
 
 interface VolumeInfoFieldProps {
   isMaster?: boolean;
   maxVolumeCount: number;
   disabled: boolean;
+  provider?: Partial<ProviderType>;
+  useDedicatedNodes?: boolean;
+  regions?: Region[];
 }
 
 const menuProps = {
@@ -62,19 +82,16 @@ const menuProps = {
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isMaster,
   maxVolumeCount,
-  disabled
+  disabled,
+  provider,
+  useDedicatedNodes,
+  regions
 }) => {
   const { t } = useTranslation();
   const dataTag = isMaster ? 'Master' : 'TServer';
 
   // watchers
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const [
-    { generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
-
-  const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
   const instanceType = isMaster ? watch(MASTER_INSTANCE_TYPE_FIELD) : watch(INSTANCE_TYPE_FIELD);
   const cpuArch = watch(CPU_ARCHITECTURE_FIELD);
@@ -88,7 +105,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     disableStorageType
   } = useVolumeControls();
 
-  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const { zones, isLoadingZones } = useGetZones(provider, regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
 
   //fetch run time configs
@@ -131,6 +148,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       diskIops &&
       [
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS
@@ -159,10 +177,24 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const onVolumeSizeChanged = (value: any) => {
-    if (!fieldValue) return;
+    if (!fieldValue || !instance) return;
+    const fromInstance = getDeviceInfoFromInstance(instance, providerRuntimeConfigs)?.volumeSize;
+    const parsedInstanceVol = Number(fromInstance);
+    const freshDefault = Math.max(
+      minVolumeSize,
+      Number.isFinite(parsedInstanceVol) && parsedInstanceVol > 0
+        ? parsedInstanceVol
+        : fieldValue.volumeSize && fieldValue.volumeSize > 0
+          ? fieldValue.volumeSize
+          : minVolumeSize
+    );
+    const volumeSize = Math.max(
+      minVolumeSize,
+      parsePositiveIntegerInput(String(value), freshDefault)
+    );
     setValue(UPDATE_FIELD, {
       ...fieldValue,
-      volumeSize: Number(value)
+      volumeSize
     });
   };
 
@@ -185,7 +217,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (!storageType) return;
     const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
     const minDiskIops = getMinDiskIops(storageType, volumeSize);
-    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, Number(value)));
+    const defaultIops = getIopsByStorageType(storageType) ?? (minDiskIops > 0 ? minDiskIops : 1);
+    const parsed = parsePositiveIntegerInput(String(value), defaultIops, maxDiskIops);
+    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, parsed));
     setValue(UPDATE_FIELD, { ...fieldValue, diskIops });
   };
 
@@ -193,13 +227,27 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (!fieldValue) return;
     const { storageType, diskIops } = fieldValue;
     if (!diskIops || !storageType) return;
-    const throughput = getThroughputByIops(Number(value), diskIops, storageType);
+    const defaultThroughput =
+      getThroughputByStorageType(storageType) ??
+      (fieldValue.throughput && fieldValue.throughput > 0 ? fieldValue.throughput : 125);
+    const numeric = parsePositiveIntegerInput(String(value), defaultThroughput);
+    const throughput = getThroughputByIops(numeric, diskIops, storageType);
     setValue(UPDATE_FIELD, { ...fieldValue, throughput });
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
-    if (!fieldValue) return;
-    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    if (!fieldValue || !instance) return;
+    const fromInstance = getDeviceInfoFromInstance(instance, providerRuntimeConfigs)?.numVolumes;
+    const parsedInstanceNv = Number(fromInstance);
+    const freshDefault = Math.max(
+      1,
+      Number.isFinite(parsedInstanceNv) && parsedInstanceNv > 0
+        ? parsedInstanceNv
+        : fieldValue.numVolumes && fieldValue.numVolumes > 0
+          ? fieldValue.numVolumes
+          : 1
+    );
+    const volumeCount = parsePositiveIntegerInput(String(numVolumes), freshDefault, maxVolumeCount);
     setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
@@ -211,6 +259,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   if (![VolumeType.EBS, VolumeType.SSD, VolumeType.NVME].includes(volumeType)) return null;
 
+  const storageTypeSelectVisible =
+    (!!provider?.code && [CloudType.gcp, CloudType.azu].includes(provider.code)) ||
+    (volumeType === VolumeType.EBS && provider?.code === CloudType.aws);
+
+  const showEphemeralStorageWarning =
+    (provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance)) ||
+    (provider?.code === CloudType.gcp && fieldValue?.storageType === StorageType.Scratch);
+
   const renderVolumeInfo = () => {
     // Checking if provider code is OnPrem as it is provisioned to fixed size
     // and cannot be changed on both edit and create mode
@@ -220,7 +276,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
-      provider &&
+      provider?.code &&
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
@@ -231,20 +287,20 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column">
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.volumeInfoPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.volumeInfoPerNode')}</YBLabel>
           </Box>
         </Box>
-        <Box display="flex">
+        <Box sx={{ gap: '16px', display: 'flex' }}>
           <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
-              disabled={fixedNumVolumes ?? numVolumesDisable ?? isEphemeralStorage ?? disabled}
+              disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
               slotProps={{
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeInput`,
-                  disabled
+                  disabled: fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled
                 }
               }}
               value={convertToString(fieldValue?.numVolumes ?? '')}
@@ -254,14 +310,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             />
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            px={1}
-            flexShrink={1}
-            sx={{ width: 48 }}
-          >
+          <Box display="flex" alignItems="center" justifyContent="center">
             <Close />
           </Box>
 
@@ -274,7 +323,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeSizeInput`,
-                  disabled
+                  disabled: isEphemeralStorage || fixedVolumeSize || volumeSizeDisable || disabled
                 }
               }}
               value={convertToString(fieldValue?.volumeSize ?? '')}
@@ -289,14 +338,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             display="flex"
             alignItems="center"
             sx={(theme) => ({
-              marginLeft: theme.spacing(2),
               alignSelf: 'flex-end',
               marginBottom: 1
             })}
           >
             {provider?.code === CloudType.kubernetes
-              ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
-              : t('universeForm.instanceConfig.volumeSizeUnit')}
+              ? t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')
+              : t('createUniverseV2.instanceSettings.volumeSizeUnit')}
           </Box>
         </Box>
       </Box>
@@ -305,39 +353,81 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     if (
-      (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
+      (provider?.code && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
     ) {
+      const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;
+      const isHyperdisk =
+        fieldValue?.storageType === StorageType.Hyperdisk_Balanced ||
+        fieldValue?.storageType === StorageType.Hyperdisk_Extreme;
+
       return (
-        <Box display="flex" sx={{ width: 198 }} mt={2}>
-          <YBSelect
-            fullWidth
-            label={
-              provider?.code === CloudType.aws
-                ? t('universeForm.instanceConfig.ebs')
-                : t('universeForm.instanceConfig.ssd')
-            }
-            disabled={disableStorageType || disabled}
-            value={fieldValue?.storageType}
-            slotProps={{
-              htmlInput: {
-                min: 1,
-                'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`,
-                disabled
+        <Box display="flex" flexDirection="column" mt={2}>
+          <Box sx={{ width: 198 }}>
+            <YBSelect
+              fullWidth
+              label={
+                provider?.code === CloudType.aws
+                  ? t('createUniverseV2.instanceSettings.ebs')
+                  : t('createUniverseV2.instanceSettings.ssd')
               }
-            }}
-            onChange={(event) =>
-              onStorageTypeChanged((event?.target.value as unknown) as StorageType)
-            }
-            dataTestId={`VolumeInfoField-${dataTag}-StorageTypeSelect`}
-            menuProps={menuProps}
-          >
-            {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
-              <MenuItem key={item.value} value={item.value}>
-                {item.label}
-              </MenuItem>
-            ))}
-          </YBSelect>
+              disabled={disableStorageType || disabled}
+              value={fieldValue?.storageType}
+              slotProps={{
+                htmlInput: {
+                  min: 1,
+                  'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`,
+                  disabled
+                }
+              }}
+              onChange={(event) =>
+                onStorageTypeChanged(event?.target.value as unknown as StorageType)
+              }
+              dataTestId={`VolumeInfoField-${dataTag}-StorageTypeSelect`}
+              menuProps={menuProps}
+            >
+              {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
+                <MenuItem key={item.value} value={item.value}>
+                  {item.label}
+                </MenuItem>
+              ))}
+            </YBSelect>
+          </Box>
+          {isHyperdisk && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                <Trans>
+                  {t('createUniverseV2.instanceSettings.hyperdiskStorageHelper')}
+                  <StyledLink
+                    underline="always"
+                    href="https://docs.yugabyte.com/stable/deploy/checklist/#disks"
+                    target="_blank"
+                  ></StyledLink>
+                </Trans>
+              </YBHelper>
+            </Box>
+          )}
+          {isPremiumV2Storage && !isHyperdisk && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                {t('createUniverseV2.instanceSettings.premiumv2StorageHelper')}
+              </YBHelper>
+            </Box>
+          )}
+          {showEphemeralStorageWarning && storageTypeSelectVisible && (
+            <Box mt={1}>
+              <YBHelper variant={YBHelperVariants.WARNING}>
+                <Trans>
+                  {t('createUniverseV2.instanceSettings.ephemeralStorageWarning')}
+                  <StyledLink
+                    underline="always"
+                    href="https://docs.yugabyte.com/stable/deploy/checklist/#ephemeral-disks"
+                    target="_blank"
+                  ></StyledLink>
+                </Trans>
+              </YBHelper>
+            </Box>
+          )}
         </Box>
       );
     }
@@ -350,6 +440,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       fieldValue?.storageType &&
       ![
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS,
@@ -365,14 +456,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         <Box flex={1}>
           <YBInput
             type="number"
-            label={t('universeForm.instanceConfig.provisionedIopsPerNode')}
+            label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             fullWidth
             disabled={disableIops || disabled}
             slotProps={{
               htmlInput: {
                 min: 1,
                 'data-testid': `VolumeInfoField-${dataTag}-DiskIopsInput`,
-                disabled
+                disabled: disableIops || disabled
               }
             }}
             value={convertToString(fieldValue?.diskIops ?? '')}
@@ -403,7 +494,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box display="flex" width="100%">
@@ -416,7 +507,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-ThroughputInput`,
-                  disabled
+                  disabled: disableThroughput || disabled
                 }
               }}
               value={convertToString(fieldValue?.throughput ?? '')}
@@ -435,7 +526,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               marginBottom: 1
             })}
           >
-            {t('universeForm.instanceConfig.throughputUnit')}
+            {t('createUniverseV2.instanceSettings.throughputUnit')}
           </Box>
         </Box>
       </Box>
@@ -454,6 +545,22 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               <Box display="flex" width="100%" flexDirection="column">
                 {renderVolumeInfo()}
                 {!isGcpDedicatedUniverse && renderStorageType()}
+                {!isGcpDedicatedUniverse &&
+                  showEphemeralStorageWarning &&
+                  !storageTypeSelectVisible && (
+                    <Box mt={2} sx={{ maxWidth: 480 }}>
+                      <YBHelper variant={YBHelperVariants.WARNING}>
+                        <Trans>
+                          {t('createUniverseV2.instanceSettings.ephemeralStorageWarning')}
+                          <StyledLink
+                            underline="always"
+                            href="https://docs.yugabyte.com/stable/deploy/checklist/#ephemeral-disks"
+                            target="_blank"
+                          ></StyledLink>
+                        </Trans>
+                      </YBHelper>
+                    </Box>
+                  )}
               </Box>
 
               {fieldValue.storageType && !isGcpDedicatedUniverse && (

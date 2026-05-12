@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.108-SNAPSHOT</version>
+    <version>0.8.116-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cql</artifactId>
   <name>YB CQL Support</name>
@@ -82,6 +82,24 @@
           <artifactId>api-ldap-schema-data</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+        <groupId>com.nimbusds</groupId>
+        <artifactId>nimbus-jose-jwt</artifactId>
+        <version>9.31</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>4.10.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>mockwebserver</artifactId>
+      <version>4.1.0</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

@@ -51,6 +51,19 @@ bool DoesValueExist(
   return false;
 }
 
+bool DoesValueExist(
+    const std::string& value, const std::vector<std::string>& values,
+    const std::string& field_name) {
+  for (size_t idx = 0; idx < values.size(); ++idx) {
+    if (values[idx] == value) {
+      return true;
+    }
+
+    VLOG(4) << Format("Mismatch, expected = $0, actual = $1", values[idx], value);
+  }
+  return false;
+}
+
 Result<std::string> GetJwkAsPEM(const jwk<kazuho_picojson>& jwk) {
   auto base64urlDecode = [](const std::string& base64url_encoded) {
     return jwt::base::decode<jwt::alphabet::base64url>(
@@ -197,6 +210,39 @@ Status ValidateDecodedJWT(
   return VerifyJwtUsingVerifier(verifier, decoded_jwt);
 }
 
+Result<jwt::decoded_jwt<jwt::traits::kazuho_picojson>> DecodeAndValidateDecodedJWT(
+    const std::string& token, const std::string& jwks_string) {
+  auto jwks = VERIFY_RESULT(ParseJwks(jwks_string));
+  auto decoded_jwt = VERIFY_RESULT(DecodeJwt(token));
+
+  auto key_id = VERIFY_RESULT(GetJwtKeyId(decoded_jwt));
+  auto jwk = VERIFY_RESULT(GetJwkFromJwks(jwks, key_id));
+
+  // Validate for signature, expiry and issued_at.
+  RETURN_NOT_OK(ValidateDecodedJWT(decoded_jwt, jwk));
+  return decoded_jwt;
+}
+
+Status HandleValidationResultAndPopulateIdentityClaims(
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt,
+    const std::string& jwt_issuer, bool valid_issuer, bool valid_audience,
+    const std::string& matching_claim_key, std::vector<std::string>* identity_claims) {
+  if (!valid_issuer) {
+    return STATUS_FORMAT(InvalidArgument, "Invalid JWT issuer: $0", jwt_issuer);
+  }
+
+  if (!valid_audience) {
+    // We don't add audiences in the error message since there can be many. Also, it is very easy to
+    // look up the audiences present in a JWT online.
+    return STATUS(InvalidArgument, "Invalid JWT audience(s)");
+  }
+
+  // Get the matching claim key and return to the caller.
+  *identity_claims = VERIFY_RESULT(GetJwtClaimAsStringsList(decoded_jwt, matching_claim_key));
+  VLOG(1) << "JWT validation successful";
+  return Status::OK();
+}
+
 }  // namespace
 
 Status ValidateJWT(
@@ -209,22 +255,12 @@ Status ValidateJWT(
       CStringArrayToString(options.allowed_issuers, options.allowed_issuers_length),
       CStringArrayToString(options.allowed_audiences, options.allowed_audiences_length));
 
-  auto jwks = VERIFY_RESULT(ParseJwks(options.jwks));
-  auto decoded_jwt = VERIFY_RESULT(DecodeJwt(token));
-
-  auto key_id = VERIFY_RESULT(GetJwtKeyId(decoded_jwt));
-  auto jwk = VERIFY_RESULT(GetJwkFromJwks(jwks, key_id));
-
-  // Validate for signature, expiry and issued_at.
-  RETURN_NOT_OK(ValidateDecodedJWT(decoded_jwt, jwk));
+  auto decoded_jwt = VERIFY_RESULT(DecodeAndValidateDecodedJWT(token, options.jwks));
 
   // Validate issuer.
   auto jwt_issuer = VERIFY_RESULT(GetJwtIssuer(decoded_jwt));
   bool valid_issuer = DoesValueExist(
       jwt_issuer, options.allowed_issuers, options.allowed_issuers_length, "issuer");
-  if (!valid_issuer) {
-    return STATUS_FORMAT(InvalidArgument, "Invalid JWT issuer: $0", jwt_issuer);
-  }
 
   // Validate audiences. A JWT can be issued for more than one audience and is valid as long as one
   // of the audience matches the allowed audiences in the JWT config.
@@ -237,18 +273,45 @@ Status ValidateJWT(
       break;
     }
   }
-  if (!valid_audience) {
-    // We don't add audiences in the error message since there can be many. Also, it is very easy to
-    // look up the audiences present in a JWT online.
-    return STATUS(InvalidArgument, "Invalid JWT audience(s)");
+
+  return HandleValidationResultAndPopulateIdentityClaims(
+      decoded_jwt, jwt_issuer, valid_issuer, valid_audience, options.matching_claim_key,
+      identity_claims);
+}
+
+Status ValidateJWT(
+    const std::string& token, const std::string& jwks,
+    const std::string& matching_claim_key,
+    const std::vector<std::string>& allowed_issuers,
+    const std::vector<std::string>& allowed_audiences,
+    std::vector<std::string>* identity_claims) {
+  VLOG(4) << Format(
+      "Start with token = $0, jwks = $1, matching_claim_key = $2, allowed_issuers = $3, "
+      "allowed_audiences = $4",
+      token, jwks, matching_claim_key,
+      CollectionToString(allowed_issuers),
+      CollectionToString(allowed_audiences));
+
+  auto decoded_jwt = VERIFY_RESULT(DecodeAndValidateDecodedJWT(token, jwks));
+
+  // Validate issuer.
+  auto jwt_issuer = VERIFY_RESULT(GetJwtIssuer(decoded_jwt));
+  bool valid_issuer = DoesValueExist(jwt_issuer, allowed_issuers, "issuer");
+
+  // Validate audiences. A JWT can be issued for more than one audience and is valid as long as one
+  // of the audience matches the allowed audiences in the JWT config.
+  auto jwt_audiences = VERIFY_RESULT(GetJwtAudiences(decoded_jwt));
+  bool valid_audience = false;
+  for (const auto& audience : jwt_audiences) {
+    valid_audience = DoesValueExist(audience, allowed_audiences, "audience");
+    if (valid_audience) {
+      break;
+    }
   }
 
-  // Get the matching claim key and return to the caller.
-  auto matching_claim_key = std::string(options.matching_claim_key);
-  *identity_claims = VERIFY_RESULT(GetJwtClaimAsStringsList(decoded_jwt, matching_claim_key));
-
-  VLOG(1) << "JWT validation successful";
-  return Status::OK();
+  return HandleValidationResultAndPopulateIdentityClaims(
+      decoded_jwt, jwt_issuer, valid_issuer, valid_audience, matching_claim_key,
+      identity_claims);
 }
 
 Result<std::string> TEST_GetJwkAsPEM(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) {

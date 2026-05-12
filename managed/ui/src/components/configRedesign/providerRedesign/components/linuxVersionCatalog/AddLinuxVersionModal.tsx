@@ -45,6 +45,7 @@ interface AddLinuxVersionModalProps {
   visible: boolean;
   onHide: () => void;
   onSubmit: (values: ImageBundle) => void;
+  isDisabled?: boolean;
   editDetails?: ImageBundle;
   existingImageBundles?: ImageBundle[];
 }
@@ -98,6 +99,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   visible,
   onHide,
   onSubmit,
+  isDisabled = false,
   editDetails = {},
   existingImageBundles = []
 }) => {
@@ -128,9 +130,11 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
     isNonEmptyObject(editDetails) &&
     (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
 
-  const { control: formControl, handleSubmit, reset } = useForm<
-    ImageBundle & ImageBundleExtendedProps
-  >({
+  const {
+    control: formControl,
+    handleSubmit,
+    reset
+  } = useForm<ImageBundle & ImageBundleExtendedProps>({
     defaultValues: {
       details: {
         arch: ArchitectureType.X86_64,
@@ -170,11 +174,28 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
         reset();
         onHide();
       }}
-      title={isEditMode ? t('editLinuxVersion') : t('addLinuxVersion')}
-      titleIcon={<i className={clsx('fa fa-plus', classes.icon)} />}
+      title={
+        isDisabled
+          ? t('viewLinuxVersion')
+          : isEditMode
+            ? t('editLinuxVersion')
+            : t('addLinuxVersion')
+      }
+      titleIcon={
+        isDisabled ? (
+          <i className={clsx('fa fa-eye', classes.icon)} />
+        ) : (
+          <i className={clsx('fa fa-plus', classes.icon)} />
+        )
+      }
       dialogContentProps={{
         className: classes.root,
         dividers: true
+      }}
+      buttonProps={{
+        primary: {
+          disabled: isDisabled
+        }
       }}
       submitLabel={isEditMode ? t('editLinuxVersion') : t('addLinuxVersion')}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
@@ -203,7 +224,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             name="name"
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
-            disabled={isEditMode || isYBAManagedBundle}
+            disabled={isEditMode || isYBAManagedBundle || isDisabled}
             inputProps={{
               'data-testid': 'AddLinuxVersionModal-LinuxVersionNameInput'
             }}
@@ -217,7 +238,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               name={`details.globalYbImage`}
               className={classes.nameInput}
               placeholder={t('form.machineImageIdPlaceholder')}
-              disabled={isYBAManagedBundle}
+              disabled={isYBAManagedBundle || isDisabled}
               inputProps={{
                 'data-testid': 'AddLinuxVersionModal-MachineImageID'
               }}
@@ -232,7 +253,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               options={CPU_ARCH_OPTIONS}
               name="details.arch"
               orientation={RadioGroupOrientation.HORIZONTAL}
-              isDisabled={isEditMode || isYBAManagedBundle}
+              isDisabled={isEditMode || isYBAManagedBundle || isDisabled}
             />
           </div>
         )}
@@ -253,7 +274,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                           name={`details.regions.${cell.code}.ybImage`}
                           placeholder={t('form.machineImagePlaceholder')}
                           className={classes.amiInput}
-                          disabled={isYBAManagedBundle}
+                          disabled={isYBAManagedBundle || isDisabled}
                         />
                       );
                     }}
@@ -278,7 +299,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 name={'details.sshUser'}
                 placeholder={t('form.sshUserPlaceholder')}
                 fullWidth
-                disabled={isYBAManagedBundle}
+                disabled={isYBAManagedBundle || isDisabled}
                 inputProps={{
                   'data-testid': 'AddLinuxVersionModal-SSHUser'
                 }}
@@ -295,7 +316,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 control={formControl}
                 name={'details.sshPort'}
                 placeholder={t('form.sshPortPlaceholder')}
-                disabled={isYBAManagedBundle}
+                disabled={isYBAManagedBundle || isDisabled}
                 fullWidth
                 inputProps={{
                   'data-testid': 'AddLinuxVersionModal-SSHPort'
@@ -318,6 +339,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 <YBToggleField
                   name={'details.useIMDSv2'}
                   control={formControl}
+                  disabled={isYBAManagedBundle || isDisabled}
                   inputProps={{
                     'data-testid': 'AddLinuxVersionModal-useIMDSv2'
                   }}

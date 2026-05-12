@@ -58,7 +58,7 @@ namespace yb {
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
-void AppendPathSegments(std::string* out, const std::string &b) {
+void AppendPathSegments(std::string* out, std::string_view b) {
   CHECK(!out->empty()) << "empty first component: " << *out;
   CHECK(!b.empty() && b[0] != '/')
     << "second path component must be non-empty and relative: "
@@ -157,6 +157,19 @@ Result<string> path_utils::GetToolPath(const string& rel_path, const string& too
     return STATUS_FORMAT(IOError, Format("$0 tool not found at: $1", tool_name, tool_path));
   }
   return tool_path;
+}
+
+Result<std::vector<std::string>> path_utils::GetVectorIndexFiles(
+    Env& env, const std::string& vector_index_storage_dir) {
+  auto files = VERIFY_RESULT(env.GetChildren(vector_index_storage_dir));
+  std::erase_if(files, [](const auto& file) {
+    return !file.ends_with(".meta") && !file.contains("vectorindex");
+  });
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
+  return files;
 }
 
 } // namespace yb

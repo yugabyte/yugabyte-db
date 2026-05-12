@@ -6,6 +6,8 @@ menu:
   stable_api:
     identifier: dcl_drop_group
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_drop_group/
 type: docs
 ---
 

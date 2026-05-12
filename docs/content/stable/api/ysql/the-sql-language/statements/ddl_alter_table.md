@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_alter_table
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_alter_table/
 type: docs
 ---
 
@@ -243,7 +245,7 @@ Add the specified [constraint](#constraints) to the table.
 
 Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about table rewrites, see [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
 
-The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/preview/develop/data-modeling/primary-keys-ysql).
+The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/stable/develop/data-modeling/primary-keys-ysql/).
 
 #### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
 
@@ -255,7 +257,7 @@ Change the type of an existing column. The following semantics apply:
 - Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
-- Alter type is not supported for tables under xCluster replication if a table rewrite is required. This will be supported by automatic mode in a future release. See {{<issue 27796>}}.
+- Alter type is not supported for tables under xCluster replication if a table rewrite is required, except when using [automatic mode](../../../../../architecture/docdb-replication/async-replication/#transactional-replication).
 
 ##### Table rewrites
 

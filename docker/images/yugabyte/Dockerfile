@@ -18,7 +18,6 @@ set -ex
 dnf install -y file
 tar -xvf /tmp/yugabyte*$(uname -m)*.tar.gz --strip 1
 rm -rf /tmp/yuabyte*
-./bin/post_install.sh
 for a in $(find . -exec file {} \; | grep -i elf | cut -f1 -d:); do
   strip --strip-unneeded $a || true
 done
@@ -116,6 +115,7 @@ RUN $yum_install \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
+    && python3 -m pip install --upgrade watchdog \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
@@ -172,39 +172,6 @@ RUN mkdir /licenses && \
     curl ${ghr_url}/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-# Install azcopy
-ARG AZV=10.30.1
-RUN set -x; \
-    [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
-    pkg_name="azcopy_linux_${arch}_${AZV}"; \
-    mkdir /tmp/az && \
-    curl -o /tmp/az/${pkg_name}.tar.gz \
-      "https://downloads.yugabyte.com/mirror/azcopy/${pkg_name}.tar.gz" && \
-    tar -xzf /tmp/az/${pkg_name}.tar.gz \
-      --strip-components=1 \
-      -C /usr/bin \
-      ${pkg_name}/azcopy && \
-    rm -rf /tmp/az
-
-# Install gsutil
-ARG GSV=4.60
-RUN set -x; \
-    mkdir /tmp/gsutils \
-    && curl -o /tmp/gsutils/gsutil_${GSV}.tar.gz \
-      https://storage.googleapis.com/pub/gsutil_${GSV}.tar.gz \
-    && tar -xzf /tmp/gsutils/gsutil_${GSV}.tar.gz -C /usr/local/ \
-    && chown :root -R /usr/local/gsutil \
-    && rm -rf /tmp/gsutils
-
-# Configure azcopy and gsutil
-RUN mkdir /home/yugabyte/.boto \
-    && echo -e "[GSUtil]\nstate_dir=/tmp/gsutil" > /home/yugabyte/.boto/config \
-    && ln -s /usr/local/gsutil/gsutil /usr/bin/gsutil \
-    && mkdir -m 777 /tmp/azcopy
-
-ENV BOTO_PATH=/home/yugabyte/.boto/config
-ENV AZCOPY_JOB_PLAN_LOCATION=/tmp/azcopy/jobs-plan
-ENV AZCOPY_LOG_LOCATION=/tmp/azcopy/logs
 
 ARG TINI_VERSION=v0.19.0
 RUN set -x; \

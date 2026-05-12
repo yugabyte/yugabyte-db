@@ -13,6 +13,8 @@
 
 #include "yb/hnsw/vector_index_test_base.h"
 
+#include "yb/rocksdb/cache.h"
+
 #include "yb/util/size_literals.h"
 
 namespace yb::hnsw {
@@ -41,12 +43,12 @@ std::vector<Vector> VectorIndexTestBase::RandomVectors(size_t num_vectors) {
 }
 
 void VectorIndexTestBase::SetUp() {
+  rocksdb_cache_ = rocksdb::NewLRUCache(BlockCacheCapacity(), 4);;
   block_cache_ = std::make_shared<BlockCache>(
       *Env::Default(),
       MemTracker::GetRootTracker()->FindOrCreateTracker(1ULL << 30, "block_cache"),
       metric_entity_,
-      BlockCacheCapacity(),
-      4);
+      *rocksdb_cache_);
 }
 
 size_t VectorIndexTestBase::BlockCacheCapacity() {

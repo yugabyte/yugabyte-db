@@ -1,11 +1,12 @@
 ---
-title: Change data capture (CDC)
-headerTitle: Change data capture (CDC)
+title: Change data capture (CDC) using YugabyteDB gRPC replication protocol
+headerTitle: CDC using gRPC replication protocol
 linkTitle: Change data capture
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
+cascade:
+  tags:
+    feature: early-access
 menu:
   v2.20:
     identifier: explore-change-data-capture
@@ -14,7 +15,7 @@ menu:
 type: indexpage
 ---
 
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/develop/tutorials/cdc-tutorials/).
+For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/develop/tutorials/cdc-tutorials/).
 
 {{<index/block>}}
 

@@ -861,6 +861,8 @@ typedef struct RelOptInfo
 	List	   *ybHintsOrigIndexlist;
 
 	PlannerInfo *ybRoot;
+
+	char	   *ybRelationName;
 } RelOptInfo;
 
 /*
@@ -982,6 +984,8 @@ struct IndexOptInfo
 	bool		yb_amiscopartitioned;	/* is AM for YB a copartitioned index? */
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
+	char	   *ybIndexName;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 };
 
 /*
@@ -1279,6 +1283,20 @@ typedef struct YbPlanInfo
 } YbPlanInfo;
 
 /*
+ * YB: info used by YbIndexPathInfo.
+ *
+ * Holds info used for merge scans.
+ */
+typedef struct YbMergeScanSaopColInfo
+{
+	NodeTag		type;
+	ScalarArrayOpExpr *saop;
+	int			indexcol;
+	int			num_elems;
+	bool		derived;
+} YbMergeScanSaopColInfo;
+
+/*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
@@ -1288,6 +1306,7 @@ typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+	List	   *merge_scan_saop_cols;	/* List of YbMergeScanSaopColInfo */
 } YbIndexPathInfo;
 
 

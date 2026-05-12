@@ -77,8 +77,9 @@ BEGIN
         SELECT generate_server_signature(p_user_name, p_password, auth_message) into serv_sign_gen;
         SELECT substring(serv_sign_gen similar '%"ServerSignature" : "#"_+#""%' escape '#') into serv_sign_gen;
               
-        IF serv_sign <> serv_sign_gen THEN
-            return 'false';
+        IF serv_sign IS DISTINCT FROM serv_sign_gen THEN
+            RAISE NOTICE 'Server Signature mismatch or NULL, change result to false';
+            RETURN 'false';
         END IF;
         
     END IF;
@@ -89,95 +90,48 @@ END;
 $$ 
 LANGUAGE plpgsql;
 
+/* create users */
 SET client_min_messages TO ERROR;
-CREATE ROLE myuser4      WITH LOGIN PASSWORD '<password_placeholder>';
-CREATE ROLE mYuSeR5      WITH LOGIN PASSWORD '<password_placeholder1>';
-CREATE ROLE "Myuser6"    WITH LOGIN PASSWORD '<password_placeholder2>';
-create role "Fi""roz"    with LOGIN PASSWORD '<password_placeholder3>';
-create role "fi""r""oZ"  with LOGIN PASSWORD '<password_placeholder4>';
-create role "fi""r""."   with LOGIN PASSWORD '<password_placeholder5>';
-create role "fir"""      with LOGIN PASSWORD '<password_placeholder6>';
-create role "firo"""""   with LOGIN PASSWORD '<password_placeholder7>';
-create role "fi""""ro""" with LOGIN PASSWORD '<password_placeholder8>';
-create role "firoz ev"   with LOGIN PASSWORD '<password_placeholder9>';
-create role "Fi\troz"    with LOGIN PASSWORD '<password_placeholder10>';
+CREATE ROLE user1      WITH LOGIN PASSWORD '<password_placeholder1>';
+CREATE ROLE uSeR2      WITH LOGIN PASSWORD '<password_placeholder2>';
+CREATE ROLE "User3"    WITH LOGIN PASSWORD '<password_placeholder3>';
 RESET client_min_messages;
 
--- 1. CALL THE TEST FUNCTION with a valid user name
-SELECT test_documentdb_scram_sha256_dual_api('myuser4', '<password_placeholder>');
-
--- 2. CALL THE TEST FUNCTION with a valid user name
-SELECT test_documentdb_scram_sha256_dual_api('Myuser6', '<password_placeholder2>');
-
--- 3. CALL scram_sha256_get_salt_and_iterations with null input parameter
+/* negative test cases for scram_sha256_get_salt_and_iterations */
+SET client_min_messages = NOTICE;
+-- 1. CALL scram_sha256_get_salt_and_iterations with null input parameter
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations(null);
 
--- 4. CALL scram_sha256_get_salt_and_iterations with empty input parameter
+-- 2. CALL scram_sha256_get_salt_and_iterations with empty input parameter
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('');
 
--- 5. CALL scram_sha256_get_salt_and_iterations with non existent user name
+-- 3. CALL scram_sha256_get_salt_and_iterations with non existent user name
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('nonexistent');
 
--- 6. CALL scram_sha256_get_salt_and_iterations with non existent user name with a white space in it
+-- 4. CALL scram_sha256_get_salt_and_iterations with non existent user name with a white space in it
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('white space');
 
--- 7. CALL scram_sha256_get_salt_and_iterations with non existent quoted user name with a white space in it. Note that quoted user name is not supported by this API
+-- 5. CALL scram_sha256_get_salt_and_iterations with non existent quoted user name with a white space in it. Note that quoted user name is not supported by this API
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('"white space"');
 
--- 8. CALL scram_sha256_get_salt_and_iterations with non existent user name which is of length more than 64
+-- 6. CALL scram_sha256_get_salt_and_iterations with non existent user name which is of length more than 64
 SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('abcdefghijklmnopqrstuvwxyabcdefghijklmnopqrstuvwxyabcdefghijklmnopqrstuvwxy');
 
--- 9. FAIL CASE because username is given in lower case but was created with mixed case using double quotes.
-SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('myuser6');
+-- 7. FAIL CASE because username is given in lower case but was created with mixed case using double quotes.
+SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('user3');
 
--- 10. FAIL CASE because username is given in upper case but was created with mixed case using double quotes.
-SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('MYUSER6');
+-- 8. FAIL CASE because username is given in upper case but was created with mixed case using double quotes.
+SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('USER3');
 
-SET client_min_messages = LOG;
+-- 9. FAIL CASE because unquotated user name will be converted to lower case and will not match with the mixed case user name.
+SELECT documentdb_api_internal.scram_sha256_get_salt_and_iterations('uSeR2');
 
--- 10.1
-SELECT test_documentdb_scram_sha256_dual_api('Fi"roz', '<password_placeholder3>');
-
--- 10.2
-SELECT test_documentdb_scram_sha256_dual_api('fi"r"oZ', '<password_placeholder4>');
-
--- 10.3
-SELECT test_documentdb_scram_sha256_dual_api('fi"r".', '<password_placeholder5>');
-
--- 10.4
-SELECT test_documentdb_scram_sha256_dual_api('fir"', '<password_placeholder6>');
-
--- 10.5
-SELECT test_documentdb_scram_sha256_dual_api('firo""', '<password_placeholder7>');
-
--- 10.6
-SELECT test_documentdb_scram_sha256_dual_api('fi""ro"', '<password_placeholder8>');
-
--- 10.7
-SELECT test_documentdb_scram_sha256_dual_api('firoz ev', '<password_placeholder9>');
-
--- 10.8
-SELECT test_documentdb_scram_sha256_dual_api('Fi\troz', '<password_placeholder10>');
-
--- 10.9 Test for incorrect password
-SELECT test_documentdb_scram_sha256_dual_api('Fi\troz', '<password_placeholder111>');
-
-SET client_min_messages = NOTICE;
-
--- 11. Checking for case sensitiveness. FULL Lowercase. Real username is mYuSeR5. Expect true
-SELECT test_documentdb_scram_sha256_dual_api('myuser5', '<password_placeholder1>');
-
--- 12. Checking for case sensitiveness. FULL Uppercase. Real username is mYuSeR5. Expect false (because PG downcase when username is unquoted)
-SELECT test_documentdb_scram_sha256_dual_api('MYUSER5', '<password_placeholder1>');
-
--- 13. Checking for case sensitiveness. Original. Real username is mYuSeR5. Expect false (because PG downcase when username is unquoted)
-SELECT test_documentdb_scram_sha256_dual_api('mYuSeR5', '<password_placeholder1>');
-
+/* negative test cases for authenticate_with_scram_sha256 */
 -- 1. Call with User Name as NULL
 SELECT documentdb_api_internal.authenticate_with_scram_sha256(null, 'authmsg', 'client proof');
 
 -- 2. Call with AUTH MESSAGE as NULL
-SELECT documentdb_api_internal.authenticate_with_scram_sha256('myuser4', null, 'client proof');
+SELECT documentdb_api_internal.authenticate_with_scram_sha256('user1', null, 'client proof');
 
 -- 3. Call with User Name, AUTH MESSAGE, CLIENT PROOF as NULL
 SELECT documentdb_api_internal.authenticate_with_scram_sha256(null, null, null);
@@ -192,18 +146,50 @@ SELECT documentdb_api_internal.authenticate_with_scram_sha256('abc', 'abc', 'def
 SELECT documentdb_api_internal.authenticate_with_scram_sha256('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz', 'client proof');
 
 -- 7. Incorrect auth message for a valid user
-select documentdb_api_internal.authenticate_with_scram_sha256('myuser4', 'authMsg1', 'clientProof123');
+select documentdb_api_internal.authenticate_with_scram_sha256('user1', 'authMsg1', 'clientProof123');
+
+DROP ROLE user1;
+DROP ROLE uSeR2;
+DROP ROLE "User3";
+
+/* tests with helper testing functions */
+SET client_min_messages TO ERROR;
+create role "testuser"    with LOGIN PASSWORD '<password_placeholder111>';
+create role "test""user"    with LOGIN PASSWORD '<password_placeholder222>';
+create role "test""user."   with LOGIN PASSWORD '<password_placeholder333>';
+create role "test user"   with LOGIN PASSWORD '<password_placeholder444>';
+create role "test\user"    with LOGIN PASSWORD '<password_placeholder555>';
+create role TestUserCase    with LOGIN PASSWORD '<password_placeholder666>';
+RESET client_min_messages;
+
+SET client_min_messages = LOG;
+-- CALL THE TEST FUNCTION with a valid user name
+SELECT test_documentdb_scram_sha256_dual_api('testuser', '<password_placeholder111>');
+
+-- with quotation marks in role name
+SELECT test_documentdb_scram_sha256_dual_api('test"user', '<password_placeholder222>');
+
+-- with quotation marks and dot in role name
+SELECT test_documentdb_scram_sha256_dual_api('test"user.', '<password_placeholder333>');
+
+-- with space in role name
+SELECT test_documentdb_scram_sha256_dual_api('test user', '<password_placeholder444>');
+
+-- with backslash in role name
+SELECT test_documentdb_scram_sha256_dual_api('test\user', '<password_placeholder555>');
+
+-- Failed test for incorrect password
+SELECT test_documentdb_scram_sha256_dual_api('test\user', '<password_placeholder111>');
+
+-- Test with isNativeAuthEnabled set to OFF
+SET documentdb.isNativeAuthEnabled TO OFF;
+SELECT test_documentdb_scram_sha256_dual_api('testuser', '<password_placeholder111>');
+SET documentdb.isNativeAuthEnabled TO ON;
 
 -- DROP THE USERS CREATED FOR THE TEST
-DROP ROLE myuser4;
-DROP ROLE mYuSeR5;
-DROP ROLE "Myuser6";
-DROP role "Fi""roz";
-DROP role "fi""r""oZ";
-DROP role "fi""r"".";
-DROP role "fir"""      ;
-DROP role "firo"""""   ;
-DROP role "fi""""ro""" ;
-DROP role "firoz ev";
-DROP role "Fi\troz";
-
+DROP role "testuser";
+DROP role "test""user";
+DROP role "test""user.";
+DROP role "test user";
+DROP role "test\user";
+DROP role TestUserCase;

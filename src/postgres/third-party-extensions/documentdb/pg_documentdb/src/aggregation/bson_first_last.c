@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_first_last.c
+ * src/aggregation/bson_first_last.c
  *
  * Functions related to custom aggregates for group by
  * accumulator first, last.
@@ -30,6 +30,8 @@ PG_FUNCTION_INFO_V1(bson_lastn_transition);
 PG_FUNCTION_INFO_V1(bson_firstn_combine);
 PG_FUNCTION_INFO_V1(bson_lastn_combine);
 PG_FUNCTION_INFO_V1(bson_firstn_lastn_final);
+PG_FUNCTION_INFO_V1(bson_firstn_final);
+PG_FUNCTION_INFO_V1(bson_lastn_final);
 PG_FUNCTION_INFO_V1(bson_firstn_transition_on_sorted);
 PG_FUNCTION_INFO_V1(bson_lastn_transition_on_sorted);
 PG_FUNCTION_INFO_V1(bson_firstn_lastn_final_on_sorted);
@@ -93,7 +95,8 @@ Datum
 bson_first_last_final(PG_FUNCTION_ARGS)
 {
 	bool isSingle = true;
-	return BsonOrderFinal(fcinfo, isSingle);
+	bool invert = false;
+	return BsonOrderFinal(fcinfo, isSingle, invert);
 }
 
 
@@ -184,12 +187,40 @@ bson_lastn_transition_on_sorted(PG_FUNCTION_ARGS)
 
 /*
  * Applies the "final" (FINALFUNC) for firstn and lastn.
+ *
+ * For bottomN, the result has already been reversed
+ * during the transition phase, so we don't need to reverse again here.
  */
 Datum
 bson_firstn_lastn_final(PG_FUNCTION_ARGS)
 {
 	bool isSingle = false;
-	return BsonOrderFinal(fcinfo, isSingle);
+	bool invert = false;
+	return BsonOrderFinal(fcinfo, isSingle, invert);
+}
+
+
+/*
+ * Applies the "final" (FINALFUNC) for firstn.
+ */
+Datum
+bson_firstn_final(PG_FUNCTION_ARGS)
+{
+	bool isSingle = false;
+	bool isInvert = false;
+	return BsonOrderFinal(fcinfo, isSingle, isInvert);
+}
+
+
+/*
+ * Applies the "final" (FINALFUNC) for lastn.
+ */
+Datum
+bson_lastn_final(PG_FUNCTION_ARGS)
+{
+	bool isSingle = false;
+	bool isInvert = true;
+	return BsonOrderFinal(fcinfo, isSingle, isInvert);
 }
 
 

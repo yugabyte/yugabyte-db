@@ -499,9 +499,27 @@ func FixConfigValues() error {
 		InitViper()
 	}
 
+	if len(viper.GetString("perfAdvisor.paSecret")) == 0 {
+		log.Debug("Generating default app secret for perf advisor")
+		if err := SetYamlValue(InputFile(), "perfAdvisor.paSecret",
+			GenerateRandomStringURLSafe(64)); err != nil {
+			return err
+		}
+		InitViper()
+	}
+
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
 		if err := SetYamlValue(InputFile(), "platform.keyStorePassword",
+			GenerateRandomStringURLSafe(32)); err != nil {
+			return err
+		}
+		InitViper()
+	}
+
+	if len(viper.GetString("perfAdvisor.tls.keystorePassword")) == 0 {
+		log.Debug("Generating default keystore password for perf advisor")
+		if err := SetYamlValue(InputFile(), "perfAdvisor.tls.keystorePassword",
 			GenerateRandomStringURLSafe(32)); err != nil {
 			return err
 		}
@@ -611,9 +629,6 @@ func RegenerateSelfSignedCerts() error {
 
 // WaitForYBAReady waits for a YBA to be running with specified version
 func WaitForYBAReady(version string) error {
-	if viper.GetBool("perfAdvisor.enabled") {
-		return nil
-	}
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error

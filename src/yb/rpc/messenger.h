@@ -64,6 +64,7 @@
 
 namespace yb {
 
+class Cgroup;
 class MemTracker;
 class Socket;
 struct SourceLocation;
@@ -74,6 +75,8 @@ template <class ContextType>
 class ConnectionContextFactoryImpl;
 
 typedef std::unordered_map<const Protocol*, StreamFactoryPtr> StreamFactories;
+
+using ThreadPoolCgroupProvider = std::function<Cgroup*(TaggedThreadPools::Tag)>;
 
 // Used to construct a Messenger.
 class MessengerBuilder {
@@ -115,6 +118,21 @@ class MessengerBuilder {
 
   MessengerBuilder &SetUncompressedProtocol(const Protocol* protocol) {
     uncompressed_protocol_ = protocol;
+    return *this;
+  }
+
+  MessengerBuilder& SetThreadPoolCgroupProvider(ThreadPoolCgroupProvider provider) {
+    cgroup_provider_ = std::move(provider);
+    return *this;
+  }
+
+  MessengerBuilder& SetSystemHighCgroup(Cgroup* cgroup) {
+    system_high_cgroup_ = cgroup;
+    return *this;
+  }
+
+  MessengerBuilder& SetSystemMedCgroup(Cgroup* cgroup) {
+    system_med_cgroup_ = cgroup;
     return *this;
   }
 
@@ -167,6 +185,14 @@ class MessengerBuilder {
     return last_used_parent_mem_tracker_;
   }
 
+  Cgroup* system_high_cgroup() const {
+    return system_high_cgroup_;
+  }
+
+  Cgroup* system_med_cgroup() const {
+    return system_med_cgroup_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
@@ -181,6 +207,9 @@ class MessengerBuilder {
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
   bool use_local_host_outbound_ip_base_in_tests_ = false;
+  ThreadPoolCgroupProvider cgroup_provider_;
+  Cgroup* system_high_cgroup_ = nullptr;
+  Cgroup* system_med_cgroup_ = nullptr;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -294,6 +323,10 @@ class Messenger : public ProxyContext {
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
+  const rpc::ThreadPoolPtr& ThreadPoolPtr(ServicePriority priority = ServicePriority::kNormal);
+
+  Result<rpc::ThreadPoolPtr> TaggedThreadPool(TaggedThreadPools::Tag pool_tag = 0);
+
   const std::shared_ptr<RpcMetrics>& rpc_metrics() override {
     return rpc_metrics_;
   }
@@ -359,6 +392,8 @@ class Messenger : public ProxyContext {
     return log_prefix_;
   }
 
+  ThreadPoolOptions MakeNormalThreadPoolOptions(TaggedThreadPools::Tag tag) const;
+
   const std::string name_;
 
   const std::string log_prefix_;
@@ -413,13 +448,18 @@ class Messenger : public ProxyContext {
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
 
+  size_t thread_pool_workers_limit_;
+
   // Thread pools that are used by services running in this messenger.
-  std::unique_ptr<rpc::ThreadPool> normal_thread_pool_;
+  std::unique_ptr<TaggedThreadPools> normal_thread_pools_;
+
+  rpc::ThreadPoolPtr default_normal_thread_pool_;
 
   std::mutex mutex_high_priority_thread_pool_;
 
   // This could be used for high-priority services such as Consensus.
-  AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
+  rpc::ThreadPoolPtr high_priority_thread_pool_;
+  std::atomic<bool> high_priority_thread_pool_ready_;
 
   std::unique_ptr<DnsResolver> resolver_;
 
@@ -436,6 +476,10 @@ class Messenger : public ProxyContext {
 
   std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
   std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
+
+  ThreadPoolCgroupProvider cgroup_provider_;
+  Cgroup* system_high_cgroup_ = nullptr;
+  Cgroup* system_med_cgroup_ = nullptr;
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

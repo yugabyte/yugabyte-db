@@ -18,11 +18,8 @@
 /* Struct used in manipulating bson index terms */
 typedef struct BsonIndexTerm
 {
-	/* Whether or not the term is truncated */
-	bool isIndexTermTruncated;
-
-	/* Whether or not it's a metadata term */
-	bool isIndexTermMetadata;
+	/* The metadata for the term */
+	uint8_t termMetadata;
 
 	/* The index term element */
 	pgbsonelement element;
@@ -34,12 +31,19 @@ typedef struct BsonIndexTermSerialized
 	/* Whether or not the term is truncated */
 	bool isIndexTermTruncated;
 
-	/* Whether or not it's a root metadata term (exists/not exists) */
-	bool isRootMetadataTerm;
-
 	/* The serialized index term value */
 	bytea *indexTermVal;
 } BsonIndexTermSerialized;
+
+/* Struct for a serialized index term */
+typedef struct BsonCompressableIndexTermSerialized
+{
+	/* Whether or not the term is truncated */
+	bool isIndexTermTruncated;
+
+	/* The serialized index term value */
+	Datum indexTermDatum;
+} BsonCompressableIndexTermSerialized;
 
 /*
  * Index term metadata used in creating index terms.
@@ -61,25 +65,90 @@ typedef struct IndexTermCreateMetadata
 	/* If the term belongs to a wildcard projection index. */
 	bool isWildcardProjection;
 
-	/* The index version for this index */
+	/* Version of the index */
 	IndexOptionsVersion indexVersion;
+
+	/* Whether or not the term is for a descending index */
+	bool isDescending;
+
+	/* Whether the index supports value only terms */
+	bool allowValueOnly;
 } IndexTermCreateMetadata;
 
+bool IsIndexTermMetadata(const BsonIndexTerm *indexTerm);
 
+
+bool IsIndexTermTruncated(const BsonIndexTerm *indexTerm);
+
+
+/* Special case of an undefined value in an array that
+ * has a defined value.
+ */
+bool IsIndexTermMaybeUndefined(const BsonIndexTerm *indexTerm);
+
+
+/* Whether or not an undefined term is due to the
+ * value being undefined (as opposed to the listeral
+ * undefined).
+ */
+bool IsIndexTermValueUndefined(const BsonIndexTerm *indexTerm);
+
+
+/*
+ * Whether or not the index term is compared in a descending manner.
+ */
+bool IsIndexTermValueDescending(const BsonIndexTerm *indexTerm);
+
+bool IsSerializedIndexTermComposite(bytea *indexTermSerialized);
 bool IsSerializedIndexTermTruncated(bytea *indexTermSerialized);
+bool IsSerializedIndexTermMetadata(bytea *indexTermSerialized);
+
 void InitializeBsonIndexTerm(bytea *indexTermSerialized, BsonIndexTerm *indexTerm);
+
+int32_t InitializeCompositeIndexTerm(bytea *indexTermSerialized, BsonIndexTerm
+									 indexTerm[INDEX_MAX_KEYS]);
+
+int32_t InitializeSerializedCompositeIndexTerm(bytea *indexTermSerialized,
+											   bytea *termValues[INDEX_MAX_KEYS]);
 
 BsonIndexTermSerialized SerializeBsonIndexTerm(pgbsonelement *indexElement,
 											   const IndexTermCreateMetadata *
 											   indexMetadata);
+BsonCompressableIndexTermSerialized SerializeBsonIndexTermWithCompression(
+	pgbsonelement *indexElement,
+	const
+	IndexTermCreateMetadata
+	*indexMetadata);
+
+BsonIndexTermSerialized SerializeCompositeBsonIndexTerm(bytea **individualTerms, int32_t
+														numTerms);
+BsonCompressableIndexTermSerialized SerializeCompositeBsonIndexTermWithCompression(
+	bytea **individualTerms, int32_t numTerms);
+
+typedef enum RootMetadataKind
+{
+	RootMetadataKind_CorrelatedRootArray = 1
+} RootMetadataKind;
 
 Datum GenerateRootTerm(const IndexTermCreateMetadata *);
 Datum GenerateRootExistsTerm(const IndexTermCreateMetadata *);
 Datum GenerateRootNonExistsTerm(const IndexTermCreateMetadata *);
 Datum GenerateRootTruncatedTerm(const IndexTermCreateMetadata *);
 Datum GenerateRootMultiKeyTerm(const IndexTermCreateMetadata *);
-
-int32_t CompareBsonIndexTerm(BsonIndexTerm *left, BsonIndexTerm *right,
+Datum GenerateCorrelatedRootArrayTerm(const IndexTermCreateMetadata *);
+Datum GenerateValueUndefinedTerm(const IndexTermCreateMetadata *termData);
+Datum GenerateValueMaybeUndefinedTerm(const IndexTermCreateMetadata *termData);
+int32_t CompareBsonIndexTerm(const BsonIndexTerm *left, const BsonIndexTerm *right,
 							 bool *isComparisonValid);
+
+/* Check if the term is a root truncation term */
+inline static bool
+IsRootTruncationTerm(const BsonIndexTerm *term)
+{
+	return IsIndexTermTruncated(term) &&
+		   term->element.pathLength == 0 &&
+		   term->element.bsonValue.value_type == BSON_TYPE_MAXKEY;
+}
+
 
 #endif

@@ -43,7 +43,7 @@ import {
   MASTER_PLACEMENT_FIELD,
   PROVIDER_FIELD
 } from '../../../utils/constants';
-import WarningIcon from '../../../../../../assets/info-message.svg';
+import WarningIcon from '../../../../../../assets/info-message.svg?img';
 
 interface VolumeInfoFieldProps {
   isEditMode: boolean;
@@ -190,6 +190,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (
       [
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS
@@ -443,6 +444,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (
       ![
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS,

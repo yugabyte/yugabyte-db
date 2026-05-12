@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-bool
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/datatypes/type_bool
 type: docs
 ---
 

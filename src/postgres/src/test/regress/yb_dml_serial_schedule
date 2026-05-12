@@ -4,3 +4,4 @@ test: yb.orig.dml_read_time
 test: yb.orig.dml_pushdown
 test: yb.orig.dml_scankey
 test: yb.orig.dml
+test: yb.orig.dml_derived_equalities

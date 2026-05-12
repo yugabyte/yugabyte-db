@@ -65,7 +65,7 @@ func editClusterUtil(
 		}
 	}
 
-	if cluster == (ybaclient.Cluster{}) {
+	if universeutil.IsClusterEmpty(cluster) {
 		err := fmt.Errorf(
 			"No cluster found with type " + clusterType + " in universe " +
 				universeName + " (" + universeUUID + ")")
@@ -77,10 +77,7 @@ func editClusterUtil(
 	providerUUID := userIntent.GetProvider()
 	providerUsed, response, err := authAPI.GetProvider(providerUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err,
-			"Universe", "Edit Cluster - Fetch Provider")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Edit Cluster - Fetch Provider")
 	}
 	regionsInProvider := providerUsed.GetRegions()
 
@@ -88,7 +85,7 @@ func editClusterUtil(
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
-	if len(strings.TrimSpace(removeRegionsInput)) != 0 {
+	if !util.IsEmptyString(removeRegionsInput) {
 		regions, err := universeutil.FetchRegionUUIDFromName(
 			regionsInProvider,
 			removeRegionsInput,
@@ -112,7 +109,7 @@ func editClusterUtil(
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
 
-	if len(strings.TrimSpace(addRegionsInput)) != 0 {
+	if !util.IsEmptyString(addRegionsInput) {
 		regions, err := universeutil.FetchRegionUUIDFromName(
 			regionsInProvider,
 			addRegionsInput,
@@ -145,6 +142,17 @@ func editClusterUtil(
 
 	placementInfo := cluster.GetPlacementInfo()
 	cloudList := placementInfo.GetCloudList()
+
+	// Collect AZ UUIDs from the original placement before any zone modifications.
+	oldAZUUIDs := make(map[string]bool)
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				oldAZUUIDs[az.GetUuid()] = true
+			}
+		}
+	}
+
 	cloudList, err = universeutil.RemoveOrAddZones(
 		cloudList,
 		providerUsed.GetRegions(),
@@ -156,6 +164,22 @@ func editClusterUtil(
 	)
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
+	}
+
+	// Compute which AZ UUIDs were removed so their nodes can be marked ToBeRemoved.
+	newAZUUIDs := make(map[string]bool)
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				newAZUUIDs[az.GetUuid()] = true
+			}
+		}
+	}
+	removedAZUUIDs := make(map[string]bool)
+	for azUUID := range oldAZUUIDs {
+		if !newAZUUIDs[azUUID] {
+			removedAZUUIDs[azUUID] = true
+		}
 	}
 
 	placementInfo.SetCloudList(cloudList)
@@ -172,7 +196,7 @@ func editClusterUtil(
 		}
 	}
 
-	deviceInfo, err := deviceInfoChanges(cmd, userIntent)
+	deviceInfo, err := deviceInfoChanges(cmd, &userIntent)
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
@@ -190,7 +214,7 @@ func editClusterUtil(
 		if dedicatedNodes {
 			masterDeviceInfo := userIntent.GetMasterDeviceInfo()
 			// check if empty, set to userIntent deviceInfo
-			if masterDeviceInfo == (ybaclient.DeviceInfo{}) {
+			if universeutil.IsDeviceInfoEmpty(masterDeviceInfo) {
 				masterDeviceInfo = userIntent.GetDeviceInfo()
 			}
 			masterInstanceType, err := cmd.Flags().GetString("dedicated-master-instance-type")
@@ -199,7 +223,7 @@ func editClusterUtil(
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
 
-			if len(strings.TrimSpace(masterInstanceType)) != 0 {
+			if !util.IsEmptyString(masterInstanceType) {
 				if strings.Compare(masterInstanceType, userIntent.GetMasterInstanceType()) != 0 {
 					userIntent.SetMasterInstanceType(masterInstanceType)
 				}
@@ -228,7 +252,7 @@ func editClusterUtil(
 				return nil,
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
-			if len(strings.TrimSpace(masterStorageType)) != 0 {
+			if !util.IsEmptyString(masterStorageType) {
 				masterDeviceInfo.SetStorageType(masterStorageType)
 			}
 
@@ -237,7 +261,7 @@ func editClusterUtil(
 				return nil,
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
-			if len(strings.TrimSpace(masterStorageClass)) != 0 {
+			if !util.IsEmptyString(masterStorageClass) {
 				masterDeviceInfo.SetStorageClass(masterStorageClass)
 			}
 			userIntent.SetMasterDeviceInfo(masterDeviceInfo)
@@ -264,13 +288,29 @@ func editClusterUtil(
 
 	userIntent.SetDeviceInfo(deviceInfo)
 	cluster.SetUserIntent(userIntent)
+	clusterUUID := cluster.GetUuid()
 	clusters[clusterIndex] = cluster
 
+	nodeDetailsSet := universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
+		universeDetails.GetNodeDetailsSet())
+
+	// Nodes in removed zones must be marked ToBeRemoved so the backend can detect
+	// the placement change. Without this the update API returns a 400 "No changes"
+	// error because isSamePlacement only iterates new AZs and misses removals.
+	if len(removedAZUUIDs) > 0 {
+		for i, node := range nodeDetailsSet {
+			if node.GetPlacementUuid() == clusterUUID &&
+				removedAZUUIDs[node.GetAzUuid()] {
+				nodeDetailsSet[i].SetState("ToBeRemoved")
+			}
+		}
+	}
+
 	req := ybaclient.UniverseConfigureTaskParams{
-		UniverseUUID: util.GetStringPointer(universeUUID),
-		Clusters:     clusters,
-		NodeDetailsSet: universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
-			universeDetails.GetNodeDetailsSet()),
+		UniverseUUID:       util.GetStringPointer(universeUUID),
+		CurrentClusterType: util.GetStringPointer(clusterType),
+		Clusters:           clusters,
+		NodeDetailsSet:     nodeDetailsSet,
 		CommunicationPorts: universeDetails.CommunicationPorts,
 	}
 
@@ -308,7 +348,7 @@ func editUserTags(cmd *cobra.Command, userTags map[string]string) (map[string]st
 	if err != nil {
 		return nil, err
 	}
-	if len(strings.TrimSpace(removeUserTags)) != 0 {
+	if !util.IsEmptyString(removeUserTags) {
 		for _, k := range strings.Split(removeUserTags, ",") {
 			if _, exists := userTags[k]; !exists {
 				logrus.Debug(
@@ -323,14 +363,14 @@ func editUserTags(cmd *cobra.Command, userTags map[string]string) (map[string]st
 
 func deviceInfoChanges(
 	cmd *cobra.Command,
-	userIntent ybaclient.UserIntent,
+	userIntent *ybaclient.UserIntent,
 ) (ybaclient.DeviceInfo, error) {
 	deviceInfo := userIntent.GetDeviceInfo()
 	instanceType, err := cmd.Flags().GetString("instance-type")
 	if err != nil {
 		return ybaclient.DeviceInfo{}, err
 	}
-	if len(strings.TrimSpace(instanceType)) != 0 {
+	if !util.IsEmptyString(instanceType) {
 		if strings.Compare(instanceType, userIntent.GetInstanceType()) != 0 {
 			userIntent.SetInstanceType(instanceType)
 		}
@@ -349,7 +389,7 @@ func deviceInfoChanges(
 		return ybaclient.DeviceInfo{}, err
 	}
 
-	if len(strings.TrimSpace(storageType)) != 0 {
+	if !util.IsEmptyString(storageType) {
 		deviceInfo.SetStorageType(storageType)
 	}
 
@@ -357,7 +397,7 @@ func deviceInfoChanges(
 	if err != nil {
 		return ybaclient.DeviceInfo{}, err
 	}
-	if len(strings.TrimSpace(storageClass)) != 0 {
+	if !util.IsEmptyString(storageClass) {
 		deviceInfo.SetStorageClass(storageClass)
 	}
 
@@ -373,11 +413,14 @@ func deviceInfoChanges(
 
 func waitForEditClusterTask(
 	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID string,
-	task ybaclient.YBPTask,
+	task *ybaclient.YBPTask,
 ) {
 	var universeData []ybaclient.UniverseResp
 	var response *http.Response
 	var err error
+
+	util.CheckTaskAfterCreation(task)
+
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf("The universe %s (%s) cluster is being edited",
 		formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -395,10 +438,7 @@ func waitForEditClusterTask(
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err,
-				"Universe", "Upgrade - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade - Fetch Universe")
 		}
 		universesCtx := formatter.Context{
 			Output: os.Stdout,
@@ -414,5 +454,5 @@ func waitForEditClusterTask(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 }

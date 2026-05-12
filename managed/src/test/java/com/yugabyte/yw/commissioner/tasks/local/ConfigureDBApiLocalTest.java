@@ -91,7 +91,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    initYSQL(universe, "", true);
+    initYSQL(universe, "", null, true);
     verifyYSQL(universe, false, YUGABYTE_DB, "", true);
 
     // Disable YSQL Auth for the universe.

@@ -49,6 +49,8 @@ XClusterYsqlTestBase::SetupParams XClusterDDLReplicationTestBase::kDefaultParams
     .is_colocated = false,
     .use_different_database_oids = false,
     .start_yb_controller_servers = false,
+    .extra_columns = {},
+    .create_vector_extension = false,
 };
 
 void XClusterDDLReplicationTestBase::SetUp() {

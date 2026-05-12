@@ -36,7 +36,7 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const TableName& table_name,
 }
 
 Result<VTableDataPtr> YQLKeyspacesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   catalog_manager().GetAllNamespaces(&namespaces, true);

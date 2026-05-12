@@ -11,6 +11,7 @@ import logging
 import json
 import os
 from ybops.utils.remote_shell import RemoteShell
+from ybops.common.exceptions import YBOpsExitCodeException
 
 warnings.filterwarnings("ignore")
 
@@ -74,21 +75,20 @@ def add_test_directory_subparser(subparsers, command, parent):
 def handle_run_command(args, client):
     kwargs = {}
     if args.node_type == 'ssh' or args.node_type == 'rpc':
-        kwargs['output_only'] = True
         if args.skip_cmd_logging:
             kwargs['skip_cmd_logging'] = True
-    output = client.exec_command(args.command, **kwargs)
+    output = client.check_exec_command(args.command, **kwargs)
     print('Command output:')
     print(output)
 
 
 def handle_test_directory(args, client):
     filename = args.test_directory + str(uuid.uuid4())
-    client.exec_command(['touch', filename])
-    client.exec_command(['bash', '-c', "echo write-test > {}".format(filename)])
-    output = client.exec_command(['cat', filename])
-    client.exec_command(['rm', filename])
-    if 'write-test' in str(output):
+    client.check_exec_command(['touch', filename])
+    client.check_exec_command(['bash', '-c', "echo write-test > {}".format(filename)])
+    output = client.check_exec_command(['cat', filename])
+    client.check_exec_command(['rm', filename])
+    if 'write-test' in output:
         print('Directory is writable')
     else:
         print('Directory is not writable')
@@ -105,7 +105,7 @@ def add_run_script_subparser(subparsers, command, parent):
 
 
 def handle_run_script(args, client):
-    output = client.exec_script(args.local_script_path, args.params)
+    output = client.check_exec_script(args.local_script_path, args.params)
     print('Command output:')
     print(output)
 
@@ -125,19 +125,19 @@ def download_logs_ssh(args, client):
     # name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-support_package.tar.gz"
 
-    cmd = ['tar', '-czvf', tar_file_name, '-h', '-C',
+    cmd = ['tar', '--warning=no-file-changed', '-czvf', tar_file_name, '-h', '-C',
            args.yb_home_dir, 'tserver/logs/yb-tserver.INFO']
     if args.is_master:
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
 
     rm_cmd = ['rm', tar_file_name]
-    client.exec_command(cmd)
+    client.check_exec_command(cmd)
     client.fetch_file(tar_file_name, args.target_local_file)
-    client.exec_command(rm_cmd)
+    client.check_exec_command(rm_cmd)
 
 
 def download_logs_k8s(args, client):
-    cmd = ['tar', '-czvf', '-', '-h', '-C',
+    cmd = ['tar', '--warning=no-file-changed', '-czvf', '-', '-h', '-C',
            args.yb_home_dir]
     if args.is_master:
         cmd += ['master/logs/yb-master.INFO']
@@ -184,9 +184,9 @@ def download_file_node(args, client):
     cmd.insert(0, args.yb_home_dir)
 
     # Execute shell script on remote server and download the file to archive
-    script_output = client.exec_script("./bin/node_utils.sh", ["create_tar_file"] + cmd)
-    file_exists = client.exec_script("./bin/node_utils.sh",
-                                     ["check_file_exists", tar_file_name]).strip()
+    script_output = client.check_exec_script("./bin/node_utils.sh", ["create_tar_file"] + cmd)
+    file_exists = client.check_exec_script("./bin/node_utils.sh",
+                                           ["check_file_exists", tar_file_name]).strip()
 
     print(f"Shell script output : {script_output}")
 
@@ -194,7 +194,7 @@ def download_file_node(args, client):
     if check_file_exists_output:
         rm_cmd = ['rm', tar_file_name, target_node_files_path]
         client.fetch_file(tar_file_name, args.target_local_file)
-        client.exec_command(rm_cmd)
+        client.check_exec_command(rm_cmd)
 
 
 def download_file_k8s(args, client):
@@ -211,15 +211,16 @@ def download_file_k8s(args, client):
     cmd.insert(0, args.yb_home_dir)
 
     # Execute shell script on remote server and download the file to archive
-    script_output = client.exec_script("./bin/node_utils.sh", ["create_tar_file"] + cmd)
+    script_output = client.check_exec_script("./bin/node_utils.sh", ["create_tar_file"] + cmd)
     print(f"Shell script output : {script_output}")
 
     # Checking if the file exists
     check_file_exists_output = int(
-        client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
+        client.check_exec_script("./bin/node_utils.sh",
+                                 ["check_file_exists", tar_file_name]).strip())
     if check_file_exists_output:
         client.get_file(tar_file_name, args.target_local_file)
-        client.exec_command(['rm', tar_file_name, target_node_files_path])
+        client.check_exec_command(['rm', tar_file_name, target_node_files_path])
 
 
 def handle_download_file(args, client):
@@ -251,7 +252,7 @@ def copy_file_k8s(args, client):
 def handle_copy_file(args, client):
     local_path = Path(args.local_file)
     cmd = ['mkdir', '-p', str(local_path.parent.absolute())]
-    client.exec_command(cmd)
+    client.check_exec_command(cmd)
 
     if args.node_type == 'ssh' or args.node_type == 'rpc':
         copy_file_ssh(args, client)
@@ -284,7 +285,7 @@ def upload_file_k8s(args, client):
 def handle_upload_file(args, client):
     target_path = Path(args.target_file)
     cmd = ['mkdir', '-p', str(target_path.parent.absolute())]
-    client.exec_command(cmd)
+    client.check_exec_command(cmd)
 
     if args.node_type == 'ssh' or args.node_type == 'rpc':
         upload_file_ssh(args, client)
@@ -292,7 +293,7 @@ def handle_upload_file(args, client):
         upload_file_k8s(args, client)
 
     chmod_cmd = ['chmod', args.permissions, args.target_file]
-    client.exec_command(chmod_cmd)
+    client.check_exec_command(chmod_cmd)
 
 
 def add_bulk_check_files_exist_subparser(subparsers, command, parent):
@@ -329,10 +330,11 @@ def bulk_check_files_exist_node(args, client):
     cmd = [file_check_output_filename]
     cmd.insert(0, args.yb_dir)
     cmd.insert(0, target_files_to_check_path)
-    script_output = client.exec_script("./bin/node_utils.sh", ["bulk_check_files_exist"] + cmd)
-    file_exists = client.exec_script("./bin/node_utils.sh",
-                                     ["check_file_exists",
-                                      file_check_output_filepath]).strip()
+    script_output = client.check_exec_script("./bin/node_utils.sh",
+                                             ["bulk_check_files_exist"] + cmd)
+    file_exists = client.check_exec_script("./bin/node_utils.sh",
+                                           ["check_file_exists",
+                                            file_check_output_filepath]).strip()
 
     print(f"Shell script output : {script_output}")
 
@@ -340,7 +342,7 @@ def bulk_check_files_exist_node(args, client):
     if check_file_exists_output:
         rm_cmd = ['rm', target_files_to_check_path, file_check_output_filepath]
         client.fetch_file(file_check_output_filepath, args.target_local_file_path)
-        client.exec_command(rm_cmd)
+        client.check_exec_command(rm_cmd)
 
 
 def bulk_check_files_exist_k8s(args, client):
@@ -356,10 +358,11 @@ def bulk_check_files_exist_k8s(args, client):
     cmd = [file_check_output_filename]
     cmd.insert(0, args.yb_dir)
     cmd.insert(0, target_files_to_check_path)
-    script_output = client.exec_script("./bin/node_utils.sh", ["bulk_check_files_exist"] + cmd)
-    file_exists = client.exec_script("./bin/node_utils.sh",
-                                     ["check_file_exists",
-                                      file_check_output_filepath]).strip()
+    script_output = client.check_exec_script("./bin/node_utils.sh",
+                                             ["bulk_check_files_exist"] + cmd)
+    file_exists = client.check_exec_script("./bin/node_utils.sh",
+                                           ["check_file_exists",
+                                            file_check_output_filepath]).strip()
 
     print(f"Shell script output : {script_output}")
 
@@ -367,7 +370,7 @@ def bulk_check_files_exist_k8s(args, client):
     if check_file_exists_output:
         rm_cmd = ['rm', target_files_to_check_path, file_check_output_filepath]
         client.get_file(file_check_output_filepath, args.target_local_file_path)
-        client.exec_command(rm_cmd)
+        client.check_exec_command(rm_cmd)
 
 
 node_types = {
@@ -426,6 +429,8 @@ def main():
         try:
             client = RemoteShell(ssh_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
     elif args.node_type == 'rpc':
@@ -442,6 +447,8 @@ def main():
         try:
             client = RemoteShell(rpc_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish RPC connection to {}:{} - {}"
                      .format(args.node_agent_ip, args.node_agent_port, str(e)))
     else:

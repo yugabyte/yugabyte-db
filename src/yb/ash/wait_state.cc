@@ -15,6 +15,7 @@
 
 #include <arpa/inet.h>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
@@ -101,6 +102,14 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A YSQL backend is waiting for a table write from DocDB.";
     case WaitStateCode::kWaitingOnTServer:
       return "A YSQL backend is waiting on TServer, check wait_event_aux for the RPC.";
+    case WaitStateCode::kTransactionCommit:
+      return "A YSQL backend is committing a transaction.";
+    case WaitStateCode::kTransactionTerminate:
+      return "A YSQL backend is terminating/rolling back a transaction.";
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+      return "A YSQL backend is rolling back to a savepoint.";
+    case WaitStateCode::kTransactionCancel:
+      return "A YSQL backend is canceling a transaction.";
     case WaitStateCode::kOnCpu_Active:
       return "A rpc/task is being actively processed on a thread.";
     case WaitStateCode::kOnCpu_Passive:
@@ -216,6 +225,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is looking up tablet information from the master.";
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return "YB client is waiting on an RPC sent to the master.";
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
+      return "Waiting for index backfill chunk to be processed.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -275,7 +286,7 @@ void AshMetadata::clear_rpc_request_id() {
 
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
-      top_level_node_id, root_request_id, query_id, database_id,
+      top_level_node_id, root_request_id, query_id, plan_id, database_id,
       user_id, rpc_request_id, client_host_port, addr_family, pid);
 }
 
@@ -369,11 +380,11 @@ void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
   aux_info_.UpdateFrom(aux);
 }
 
-void WaitStateInfo::UpdateTabletId(const TabletId& tablet_id) {
-  UpdateAuxInfo({.tablet_id = tablet_id});
+void WaitStateInfo::UpdateTabletId(TabletIdView tablet_id) {
+  UpdateAuxInfo({.tablet_id = TabletId(tablet_id)});
 }
 
-void WaitStateInfo::UpdateCurrentTabletId(const TabletId& tablet_id) {
+void WaitStateInfo::UpdateCurrentTabletId(TabletIdView tablet_id) {
   if (const auto& wait_state = CurrentWaitState()) {
     wait_state->UpdateTabletId(tablet_id);
   }
@@ -419,7 +430,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
 }
 
 int WaitStateInfo::GetCircularBufferSizeInKiBs() {
-  int num_cpus = base::NumCPUs();
+  int num_cpus = NumEffectiveCPUs();
   int bytes;
   if (num_cpus <= 2) {
     bytes = 32_MB;
@@ -560,6 +571,10 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
     case WaitStateCode::kWaitingOnTServer:
+    case WaitStateCode::kTransactionCommit:
+    case WaitStateCode::kTransactionTerminate:
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+    case WaitStateCode::kTransactionCancel:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kOnCpu_Active:
@@ -577,6 +592,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case WaitStateCode::kWaitForReadTime:
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -710,6 +726,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kRocksDB_NewIterator:
     case WaitStateCode::kRocksDB_CreateCheckpoint:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:
@@ -730,6 +747,10 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kCatalogWrite:
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
+    case WaitStateCode::kTransactionCommit:
+    case WaitStateCode::kTransactionTerminate:
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+    case WaitStateCode::kTransactionCancel:
       return "";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
@@ -742,6 +763,7 @@ WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
 WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
 WaitStateTracker xcluster_poller_tracker;
+WaitStateTracker min_running_hybrid_time_tracker;
 
 }  // namespace
 
@@ -763,6 +785,10 @@ WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
 
 WaitStateTracker& XClusterPollerTracker() {
   return xcluster_poller_tracker;
+}
+
+WaitStateTracker& MinRunningHybridTimeTracker() {
+  return min_running_hybrid_time_tracker;
 }
 
 }  // namespace yb::ash

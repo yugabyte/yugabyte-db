@@ -37,22 +37,17 @@ class TabletBootstrapState {
 
   TabletBootstrapState(const TabletBootstrapState& rhs);
 
-  TabletBootstrapState(TabletBootstrapState&& rhs);
-  void operator=(TabletBootstrapState&& rhs);
-
-  void CopyFrom(const TabletBootstrapState& rhs);
-
-  void SetMinReplayTxnStartTime(HybridTime min_replay_txn_start_ht) {
-    min_replay_txn_start_ht_.store(min_replay_txn_start_ht);
+  void SetMinReplayTxnFirstWriteTime(HybridTime min_replay_txn_first_write_ht) {
+    min_replay_txn_first_write_ht_.store(min_replay_txn_first_write_ht);
   }
 
-  HybridTime GetMinReplayTxnStartTime() const { return min_replay_txn_start_ht_.load(); }
+  HybridTime GetMinReplayTxnFirstWriteTime() const { return min_replay_txn_first_write_ht_.load(); }
 
   void ToPB(consensus::TabletBootstrapStatePB* pb) const;
   void FromPB(const consensus::TabletBootstrapStatePB& pb);
 
  private:
-  std::atomic<HybridTime> min_replay_txn_start_ht_{HybridTime::kInvalid};
+  std::atomic<HybridTime> min_replay_txn_first_write_ht_{HybridTime::kInvalid};
 };
 
 class TabletBootstrapStateManager {
@@ -85,6 +80,8 @@ class TabletBootstrapStateManager {
   // Copy the latest version to dest_path.
   Status CopyTo(const std::string& dest_path);
 
+  static std::string_view FileName();
+
  private:
   std::string CurrentFilePath() {
     return FilePath(dir_);
@@ -94,13 +91,7 @@ class TabletBootstrapStateManager {
     return JoinPathSegments(dir_, NewFileName());
   }
 
-  static std::string FileName() {
-    return kTabletBootstrapStateFileName;
-  }
-
-  static std::string NewFileName() {
-    return FileName() + kSuffixNew;
-  }
+  static std::string_view NewFileName();
 
   // Do the actual initialization.
   // Find the valid bootstrap state file from disk and delete other versions.
@@ -117,9 +108,6 @@ class TabletBootstrapStateManager {
   std::string dir_;
   TabletBootstrapState bootstrap_state_;
   std::string log_prefix_;
-
-  static constexpr char kSuffixNew[] = ".NEW";
-  static constexpr char kTabletBootstrapStateFileName[] = "retryable_requests";
 };
 
 } // namespace yb::tablet

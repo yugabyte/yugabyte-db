@@ -97,7 +97,7 @@ struct TypeDescriptor;
 
 template<>
 struct TypeDescriptor<KeyTypeWrapper<yb::DataType::BINARY>> {
-  static void AddHashValue(QLWriteRequestPB* req, int value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int value) {
     QLAddBinaryHashValue(req, StringPrintf("%016x", value));
   }
 
@@ -108,7 +108,7 @@ struct TypeDescriptor<KeyTypeWrapper<yb::DataType::BINARY>> {
 
 template<>
 struct TypeDescriptor<KeyTypeWrapper<yb::DataType::STRING>> {
-  static void AddHashValue(QLWriteRequestPB* req, int value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int value) {
     QLAddStringHashValue(req, StringPrintf("%016x", value));
   }
 
@@ -119,7 +119,7 @@ struct TypeDescriptor<KeyTypeWrapper<yb::DataType::STRING>> {
 
 template<>
 struct TypeDescriptor<int64_t> {
-  static void AddHashValue(QLWriteRequestPB* req, int64_t value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int64_t value) {
     QLAddInt64HashValue(req, value);
   }
 
@@ -130,7 +130,7 @@ struct TypeDescriptor<int64_t> {
 
 template<>
 struct TypeDescriptor<int32_t> {
-  static void AddHashValue(QLWriteRequestPB* req, int32_t value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int32_t value) {
     QLAddInt32HashValue(req, value);
   }
 
@@ -141,7 +141,7 @@ struct TypeDescriptor<int32_t> {
 
 template<>
 struct TypeDescriptor<int16_t> {
-  static void AddHashValue(QLWriteRequestPB* req, int16_t value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int16_t value) {
     QLAddInt16HashValue(req, value);
   }
 
@@ -152,7 +152,7 @@ struct TypeDescriptor<int16_t> {
 
 template<>
 struct TypeDescriptor<int8_t> {
-  static void AddHashValue(QLWriteRequestPB* req, int8_t value) {
+  static void AddHashValue(QLWriteRequestMsg* req, int8_t value) {
     QLAddInt8HashValue(req, value);
   }
 
@@ -311,7 +311,7 @@ class AllTypesItest : public YBTest {
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
-    auto insert = table_.NewInsertOp();
+    auto insert = table_.NewInsertOp(session->arena());
     setup_.GenerateRowKey(insert.get(), split_idx, row_idx);
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
     auto req = insert->mutable_request();

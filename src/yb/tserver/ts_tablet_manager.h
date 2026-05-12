@@ -106,9 +106,8 @@ using rocksdb::MemoryMonitor;
 typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
-struct TabletCreationMetaData;
-typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
-    SplitTabletsCreationMetaData;
+struct TabletCreationMetadata;
+typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
@@ -192,6 +191,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown();
 
+  rpc::ThreadPoolTag PoolTagForTablet(const tablet::TabletPtr& tablet);
+
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
@@ -245,7 +246,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
-      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
+      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //
@@ -395,7 +397,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   bool IsTabletInTransition(const TabletId& tablet_id) const;
 
-  TabletServer* server() { return server_; }
+  TabletServer* server() const { return server_; }
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
@@ -433,6 +435,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   client::YBMetaDataCache* YBMetaDataCache() const;
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
+
+  // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
+  // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
+  HybridTime TEST_LastSnapshotHybridTime(const SnapshotScheduleId& schedule_id) const
+      EXCLUDES(snapshot_schedule_info_mutex_);
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -564,7 +571,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadata& source_tablet_meta, const TabletId& tablet_id, Env* env);
 
   Status StartSubtabletsSplit(
-      const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
+      const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetadata* tcmetas);
 
   Status DoApplyCloneTablet(
       tablet::CloneOperation* operation, log::Log* raft_log,
@@ -582,6 +589,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool IsOperational() const EXCLUDES(mutex_);
 
   // Initializes the RaftPeerPB for the local peer.
   // Guaranteed to include both uuid and last_seen_addr fields.
@@ -657,11 +666,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& source_addr, const std::string& debug_session_string);
 
   void UpdateCompactFlushRateLimitBytesPerSec();
-
   void UpdateAllowCompactionFailures();
+  void UpdateVectorIndexCompactionLimit();
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
-  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
+  PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
 
   const CoarseTimePoint start_time_;
 
@@ -814,16 +823,21 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
 
-  mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
-  std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
-      snapshot_schedule_allowed_history_cutoff_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  struct SnapshotScheduleInfo {
+    HybridTime last_snapshot_ht;
+    uint64_t retention_duration_sec = 0;
+  };
+
+  mutable simple_spinlock snapshot_schedule_info_mutex_;
+  std::unordered_map<SnapshotScheduleId, SnapshotScheduleInfo, SnapshotScheduleIdHash>
+      snapshot_schedule_info_
+      GUARDED_BY(snapshot_schedule_info_mutex_);
   // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
   std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
       missing_snapshot_schedules_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
-  int64_t snapshot_schedules_version_ = 0;
-  HybridTime last_restorations_update_ht_;
+      GUARDED_BY(snapshot_schedule_info_mutex_);
+  int64_t snapshot_schedules_version_ GUARDED_BY(snapshot_schedule_info_mutex_) = 0;
+  HybridTime last_restorations_update_ht_ GUARDED_BY(snapshot_schedule_info_mutex_);
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
@@ -846,6 +860,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
       vector_index_thread_pools_;
   hnsw::BlockCachePtr vector_index_block_cache_;
+  PriorityThreadPoolTokenPtr vector_index_compaction_token_
+      GUARDED_BY(vector_index_thread_pool_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

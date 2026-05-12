@@ -104,6 +104,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Matches Postgres' FirstNormalObjectId */
   protected final long FIRST_NORMAL_OID = 16384;
 
+  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 10000;
+
+  private boolean pg_connection_check_after_startup = true;
+
   // Postgres settings.
   // TODO(janand) GH #17899 Deduplicate DEFAULT_PG_DATABASE and TEST_PG_USER (present in
   // BasePgSQLTest and ConnectionBuilder)
@@ -300,11 +304,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
-    if (isYsqlConnMgr) {
-      LOG.info("Switching to postgres port:" + reason);
-      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+  // Switches DEFAULT connection endpoint to POSTGRES when the test is running
+  // with connection manager (so the test effectively skips conn-mgr mode).
+  // When restartCluster is true and the switch actually happened, also
+  // restarts the cluster to drop connections created by initial setup on the
+  // conn-mgr port.
+  protected void skipYsqlConnMgr(String reason, boolean restartCluster) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
     }
+    LOG.info("Switching to postgres port:" + reason);
+    ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    if (restartCluster) {
+      restartCluster();
+    }
+  }
+
+  protected void skipYsqlConnMgr(String reason) throws Exception {
+    skipYsqlConnMgr(reason, false);
   }
 
   /**
@@ -423,6 +440,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
+    long pgStartTimeoutMs = WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
+        BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
+    verifyClusterAcceptsPGConnections(pgStartTimeoutMs);
+    waitForAllTServerPgWebservers(pgStartTimeoutMs);
+
     connection = createTestRole();
     allowSchemaPublic();
   }
@@ -436,6 +458,41 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  public void verifyClusterAcceptsPGConnections(long timeoutMs) throws Exception {
+    if (!pg_connection_check_after_startup) {
+      return;
+    }
+    LOG.info("Waiting for cluster to accept pg connections");
+    TestUtils.waitFor(() -> {
+        try {
+          ConnectionBuilder cbuilder = getConnectionBuilder().withUser(DEFAULT_PG_USER);
+          if (getTServerFlags()
+              .getOrDefault("ysql_enable_auth", "false")
+              .equalsIgnoreCase("true")) {
+            cbuilder = cbuilder.withPassword(DEFAULT_PG_PASS);
+          }
+          cbuilder.connect().close();
+          return true;
+        } catch (Exception e) {
+          return false;
+        }
+      }, timeoutMs);
+    LOG.info("done Waiting for cluster to accept pg connections");
+  }
+
+  protected void waitForAllTServerPgWebservers(long timeoutMs) throws Exception {
+    if (!pg_connection_check_after_startup) {
+      return;
+    }
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getPgsqlWebPort(), timeoutMs);
+    }
+  }
+
+  protected void disablePGConnectionCheck() {
+    pg_connection_check_after_startup = false;
   }
 
   private void allowSchemaPublic() throws Exception {

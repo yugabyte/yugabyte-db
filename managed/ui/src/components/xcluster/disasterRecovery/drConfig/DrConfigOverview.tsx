@@ -2,7 +2,7 @@ import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { DrParticipantCard } from './DrParticipantCard';
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg?img';
 import { YBTooltip } from '../../../../redesign/components';
 import { DrConfigStateLabel } from '../DrConfigStateLabel';
 import { UniverseXClusterRole } from '../../constants';

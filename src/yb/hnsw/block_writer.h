@@ -27,7 +27,7 @@ class BlockWriter {
   }
 
   explicit BlockWriter(DataBlock& block)
-      : BlockWriter(block.data(), block.data() + block.size()) {}
+      : BlockWriter(block.data.get(), block.data.get() + block.size) {}
 
   BlockWriter(BlockWriter&& rhs)
       : out_(std::exchange(rhs.out_, nullptr)), end_(std::exchange(rhs.end_, nullptr)) {

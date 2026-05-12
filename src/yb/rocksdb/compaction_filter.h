@@ -27,9 +27,12 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/slice.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/db/version_edit.h"
+
+#include "yb/storage/storage_types.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -47,7 +50,7 @@ struct CompactionFilterContext {
 // CompactionFilter allows an application to modify/delete a key-value at
 // the time of compaction.
 
-YB_DEFINE_ENUM(FilterDecision, (kKeep)(kDiscard));
+using FilterDecision = yb::storage::FilterDecision;
 
 class CompactionFilter {
  public:

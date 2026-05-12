@@ -8,8 +8,7 @@ SELECT documentdb_api.insert_one('db','reshard','{"_id":"1", "value": { "$number
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}';
 ROLLBACK;
 
@@ -75,8 +74,7 @@ SELECT documentdb_api.insert_one('db','reshard','{"_id":"6", "value": 15.0}');
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
 ROLLBACK;
 
@@ -84,16 +82,14 @@ ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
 ROLLBACK;
 
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
 ROLLBACK;
 
@@ -101,8 +97,7 @@ ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
 ROLLBACK;
 
@@ -114,8 +109,7 @@ BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
 ROLLBACK;
 
@@ -143,8 +137,7 @@ SELECT documentdb_api_internal.get_shard_key_value('{"a":1,"b":1}', 1,'{"_id":"1
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
-EXPLAIN (COSTS OFF)
-SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id' $cmd$);
 SELECT document FROM documentdb_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
 ROLLBACK;
 

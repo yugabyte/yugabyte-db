@@ -53,8 +53,8 @@ class PgTablesQueryResult {
 
   explicit PgTablesQueryResult(TablesResultPtr&& tables) : tables_(std::move(tables)) {}
 
-  Result<const client::YBTablePtr&> Get(const TableId& table_id) const;
-  Result<const TableInfo&> GetInfo(const TableId& table_id) const;
+  Result<const client::YBTablePtr&> Get(TableIdView table_id) const;
+  Result<const TableInfo&> GetInfo(TableIdView table_id) const;
 
  private:
   TablesResultPtr tables_;
@@ -72,7 +72,7 @@ class PgTableCache {
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
   ~PgTableCache();
 
-  Result<client::YBTablePtr> Get(const TableId& table_id);
+  Result<client::YBTablePtr> Get(TableIdView table_id);
   void GetTables(
       std::span<const TableId> table_ids,
       const PgTablesQueryListenerPtr& listener,

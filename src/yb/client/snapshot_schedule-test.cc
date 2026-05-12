@@ -246,7 +246,7 @@ TEST_F(SnapshotScheduleTest, Index) {
 
   auto session = CreateSession();
   for (size_t r = 0; r != kNumRows; ++r) {
-    const auto op = index_.NewInsertOp();
+    const auto op = index_.NewInsertOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, KeyForTransactionAndIndex(kTransaction, r));
     QLAddInt32RangeValue(req, ValueForTransactionAndIndex(kTransaction, r, op_type));

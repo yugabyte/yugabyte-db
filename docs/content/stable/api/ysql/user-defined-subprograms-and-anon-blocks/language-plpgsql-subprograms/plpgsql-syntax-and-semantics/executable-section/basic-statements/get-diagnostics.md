@@ -163,4 +163,3 @@ You might like to select the rows from _s.t_ as a further sanity check. This is 
  10 | 100
  11 | 110
 ```
-

@@ -6,12 +6,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -20,19 +17,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-  private final YsqlQueryExecutor ysqlQueryExecutor;
-
   private static final String UPGRADE_SUPERUSER = "yugabyte_upgrade";
 
   @Inject
-  protected ManageCatalogUpgradeSuperUser(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      YsqlQueryExecutor ysqlQueryExecutor) {
+  protected ManageCatalogUpgradeSuperUser(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   public enum Action {
@@ -57,12 +46,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     Universe universe = getUniverse();
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     String pgPassFileDir =
-        (universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
+        (Util.isKubernetesBasedUniverse(universe)
             ? Util.getDataDirectoryPath(universe, masterLeaderNode, config) + "/yw-data"
             : Util.getNodeHomeDir(universe.getUniverseUUID(), universe.getMasterLeaderNode()));
     String pgPassFilePath = pgPassFileDir + "/.pgpass";
@@ -116,12 +100,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
       String pgPassFilePath,
       String password) {
     String pgPassFileContent = "*:*:*:" + UPGRADE_SUPERUSER + ":" + password;
-    if (universe
-        .getUniverseDetails()
-        .getPrimaryCluster()
-        .userIntent
-        .providerType
-        .equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       String command =
           "rm -f "
               + pgPassFilePath

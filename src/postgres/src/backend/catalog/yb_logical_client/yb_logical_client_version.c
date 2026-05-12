@@ -13,10 +13,6 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "catalog/indexing.h"
-#include "catalog/pg_database.h"
-#include "catalog/pg_namespace_d.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/schemapg.h"
@@ -27,7 +23,6 @@
 #include "nodes/makefuncs.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -43,17 +38,23 @@ static bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *versi
 static Datum YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_rel,
 															 Oid db_oid);
 
+/*  Oid used for storing coarse grained LCV */
+#define DefaultOid ((Oid) 0)
+
 uint64_t
 YbGetMasterLogicalClientVersion()
 {
 	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-	Assert(OidIsValid(MyDatabaseId));
 	switch (YbGetLogicalClientVersionType())
 	{
 		case LOGICAL_CLIENT_VERSION_CATALOG_TABLE:
-			if (YbGetMasterLogicalClientVersionFromTable(MyDatabaseId, &version))
+			/* For coarse-grained versioning, use DefaultOid */
+			if (YbGetMasterLogicalClientVersionFromTable(DefaultOid, &version))
 				return version;
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to get master logical client version from table")));
 			yb_switch_fallthrough();
 
 		case LOGICAL_CLIENT_VERSION_UNSET:	/* should not happen. */
@@ -85,7 +86,7 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBLogicalClientVersionRelationId,
 								  NULL /* prepare_params */ ,
-								  false /* is_region_local */ ,
+								  YbBuildSystemTableLocalityInfo(YBLogicalClientVersionRelationId),
 								  &ybc_stmt));
 
 	Datum		oid_datum = Int32GetDatum(db_oid);
@@ -97,24 +98,10 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
 
-	/* Add scan targets */
+	/* Add scan targets: regular columns in ascending attnum order,
+	 * matching the order used by the sys table prefetcher's OrderColumns(). */
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
-	{
-		/*
-		 * Before copying the following code, see if YbDmlAppendTargetRegular
-		 * or similar could be used instead.  Reason this doesn't use
-		 * YbDmlAppendTargetRegular is that it doesn't have access to
-		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
-		 * Form_pg_attribute instead, but that would make it inconvenient for
-		 * other callers.
-		 */
-		Form_pg_attribute att = &Desc_pg_yb_logical_client_version[attnum - 1];
-		YbcPgTypeAttrs type_attrs = {att->atttypmod};
-		YbcPgExpr	expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
-										   att->attcollation, &type_attrs);
-
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
-	}
+		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_logical_client_version[attnum - 1], ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */ ));
 
@@ -125,17 +112,36 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 	YbcPgSysColumns syscols;
 	bool		result = false;
 
-	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-								 natts,
-								 (uint64_t *) values,
-								 nulls,
-								 &syscols,
-								 &has_data));
-
-	if (has_data)
+	/*
+	 * When prefetching is enabled the prefetcher loads all rows from the table
+	 * even though we bind to the row matching db_oid.  Iterate through the
+	 * returned rows and pick the one that matches db_oid, mirroring the
+	 * workaround in YbGetMasterCatalogVersionFromTable.
+	 */
+	while (true)
 	{
-		*version = DatumGetUInt64(values[current_version_attnum - 1]);
-		result = true;
+		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+									 natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (!has_data)
+		{
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("logical client version for database %u was "
+							"not found", db_oid)));
+			break;
+		}
+
+		if (DatumGetUInt32(values[oid_attnum - 1]) == db_oid)
+		{
+			*version = DatumGetUInt64(values[current_version_attnum - 1]);
+			result = true;
+			break;
+		}
 	}
 
 	pfree(values);
@@ -148,18 +154,12 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 {
 	Assert(YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE);
 
-	YbcPgStatement update_stmt = NULL;
 	YbcPgTypeAttrs type_attrs = {0};
-	YbcPgExpr	yb_expr;
 
-	/* The table pg_yb_catalog_version is in template1. */
-	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
-								  YBLogicalClientVersionRelationId,
-								  false /* is_region_local */ ,
-								  &update_stmt,
-								  YB_TRANSACTIONAL));
+	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 
-	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
+
 	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
@@ -199,8 +199,7 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 	YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
-							  &type_attrs);
+	YbcPgExpr yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	int			rows_affected_count = 0;
@@ -218,7 +217,8 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 bool
 YbIncrementMasterLogicalClientVersionTableEntry()
 {
-	YbIncrementMasterDBLogicalClientVersionTableEntryImpl(MyDatabaseId);
+	/* Use DefaultOid for getting coarse-grained LCV */
+	YbIncrementMasterDBLogicalClientVersionTableEntryImpl(DefaultOid);
 	return true;
 }
 
@@ -246,100 +246,6 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 	return ybctid;
 }
 
-void
-YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
-{
-	Assert(db_oid != MyDatabaseId);
-	Assert(YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE);
-
-	/*
-	 * The table pg_yb_logical_client_version is a shared relation in template1 and
-	 * db_oid is the primary key. There is no separate docdb index table for
-	 * primary key and therefore only one insert statement is needed to insert
-	 * the row for db_oid.
-	 */
-	YbcPgStatement insert_stmt = NULL;
-
-	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
-								  YBLogicalClientVersionRelationId,
-								  false /* is_region_local */ ,
-								  &insert_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
-
-	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
-	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
-
-	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
-											 ybctid, false /* is_null */ );
-
-	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
-									  ybctid_expr));
-
-	AttrNumber	attnum = Anum_pg_yb_logical_client_version_current_version;
-	Datum		initial_version = 1;
-	YbcPgExpr	initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
-													  InvalidOid,
-													  initial_version,
-													  false /* is_null */ );
-
-	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum,
-									  initial_version_expr));
-
-	int			rows_affected_count = 0;
-
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: creating master logical client version for database %u",
-						__func__, db_oid)));
-	HandleYBStatus(YBCPgDmlExecWriteOp(insert_stmt, &rows_affected_count));
-	/* Insert a new row does not affect any existing rows. */
-	Assert(rows_affected_count == 0);
-
-	/* Cleanup. */
-	RelationClose(rel);
-}
-
-void
-YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
-{
-	Assert(db_oid != MyDatabaseId);
-	Assert(YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE);
-
-	/*
-	 * The table pg_yb_logical_client_version is a shared relation in template1 and
-	 * db_oid is the primary key. There is no separate docdb index table for
-	 * primary key and therefore only one delete statement is needed to delete
-	 * the row for db_oid.
-	 */
-	YbcPgStatement delete_stmt = NULL;
-
-	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
-								  YBLogicalClientVersionRelationId,
-								  false /* is_region_local */ ,
-								  &delete_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
-
-	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
-	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
-
-	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
-											 ybctid, false /* is_null */ );
-
-	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber,
-									  ybctid_expr));
-
-	int			rows_affected_count = 0;
-
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: deleting master logical client version for database %u",
-						__func__, db_oid)));
-	HandleYBStatus(YBCPgDmlExecWriteOp(delete_stmt, &rows_affected_count));
-	Assert(rows_affected_count == 1);
-
-	RelationClose(rel);
-}
-
 YbLogicalClientVersionType
 YbGetLogicalClientVersionType()
 {
@@ -353,14 +259,28 @@ YbGetLogicalClientVersionType()
 	}
 	else if (yb_logical_client_version_type == LOGICAL_CLIENT_VERSION_UNSET)
 	{
-		bool		logical_client_version_table_exists = false;
+		uint64_t	logical_client_version;
+		bool		coarse_logical_client_version_set;
 
-		HandleYBStatus(YBCPgTableExists(Template1DbOid,
-										YBLogicalClientVersionRelationId,
-										&logical_client_version_table_exists));
-		yb_logical_client_version_type = (logical_client_version_table_exists ?
-										  LOGICAL_CLIENT_VERSION_CATALOG_TABLE :
-										  LOGICAL_CLIENT_VERSION_UNSET);
+		coarse_logical_client_version_set =
+			YbGetMasterLogicalClientVersionFromTable(DefaultOid,
+													 &logical_client_version);
+
+		yb_logical_client_version_type =
+			(coarse_logical_client_version_set ?
+			 LOGICAL_CLIENT_VERSION_CATALOG_TABLE :
+			 LOGICAL_CLIENT_VERSION_UNSET);
 	}
 	return yb_logical_client_version_type;
+}
+
+bool
+YbLogicalClientVersionTableExists()
+{
+	bool		exists = false;
+
+	HandleYBStatus(YBCPgTableExists(Template1DbOid,
+									YBLogicalClientVersionRelationId,
+									&exists));
+	return exists;
 }

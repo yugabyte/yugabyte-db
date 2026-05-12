@@ -17,6 +17,7 @@ import java.sql.Connection;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -42,6 +43,11 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
     // pool size of control connection = ysql_max_connections / 10
     builder.addCommonTServerFlag("ysql_max_connections", "15");
     builder.addCommonTServerFlag("ysql_hba_conf_csv", CUSTOM_PG_HBA_CONFIG);
+  }
+
+  @Override
+  public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
+    return builder.withUser("yugabyte").withPassword("yugabyte");
   }
 
   public void checkBrokenControlConnection() throws Exception {

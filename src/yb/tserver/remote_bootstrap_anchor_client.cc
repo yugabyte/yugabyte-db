@@ -175,27 +175,6 @@ Status RemoteBootstrapAnchorClient::KeepLogAnchorAliveAsync(bool session_succeed
   return Status::OK();
 }
 
-Status RemoteBootstrapAnchorClient::ChangePeerRole() {
-  ChangePeerRoleRequestPB req;
-  req.set_owner_info(owner_info_);
-  req.set_requestor_uuid(rbs_client_uuid_);
-
-  ChangePeerRoleResponsePB resp;
-
-  rpc::RpcController controller;
-  controller.set_timeout(
-      MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_anchor_session_timeout_ms));
-
-  auto status = UnwindRemoteError(proxy_->ChangePeerRole(req, &resp, &controller), controller);
-
-  if (!status.ok()) {
-    status = status.CloneAndPrepend("ChangePeerRole failed for session: " + owner_info_);
-    LOG(WARNING) << status;
-    return status;
-  }
-  return Status::OK();
-}
-
 // TODO: UnregisterLogAnchor could be made async, rbs source need not make the call in-line to
 // the leader.
 Status RemoteBootstrapAnchorClient::UnregisterLogAnchor() {

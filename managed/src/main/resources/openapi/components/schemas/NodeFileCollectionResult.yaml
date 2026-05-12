@@ -1,0 +1,62 @@
+title: NodeFileCollectionResult
+description: Result of collecting files from a single node
+x-yba-api-visibility: internal
+type: object
+properties:
+  node_name:
+    description: Name of the node
+    type: string
+    example: yb-15-universe-n1
+  node_address:
+    description: IP address of the node
+    type: string
+    example: 10.150.1.100
+  success:
+    description: Whether file collection succeeded on this node
+    type: boolean
+    example: true
+  files_collected:
+    description: Number of files successfully collected
+    type: integer
+    example: 5
+  files_skipped:
+    description: Number of files skipped (due to size limits or other reasons)
+    type: integer
+    example: 1
+  files_failed:
+    description: Number of files that failed to collect
+    type: integer
+    example: 0
+  total_bytes_collected:
+    description: Total bytes of files collected from this node
+    type: integer
+    format: int64
+    example: 5242880
+  execution_time_ms:
+    description: Time taken to collect files from this node in milliseconds
+    type: integer
+    format: int64
+    example: 2500
+  error_message:
+    description: Error message if the overall collection failed on this node
+    type: string
+  remote_tar_path:
+    description: |
+      Path to the tar.gz archive created on the remote node containing all collected files.
+      The tar file remains on the database node and is NOT downloaded to YBA.
+      Use a separate API to retrieve the tar file if needed.
+    type: string
+    example: /tmp/collected-files-yb-15-universe-n1-abc123.tar.gz
+  files:
+    description: List of collected file results
+    type: array
+    items:
+      $ref: "./CollectedFileResult.yaml"
+required:
+  - node_name
+  - node_address
+  - success
+  - files_collected
+  - files_skipped
+  - files_failed
+  - execution_time_ms

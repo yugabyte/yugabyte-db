@@ -4,3 +4,6 @@
 # This testsuite contains testcases related to DDL Savepoint support.
 ###############################################################################
 test: yb.orig.ddl_savepoint
+test: yb.orig.ddl_exceptions
+test: yb.orig.ddl_rc_rollback
+test: yb.orig.ddl_savepoint_toggle

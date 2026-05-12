@@ -26,7 +26,7 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 DEFINE_NON_RUNTIME_int64(server_tcmalloc_max_total_thread_cache_bytes, -1,
     "Total number of bytes to use for the thread cache for tcmalloc across all threads in the "
@@ -78,7 +78,7 @@ DECLARE_string(tmp_dir);
 
 namespace yb {
 
-int64_t GetTCMallocProperty(const char* prop) {
+uint64_t GetTCMallocProperty(const char* prop) {
 #if YB_TCMALLOC_ENABLED
   size_t value = 0;
 #if YB_GOOGLE_TCMALLOC
@@ -105,7 +105,7 @@ int64_t GetTCMallocProperty(const char* prop) {
 }
 
 int64_t GetTCMallocPhysicalBytesUsed() {
-  const char* property_name;
+  const char* property_name = "";
 #if YB_GOOGLE_TCMALLOC
   // In Google tcmalloc, this is calculated as
   //

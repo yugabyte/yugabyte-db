@@ -39,6 +39,7 @@ class VectorIndexTestBase : public YBTest {
   std::mt19937_64 rng_{42};
   std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr metric_entity_ = METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "test");
+  std::shared_ptr<rocksdb::Cache> rocksdb_cache_;
   BlockCachePtr block_cache_;
 };
 

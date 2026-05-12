@@ -1,0 +1,2 @@
+CREATE SCHEMA IF NOT EXISTS documentdb_distributed_test_helpers;
+CREATE EXTENSION IF NOT EXISTS documentdb_extended_rum;

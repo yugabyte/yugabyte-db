@@ -56,7 +56,7 @@ MessengerOptions MakeMessengerOptions() {
 class ReactorTest : public RpcTestBase {
  public:
   ReactorTest() {
-    FLAGS_rpc_reactor_task_timeout_ms = 500;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_reactor_task_timeout_ms) = 500;
 
     messenger_.reset(CreateMessenger("my_messenger", MakeMessengerOptions()).release());
   }

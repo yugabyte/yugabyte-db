@@ -1,5 +1,0 @@
-plan:
-Seq Scan on test_table1  (cost=0.00..6350.00 rows=1000 width=32) ()
-  Storage Table Read Requests: 1
-  Storage Table Read Execution Time: 0.000 ms
-  Storage Table Read Ops: 3

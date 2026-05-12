@@ -13,6 +13,10 @@ type: docs
 
 A YugabyteDB cluster (also referred to as a [universe](../../architecture/key-concepts/#universe)) consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
+{{< warning title="Antivirus and endpoint scanning" >}}
+Antivirus and endpoint scanning software can potentially impact the operation of YugabyteDB. Refer to [Antivirus and endpoint scanning](/stable/faq/antivirus/) for recommendations on using antivirus and endpoint scanning tools.
+{{< /warning >}}
+
 ## Basics
 
 - YugabyteDB supports both x86 and ARM (aarch64) CPU architectures.
@@ -78,6 +82,12 @@ The overhead is proportional to the number of tablet replicas, so 500 tablet rep
 Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
 
 You can manually provision the amount of memory each TServer uses by setting the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.
+
+{{<note title = "Kubernetes deployments">}}
+For Kubernetes universes, memory limits are controlled via resource specifications in the Helm chart. Accordingly, `--default_memory_limit_to_ram_ratio` does not apply, and `--memory_limit_hard_bytes` is automatically set from the Kubernetes pod memory limits.
+
+See [Memory limits in Kubernetes deployments](../kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+{{</note>}}
 
 #### YSQL
 

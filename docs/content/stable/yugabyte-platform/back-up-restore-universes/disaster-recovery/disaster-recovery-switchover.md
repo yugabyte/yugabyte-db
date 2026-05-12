@@ -55,9 +55,9 @@ Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) f
 
 ## Abort, retry, and rollback
 
-While in progress, the swtchover task is displayed on the universe **Tasks** tab. From there you can abort, retry, and roll back the switchover task.
+While in progress, the switchover task is displayed on the universe **Tasks** tab. From there you can abort, retry, and roll back the switchover task.
 
-During switchover, writes to both universes are rejected until the task completes. The Abort, Retry, and Rollback options provide flexibility in case the switchover is taking too long, and you want to quickly restore write availability on at least one universe.
+During switchover, writes to databases undergoing switchover are blocked on both universes until the task completes. This process typically takes only a few seconds. The Abort, Retry, and Rollback options provide flexibility in case the switchover is taking too long, and you want to quickly restore write availability on at least one universe.
 
 If a switchover task fails or you abort it, you have the option to roll back to the previous state, keeping the current primary universe as primary and the replica universe as replica.
 

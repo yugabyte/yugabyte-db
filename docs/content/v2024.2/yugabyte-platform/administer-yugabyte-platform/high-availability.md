@@ -41,6 +41,12 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 - The YBA instances have the same login credentials.
 
+{{< tip title="Getting the API key for the standby" >}}
+
+If you are using the API to configure HA, obtain your API key for the standby instance before setting up HA. After HA is configured, you can only obtain an API key using the API. For more information, see [Authentication](../../anywhere-automation/#authentication).
+
+{{< /tip >}}
+
 ## Configure active and standby instances
 
 To set up HA, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
@@ -143,7 +149,7 @@ For example, if your metrics retention is 14 days on your active instance, and y
 
 After HA is operational, you should enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add Certificate Authority (CA) certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/). This allows a standby to connect to the active instance if the standby is promoted to active status.
+1. Gather the Certificate Authority (CA) certificates for the active instance, and for all standby instances.
 
     **Automatically generated CA certificates**
 
@@ -158,6 +164,10 @@ After HA is operational, you should enable certificate validation to improve sec
     **Custom CA certificates**
 
     If YBA was set up to use a custom server certificate, locate the corresponding CA certificate. Ensure the CA certificate includes the full chain (root and intermediate).
+
+1. On the active instance, [add the certificates you collected to the trust store](../../security/enable-encryption-in-transit/trust-store/).
+
+    This allows a standby to connect to the active instance if the standby is promoted to active status.
 
 1. On the active instance, navigate to **Admin > High Availability > Replication Configuration**, click **Actions**, and choose **Enable Certificate Validation**.
 

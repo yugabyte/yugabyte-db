@@ -36,6 +36,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/background_error.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -60,6 +61,10 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+namespace yb {
+class Cgroup;
+}  // namespace yb
+
 namespace rocksdb {
 
 class MemTable;
@@ -73,13 +78,6 @@ class FileNumbersProvider;
 struct JobContext;
 struct ExternalSstFileInfo;
 struct RocksDBPriorityThreadPoolMetrics;
-
-namespace internal {
-
-constexpr int kTopDiskCompactionPriority = 100;
-constexpr int kShuttingDownPriority = 200;
-
-} // namespace internal
 
 class DBImpl : public DB {
  public:
@@ -208,6 +206,7 @@ class DBImpl : public DB {
                        ColumnFamilyHandle* column_family) override;
   using DB::WaitForFlush;
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override;
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override;
   virtual Status SyncWAL() override;
 
   virtual SequenceNumber GetLatestSequenceNumber() const override;
@@ -233,18 +232,22 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
-  UserFrontierPtr GetFlushedFrontier() override;
+  yb::storage::UserFrontierPtr GetFlushedFrontier() override;
 
   Status ModifyFlushedFrontier(
-      UserFrontierPtr frontier,
+      yb::storage::UserFrontierPtr frontier,
       FrontierModificationMode mode) override;
 
   FlushAbility GetFlushAbility() override;
 
-  UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
+  yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
+      yb::storage::UpdateUserValueType type) override;
 
   // Calculates specified frontier_type for all mem tables (active and immutable).
-  UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType frontier_type) override;
+  yb::storage::UserFrontierPtr CalcMemTableFrontier(
+      yb::storage::UpdateUserValueType frontier_type) override;
+
+  UserFrontierRange CalcMemTableFrontiers() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -499,10 +502,10 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   Status Import(const std::string& source_dir) override;
 
-  bool AreWritesStopped();
+  bool AreWritesStopped() override;
   bool NeedsDelay() override;
 
-  Result<std::string> GetMiddleKey() override;
+  Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
@@ -521,6 +524,11 @@ class DBImpl : public DB {
       CompactionFileExcluderPtr exclude_from_compaction) {
     return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
   }
+
+  DBOptions& TEST_db_options() { return const_cast<DBOptions&>(db_options_); }
+
+  void SetTaskCgroup(yb::Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  yb::Cgroup* task_cgroup() const { return task_cgroup_; }
 
  protected:
   Env* const env_;
@@ -973,7 +981,7 @@ class DBImpl : public DB {
   };
 
   // Have we encountered a background error in paranoid mode?
-  Status bg_error_;
+  BackgroundError bg_error_;
 
   // shall we disable deletion of obsolete files
   // if 0 the deletion is enabled.
@@ -1087,6 +1095,8 @@ class DBImpl : public DB {
   bool ShouldntRunManualCompaction(ManualCompaction* m);
   bool HaveManualCompaction(ColumnFamilyData* cfd);
   bool MCOverlap(ManualCompaction* m, ManualCompaction* m1);
+
+  [[maybe_unused]] yb::Cgroup* task_cgroup_ = nullptr;
 };
 
 // Sanitize db options.  The caller should delete result.info_log if

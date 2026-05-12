@@ -178,7 +178,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> options =
-        universeCRUDHandler.getUpdateOptions(taskParams, taskParams.clusterOperation);
+        UniverseCRUDHandler.getUpdateOptions(taskParams, taskParams.clusterOperation);
     auditService()
         .createAuditEntryWithReqBody(
             request,

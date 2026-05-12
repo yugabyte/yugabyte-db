@@ -41,8 +41,22 @@
 
 namespace yb::docdb {
 
+namespace {
+
+template <class HT>
+std::string HandleWriteTime(
+    const std::string& prefix, const HT& ht, IncludeWriteTime include_write_time) {
+  if (!include_write_time) {
+    return prefix;
+  }
+  return prefix + " " + AsString(ht);
+}
+
+} // namespace
+
 Result<std::string> DocDBKeyToDebugStr(
-    Slice key_slice, StorageDbType db_type, dockv::HybridTimeRequired ht_required) {
+    Slice key_slice, StorageDbType db_type, dockv::HybridTimeRequired ht_required,
+    IncludeWriteTime include_write_time) {
   auto key_type = GetKeyType(key_slice, db_type);
   dockv::SubDocKey subdoc_key;
   switch (key_type) {
@@ -50,8 +64,10 @@ Result<std::string> DocDBKeyToDebugStr(
       auto decoded_intent_key = VERIFY_RESULT(dockv::DecodeIntentKey(key_slice));
       RETURN_NOT_OK(
           subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(decoded_intent_key.intent_prefix));
-      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue) + " " +
-             ToString(decoded_intent_key.intent_types) + " " + decoded_intent_key.doc_ht.ToString();
+      return HandleWriteTime(
+          subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue) + " " +
+              ToString(decoded_intent_key.intent_types),
+          decoded_intent_key.doc_ht, include_write_time);
     }
     case KeyType::kReverseTxnKey: {
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
@@ -59,7 +75,7 @@ Result<std::string> DocDBKeyToDebugStr(
       auto doc_ht = VERIFY_RESULT_PREPEND(
           dockv::DecodeInvertedDocHt(key_slice),
           Format("Reverse txn record for: $0", transaction_id));
-      return Format("TXN REV $0 $1", transaction_id, doc_ht);
+      return HandleWriteTime(Format("TXN REV $0", transaction_id), doc_ht, include_write_time);
     }
     case KeyType::kTransactionMetadata:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
@@ -73,14 +89,15 @@ Result<std::string> DocDBKeyToDebugStr(
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFrom(key_slice, ht_required),
           "Error: failed decoding SubDocKey " + FormatSliceAsStr(key_slice));
-      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue);
+      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue, include_write_time);
     case KeyType::kExternalIntents: {
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kExternalTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
           dockv::DecodeInvertedDocHt(key_slice),
           Format("External txn record for: $0", transaction_id));
-      return Format("TXN EXT $0 $1", transaction_id, doc_hybrid_time);
+      return  HandleWriteTime(
+          Format("TXN EXT $0", transaction_id), doc_hybrid_time, include_write_time);
     }
     case KeyType::kApplyState:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionApplyState));
@@ -94,43 +111,6 @@ Result<std::string> DocDBKeyToDebugStr(
 namespace {
 
 using PackingInfoPtr = std::shared_ptr<const dockv::SchemaPacking>;
-using PackedRowToPackingInfoPtrFunc = std::function<Result<PackingInfoPtr>(Slice* packed_row)>;
-
-Result<PackedRowToPackingInfoPtrFunc> GetPackedRowToPackingInfoPtrFunc(
-    const Slice& key, KeyType key_type,
-    SchemaPackingProvider* schema_packing_provider /*null ok*/) {
-  // Extract cotable_id and/or colocation_id from key if present.
-  Uuid cotable_id = Uuid::Nil();
-  ColocationId colocation_id = kColocationIdNotSet;
-  if (key_type == KeyType::kPlainSubDocKey || key_type == KeyType::kIntentKey) {
-    dockv::SubDocKey subdoc_key;
-    RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
-    auto& doc_key = subdoc_key.doc_key();
-    if (doc_key.has_cotable_id()) {
-      cotable_id = doc_key.cotable_id();
-    }
-    colocation_id = doc_key.colocation_id();
-  }
-
-  // We are done processing the key, now wait for the value.
-  return [schema_packing_provider, cotable_id,
-          colocation_id](Slice* packed_row) -> Result<PackingInfoPtr> {
-    auto schema_version =
-        narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(packed_row)));
-    if (!schema_packing_provider) {
-      return STATUS(NotFound, "No packing information available");
-    }
-    CompactionSchemaInfo compaction_schema_info;
-    if (colocation_id != kColocationIdNotSet) {
-      compaction_schema_info = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
-          colocation_id, schema_version, HybridTime::kMax));
-    } else {
-      compaction_schema_info = VERIFY_RESULT(
-          schema_packing_provider->CotablePacking(cotable_id, schema_version, HybridTime::kMax));
-    }
-    return compaction_schema_info.schema_packing;
-  };
-}
 
 Result<dockv::ValueControlFields> DecodeValueControlFields(dockv::PackedValueV1* value) {
   return dockv::ValueControlFields::Decode(&**value);
@@ -167,11 +147,51 @@ Result<std::string> PackedRowToString(const dockv::SchemaPacking& packing, Slice
   return result;
 }
 
+Result<std::string> RenderPackedRow(
+    KeyType key_type, Slice key, Slice value,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/) {
+  auto version = dockv::GetPackedRowVersion(dockv::DecodeValueEntryType(value.consume_byte()));
+  DCHECK(version.has_value());
+  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
+  if (!schema_packing_provider) {
+    return Format("PACKED_ROW_$0[$1]($2)",
+                  AsString(version).substr(1), schema_version, value.ToDebugHexString());
+  }
+
+  // Extract cotable_id and/or colocation_id from key if present.
+  Uuid cotable_id = Uuid::Nil();
+  ColocationId colocation_id = kColocationIdNotSet;
+  if (key_type == KeyType::kPlainSubDocKey || key_type == KeyType::kIntentKey) {
+    dockv::SubDocKey subdoc_key;
+    RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
+    auto& doc_key = subdoc_key.doc_key();
+    if (doc_key.has_cotable_id()) {
+      cotable_id = doc_key.cotable_id();
+    }
+    colocation_id = doc_key.colocation_id();
+  }
+
+  CompactionSchemaInfo compaction_schema_info;
+  if (colocation_id != kColocationIdNotSet) {
+    compaction_schema_info = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
+        colocation_id, schema_version, HybridTime::kMax));
+  } else {
+    compaction_schema_info = VERIFY_RESULT(
+        schema_packing_provider->CotablePacking(cotable_id, schema_version, HybridTime::kMax));
+  }
+  const auto& packing = *compaction_schema_info.schema_packing;
+  switch (*version) {
+    case dockv::PackedRowVersion::kV1:
+      return PackedRowToString<dockv::PackedRowDecoderV1>(packing, value);
+    case dockv::PackedRowVersion::kV2:
+      return PackedRowToString<dockv::PackedRowDecoderV2>(packing, value);
+  }
+  FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *version);
+}
+
 Result<std::string> DocDBValueToDebugStrInternal(
     KeyType key_type, Slice key, Slice value_slice,
     SchemaPackingProvider* schema_packing_provider /*null ok*/) {
-  auto packed_row_to_packing_info_func =
-      VERIFY_RESULT(GetPackedRowToPackingInfoPtrFunc(key, key_type, schema_packing_provider));
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(dockv::DecodeTransactionIdFromIntentValue(&value_slice));
@@ -203,20 +223,10 @@ Result<std::string> DocDBValueToDebugStrInternal(
           Format("Error: failed to decode value $0", prefix));
       return prefix + v.ToString();
     } else {
-      value_slice.consume_byte();
-      auto packing = VERIFY_RESULT(packed_row_to_packing_info_func(&value_slice));
-      switch (*packed_row_version) {
-        case dockv::PackedRowVersion::kV1:
-          prefix += VERIFY_RESULT(PackedRowToString<dockv::PackedRowDecoderV1>(
-              *packing, value_slice));
-          break;
-        case dockv::PackedRowVersion::kV2:
-          prefix += VERIFY_RESULT(PackedRowToString<dockv::PackedRowDecoderV2>(
-              *packing, value_slice));
-          break;
-      }
-      prefix += control_fields.ToString();
-      return prefix;
+      return
+          prefix +
+          VERIFY_RESULT(RenderPackedRow(key_type, key, value_slice, schema_packing_provider)) +
+          control_fields.ToString();
     }
   } else {
     return prefix + "none";

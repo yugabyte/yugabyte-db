@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import io.ebean.Expr;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -344,6 +345,9 @@ public class CustomerTask extends Model {
     @EnumValue("ModifyMetricsExportConfig")
     ModifyMetricsExportConfig,
 
+    @EnumValue("ConfigureExportTelemetryConfig")
+    ConfigureExportTelemetryConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -392,6 +396,9 @@ public class CustomerTask extends Model {
     @EnumValue("Install")
     Install,
 
+    @EnumValue("ProvisionUniverseNodes")
+    ProvisionUniverseNodes,
+
     @EnumValue("MasterFailover")
     MasterFailover,
 
@@ -434,8 +441,14 @@ public class CustomerTask extends Model {
     @EnumValue("KubernetesToggleImmutableYbc")
     KubernetesToggleImmutableYbc,
 
-    @EnumValue("OperatorImportUniverse")
-    OperatorImportUniverse;
+    @EnumValue("OperatorImport")
+    OperatorImport,
+
+    @EnumValue("RegisterWithPACollector")
+    RegisterWithPACollector,
+
+    @EnumValue("UnregisterFromPACollector")
+    UnregisterFromPACollector;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -581,6 +594,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Modified metrics export config for"
               : "Modifying metrics export config for";
+        case ConfigureExportTelemetryConfig:
+          return completed
+              ? "Configured export telemetry config for"
+              : "Configuring export telemetry config for";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:
@@ -616,6 +633,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case ProvisionUniverseNodes:
+          return completed ? "Provisioned Universe Nodes" : "Provisioning Universe Nodes";
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         case MasterFailover:
@@ -642,8 +661,14 @@ public class CustomerTask extends Model {
           return completed ? "Migrated universe" : "Migrating universe";
         case KubernetesToggleImmutableYbc:
           return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
-        case OperatorImportUniverse:
+        case OperatorImport:
           return completed ? "Imported universe to Operator" : "Importing universe to Operator";
+        case RegisterWithPACollector:
+          return completed
+              ? "Updated PA Collector registration for"
+              : "Updating PA Collector registration for";
+        case UnregisterFromPACollector:
+          return completed ? "Disabled PA Collector for" : "Disabling PA Collector for";
         default:
           return null;
       }
@@ -1085,5 +1110,17 @@ public class CustomerTask extends Model {
       }
     }
     return true;
+  }
+
+  public static List<CustomerTask> findByTargetUUIDsAndTypesSince(
+      List<UUID> targetUUIDs, TargetType targetType, List<TaskType> taskTypes, Date since) {
+    return find.query()
+        .where()
+        .in("target_uuid", targetUUIDs)
+        .eq("target_type", targetType)
+        .in("type", taskTypes)
+        .or(Expr.ge("completion_time", since), Expr.ge("create_time", since))
+        .orderBy("completion_time desc")
+        .findList();
   }
 }

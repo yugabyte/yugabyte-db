@@ -40,6 +40,9 @@ DECLARE_bool(ysql_yb_enable_ash);
 #define SET_WAIT_STATUS(code) \
   SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
+#define SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot) \
+  SET_WAIT_STATUS_TO_CODE(snapshot.wait_state, snapshot.code)
+
 #define ADOPT_WAIT_STATE(ptr) \
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
@@ -135,6 +138,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kIndexWrite)
     (kTableWrite)
     (kWaitingOnTServer)
+    (kTransactionCommit)
+    (kTransactionTerminate)
+    (kTransactionRollbackToSavepoint)
+    (kTransactionCancel)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
@@ -165,6 +172,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_CleanupSnapshotDir)
     (kSnapshot_RestoreCheckpoint)
     (kXCluster_WaitingForGetChanges)
+    (kBackfillIndex_WaitToBackfillTablet)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -218,6 +226,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForYcqlAuthResponseRequest, 10))
   ((kQueryIdForWalsender, 11))
   ((kQueryIdForXCluster, 12))
+  ((kQueryIdForMinRunningHybridTime, 13))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -248,6 +257,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetLockStatus)
   (kGetReplicationSlot)
   (kListLiveTabletServers)
+  (kListSlotEntries)
   (kListReplicationSlots)
   (kGetIndexBackfillProgress)
   (kOpenTable)
@@ -289,6 +299,11 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
   (kGetXClusterRole)
+  (kGetYbSystemTableInfo)
+  (kReleaseSessionObjectLock)
+  (kQueryAutoAnalyze)
+  (kGetTabletForKey)
+  (kRemotePgExec)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)
@@ -315,6 +330,7 @@ struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid top_level_node_id = Uuid::Nil();
   uint64_t query_id = 0;
+  uint64_t plan_id = 0;
   pid_t pid = 0;
   uint32_t database_id = 0;
   uint32_t user_id = 0;
@@ -336,6 +352,9 @@ struct AshMetadata {
     }
     if (other.query_id != 0) {
       query_id = other.query_id;
+    }
+    if (other.plan_id != 0) {
+      plan_id = other.plan_id;
     }
     if (other.pid != 0) {
       pid = other.pid;
@@ -390,6 +409,11 @@ struct AshMetadata {
     } else {
       pb->clear_query_id();
     }
+    if (plan_id != 0) {
+      pb->set_plan_id(plan_id);
+    } else {
+      pb->clear_plan_id();
+    }
     if (pid != 0) {
       pb->set_pid(pid);
     } else {
@@ -441,15 +465,16 @@ struct AshMetadata {
       }
     }
     return AshMetadata{
-        root_request_id,                       // root_request_id
-        top_level_node_id,                     // top_level_node_id
-        pb.query_id(),                         // query_id
-        pb.pid(),                              // pid
-        pb.database_id(),                      // database_id
-        pb.user_id(),                          // user_id
-        pb.rpc_request_id(),                   // rpc_request_id
-        HostPortFromPB(pb.client_host_port()), // client_host_port
-        static_cast<uint8_t>(pb.addr_family()) // addr_family
+        root_request_id,                        // root_request_id
+        top_level_node_id,                      // top_level_node_id
+        pb.query_id(),                          // query_id
+        pb.plan_id(),                           // plan_id
+        pb.pid(),                               // pid
+        pb.database_id(),                       // database_id
+        pb.user_id(),                           // user_id
+        pb.rpc_request_id(),                    // rpc_request_id
+        HostPortFromPB(pb.client_host_port()),  // client_host_port
+        static_cast<uint8_t>(pb.addr_family()), // addr_family
     };
   }
 };
@@ -499,8 +524,8 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
-  void UpdateTabletId(const TabletId& tablet_id);
-  static void UpdateCurrentTabletId(const TabletId& tablet_id);
+  void UpdateTabletId(TabletIdView tablet_id);
+  static void UpdateCurrentTabletId(TabletIdView tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {
@@ -639,10 +664,20 @@ class WaitStateTracker {
   std::unordered_set<yb::ash::WaitStateInfoPtr> entries_ GUARDED_BY(mutex_);
 };
 
+struct WaitStateSnapshot {
+  WaitStateSnapshot()
+      : wait_state(WaitStateInfo::CurrentWaitState()),
+        code(wait_state ? wait_state->code() : WaitStateCode::kIdle) {}
+
+  const WaitStateInfoPtr wait_state;
+  const WaitStateCode code;
+};
+
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& XClusterPollerTracker();
+WaitStateTracker& MinRunningHybridTimeTracker();
 
 }  // namespace yb::ash

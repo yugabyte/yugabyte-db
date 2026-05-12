@@ -30,7 +30,7 @@
 #include "yb/dockv/packed_row.h"
 
 #include "yb/tserver/xcluster_write_interface.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
@@ -106,27 +106,30 @@ Status UpdatePackedRow(
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state, SubTransactionId subtransaction_id,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
-    docdb::KeyValuePairPB* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
+    Slice delete_vector_ids,
+    docdb::KeyValuePairMsg* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
     const cdc::XClusterSchemaVersionMap& schema_versions_map) {
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
         const Uuid& involved_tablet,
         const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>* pairs,
-        const cdc::XClusterSchemaVersionMap& schema_versions_map, docdb::KeyValuePairPB* out,
-        std::unordered_set<SchemaVersion>& used_packed_schema_versions)
+        const cdc::XClusterSchemaVersionMap& schema_versions_map, docdb::KeyValuePairMsg* out,
+        std::unordered_set<SchemaVersion>& used_packed_schema_versions,
+        Slice delete_vector_ids)
         : involved_tablet_(involved_tablet),
           pairs_(*pairs),
           schema_versions_map_(schema_versions_map),
           used_packed_schema_versions_(used_packed_schema_versions),
+          delete_vector_ids_(delete_vector_ids),
           out_(out) {}
 
     void SetKey(const Slice& slice) override {
-      out_->set_key(slice.cdata(), slice.size());
+      out_->dup_key(slice);
     }
 
     void SetValue(const Slice& slice) override {
-      out_->set_value(slice.cdata(), slice.size());
+      out_->ref_value(out_->arena().CatSlices(slice, delete_vector_ids_));
     }
 
     const Uuid& InvolvedTablet() override {
@@ -165,7 +168,8 @@ Status CombineExternalIntents(
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     const cdc::XClusterSchemaVersionMap& schema_versions_map_;
     std::unordered_set<SchemaVersion>& used_packed_schema_versions_;
-    docdb::KeyValuePairPB* out_;
+    Slice delete_vector_ids_;
+    docdb::KeyValuePairMsg* out_;
     int next_idx_ = 0;
     ValueBuffer updated_value;
     Status status = Status::OK();
@@ -175,7 +179,9 @@ Status CombineExternalIntents(
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
   auto source_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
-  Provider provider(source_tablet, &pairs, schema_versions_map, out, used_packed_schema_versions);
+  Provider provider(
+      source_tablet, &pairs, schema_versions_map, out, used_packed_schema_versions,
+      delete_vector_ids);
   docdb::CombineExternalIntents(txn_id, subtransaction_id, &provider);
   return provider.GetOutcome();
 }
@@ -183,10 +189,10 @@ Status CombineExternalIntents(
 Status AddRecord(
     const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record,
     std::unordered_set<SchemaVersion>& used_packed_schema_versions,
-    docdb::KeyValueWriteBatchPB* write_batch) {
+    docdb::KeyValueWriteBatchMsg* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {
     auto* apply_txn = write_batch->mutable_apply_external_transactions()->Add();
-    apply_txn->set_transaction_id(record.transaction_state().transaction_id());
+    apply_txn->dup_transaction_id(record.transaction_state().transaction_id());
     auto aborted_subtransactions =
         VERIFY_RESULT(SubtxnSet::FromPB(record.transaction_state().aborted().set()));
     aborted_subtransactions.ToPB(apply_txn->mutable_aborted_subtransactions()->mutable_set());
@@ -201,14 +207,14 @@ Status AddRecord(
     // still on an older version.
     if (FLAGS_xcluster_use_encoded_key_filter &&
         (record.has_encoded_start_key() || record.has_encoded_end_key())) {
-      apply_txn->set_filter_start_key(record.encoded_start_key());
-      apply_txn->set_filter_end_key(record.encoded_end_key());
+      apply_txn->dup_filter_start_key(record.encoded_start_key());
+      apply_txn->dup_filter_end_key(record.encoded_end_key());
       apply_txn->set_filter_range_encoded(true);
     } else {
       // (DEPRECATE_EOL 2.27) If the producer has yet to upgrade, we will not have the encoded keys.
       // Fallback to the old behavior which only works for hash partitioned tables.
-      apply_txn->set_filter_start_key(record.partition().partition_key_start());
-      apply_txn->set_filter_end_key(record.partition().partition_key_end());
+      apply_txn->dup_filter_start_key(record.partition().partition_key_start());
+      apply_txn->dup_filter_end_key(record.partition().partition_key_end());
       apply_txn->set_filter_range_encoded(false);
     }
 
@@ -217,16 +223,20 @@ Status AddRecord(
 
   if (record.has_transaction_state()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
+    Slice delete_vector_ids;
+    if (record.has_delete_vector_ids()) {
+      delete_vector_ids = Slice(record.delete_vector_ids());
+    }
     return CombineExternalIntents(
         record.transaction_state(),
         record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
-        record.changes(), write_pair, used_packed_schema_versions,
+        record.changes(), delete_vector_ids, write_pair, used_packed_schema_versions,
         process_record_info.schema_versions_map);
   }
 
   for (const auto& kv_pair : record.changes()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
-    write_pair->set_key(kv_pair.key());
+    write_pair->dup_key(kv_pair.key());
 
     // Update value with local schema version before writing it out.
     Slice key(kv_pair.key());
@@ -236,8 +246,7 @@ Status AddRecord(
     RETURN_NOT_OK(UpdatePackedRow(
         key, value, process_record_info.schema_versions_map, new_schema_version, &updated_value));
 
-    const Slice& updated_value_slice = updated_value.AsSlice();
-    write_pair->set_value(updated_value_slice.cdata(), updated_value_slice.size());
+    write_pair->dup_value(updated_value.AsSlice());
 
     if (PREDICT_FALSE(FLAGS_TEST_xcluster_write_hybrid_time)) {
       // Used only for testing external hybrid time.
@@ -262,13 +271,13 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
     const auto& tablet_id = process_record_info.tablet_id;
-    docdb::KeyValueWriteBatchPB* write_batch = nullptr;
+    docdb::KeyValueWriteBatchMsg* write_batch = nullptr;
     // Finally, handle records to be applied to both regular and intents db.
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
       // Create a write request for tablet.
-      auto write_request = std::make_unique<WriteRequestPB>();
-      write_request->set_tablet_id(tablet_id);
+      auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
+      write_request->dup_tablet_id(tablet_id);
       write_request->set_external_hybrid_time(record.time());
       write_batch = write_request->mutable_write_batch();
 
@@ -282,12 +291,13 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
         used_packed_schema_versions_[process_record_info.colocation_id], write_batch);
   }
 
-  std::unique_ptr<WriteRequestPB> FetchNextRequest() override {
+  std::shared_ptr<WriteRequestMsg> FetchNextRequest() override {
     if (records_.empty()) {
       return nullptr;
     }
-    auto next_req = std::move(records_.begin()->second);
-    records_.erase(next_req->tablet_id());
+    auto it = records_.begin();
+    auto next_req = std::move(it->second);
+    records_.erase(it);
 
     for (const auto& [colocation_id, used_packed_schema_versions] : used_packed_schema_versions_) {
       if (used_packed_schema_versions.empty()) {
@@ -296,7 +306,7 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
       auto used_schema_versions =
           next_req->mutable_write_batch()->add_xcluster_used_schema_versions();
       used_schema_versions->set_colocation_id(colocation_id);
-      used_schema_versions->mutable_schema_versions()->Assign(
+      used_schema_versions->mutable_schema_versions()->assign(
           used_packed_schema_versions.begin(), used_packed_schema_versions.end());
     }
     return next_req;
@@ -305,7 +315,7 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
  private:
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
-  std::unordered_map<TabletId, std::unique_ptr<WriteRequestPB>> records_;
+  UnorderedStringMap<TabletId, std::shared_ptr<WriteRequestMsg>> records_;
 
   // Keep track of the packed schema versions used.
   // kColocationIdNotSet is used for non-colocated tables.

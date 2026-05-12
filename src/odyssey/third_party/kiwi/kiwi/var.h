@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -83,20 +82,6 @@ static const char *avoid_enquote_guc_list[] = {
 
 static const int avoid_enquote_guc_list_sz = sizeof(avoid_enquote_guc_list)/sizeof(char *);
 
-static inline char* yb_lowercase_str(const char *str)
-{
-	if (str == NULL)
-		return NULL;
-
-	char *lower_str = malloc(strlen(str) + 1);
-	for (int i = 0; str[i]; i++)
-		lower_str[i] = tolower((unsigned char)str[i]);
-    
-	// Null-terminate the new string
-	lower_str[strlen(str)] = '\0';
-	return lower_str;
-}
-
 static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -105,11 +90,8 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 #else
 	if (name_len == 0)
 		var->name[0] = '\0';
-	else {
-		char *yb_lowercase_name = yb_lowercase_str(name);
-		memcpy(var->name, yb_lowercase_name, name_len);
-		free(yb_lowercase_name);
-	}
+	else
+		memcpy(var->name, name, name_len);
 #endif
 	var->name_len = name_len;
 	var->value_len = 0;
@@ -165,8 +147,8 @@ static inline kiwi_var_t *kiwi_vars_get(kiwi_vars_t *vars, kiwi_var_type_t type)
 #else
 
 /* Dynamically allocate a new GUC variable. */
-static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len, char *value,
-	int value_len)
+static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
+				    char *value, int value_len)
 {
 	vars->size++;
 	if (vars->size == 1)
@@ -176,13 +158,7 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
-	if (name_len == sizeof("TimeZone") && strcmp(name, "TimeZone") == 0)
-		memcpy(var->name, name, name_len);
-	else {
-		char *yb_lowercase_name = yb_lowercase_str(name);
-		memcpy(var->name, yb_lowercase_name, name_len);
-		free(yb_lowercase_name);
-	}
+	memcpy(var->name, name, name_len);
 
 	var->name_len = name_len;
 	memcpy(var->value, value, value_len);
@@ -204,22 +180,16 @@ static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 	if (vars->size == 0)
 		return NULL;
 
-	char *yb_lowercase_name = yb_lowercase_str(name);
 	for (int i = 0; i < vars->size; i++) {
-		char *yb_lowercase_var_name = yb_lowercase_str(vars->vars[i].name);
-		if (strcmp(yb_lowercase_var_name, yb_lowercase_name) == 0) {
-			free(yb_lowercase_var_name);
-			free(yb_lowercase_name);
+		if (strcmp(vars->vars[i].name, name) == 0)
 			return &vars->vars[i];
-		}
-		free(yb_lowercase_var_name);
 	}
-	free(yb_lowercase_name);
 	return NULL;
 }
 #endif
 
-static inline void kiwi_vars_init(kiwi_vars_t *vars)
+static inline void kiwi_vars_init(kiwi_vars_t *vars,
+				  bool add_compute_query_id_vars)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_init(&vars->vars[KIWI_VAR_CLIENT_ENCODING], "client_encoding",
@@ -272,24 +242,34 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 #else
 	vars->size = 0;
 	vars->vars = NULL;
-	/*
-	 * YB: Important: Set 'pg_hint_plan.enable_hint_table' before 'compute_query_id'
-	 * in the deploy phase.
-	 * These GUCs are not commutative in effect. Setting 'compute_query_id' to OFF
-	 * before enabling 'pg_hint_plan.enable_hint_table' leads to a failure, as the
-	 * hint plan GUC requires 'compute_query_id' to be ON during its validation.
-	 *
-	 * Although reversing the order (enabling hint_table first, then disabling compute_query_id)
-	 * may succeed with a warning, any subsequent usage of pg_hint_plan features will still
-	 * fail due to 'compute_query_id' being OFF.
-	 *
-	 * To avoid such issues during the deploy phase in the connection manager,
-	 * we enforce this safe order of setting GUCs here.
-	 */
-	yb_kiwi_var_push(vars, "pg_hint_plan.enable_hint_table", 31,
-				"off", 4);
-	yb_kiwi_var_push(vars, "compute_query_id", 17,
-				"auto", 5);
+	if (add_compute_query_id_vars) {
+		/*
+		 * YB: Important: Set 'pg_hint_plan.enable_hint_table' before 'compute_query_id'
+		 * in the deploy phase.
+		 * These GUCs are not commutative in effect. Setting 'compute_query_id' to OFF
+		 * before enabling 'pg_hint_plan.enable_hint_table' leads to a failure, as the
+		 * hint plan GUC requires 'compute_query_id' to be ON during its validation.
+		 *
+		 * Although reversing the order (enabling hint_table first, then disabling compute_query_id)
+		 * may succeed with a warning, any subsequent usage of pg_hint_plan features will still
+		 * fail due to 'compute_query_id' being OFF.
+		 *
+		 * To avoid such issues during the deploy phase in the connection manager,
+		 * we enforce this safe order of setting GUCs here.
+		 */
+		yb_kiwi_var_push(vars, "pg_hint_plan.enable_hint_table", 31,
+				 "off", 4);
+		yb_kiwi_var_push(vars, "compute_query_id", 17, "auto", 5);
+	}
+#endif
+}
+
+static inline void yb_kiwi_vars_free(kiwi_vars_t *vars)
+{
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	free(vars->vars);
+	vars->vars = NULL;
+	vars->size = 0;
 #endif
 }
 
@@ -345,8 +325,39 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	return 0;
 }
 
+static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
+						 int name_len)
+{
+	/* We don't support removing vars with YB_GUC_SUPPORT_VIA_SHMEM */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	if (vars->size == 0)
+		return;
+
+	int idx_to_remove = -1;
+	for (int i = 0; i < vars->size; i++) {
+		if (vars->vars[i].name_len == name_len &&
+		    strcmp(vars->vars[i].name, name) == 0) {
+			idx_to_remove = i;
+			break;
+		}
+	}
+
+	/* not found, just return */
+	if (idx_to_remove == -1)
+		return;
+
+	/* Shift elements to the left to fill the gap we have created */
+	for (int i = idx_to_remove; i + 1 < vars->size; i++) {
+		vars->vars[i] = vars->vars[i + 1];
+	}
+	vars->size--;
+	vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
+#endif
+}
+
 static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
-				   int name_len, char *value, int value_len)
+						 int name_len, char *value,
+						 int value_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
@@ -387,6 +398,10 @@ static inline int kiwi_vars_update_both(kiwi_vars_t *a, kiwi_vars_t *b,
 static inline int kiwi_vars_override(kiwi_vars_t *vars,
 				     kiwi_vars_t *override_vars)
 {
+	/*
+	 * YB Note: This is not expected to be called, we don't support reading
+	 * options from config file right now
+	 */
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type = 0;
 	for (; type < KIWI_VAR_MAX; type++) {
@@ -400,8 +415,10 @@ static inline int kiwi_vars_override(kiwi_vars_t *vars,
 		if (!override_vars->vars[i].value_len)
 			continue;
 
-		kiwi_vars_update(vars, override_vars->vars[i].name,override_vars->vars[i].name_len,
-			override_vars->vars[i].value, override_vars->vars[i].value_len);
+		kiwi_vars_update(vars, override_vars->vars[i].name,
+				 override_vars->vars[i].name_len,
+				 override_vars->vars[i].value,
+				 override_vars->vars[i].value_len);
 	}
 #endif
 	return 0;
@@ -441,21 +458,32 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 }
 
 /*
+ * YB: Return true if vars1 is a superset of vars2
+ */
+static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2)
+{
+	kiwi_var_t *var2;
+	for (int i = 0; i < vars2->size; i++) {
+		var2 = &vars2->vars[i];
+		kiwi_var_t *var1;
+		var1 = yb_kiwi_vars_get(vars1, var2->name);
+		if (!kiwi_var_compare(var1, var2))
+			return 0;
+	}
+	return 1;
+}
+
+/*
  * YB: Compare server state to client state to check for the need of the
  * reset phase. If no difference found, return 0 to signify no need of reset.
  */
-static inline int yb_check_reset_needed(kiwi_vars_t *client, kiwi_vars_t *server)
+static inline int yb_check_reset_needed(kiwi_vars_t *client_startup_vars,
+					kiwi_vars_t *client_session_vars,
+					kiwi_vars_t *server_default_vars,
+					kiwi_vars_t *server_session_vars)
 {
-	int pos = 0;
-	kiwi_var_t *server_var;
-	for (int i = 0; i < server->size; i++) {
-		server_var = &server->vars[i];
-		kiwi_var_t *client_var;
-		client_var = yb_kiwi_vars_get(client, server_var->name);
-		if (!kiwi_var_compare(client_var, server_var))
-			return 1;
-	}
-	return 0;
+	return !(yb_check_is_superset(client_startup_vars, server_default_vars) &&
+		 yb_check_is_superset(client_session_vars, server_session_vars));
 }
 
 static inline bool yb_only_white_space(char *value)
@@ -468,9 +496,64 @@ static inline bool yb_only_white_space(char *value)
 	return true;
 }
 
-__attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
-						     kiwi_vars_t *server,
-						     char *query, int query_len)
+__attribute__((hot)) static inline int
+yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
+{
+	/* SET key=quoted_value; */
+	int size = 4 + (var->name_len - 1) + 1;
+	if (query_len < pos + size)
+		return -1;
+	memcpy(query + pos, "SET ", 4);
+	pos += 4;
+	memcpy(query + pos, var->name, var->name_len - 1);
+	pos += var->name_len - 1;
+	memcpy(query + pos, "=", 1);
+	pos += 1;
+
+	if (yb_is_avoid_enquoting_guc_var(var->name)) {
+		/*
+		 * YB: To avoid below deploy query string, replace the value of guc variable
+		 * with '' (empty single quotes) which is accepted in the postgres via SET stmt.
+		 * 1. var_name=; - It would lead to failure of deploy query.
+		 * 2. var_name=""; - PG will throw ERROR msg:
+		 * 			zero-length delimited identifier at or near """".
+		 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
+		 * 			which can also lead to deploy query failure.
+		*/
+		if (strlen(var->value) == 0 ||
+		    strcmp(var->value, "\"\"") == 0 ||
+		    yb_only_white_space(var->value)) {
+			memcpy(query + pos, "\'\'", 2);
+			if (query_len < pos + 2)
+				return -1;
+			pos += 2;
+		} else {
+			int copy_len = var->value_len - 1;
+			memcpy(query + pos, var->value, copy_len);
+			if (query_len < pos + copy_len)
+				return -1;
+			pos += copy_len;
+		}
+	} else {
+		int quote_len;
+		quote_len =
+			kiwi_enquote(var->value, query + pos, query_len - pos);
+		if (quote_len == -1)
+			return -1;
+		pos += quote_len;
+	}
+
+	if (query_len < pos + 1)
+		return -1;
+	memcpy(query + pos, ";", 1);
+	pos += 1;
+
+	return pos;
+}
+
+__attribute__((hot)) static inline int
+kiwi_vars_cas(kiwi_vars_t *client_session_vars,
+	      kiwi_vars_t *server_session_vars, char *query, int query_len)
 {
 	int pos = 0;
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -478,82 +561,31 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 	type = KIWI_VAR_CLIENT_ENCODING;
 	for (; type < KIWI_VAR_MAX; type++) {
 		kiwi_var_t *var;
-		var = kiwi_vars_of(client, type);
+		var = kiwi_vars_of(client_session_vars, type);
 		/* we do not support odyssey-to-backend compression yet */
 		if (var->type == KIWI_VAR_UNDEF ||
 		    var->type == KIWI_VAR_COMPRESSION)
 			continue;
 		kiwi_var_t *server_var;
-		server_var = kiwi_vars_of(server, type);
+		server_var = kiwi_vars_of(server_session_vars, type);
 #else
 	kiwi_var_t *var;
-	for (int i = 0; i < client->size; i++) {
-		var = &client->vars[i];
+	for (int i = 0; i < client_session_vars->size; i++) {
+		var = &client_session_vars->vars[i];
 		/* we do not support odyssey-to-backend compression yet */
 
 		if (strcmp(var->name, "compression") == 0)
 			continue;
 
 		kiwi_var_t *server_var;
-		server_var = yb_kiwi_vars_get(server, var->name);
+		server_var = yb_kiwi_vars_get(server_session_vars, var->name);
 #endif
 		if (kiwi_var_compare(var, server_var))
 			continue;
 
-		/* SET key=quoted_value; */
-		int size = 4 + (var->name_len - 1) + 1;
-		if (query_len < pos + size)
+		pos = yb_kiwi_add_var_to_query(var, query, pos, query_len);
+		if (pos == -1)
 			return -1;
-		memcpy(query + pos, "SET ", 4);
-		pos += 4;
-		memcpy(query + pos, var->name, var->name_len - 1);
-		pos += var->name_len - 1;
-		memcpy(query + pos, "=", 1);
-		pos += 1;
-
-		if (yb_is_avoid_enquoting_guc_var(var->name))
-		{
-			/*
-			 * YB: To avoid below deploy query string, replace the value of guc variable
-			 * with '' (empty single quotes) which is accepted in the postgres via SET stmt.
-			 * 1. var_name=; - It would lead to failure of deploy query.
-			 * 2. var_name=""; - PG will throw ERROR msg:
-			 * 			zero-length delimited identifier at or near """".
-			 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
-			 * 			which can also lead to deploy query failure.
-			*/
-			if (strlen(var->value) == 0 ||
-				strcmp(var->value, "\"\"") == 0 ||
-				yb_only_white_space(var->value))
-			{
-				memcpy(query + pos, "\'\'", 2);
-				if (query_len < pos + 2)
-					return -1;
-				pos += 2;
-			}
-			else
-			{
-				int copy_len = var->value_len - 1;
-				memcpy(query + pos, var->value, copy_len);
-				if (query_len < pos + copy_len)
-					return -1;
-				pos += copy_len;
-			}
-		}
-		else
-		{
-			int quote_len;
-			quote_len =
-				kiwi_enquote(var->value, query + pos, query_len - pos);
-			if (quote_len == -1)
-				return -1;
-			pos += quote_len;
-		}
-
-		if (query_len < pos + 1)
-			return -1;
-		memcpy(query + pos, ";", 1);
-		pos += 1;
 	}
 
 	return pos;

@@ -31,9 +31,6 @@ import org.springframework.util.CollectionUtils;
 @Slf4j
 public class CheckGlibc extends UniverseTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-  private final GFlagsValidation gFlagsValidation;
-
   private final int TIMEOUT = 30;
 
   @Inject
@@ -42,8 +39,6 @@ public class CheckGlibc extends UniverseTaskBase {
       NodeUniverseManager nodeUniverseManager,
       GFlagsValidation gFlagsValidation) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.gFlagsValidation = gFlagsValidation;
   }
 
   public static class Params extends UniverseTaskParams {

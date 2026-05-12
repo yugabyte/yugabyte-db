@@ -119,6 +119,10 @@ public class YbcBackupUtil {
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
+  public static final String YBDB_STABLE_STATS_DUMP_VERSION = "2025.2.2.0-b1";
+  public static final String YBDB_PREVIEW_STATS_DUMP_VERSION = "2.29.0.0-b1";
+  public static final String YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION = "2025.2.1.0-b1";
+  public static final String YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION = "2.29.0.0-b1";
 
   private final AutoFlagUtil autoFlagUtil;
   private final UniverseInfoHandler universeInfoHandler;
@@ -754,15 +758,27 @@ public class YbcBackupUtil {
       String prevCloudDir,
       Map<String, String> credsMap,
       String configType) {
-    CloudStoreSpec cloudStoreSpec =
+    return buildCloudStoreSpec(bucket, cloudDir, prevCloudDir, credsMap, configType, null);
+  }
+
+  public static CloudStoreSpec buildCloudStoreSpec(
+      String bucket,
+      String cloudDir,
+      String prevCloudDir,
+      Map<String, String> credsMap,
+      String configType,
+      @Nullable List<String> nfsVolumes) {
+    CloudStoreSpec.Builder builder =
         CloudStoreSpec.newBuilder()
             .putAllCreds(credsMap)
             .setBucket(bucket)
             .setCloudDir(cloudDir)
             .setPrevCloudDir(prevCloudDir)
-            .setType(getCloudType(configType))
-            .build();
-    return cloudStoreSpec;
+            .setType(getCloudType(configType));
+    if (CollectionUtils.isNotEmpty(nfsVolumes)) {
+      builder.addAllNfsVolumes(nfsVolumes);
+    }
+    return builder.build();
   }
 
   public double computePercentageComplete(Long completedOps, Long totalOps) {
@@ -829,6 +845,9 @@ public class YbcBackupUtil {
     if (proxyConfig != null) {
       cloudStoreConfigBuilder.setProxyConfig(proxyConfig);
     }
+    boolean immutableStorage =
+        ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
+    cloudStoreConfigBuilder.setSkipDeleteTest(immutableStorage);
     return cloudStoreConfigBuilder.build();
   }
 
@@ -851,7 +870,9 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    boolean immutableStorage =
+        ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
+    return getCloudStoreConfig(defaultSpec, null, pConfig, immutableStorage, false);
   }
 
   // TODO: Add per-region spec for in the next cut.
@@ -870,7 +891,7 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return getCloudStoreConfig(defaultSpec, null, pConfig, true, true);
   }
 
   public CloudStoreConfig createRestoreConfig(
@@ -898,7 +919,7 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, regionSpecMap, pConfig);
+    return getCloudStoreConfig(defaultSpec, regionSpecMap, pConfig, true, true);
   }
 
   public CloudStoreConfig createDsmConfig(
@@ -908,13 +929,15 @@ public class YbcBackupUtil {
     CloudStoreSpec defaultSpec =
         storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData, universe);
     ProxyConfig pConfig = storageUtil.createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return getCloudStoreConfig(defaultSpec, null, pConfig, true, true);
   }
 
   public static CloudStoreConfig getCloudStoreConfig(
       CloudStoreSpec defaultSpec,
       @Nullable Map<String, CloudStoreSpec> regionSpecMap,
-      @Nullable ProxyConfig proxyConfig) {
+      @Nullable ProxyConfig proxyConfig,
+      boolean skipDeleteTest,
+      boolean skipWriteTest) {
     CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
     csConfigBuilder.setDefaultSpec(defaultSpec);
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -923,6 +946,8 @@ public class YbcBackupUtil {
     if (proxyConfig != null) {
       csConfigBuilder.setProxyConfig(proxyConfig);
     }
+    csConfigBuilder.setSkipDeleteTest(skipDeleteTest);
+    csConfigBuilder.setSkipWriteTest(skipWriteTest);
     return csConfigBuilder.build();
   }
 
@@ -1114,7 +1139,33 @@ public class YbcBackupUtil {
         extendedArgsBuilder.setDumpRoleChecks(false); // DB does not support dump role checks flag.
       }
       // Set enable backups during DDL
-      extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION,
+              YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION,
+              true)
+          >= 0) {
+        extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
+      } else {
+        extendedArgsBuilder.setUseReadTimeYsqlDump(false);
+        log.debug(
+            "Setting backups_during_ddl to false as database version {} does not support it",
+            ybdbSoftwareVersion);
+      }
+      // Set dump stats
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_STATS_DUMP_VERSION,
+              YBDB_PREVIEW_STATS_DUMP_VERSION,
+              true)
+          >= 0) {
+        extendedArgsBuilder.setDumpStatistics(tableParams.getBackupStats());
+      } else {
+        extendedArgsBuilder.setDumpStatistics(false);
+        log.debug(
+            "Setting dump_statistics to false as database version {} does not support it",
+            ybdbSoftwareVersion);
+      }
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);

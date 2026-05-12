@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/pgbsonelement.h
+ * include/io/pgbsonelement.h
  *
  * The BSON element type declaration.
  *
@@ -35,6 +35,14 @@ bool TryGetSinglePgbsonElementFromBsonIterator(bson_iter_t *iterator,
 void BsonValueToPgbsonElement(const bson_value_t *value, pgbsonelement *element);
 bool TryGetBsonValueToPgbsonElement(const bson_value_t *value, pgbsonelement *element);
 
+/* Unsafe version of the BsonValueToPgbsonElement that assumes value is a single field doc */
+void BsonValueToPgbsonElementUnsafe(const bson_value_t *bsonValue,
+									pgbsonelement *element);
+void BsonDocumentBytesToPgbsonElementUnsafe(const uint8_t *bytes, uint32_t bytesLen,
+											pgbsonelement *element);
+void BsonDocumentBytesToPgbsonElementWithOptionsUnsafe(const uint8_t *bytes, int32_t
+													   bytesLen, pgbsonelement *element,
+													   bool skipLengthOffset);
 pgbson * PgbsonElementToPgbson(pgbsonelement *element);
 
 #endif

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/decimal128.h
+ * include/types/decimal128.h
  *
  * The Decimal 128 support.
  *
@@ -15,7 +15,7 @@
 
 #include "io/bson_core.h"
 
-/* Enum representing the decimal128 operation result state, these results try to map exception flag to enum and most of the case native mongo ignores the exception
+/* Enum representing the decimal128 operation result state, these results try to map exception flag to enum and most of the case protocol ignores the exception
  * But still decimal 128 operation should return Decimal128Result in order to do result specific task if needed in future
  */
 typedef enum Decimal128Result

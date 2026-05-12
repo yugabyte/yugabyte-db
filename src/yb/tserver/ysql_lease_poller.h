@@ -13,25 +13,26 @@
 
 #pragma once
 
-#include "yb/server/server_base_options.h"
-
+#include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
+
+using YsqlLeaderClientListener = std::function<
+    Status(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info)>;
 
 class YsqlLeaseClient {
  public:
-  YsqlLeaseClient(TabletServer& server, server::MasterAddressesPtr master_addresses);
+  YsqlLeaseClient(TabletServer& server, const YsqlLeaderClientListener& listener);
   YsqlLeaseClient(const YsqlLeaseClient& other) = delete;
   void operator=(const YsqlLeaseClient& other) = delete;
 
   Status Start();
-  Status Stop();
-  std::future<Status> RelinquishLease();
-  void set_master_addresses(server::MasterAddressesPtr master_addresses);
+  void Shutdown();
+  std::future<Status> RelinquishLease(MonoDelta timeout) const;
+  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
 
   ~YsqlLeaseClient();
 
@@ -40,5 +41,4 @@ class YsqlLeaseClient {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

@@ -1,5 +1,5 @@
 /*
- * __API_SCHEMA_V2__.update_user processes a Mongo wire protocol updateUser command.
+ * __API_SCHEMA_V2__.update_user processes a wire protocol updateUser command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.update_user(
     p_spec __CORE_SCHEMA_V2__.bson)

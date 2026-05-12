@@ -52,14 +52,12 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/strand.h"
 
 #include "yb/server/clock.h"
 
@@ -70,8 +68,8 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -82,6 +80,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -128,12 +127,24 @@ TAG_FLAG(evict_failed_followers, advanced);
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
+DEFINE_test_flag(bool, skip_write_stop_check_in_update_consensus, false,
+    "When true, RaftConsensus::Update() does not reject UpdateConsensus RPCs when "
+    "writes are stopped. Used for negative testing of the write stall cascade fix. "
+    "See #30728.");
+
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
 
 DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
+
+DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
+    "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
+
+DEFINE_test_flag(int32, delay_update_consensus_before_mark_committed_ms, 0,
+    "Delay UpdateConsensus before MarkOperationsAsCommitted by this many ms, for the tablet "
+    "specified by TEST_delay_update_consensus_before_mark_committed_tablet_id.");
 
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
@@ -168,10 +179,11 @@ DEFINE_test_flag(bool, request_vote_respond_leader_still_alive, false,
                  "Fake rejection to vote due to leader still alive");
 
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
-                      "Follower Memory Pressure Rejections",
-                      yb::MetricUnit::kRequests,
-                      "Number of RPC requests rejected due to "
-                      "memory pressure while FOLLOWER.");
+    "Follower Memory Pressure Rejections (deprecated)",
+    yb::MetricUnit::kRequests,
+    "Once was number of RPC requests rejected due to "
+    "memory pressure while FOLLOWER, now always zero.");
+
 METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Raft Consensus Term",
                           yb::MetricUnit::kUnits,
@@ -270,14 +282,13 @@ DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
 DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
                  "Whether to pause before triggering pending operations in RaftConsensus::Start");
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 using rpc::PeriodicTimer;
 using std::shared_ptr;
+using std::string;
 using std::unique_ptr;
 using std::weak_ptr;
-using std::string;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
@@ -423,18 +434,15 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
 RaftConsensus::RaftConsensus(
     const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
-    std::unique_ptr<PeerProxyFactory> proxy_factory,
-    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerProxyFactory> proxy_factory, std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
     std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
-    const scoped_refptr<MetricEntity>& tablet_metric_entity,
-    const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
-    ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
-    shared_ptr<MemTracker> parent_mem_tracker,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity, const std::string& peer_uuid,
+    const scoped_refptr<server::Clock>& clock, ConsensusContext* consensus_context,
+    const scoped_refptr<log::Log>& log, shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type,
-    RetryableRequests* retryable_requests)
+    TableType table_type, RetryableRequests* retryable_requests)
     : raft_pool_concurrent_token_(std::move(raft_pool_concurrent_token)),
       log_(log),
       clock_(clock),
@@ -446,9 +454,9 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-      shutdown_(false),
-      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateMetric<Counter>(
-          &METRIC_follower_memory_pressure_rejections)),
+      deprecated_follower_memory_pressure_rejections_(
+          tablet_metric_entity->FindOrCreateMetric<Counter>(
+              &METRIC_follower_memory_pressure_rejections)),
       term_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
           &METRIC_raft_term, cmeta->current_term())),
       follower_last_update_time_ms_metric_(
@@ -483,6 +491,15 @@ RaftConsensus::RaftConsensus(
 
 RaftConsensus::~RaftConsensus() {
   Shutdown();
+}
+
+void RaftConsensus::SetPerDbCgroup(Cgroup* cgroup) {
+  if (raft_pool_concurrent_token_) {
+    raft_pool_concurrent_token_->SetTaskCgroup(cgroup);
+  }
+  if (queue_) {
+    queue_->SetNotificationStrandCgroup(cgroup);
+  }
 }
 
 Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
@@ -1268,7 +1285,7 @@ Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
                          "Old leader may have hybrid time lease, while adding: $0",
                          OperationType_Name(op_type));
   }
-  lease_status = state_->GetLeaderLeaseStatusUnlocked(nullptr);
+  lease_status = state_->GetLeaderLeaseStatusUnlocked(/*remaining_old_leader_lease=*/nullptr);
   if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
     return STATUS_FORMAT(LeaderHasNoLease,
                          "Old leader may have lease, while adding: $0",
@@ -1352,7 +1369,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
-      RollbackIdAndDeleteOpId(round->replicate_msg(), false /* should_exists */);
+      RollbackIdAndDeleteOpId(round->replicate_msg(), /*should_exists=*/false);
       return s;
     }
 
@@ -1583,6 +1600,22 @@ Status RaftConsensus::Update(
   response->ref_responder_uuid(state_->GetPeerUuid());
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
+
+  // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
+  // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
+  // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
+  // threads would pile up on the mutex and never reach ShouldApplyWrite(). By checking
+  // here, we free the RPC thread immediately. Heartbeat-only RPCs (no ops) are allowed
+  // through to maintain leader leases and committed index advancement. See #30728.
+  if (!PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_update_consensus) &&
+      !request.ops().empty() && state_->context()->AreWritesStopped()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
+        << "Rejecting UpdateConsensus with " << request.ops().size()
+        << " ops: writes are stopped on this tablet";
+    return STATUS(ServiceUnavailable,
+        "Writes are stopped on this tablet, rejecting UpdateConsensus to prevent "
+        "RPC thread pile-up on update_mutex_");
+  }
 
   UpdateReplicaResult result;
   {
@@ -1856,8 +1889,8 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(
     // If the index is in our log but the terms are not the same abort down to the leader's
     // preceding id.
     if (term_mismatch) {
-      // Since we are holding the lock ApplyPendingOperationsUnlocked would be invoked between
-      // those two.
+      // Since we are holding the lock ApplyPendingOperationsUnlocked will not be invoked between
+      // these two calls.
       RETURN_NOT_OK(state_->AbortOpsAfterUnlocked(deduped_req->preceding_op_id.index));
       RETURN_NOT_OK(log_->ResetLastSyncedEntryOpId(deduped_req->preceding_op_id));
     }
@@ -1981,10 +2014,11 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // The deduplicated request.
   LeaderRequest deduped_req;
 
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+      "RaftConsensus::UpdateReplica", const_cast<LWConsensusRequestPB*>(&request));
+
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForUpdate(&lock));
-
-  const auto old_leader = state_->GetLeaderUuidUnlocked();
 
   auto prev_committed_op_id = state_->GetCommittedOpIdUnlocked();
 
@@ -2042,6 +2076,13 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // 3 - Enqueue the writes.
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
+
+  if (PREDICT_FALSE(!deduped_req.messages.empty() &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_ms != 0 &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_tablet_id ==
+                        tablet_id())) {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_update_consensus_before_mark_committed_ms);
+  }
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
@@ -2909,14 +2950,14 @@ std::vector<FollowerCommunicationTime> RaftConsensus::GetFollowerCommunicationTi
   return queue_->GetFollowerCommunicationTimes();
 }
 
-void RaftConsensus::Shutdown() {
-  LOG_WITH_PREFIX(INFO) << "Shutdown.";
+void RaftConsensus::StartShutdown() {
+  auto expected = ShutdownState::kNotStarted;
+  if (!shutdown_state_.compare_exchange_strong(expected, ShutdownState::kStarted,
+                                               std::memory_order_acq_rel)) {
+    return;
+  }
 
-  // Avoid taking locks if already shut down so we don't violate
-  // ThreadRestrictions assertions in the case where the RaftConsensus
-  // destructor runs on the reactor thread due to an election callback being
-  // the last outstanding reference.
-  if (shutdown_.Load(kMemOrderAcquire)) return;
+  LOG_WITH_PREFIX(INFO) << "StartShutdown";
 
   CHECK_OK(ExecuteHook(PRE_SHUTDOWN));
 
@@ -2926,7 +2967,6 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->LockForShutdown(&lock));
     step_down_check_tracker_.StartShutdown();
   }
-  step_down_check_tracker_.CompleteShutdown();
 
   // Close the peer manager.
   peer_manager_->Close();
@@ -2935,6 +2975,17 @@ void RaftConsensus::Shutdown() {
   queue_->Close();
 
   CHECK_OK(state_->CancelPendingOperations());
+}
+
+void RaftConsensus::CompleteShutdown() {
+  auto state = shutdown_state_.load(std::memory_order_acquire);
+  if (state != ShutdownState::kStarted) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(DFATAL, state != ShutdownState::kCompleted)
+        << "Wrong shutdown state: " << state;
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "CompleteShutdown";
 
   {
     ReplicaState::UniqueLock lock;
@@ -2943,6 +2994,8 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->ShutdownUnlocked());
     LOG_WITH_PREFIX(INFO) << "Raft consensus is shut down!";
   }
+
+  step_down_check_tracker_.CompleteShutdown();
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_concurrent_token_->Shutdown();
@@ -2953,7 +3006,12 @@ void RaftConsensus::Shutdown() {
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
-  shutdown_.Store(true, kMemOrderRelease);
+  shutdown_state_.store(ShutdownState::kCompleted, std::memory_order_release);
+}
+
+void RaftConsensus::Shutdown() {
+  StartShutdown();
+  CompleteShutdown();
 }
 
 PeerRole RaftConsensus::GetActiveRole() const {
@@ -3324,7 +3382,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
       *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(
-          nullptr, nullptr, /* check_no_op_committed= */ true);
+          /*remaining_old_leader_lease=*/nullptr, /*now=*/nullptr, /*check_no_op_committed=*/true);
     } else {
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -3629,7 +3687,7 @@ void RaftConsensus::DisableFailureDetector() {
 }
 
 void RaftConsensus::SnoozeFailureDetector(AllowLogging allow_logging, MonoDelta delta) {
-  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_enable_leader_failure_detection))) {
+  if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
     if (allow_logging == ALLOW_LOGGING) {
       LOG_WITH_PREFIX(INFO) << Format("Snoozing leader timeout detection for $0",
                                       delta.Initialized() ? delta.ToString() : "election timeout");
@@ -3808,5 +3866,4 @@ Result<OpId> RaftConsensus::TEST_GetLastOpIdWithType(OpIdType opid_type, Operati
   return queue_->TEST_GetLastOpIdWithType(VERIFY_RESULT(GetLastOpId(opid_type)).index, op_type);
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

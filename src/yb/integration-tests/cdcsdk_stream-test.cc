@@ -38,6 +38,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(cdc_enable_implicit_checkpointing);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 using std::vector;
 using std::string;
@@ -136,14 +137,23 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
   void TestListDBStreams(bool with_table) {
     // Create one table.
-    std::string table_id;
+    std::unordered_set<std::string> table_ids;
+
+    // Get the namespace ID.
+    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
+
+    // Add the two pg_catalog tables which will be present in stream metadata.
+    auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+    table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
 
     if (with_table) {
       auto table =
           ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
       // Get the table_id of the created table.
-      table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      table_ids.insert(table_id);
     }
     // We will create some DB Streams to be listed out later.
     auto created_streams = ASSERT_RESULT(CreateDBStreams(3));
@@ -159,13 +169,20 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> resp_stream_ids;
     for (uint32_t i = 0; i < num_streams; ++i) {
       if (with_table) {
-        // Since there is one table, all the streams would contain one table_id in their response.
-        ASSERT_EQ(1, list_streams.Get(i).table_id_size());
-        // That particular table_id would be equal to the created table id.
-        ASSERT_EQ(table_id, list_streams.Get(i).table_id(0));
+        // Since there are three tables (1 user + 2 catalog), all the streams would contain three
+        // table_ids in their response.
+        ASSERT_EQ(1 + kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
+
+        // All the tables in table_ids should be present in the list_streams response for all
+        // streams.
+        auto table_ids_in_resp = list_streams.Get(i).table_id();
+        for (const auto& table_id_in_resp : table_ids_in_resp) {
+          ASSERT_TRUE(table_ids.contains(table_id_in_resp));
+        }
       } else {
-        // Since there are no tables in DB, there would be no table_ids in the response.
-        ASSERT_EQ(0, list_streams.Get(i).table_id_size());
+        // Since there are no user tables in DB, there would be 2 table_ids (catalog tables) in the
+        // response.
+        ASSERT_EQ(kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
       }
       resp_stream_ids.push_back(
           ASSERT_RESULT(xrepl::StreamId::FromString(list_streams.Get(i).stream_id())));
@@ -181,8 +198,6 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
   void TestDBStreamInfo(
       const vector<std::string>& table_with_pk, const vector<std::string>& table_without_pk) {
-    std::vector<std::string>::size_type num_of_tables_with_pk = table_with_pk.size();
-
     for (const auto& table_name : table_with_pk) {
       ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name));
     }
@@ -192,46 +207,48 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
                                 1 /* num_tablets */, false));
     }
 
-    std::vector<std::string> created_table_ids_with_pk;
-
+    std::unordered_set<std::string> tables_expected_in_stream_metadata;
     for (const auto& table_name : table_with_pk) {
-      created_table_ids_with_pk.push_back(
+      tables_expected_in_stream_metadata.insert(
           ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, table_name)));
     }
 
     std::vector<std::string> created_table_ids_without_pk;
 
-    // Sorting would make assertion easier later on.
-    std::sort(created_table_ids_with_pk.begin(), created_table_ids_with_pk.end());
+    // Get the namespace ID.
+    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
+
+    // Add the two pg_catalog tables which will be present in stream metadata to
+    // tables_expected_in_stream_metadata.
+    auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    tables_expected_in_stream_metadata.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+    tables_expected_in_stream_metadata.insert(
+        GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+
     auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto get_resp = ASSERT_RESULT(GetDBStreamInfo(db_stream_id));
     ASSERT_FALSE(get_resp.has_error());
 
-    // Get the namespace ID.
-    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
-
-    // We have only 1 table, so the response will (should) have 1 table info only.
     uint32_t table_info_size = get_resp.table_info_size();
-    ASSERT_EQ(num_of_tables_with_pk, table_info_size);
+    ASSERT_EQ(tables_expected_in_stream_metadata.size(), table_info_size);
 
     // Check whether the namespace ID in the response is correct.
     ASSERT_EQ(namespace_id, get_resp.namespace_id());
 
     // Store the table IDs received in the response.
-    std::vector<std::string> table_ids_in_resp;
+    std::unordered_set<std::string> table_ids_in_resp;
     for (uint32_t i = 0; i < table_info_size; ++i) {
       // Also assert that all the table_info(s) contain the same db_stream_id.
       ASSERT_EQ(db_stream_id.ToString(), get_resp.table_info(i).stream_id());
 
-      table_ids_in_resp.push_back(get_resp.table_info(i).table_id());
+      table_ids_in_resp.insert(get_resp.table_info(i).table_id());
     }
-    std::sort(table_ids_in_resp.begin(), table_ids_in_resp.end());
 
     // Verifying that the table IDs received in the response are for the tables which were
     // created earlier.
-    for (uint32_t i = 0; i < table_ids_in_resp.size(); ++i) {
-      ASSERT_EQ(created_table_ids_with_pk[i], table_ids_in_resp[i]);
+    for (const auto& table_id_in_resp : table_ids_in_resp) {
+      ASSERT_TRUE(tables_expected_in_stream_metadata.contains(table_id_in_resp));
     }
   }
 };
@@ -492,7 +509,8 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
           LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
           RETURN_NOT_OK(StatusFromPB(resp->error().status()));
         }
-        return (resp->table_info_size() == 0);
+        // We will have 2 pg_catalog tables in the stream metadata.
+        return (resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC);
       },
       MonoDelta::FromSeconds(60),
       "Waiting for stream metadata update with no table info."));

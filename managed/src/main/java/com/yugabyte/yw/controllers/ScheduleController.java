@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -36,7 +37,6 @@ import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
-import com.yugabyte.yw.models.paging.SchedulePagedResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -107,7 +107,7 @@ public class ScheduleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List schedules V2",
-      response = SchedulePagedResponse.class,
+      response = SchedulePagedApiResponse.class,
       nickname = "listSchedulesV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -352,7 +352,7 @@ public class ScheduleController extends AuthenticatedController {
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change. Edit a backup schedule async.",
       value = "Edit a backup schedule async",
-      response = Schedule.class,
+      response = YBPTask.class,
       nickname = "editBackupScheduleAsync")
   @ApiImplicitParams({
     @ApiImplicitParam(
@@ -408,7 +408,7 @@ public class ScheduleController extends AuthenticatedController {
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change. Delete a backup schedule async.",
       value = "Delete a backup schedule async",
-      response = Schedule.class,
+      response = YBPTask.class,
       nickname = "deleteBackupScheduleAsync")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -436,7 +436,7 @@ public class ScheduleController extends AuthenticatedController {
           "WARNING: This is a preview API that could change. Toggle a backup schedule. Only allowed"
               + " to toggle backup schedule state between Active and Stopped.",
       value = "Toggle a backup schedule",
-      response = Schedule.class,
+      response = YBPSuccess.class,
       nickname = "toggleBackupSchedule")
   @ApiImplicitParams({
     @ApiImplicitParam(
@@ -464,11 +464,13 @@ public class ScheduleController extends AuthenticatedController {
     // Check if attempting to modify schedule when universe is locked( not allowed ).
     // Only allow to toggle schedule between Active and Stopped.
     scheduleToggleParams.verifyScheduleToggle(schedule.getStatus());
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    boolean runImmediateBackup =
+        scheduleToggleParams.runImmediateBackupOnResume != null
+            ? scheduleToggleParams.runImmediateBackupOnResume
+            : confGetter.getConfForScope(universe, UniverseConfKeys.runImmediateBackupOnResume);
     Schedule.toggleBackupSchedule(
-        customerUUID,
-        scheduleUUID,
-        scheduleToggleParams.status,
-        scheduleToggleParams.runImmediateBackupOnResume);
+        customerUUID, scheduleUUID, scheduleToggleParams.status, runImmediateBackup);
 
     Audit.ActionType actionType =
         scheduleToggleParams.status == Schedule.State.Stopped

@@ -121,7 +121,7 @@ bool PTExpr::has_valid_internal_type() {
          internal_type_ != InternalType::VALUE_NOT_SET;
 }
 
-void PTExpr::rscol_type_PB(QLTypePB *pb_type ) const {
+void PTExpr::rscol_type_PB(QLTypeMsg *pb_type ) const {
   ql_type_->ToQLTypePB(pb_type);
 }
 
@@ -385,30 +385,41 @@ Status PTLiteralString::ToDecimal(util::Decimal *value, bool negate) const {
   }
 }
 
-Status PTLiteralString::ToDecimal(string *value, bool negate) const {
-  util::Decimal d;
+template <class T>
+Result<T> PTLiteralString::FromString(bool negate) const {
+  T t;
   if (negate) {
-    RETURN_NOT_OK(d.FromString(string("-") + value_->c_str()));
+    RETURN_NOT_OK(t.FromString(std::string("-") + value_->c_str()));
   } else {
-    RETURN_NOT_OK(d.FromString(value_->c_str()));
+    RETURN_NOT_OK(t.FromString(value_->c_str()));
   }
-  *value = d.EncodeToComparable();
+  return t;
+}
+
+Status PTLiteralString::ToDecimal(string *value, bool negate) const {
+  *value = VERIFY_RESULT(FromString<util::Decimal>(negate)).EncodeToComparable();
   return Status::OK();
 }
 
+Result<Slice> PTLiteralString::ToDecimal(ThreadSafeArena& arena, bool negate) const {
+  return arena.DupSlice(VERIFY_RESULT(FromString<util::Decimal>(negate)).EncodeToComparable());
+}
+
 Status PTLiteralString::ToVarInt(string *value, bool negate) const {
-  VarInt v;
-  if (negate) {
-    RETURN_NOT_OK(v.FromString(string("-") + value_->c_str()));
-  } else {
-    RETURN_NOT_OK(v.FromString(value_->c_str()));
-  }
-  *value = v.EncodeToComparable();
+  *value = VERIFY_RESULT(FromString<VarInt>(negate)).EncodeToComparable();
   return Status::OK();
+}
+
+Result<Slice> PTLiteralString::ToVarInt(ThreadSafeArena& arena, bool negate) const {
+  return arena.DupSlice(VERIFY_RESULT(FromString<VarInt>(negate)).EncodeToComparable());
 }
 
 std::string PTLiteralString::ToString() const {
   return string(value_->c_str());
+}
+
+Slice PTLiteralString::ToString(ThreadSafeArena& arena) const {
+  return arena.DupSlice(Slice(*value_));
 }
 
 Status PTLiteralString::ToString(string *value) const {

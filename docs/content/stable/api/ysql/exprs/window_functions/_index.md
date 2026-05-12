@@ -9,6 +9,8 @@ menu:
     identifier: window-functions
     parent: api-ysql-exprs
     weight: 60
+aliases:
+  - /stable/api/ysql/exprs/window_functions
 type: indexpage
 showRightNav: true
 ---

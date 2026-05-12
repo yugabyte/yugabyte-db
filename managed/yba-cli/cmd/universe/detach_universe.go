@@ -62,9 +62,7 @@ var detachUniverseCmd = &cobra.Command{
 
 		rList, responseList, errList := universeListRequest.Execute()
 		if errList != nil {
-			errMessage := util.ErrorFromHTTPResponse(responseList, errList,
-				"Universe", "Detach - List Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(responseList, errList, "Universe", "Detach - List Universes")
 		}
 
 		if len(rList) < 1 {
@@ -90,8 +88,7 @@ var detachUniverseCmd = &cobra.Command{
 		_, httpResponse, errDetach := detachRequest.Execute()
 
 		if httpResponse.StatusCode != 200 {
-			errMessage := util.ErrorFromHTTPResponse(httpResponse, errDetach, "Universe", "Detach")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(httpResponse, errDetach, "Universe", "Detach")
 		}
 
 		// For binary responses, ignore the "undefined response type" error and use httpResponse.Body

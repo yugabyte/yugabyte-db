@@ -57,6 +57,7 @@ other useful data.`,
 			filepath.Join(common.YbactlInstallDir(), common.VersionMetadataJSON),
 			common.LicenseFile(),
 			filepath.Join(common.YbactlInstallDir(), common.GoBinaryName),
+			common.InputFile(),
 
 			// application log and config files.
 			filepath.Join(common.GetDataRoot(), "logs/application.log"),
@@ -128,7 +129,7 @@ other useful data.`,
 func addFileToTarWriter(filePath string, w *tar.Writer) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
 			logging.Debug("skipping non-existant file " + filePath)
 			return nil
 		}

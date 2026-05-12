@@ -166,7 +166,6 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_libbacktrace);
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_int32(replication_factor);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
@@ -370,8 +369,6 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
-  FLAGS_replication_factor =
-    opts_.replication_factor > 0 ? opts_.replication_factor : narrow_cast<int>(opts_.num_masters);
 
   if (messenger == nullptr) {
     auto builder = CreateMiniClusterMessengerBuilder();
@@ -520,20 +517,7 @@ std::string ExternalMiniCluster::GetTServerBinaryPath() const {
 }
 
 bool ExternalMiniCluster::IsYsqlConnMgrEnabledInTests() const {
-  if (!opts_.enable_ysql) {
-    return false;
-  }
-
-  if (opts_.enable_ysql_conn_mgr) {
-    return true;
-  }
-
-  static const char *enableYsqlConnMgr = getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-  if (enableYsqlConnMgr != NULL
-      && strcasecmp(enableYsqlConnMgr, "true") == 0) {
-      return true;
-  }
-  return false;
+  return opts_.IsYsqlConnMgrEnabled();
 }
 
 namespace {
@@ -1886,6 +1870,7 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 
   tserver::GetSplitKeyRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(GetSplitFactor());
 
   tserver::GetSplitKeyResponsePB resp;
   RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetSplitKey(req, &resp, &rpc));
@@ -2091,6 +2076,24 @@ Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
   }
   return STATUS(
       NotFound, Format("Could not find leader of tablet $0 among live tservers.", tablet_id));
+}
+
+Result<std::vector<size_t>> ExternalMiniCluster::GetTabletFollowerIndexes(
+    const TabletId& tablet_id) {
+  std::vector<size_t> result;
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    auto tserver = tablet_server(i);
+    if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
+      auto tablets = VERIFY_RESULT(GetTablets(tserver));
+      for (const auto& tablet : tablets) {
+        if (tablet.tablet_id() == tablet_id && !tablet.is_leader()) {
+          result.push_back(i);
+          break;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::string& uuid) const {
@@ -2311,8 +2314,8 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
-    const std::string& user) {
+    std::string_view db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
+    std::string_view user) {
   ExternalClusterPGConnectionOptions options;
   options.db_name = db_name;
   if (tserver_index) {

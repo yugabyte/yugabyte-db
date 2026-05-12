@@ -19,7 +19,7 @@ Use the following steps to manually migrate PostgreSQL data and applications to 
 
 - [Prepare a cluster](#prepare-a-cluster)
 - [Import PostgreSQL data](#import-postgresql-data)
-- [Verify a migration](../verify-migration-ysql)
+- [Verify a migration](../verify-migration-ysql/)
 
 ## Prepare a cluster
 
@@ -68,7 +68,7 @@ While loading data that is exported from another RDBMS, the source data set may 
 ## Import PostgreSQL data
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [import schema](/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/preview/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/stable/yugabyte-voyager/). To learn more, refer to the [import schema](/stable/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/stable/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
 {{< /tip >}}
 
 ### Import data from CSV files
@@ -166,4 +166,4 @@ After the data import step, remember to recreate any constraints and triggers th
 
 ## Verify migration
 
-After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ysql) to ensure the migration was successful.
+After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ysql/) to ensure the migration was successful.

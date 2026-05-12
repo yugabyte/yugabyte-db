@@ -9,8 +9,8 @@ import (
 )
 
 // CreateXClusterConfig create xCluster config
-func (a *AuthAPIClient) CreateXClusterConfig() ybaclient.AsynchronousReplicationApiApiCreateXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.CreateXClusterConfig(
+func (a *AuthAPIClient) CreateXClusterConfig() ybaclient.AsynchronousReplicationAPICreateXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.CreateXClusterConfig(
 		a.ctx,
 		a.CustomerUUID)
 }
@@ -18,8 +18,8 @@ func (a *AuthAPIClient) CreateXClusterConfig() ybaclient.AsynchronousReplication
 // DeleteXClusterConfig delete xCluster config
 func (a *AuthAPIClient) DeleteXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiDeleteXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.DeleteXClusterConfig(
+) ybaclient.AsynchronousReplicationAPIDeleteXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.DeleteXClusterConfig(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)
@@ -28,8 +28,8 @@ func (a *AuthAPIClient) DeleteXClusterConfig(
 // GetXClusterConfig get xCluster config
 func (a *AuthAPIClient) GetXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiGetXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.GetXClusterConfig(
+) ybaclient.AsynchronousReplicationAPIGetXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.GetXClusterConfig(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)
@@ -38,8 +38,8 @@ func (a *AuthAPIClient) GetXClusterConfig(
 // EditXClusterConfig edit xCluster config
 func (a *AuthAPIClient) EditXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiEditXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.EditXClusterConfig(
+) ybaclient.AsynchronousReplicationAPIEditXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.EditXClusterConfig(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)
@@ -48,8 +48,8 @@ func (a *AuthAPIClient) EditXClusterConfig(
 // RestartXClusterConfig restart xCluster
 func (a *AuthAPIClient) RestartXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiRestartXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.RestartXClusterConfig(
+) ybaclient.AsynchronousReplicationAPIRestartXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.RestartXClusterConfig(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)
@@ -58,8 +58,8 @@ func (a *AuthAPIClient) RestartXClusterConfig(
 // SyncXClusterConfig sync xCluster
 func (a *AuthAPIClient) SyncXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiSyncXClusterConfigV2Request {
-	return a.APIClient.AsynchronousReplicationApi.SyncXClusterConfigV2(
+) ybaclient.AsynchronousReplicationAPISyncXClusterConfigV2Request {
+	return a.APIClient.AsynchronousReplicationAPI.SyncXClusterConfigV2(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)
@@ -68,8 +68,8 @@ func (a *AuthAPIClient) SyncXClusterConfig(
 // NeedBootstrapTable need bootstrap table
 func (a *AuthAPIClient) NeedBootstrapTable(
 	universeUUID string,
-) ybaclient.AsynchronousReplicationApiApiNeedBootstrapTableRequest {
-	return a.APIClient.AsynchronousReplicationApi.NeedBootstrapTable(
+) ybaclient.AsynchronousReplicationAPINeedBootstrapTableRequest {
+	return a.APIClient.AsynchronousReplicationAPI.NeedBootstrapTable(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID)
@@ -78,8 +78,8 @@ func (a *AuthAPIClient) NeedBootstrapTable(
 // NeedBootstrapXClusterConfig need bootstrap xCluster
 func (a *AuthAPIClient) NeedBootstrapXClusterConfig(
 	xclusterUUID string,
-) ybaclient.AsynchronousReplicationApiApiNeedBootstrapXClusterConfigRequest {
-	return a.APIClient.AsynchronousReplicationApi.NeedBootstrapXClusterConfig(
+) ybaclient.AsynchronousReplicationAPINeedBootstrapXClusterConfigRequest {
+	return a.APIClient.AsynchronousReplicationAPI.NeedBootstrapXClusterConfig(
 		a.ctx,
 		a.CustomerUUID,
 		xclusterUUID)

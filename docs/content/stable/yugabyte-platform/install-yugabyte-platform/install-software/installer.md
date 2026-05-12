@@ -4,7 +4,10 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
-
+aliases:
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/default/
+  - /stable/yugabyte-platform/install-yugabyte-platform/migrate-replicated/
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -33,13 +36,9 @@ For higher availability, you can install additional YugabyteDB Anywhere (YBA) in
 
 Use YBA Installer to install YugabyteDB Anywhere on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YugabyteDB Anywhere.
 
-You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
-
 -> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
 -> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
-
--> To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
 
 -> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
@@ -85,7 +84,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 
 After the installation succeeds, you can immediately start using YBA.
 
-If the installation fails due to permissions or other issues, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
+If the installation fails due to permissions or other issues, you can retry after running `yba-ctl clean --all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
@@ -317,17 +316,9 @@ Services:
 
 ### Upgrade
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer).
+YBA Installer is also used to perform upgrades of existing installations, using the `upgrade` command.
 
-Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
-
-When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
-
-```sh
-sudo ./yba-ctl upgrade
-```
-
-The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YBA has been upgraded to the target version.
+For complete instructions and details on how to prepare for an upgrade, refer to [Upgrade YugabyteDB Anywhere](../../../upgrade/).
 
 ### Backup and restore
 
@@ -417,7 +408,7 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
+YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. User-level systemd is used to manage services.
 
@@ -480,7 +471,11 @@ OAuth related settings are described in the following table. With the exception 
 
 #### Proxy
 
-When configuring proxy values for YBA, all values must be set correctly. On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+When configuring proxy values for YBA, all values must be set correctly.
+
+{{< note title="Using a proxy with cloud providers" >}}
+On AWS, GCP, or Azure, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the VM instance metadata.
+{{< /note >}}
 
 If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
 
@@ -508,6 +503,7 @@ If you are setting these values on an existing system, run `yba-ctl reconfigure`
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
 | `retentionTime` | How long Prometheus retains the database metrics. |
+| `allowedTLSCiphers` | List of ciphers that Prometheus is allowed to use (assuming https is enabled). If any of the default ciphers provided in the configuration file are not supported on the machine you are using for YBA, remove them from the list. |
 
 ### Configure PostgreSQL
 

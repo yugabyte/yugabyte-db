@@ -214,6 +214,7 @@ public class R__Sync_System_Roles extends BaseJavaMigration {
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"UPDATE\"},"
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"DELETE\"},"
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"PAUSE_RESUME\"},"
+            + "{\"resourceType\":\"UNIVERSE\",\"action\":\"TROUBLESHOOT\"},"
             + "{\"resourceType\":\"OTHER\",\"action\":\"READ\"},"
             + "{\"resourceType\":\"OTHER\",\"action\":\"CREATE\"},"
             + "{\"resourceType\":\"OTHER\",\"action\":\"UPDATE\"},"

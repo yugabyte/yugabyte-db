@@ -54,6 +54,12 @@ _If the instance type and instances weren't created when provisioning the VMs_, 
 
 ## Legacy provisioning
 
+{{< warning title="Legacy provisioning no longer available in v2025.2" >}}
+
+v2025.2 (available late 2025) will not support legacy node provisioning. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using [automatic provisioning](#automatic-provisioning).
+
+{{< /warning >}}
+
 To create, provision, and add nodes to your on-premises provider using legacy provisioning, you will perform tasks in roughly three stages.
 
 <!--![Create on-premises provider](/images/yb-platform/config/yba-onprem-config-flow.png)-->

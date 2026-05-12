@@ -27,6 +27,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
@@ -118,13 +119,15 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   //------------------------------------------------------------------------------------------------
   // CQL support
   // Create a new QL operation for this table.
-  std::unique_ptr<YBqlWriteOp> NewQLWrite();
-  std::unique_ptr<YBqlWriteOp> NewQLInsert();
-  std::unique_ptr<YBqlWriteOp> NewQLUpdate();
-  std::unique_ptr<YBqlWriteOp> NewQLDelete();
+  std::unique_ptr<YBqlWriteOp> NewQLWrite(
+      ThreadSafeArenaPtr arena, LWQLWriteRequestPB* request = nullptr);
+  std::unique_ptr<YBqlWriteOp> NewQLInsert(ThreadSafeArenaPtr arena);
+  std::unique_ptr<YBqlWriteOp> NewQLUpdate(ThreadSafeArenaPtr arena);
+  std::unique_ptr<YBqlWriteOp> NewQLDelete(ThreadSafeArenaPtr arena);
 
-  std::unique_ptr<YBqlReadOp> NewQLRead();
-  std::unique_ptr<YBqlReadOp> NewQLSelect();
+  std::unique_ptr<YBqlReadOp> NewQLRead(
+      ThreadSafeArenaPtr arena, LWQLReadRequestPB* request = nullptr);
+  std::unique_ptr<YBqlReadOp> NewQLSelect(ThreadSafeArenaPtr arena);
 
   // Finds partition start for specified partition_key.
   // Partitions could be grouped by group_by bunches, in this case start of such bunch is returned.

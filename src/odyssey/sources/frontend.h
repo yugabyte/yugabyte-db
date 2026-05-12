@@ -9,8 +9,6 @@
 
 #define MAX_STARTUP_ATTEMPTS 7
 
-extern bool version_matching;
-extern bool version_matching_connect_higher_version;
 extern int yb_max_query_size;
 extern int yb_wait_timeout;
 
@@ -126,5 +124,7 @@ extern int yb_execute_on_control_connection(od_client_t *,
 					    int (*)(od_client_t *,
 						    od_server_t *));
 extern int yb_auth_via_auth_backend(od_client_t *client);
+extern void yb_drain_parse_queue_till_sync(od_server_t *server,
+					   od_client_t *client);
 
 #endif /* ODYSSEY_FRONTEND_H */

@@ -58,9 +58,10 @@ var resumeXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditXClusterConfig(uuid).
 			XclusterReplicationEditFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Resume")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Resume")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The xcluster %s is being resumed",
 			formatter.Colorize(uuid, formatter.GreenColor))
@@ -78,17 +79,21 @@ var resumeXClusterCmd = &cobra.Command{
 				formatter.Colorize(uuid, formatter.GreenColor))
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "xCluster", "Resume - Get xCluster")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Resume - Get xCluster")
 			}
+
+			xclusterConfig := util.CheckAndDereference(
+				rXCluster,
+				"No xcluster found with uuid "+uuid,
+			)
+
 			r := make([]ybaclient.XClusterConfigGetResp, 0)
-			r = append(r, rXCluster)
+			r = append(r, xclusterConfig)
 
 			sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
 				authAPI, "", "",
-				rXCluster.GetSourceUniverseUUID(),
-				rXCluster.GetTargetUniverseUUID(),
+				xclusterConfig.GetSourceUniverseUUID(),
+				xclusterConfig.GetTargetUniverseUUID(),
 				"Resume",
 			)
 
@@ -108,12 +113,13 @@ var resumeXClusterCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		task := util.CheckTaskAfterCreation(rTask)
 		taskCtx := formatter.Context{
 			Command: "resume",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }

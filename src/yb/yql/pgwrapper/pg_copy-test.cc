@@ -80,23 +80,21 @@ TEST_F(PgCopyTest, TestRetriesAreDisabledForCopy) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_with_abort_probability) = 0.2;
   const auto kRowsPerTransaction = 2;
   const auto kNumRows = 20;
-  ASSERT_OK(conn.CopyBegin(
-      Format("COPY $0 FROM STDIN WITH (FORMAT BINARY, ROWS_PER_TRANSACTION $1)",
-          kTable, kRowsPerTransaction)));
-  for (int i = 0; i < kNumRows; ++i) {
-    LOG(INFO) << "Inserting row: " << i;
-    conn.CopyStartRow(2 /* number of columns */);
-    conn.CopyPutInt32(i);
-    conn.CopyPutInt32(i);
-  }
-  auto result = conn.CopyEnd();
+  auto status = conn.CopyFromStdin(
+      kTable,
+      [](PGConn::RowMaker<int32_t, int32_t>& row) {
+        for (int i = 0; i < kNumRows; ++i) {
+          row(i, i);
+        }
+      },
+      {.rows_per_txn = kRowsPerTransaction});
 
   // If retries were allowed for COPY, we would face the "COPY file signature not recognized" error
   // when the query layer tries to perform the first retry.
-  if (!result.ok()) {
-    LOG(INFO) << "Status: " << result.status().ToString();
+  if (!status.ok()) {
+    LOG(INFO) << "Status: " << status;
     ASSERT_STR_CONTAINS(
-        result.status().message().ToString(), "Transaction expired or aborted by a conflict");
+        status.message().ToString(), "Transaction expired or aborted by a conflict");
   }
 
   // Ensure that a prefix of rows are visible i.e., without any holes. Just in case there was a

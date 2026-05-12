@@ -3234,3 +3234,68 @@ get_common_eclass_indexes(PlannerInfo *root, Relids relids1, Relids relids2)
 	/* Calculate and return the common EC indexes, recycling the left input. */
 	return bms_int_members(rel1ecs, rel2ecs);
 }
+
+/*
+ * yb_find_ec_member_for_var
+ *   Find an EC member that can substitute for the given Var.
+ *   When target_rti == 0: looks for a constant in the same EC as var
+ *   When target_rti != 0: looks for a var from target_rti in the same EC as var
+ *   Returns NULL if no suitable substitution is found.
+ */
+EquivalenceMember *
+yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index rti, Index target_rti)
+{
+	ListCell   *lc;
+
+	foreach(lc, root->eq_classes)
+	{
+		EquivalenceClass *ec = (EquivalenceClass *) lfirst(lc);
+		EquivalenceMember *var_member = NULL;
+		EquivalenceMember *other_member = NULL;
+		ListCell   *mem_lc;
+
+		/* skip volatile ECs - we can't use them for substitution */
+		if (ec->ec_has_volatile)
+			continue;
+
+		foreach(mem_lc, ec->ec_members)
+		{
+			EquivalenceMember *em = (EquivalenceMember *) lfirst(mem_lc);
+
+			/* skip child members */
+			if (em->em_is_child)
+				continue;
+
+			if (IsA(em->em_expr, Var) &&
+				((Var *) em->em_expr)->varno == rti &&
+				((Var *) em->em_expr)->varattno == var->varattno)
+			{
+				if (other_member)
+					return other_member;
+				var_member = em;
+			}
+
+			if (target_rti != 0)
+			{
+				if (IsA(em->em_expr, Var) &&
+					((Var *) em->em_expr)->varno == target_rti)
+				{
+					if (var_member)
+						return em;
+					other_member = em;
+				}
+			}
+			else
+			{
+				if (em->em_is_const)
+				{
+					if (var_member)
+						return em;
+					other_member = em;
+				}
+			}
+		}
+	}
+
+	return NULL;
+}

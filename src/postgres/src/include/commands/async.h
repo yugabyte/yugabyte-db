@@ -15,6 +15,9 @@
 
 #include <signal.h>
 
+/* YB includes */
+#include "storage/proc.h"
+
 /*
  * The number of SLRU page buffers we use for the notification queue.
  */
@@ -49,5 +52,11 @@ extern void HandleNotifyInterrupt(void);
 
 /* process interrupts */
 extern void ProcessNotifyInterrupt(bool flush);
+
+/* entry point for notifications poller background process */
+extern void YbNotifsPollerMain(Datum main_arg);
+
+/* cleans up state when a listening backend crashes, called by postmaster.  */
+extern void YbCleanupListenStateForProc(PGPROC *proc);
 
 #endif							/* ASYNC_H */

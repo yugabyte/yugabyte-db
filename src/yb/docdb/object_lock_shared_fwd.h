@@ -18,6 +18,7 @@
 namespace yb::docdb {
 
 YB_DEFINE_ENUM(ObjectLockFastpathLockType, (kAccessShare)(kRowShare)(kRowExclusive));
+YB_STRONGLY_TYPED_BOOL(TxnBlockedTableLockRequests);
 
 using SessionLockOwnerTag = uint64_t;
 

@@ -9,8 +9,8 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.util.List;
 import javax.inject.Inject;
@@ -60,21 +60,27 @@ public class TaskGarbageCollector {
   @VisibleForTesting
   static void registerMetrics() {
     PURGED_CUSTOMER_TASK_COUNT =
-        Counter.build(
-                CUSTOMER_TASK_METRIC_NAME,
-                "Number of old completed customer tasks purged for a customer")
+        Counter.builder()
+            .name(CUSTOMER_TASK_METRIC_NAME)
+            .help("Number of old completed customer tasks purged for a customer")
             .labelNames(CUSTOMER_UUID_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
     PURGED_TASK_INFO_COUNT =
-        Counter.build(TASK_INFO_METRIC_NAME, "Number of tasks info rows purged for a customer")
+        Counter.builder()
+            .name(TASK_INFO_METRIC_NAME)
+            .help("Number of tasks info rows purged for a customer")
             .labelNames(CUSTOMER_UUID_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
     NUM_TASK_GC_RUNS_COUNT =
-        Counter.build(NUM_TASK_GC_RUNS, "Number of times customer gc checks are run")
-            .register(CollectorRegistry.defaultRegistry);
+        Counter.builder()
+            .name(NUM_TASK_GC_RUNS)
+            .help("Number of times customer gc checks are run")
+            .register(PrometheusRegistry.defaultRegistry);
     NUM_TASK_GC_ERRORS_COUNT =
-        Counter.build(NUM_TASK_GC_ERRORS, "Number of failed customer_task delete attempts")
-            .register(CollectorRegistry.defaultRegistry);
+        Counter.builder()
+            .name(NUM_TASK_GC_ERRORS)
+            .help("Number of failed customer_task delete attempts")
+            .register(PrometheusRegistry.defaultRegistry);
   }
 
   public void start() {
@@ -118,8 +124,10 @@ public class TaskGarbageCollector {
                 customerTask -> {
                   int numRowsDeleted = customerTask.cascadeDeleteCompleted();
                   if (numRowsDeleted > 0) {
-                    PURGED_CUSTOMER_TASK_COUNT.labels(c.getUuid().toString()).inc();
-                    PURGED_TASK_INFO_COUNT.labels(c.getUuid().toString()).inc(numRowsDeleted - 1);
+                    PURGED_CUSTOMER_TASK_COUNT.labelValues(c.getUuid().toString()).inc();
+                    PURGED_TASK_INFO_COUNT
+                        .labelValues(c.getUuid().toString())
+                        .inc(numRowsDeleted - 1);
                   } else {
                     NUM_TASK_GC_ERRORS_COUNT.inc();
                   }

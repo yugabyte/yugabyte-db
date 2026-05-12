@@ -15,18 +15,30 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/ql_type.h"
+#include "yb/common/transaction.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
+#include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
+DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
 
@@ -241,12 +253,133 @@ TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
   ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
 }
 
+class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 5;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestWaitForSchemaVersionAfterRollback) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
+  auto foo_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_atomicity_alter_table_request_delay_ms) = 5000;
+
+  // Required ordering of operations to get SCHEMA_VERSION_MISMATCH:
+  // 1. Background verification task (ysql_ddl_verification_task) should call
+  // YsqlDdlTxnCompleteCallback and process the ALTER by clearing the verification state on foo but
+  // not yet sent the ALTER TABLE request to the tablet servers to rollback the schema.
+  // 2. ReportYsqlDdlTxnStatus should be sent and it will observe the cleared verification state on
+  // foo, incorrectly (bug) assume that the table is no longer under verification and call
+  // RemoveDdlTransactionState.
+  // 3. ROLLBACK command returns to the client (bug).
+  //
+  // Now there is a race between the SELECT query and the ALTER request to the tablet servers.
+  // With the right timing, the SELECT query can first observe the schema version 1 for table 'foo'
+  // but later observe the schema version 2 when read is happening on DocDB if the schema bump
+  // happens in between.
+  // Note that this ordering cannot be reproduced by sync points because then the test will hang
+  // forever with the bug fix. This is because with the fix, the ROLLBACK will never return unless
+  // the schema version bump happens while we need the SELECT to start execution before the schema
+  // version bump. Hence, we inject a delay to hit the race condition.
+  SyncPoint::GetInstance()->LoadDependency({
+    {
+      "CatalogManager::YsqlDdlTxnAlterTableHelper:AfterClearYsqlDdlTxnState",
+      "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus"
+    },
+    {
+      "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus",
+      "CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable"
+    },
+    {
+      "CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable",
+      "CatalogManager::YsqlDdlTxnAlterTableHelper:SendAlterTableRequestInternal"
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(conn.Fetch("SELECT * FROM foo"));
+  }
+
+  SyncPoint::GetInstance()->DisableProcessing();
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigger) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_retrigger (id INT PRIMARY KEY)"));
+
+  // Fail verification task so that it ends up in kDdlPostProcessingFailed state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 1.0;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_retrigger ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_retrigger"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  // Disable YSQL reporting the status to yb-master so that we fully rely on the background task
+  // and mimic the nemesis case when tserver - master communication breaks down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  LOG(INFO) << "Reporting YSQL DDL transaction status to YB-Master is disabled";
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  LOG(INFO) << "Rolled back";
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(
+            st.has_value() &&
+            *st == master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should reach kDdlPostProcessingFailed"));
+
+  LOG(INFO) << "Done waiting for kDdlPostProcessingFailed state";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 0.0;
+
+  ASSERT_OK(WaitFor(
+    [&] {
+      const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+      return Result<bool>(
+          !st.has_value() ||
+          *st != master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+    },
+    MonoDelta::FromSeconds(60),
+    "DDL verification task should have been re-triggered"));
+}
+
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
+        "ysql_yb_enable_ddl_savepoint_support";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
     // Disable READ_COMMITTED isolation because it creates additional savepoints (sub_transactions)
     // for a statement that requires special handling when asserting the size of
@@ -308,6 +441,20 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
         EXPECT_EQ(column_info->type()->main(), expected_column_type);
       }
     }
+  }
+
+  Status WaitForTableDeletionToFinish(client::YBClient* client, const std::string& table_id) {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      bool table_found = false;
+      const auto tables = VERIFY_RESULT(client->ListTables());
+      for (const auto& t : tables) {
+        if (t.namespace_name() == "yugabyte" && t.table_id() == table_id) {
+          table_found = true;
+          break;
+        }
+      }
+      return !table_found;
+    }, MonoDelta::FromSeconds(60), "Wait for Table deletion to finish for table " + table_id);
   }
 };
 
@@ -621,6 +768,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTable
                  {.name = "e", .data_type = DataType::STRING},
                  {.name = "f", .data_type = DataType::STRING}});
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+  ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
   if (GetParam()) {
@@ -724,6 +872,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
   ASSERT_FALSE(table_id_after_drop.empty());
+  ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
   auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 

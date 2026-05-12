@@ -49,10 +49,13 @@ class CDCSDKVirtualWAL {
       {Status::Code::kIllegalState, "Tablet not running"},
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
-      {Status::Code::kNotFound, "Footer for segment"}};
+      {Status::Code::kNotFound, "Footer for segment"},
+      {Status::Code::kNotFound, "Log index cache entry for op index"},
+      {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
-      std::unordered_set<TableId> table_list, const HostPort hostport,
+      std::unordered_set<TableId> table_list,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
       const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables);
 
@@ -66,14 +69,13 @@ class CDCSDKVirtualWAL {
       const bool use_vwal_safe_time = false);
 
   Status UpdatePublicationTableListInternal(
-      const std::unordered_set<TableId>& new_tables, const HostPort hostport,
+      const std::unordered_set<TableId>& new_tables,
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline);
 
   xrepl::StreamId GetStreamId();
 
   std::vector<TabletId> GetTabletIdsFromVirtualWAL();
-
-  bool ShouldPopulateExplicitCheckpoint(const TabletId& tablet_id);
 
  private:
   struct GetChangesRequestInfo {
@@ -137,7 +139,9 @@ class CDCSDKVirtualWAL {
       const TabletId& parent_tablet_id = "");
 
   Status UpdateTabletMapsOnSplit(
-      const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets);
+      const TabletId& parent_tablet_id,
+      const std::vector<std::pair<TabletId, GetChangesRequestInfo>>
+          children_tablet_to_next_req_info);
 
   Status GetChangesInternal(
       const std::unordered_set<TabletId> tablet_to_poll_list, const HostPort hostport,
@@ -212,6 +216,13 @@ class CDCSDKVirtualWAL {
   Status UpdateRestartTimeIfRequired();
 
   bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
+
+  bool ShouldPopulateExplicitCheckpoint();
+
+  bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
+
+  void UpdateOidToRelfilenodeMap(
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode);
 
   CDCServiceImpl* cdc_service_;
 
@@ -350,8 +361,19 @@ class CDCSDKVirtualWAL {
   // Indicates whether any of the publications being polled is an "ALL TABLES" publication.
   bool pub_all_tables_ = false;
 
+  // The commit time of the last (latest) DDL record encountered by the virtual WAL.
+  HybridTime last_seen_ddl_commit_time_ = HybridTime::kInvalid;
+
   // The last slot restart time which was updated in the cdc_state table.
-  uint64_t last_persisted_record_id_commit_time_;
+  HybridTime last_persisted_record_id_commit_time_;
+
+  // Maintains the mapping between table's PG OID and relfilenode. This is used in detecting DDLs
+  // that cause table rewrites.
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode_;
+
+  // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
+  // tablet for determining changes to the publication.
+  bool detect_publication_changes_implicitly_ = false;
 };
 
 }  // namespace cdc

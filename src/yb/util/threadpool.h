@@ -89,7 +89,7 @@ class Runnable {
         label " - run time event stats, microseconds.")
 
 #define THREAD_POOL_METRICS_INSTANCE(entity, name) { \
-      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity), \
+      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_length)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_time_us)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity) \
     }
@@ -101,16 +101,23 @@ class ThreadPoolToken {
   virtual Status SubmitFunc(std::function<void()> f) = 0;
   virtual void Shutdown() = 0;
 
+  // Set a per-task cgroup. All tasks submitted via this token will have their executing
+  // thread moved to this cgroup before running. Used for per-DB cgroup assignment.
+  virtual void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) {}
+
   Status SubmitClosure(const Closure& task);
   Status Submit(const std::shared_ptr<Runnable>& runnable);
 };
 
 class ThreadPool {
  public:
-  explicit ThreadPool(const ThreadPoolOptions& options) : impl_(options) {}
+  explicit ThreadPool(const ThreadPoolOptions& options)
+      : underlying_(std::make_shared<YBThreadPool>(options)) {}
+
+  explicit ThreadPool(YBThreadPoolPtr underlying) : underlying_(std::move(underlying)) {}
 
   void Shutdown() {
-    impl_.Shutdown();
+    underlying_->Shutdown();
   }
 
   Status SubmitFunc(const std::function<void()>& func);
@@ -122,19 +129,19 @@ class ThreadPool {
   }
 
   bool WaitUntil(MonoTime until) {
-    return impl_.BusyWait(until);
+    return underlying_->BusyWait(until);
   }
 
   void Wait() {
-    impl_.BusyWait(MonoTime::kUninitialized);
+    underlying_->BusyWait(MonoTime::kUninitialized);
   }
 
   size_t NumWorkers() const {
-    return impl_.NumWorkers();
+    return underlying_->NumWorkers();
   }
 
   bool Idle() const {
-    return impl_.Idle();
+    return underlying_->Idle();
   }
 
   // Allocates a new token for use in token-based task submission. All tokens
@@ -151,11 +158,17 @@ class ThreadPool {
 
   std::unique_ptr<ThreadPoolToken> NewToken(ExecutionMode mode);
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) {
+    underlying_->SetCgroup(cgroup);
+  }
+#endif
+
  private:
   template <class F>
   Status DoSubmit(const F& f);
 
-  YBThreadPool impl_;
+  YBThreadPoolPtr underlying_;
 };
 
 class ThreadPoolBuilder {
@@ -191,6 +204,11 @@ class ThreadPoolBuilder {
 
   ThreadPoolBuilder& set_metrics(ThreadPoolMetrics metrics) {
     options_.metrics = std::move(metrics);
+    return *this;
+  }
+
+  ThreadPoolBuilder& set_cgroup(Cgroup* cgroup) {
+    options_.cgroup = cgroup;
     return *this;
   }
 
@@ -247,6 +265,15 @@ class TaskRunner {
   Status first_failure_ GUARDED_BY(mutex_);
   std::mutex mutex_;
   std::condition_variable cond_ GUARDED_BY(mutex_);
+};
+
+class TaggedThreadPools : public YBTaggedThreadPools {
+ public:
+  using YBTaggedThreadPools::YBTaggedThreadPools;
+
+  Result<ThreadPool> Pool(Tag tag) {
+    return ThreadPool(VERIFY_RESULT(YBTaggedThreadPools::Pool(tag)));
+  }
 };
 
 } // namespace yb

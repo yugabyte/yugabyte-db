@@ -5,8 +5,6 @@
 package email
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel/channelutil"
@@ -62,7 +60,7 @@ var updateEmailChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(newName)) > 0 {
+		if !util.IsEmptyString(newName) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel name\n")
 			alert.SetName(newName)

@@ -29,13 +29,13 @@ import {
 import {
   XClusterConfigAction,
   XClusterConfigType,
+  XClusterTableEligibility,
   XCLUSTER_TABLE_INELIGIBLE_STATUSES,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
-import { XClusterTableEligibility } from '../../constants';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 import { ExpandColumnComponent } from './ExpandColumnComponent';

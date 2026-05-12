@@ -92,9 +92,9 @@ class LoadBalancerMockedBase : public YBTest {
     int adds = 0;
     int removes = 0;
     int stepdowns = 0;
-    RETURN_NOT_OK(CountPendingTasksUnlocked(table, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(cb_.CountPendingTasks(table, &adds, &removes, &stepdowns));
 
-    RETURN_NOT_OK(cb_.AnalyzeTabletsUnlocked(cur_table_uuid_));
+    RETURN_NOT_OK(cb_.AnalyzeTablets(table));
     return PendingTasks { adds, removes, stepdowns };
   }
 
@@ -132,14 +132,6 @@ class LoadBalancerMockedBase : public YBTest {
 
   size_t GetTotalRunningTablets() {
     return cb_.get_total_running_tablets();
-  }
-
-  Status CountPendingTasksUnlocked(
-      const TableInfoPtr& table, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
-      int* pending_stepdown_leader_tasks)
-      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
-    return cb_.CountPendingTasksUnlocked(table, pending_add_replica_tasks,
-        pending_remove_replica_tasks, pending_stepdown_leader_tasks);
   }
 
   Result<bool> HandleOneAddIfMissingPlacement(TabletId& out_tablet_id, TabletServerId& out_to_ts)
@@ -221,7 +213,7 @@ class LoadBalancerMockedBase : public YBTest {
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
         PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
-        NewReplica(ts_desc, state, role, &replica);
+        NewReplica(ts_desc, state, role, consensus::PeerMemberType::VOTER, &replica);
         replica.member_type = consensus::PeerMemberType::VOTER;
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
@@ -302,7 +294,9 @@ class LoadBalancerMockedBase : public YBTest {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(
+        ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+        consensus::PeerMemberType::VOTER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
