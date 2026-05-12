@@ -18,8 +18,6 @@ Use time travel queries to read data as it was at a specific point in time, with
 - Read rows that have been deleted by mistake. Restore the rows by exporting the result of the query and then importing it back into the database.
 - Analyze trends and data changes over time.
 
-**Note:** Time travel queries are not supported for temporary tables.
-
 ## Configure time travel queries
 
 ### Set the history retention interval
@@ -190,3 +188,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
 In cases where the deletion affected many tables in the database, you can use time travel queries to read the deleted rows for every table. Alternatively, you can use [instant database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
+
+## Limitations
+
+- Time travel queries are not supported for temporary tables.
