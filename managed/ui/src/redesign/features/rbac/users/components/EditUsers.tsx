@@ -10,6 +10,13 @@ import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { UserPermission } from '../../common/rbac_constants';
+import { isSuperAdminUser } from '../../common/RbacUtils';
+import {
+  getAllowSuperadminUserGroupMapping,
+  OIDC_RUNTIME_CONFIGS_QUERY_KEY
+} from '../../groups/components/GroupUtils';
+import { api } from '../../../universe/universe-form/utils/api';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
@@ -93,6 +100,11 @@ export const EditUser = () => {
 
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
 
+  const { isLoading: isGlobalRuntimeConfigLoading, data: runtimeConfig } = useQuery(
+    OIDC_RUNTIME_CONFIGS_QUERY_KEY,
+    () => api.fetchRunTimeConfigs(true)
+  );
+
   const editUser = useMutation(
     () => editUsersRolesBindings(currentUser!.uuid!, methods.getValues()),
     {
@@ -121,7 +133,7 @@ export const EditUser = () => {
     }
   );
 
-  if (isLoading) return <YBLoadingCircleIcon />;
+  if (isLoading || isGlobalRuntimeConfigLoading) return <YBLoadingCircleIcon />;
 
   let userRoles: Role[] = [];
   let isSuperAdmin = false;
@@ -132,6 +144,14 @@ export const EditUser = () => {
       find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
     );
   }
+
+  const rbacPermissions = (window as unknown as { rbac_permissions?: UserPermission[] })
+    .rbac_permissions;
+  const allowSuperAdminRoleSelection =
+    !!runtimeConfig &&
+    getAllowSuperadminUserGroupMapping(runtimeConfig) &&
+    !!rbacPermissions &&
+    isSuperAdminUser(rbacPermissions);
 
   return (
     <Container
@@ -206,7 +226,7 @@ export const EditUser = () => {
               disabled
               className={classes.email}
             />
-            <RolesAndResourceMapping />
+            <RolesAndResourceMapping allowSuperAdminRoleSelection={allowSuperAdminRoleSelection} />
             {errors.roleResourceDefinitions?.message && (
               <FormHelperText required error>
                 {errors.roleResourceDefinitions.message}

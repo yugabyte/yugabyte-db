@@ -82,6 +82,7 @@ public class RBACController extends AuthenticatedController {
   private final RoleBindingUtil roleBindingUtil;
   private final Provider<Router> routerProvider;
   private final RuntimeConfGetter confGetter;
+  private final TokenAuthenticator tokenAuthenticator;
 
   @Inject
   public RBACController(
@@ -89,12 +90,14 @@ public class RBACController extends AuthenticatedController {
       RoleUtil roleUtil,
       RoleBindingUtil roleBindingUtil,
       Provider<Router> routerProvider,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      TokenAuthenticator tokenAuthenticator) {
     this.permissionUtil = permissionUtil;
     this.roleUtil = roleUtil;
     this.roleBindingUtil = roleBindingUtil;
     this.routerProvider = routerProvider;
     this.confGetter = confGetter;
+    this.tokenAuthenticator = tokenAuthenticator;
   }
 
   /**
@@ -524,14 +527,21 @@ public class RBACController extends AuthenticatedController {
     // Check if user UUID exists within the above customer
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
 
+    boolean allowSuperadminAssignment =
+        confGetter.getGlobalConf(GlobalConfKeys.allowSuperadminUserGroupMapping)
+            && tokenAuthenticator.superAdminAuthentication(request);
+
     // Validate that the user does not have LDAP specified role.
-    if (UserType.ldap.equals(user.getUserType()) && user.isLdapSpecifiedRole()) {
+    if (UserType.ldap.equals(user.getUserType())
+        && user.isLdapSpecifiedRole()
+        && !allowSuperadminAssignment) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for LDAP user.");
     }
 
     // Validate that the user does not have OIDC specified role.
     if (UserType.oidc.equals(user.getUserType())
-        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)
+        && !allowSuperadminAssignment) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for OIDC user.");
     }
 
@@ -541,7 +551,8 @@ public class RBACController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, RoleBindingFormData.class);
 
     // Validate the roles and resource group definitions.
-    roleBindingUtil.validateRoles(customerUUID, roleBindingFormData.getRoleResourceDefinitions());
+    roleBindingUtil.validateRoles(
+        customerUUID, roleBindingFormData.getRoleResourceDefinitions(), allowSuperadminAssignment);
     roleBindingUtil.validateResourceGroups(
         customerUUID, roleBindingFormData.getRoleResourceDefinitions());
 
