@@ -94,7 +94,10 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
-      ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      // clockbound uses persisted userIntent value as we have subtask to explicitly save it
+      ynpNode.put(
+          "is_configure_clockbound",
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
       setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
       if (!provider.getYbHome().isEmpty()) {
         ynpNode.put("yb_home_dir", provider.getYbHome());
