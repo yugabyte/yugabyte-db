@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -4797,6 +4798,61 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     assertEquals(2, addedTservers.get());
     assertEquals(2, addedMasters.get());
+  }
+
+  @Test
+  public void testConfigureUniverseCreatedByNewUI() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+    Universe existing =
+        createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1", true);
+    assertNotNull(existing.getUniverseDetails().getPrimaryCluster().getPartitions());
+    assertEquals(1, existing.getUniverseDetails().getPrimaryCluster().getPartitions().size());
+
+    UniverseConfigureTaskParams params = new UniverseConfigureTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.numNodes += 1;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+    params.clusterOperation = EDIT;
+
+    // Increasing total num nodes.
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, existing, customer.getId(), params.getPrimaryCluster().uuid);
+
+    assertEquals(4, params.nodeDetailsSet.size());
+    assertEquals(
+        4, PlacementInfoUtil.getNodeCountInPlacement(params.getPrimaryCluster().placementInfo));
+    assertTrue(
+        PlacementInfoUtil.isSamePlacement(
+            params.getPrimaryCluster().placementInfo,
+            params.getPrimaryCluster().getPartitions().get(0).getPlacement()));
+    assertTrue(
+        PlacementInfoUtil.isSamePlacement(
+            params.getPrimaryCluster().placementInfo,
+            params.getPrimaryCluster().getOverallPlacement()));
+
+    // Increasing num nodes in az.
+    params.getPrimaryCluster().placementInfo.azStream().limit(1).forEach(az -> az.numNodesInAZ++);
+    params.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params,
+        Universe.getOrBadRequest(existing.getUniverseUUID()),
+        customer.getId(),
+        params.getPrimaryCluster().uuid);
+
+    assertEquals(5, params.nodeDetailsSet.size());
+    assertEquals(
+        5, PlacementInfoUtil.getNodeCountInPlacement(params.getPrimaryCluster().placementInfo));
+    assertTrue(
+        PlacementInfoUtil.isSamePlacement(
+            params.getPrimaryCluster().placementInfo,
+            params.getPrimaryCluster().getPartitions().get(0).getPlacement()));
+    assertTrue(
+        PlacementInfoUtil.isSamePlacement(
+            params.getPrimaryCluster().placementInfo,
+            params.getPrimaryCluster().getOverallPlacement()));
   }
 
   @Test
