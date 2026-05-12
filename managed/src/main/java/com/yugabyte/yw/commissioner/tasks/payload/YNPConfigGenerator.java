@@ -162,7 +162,6 @@ public class YNPConfigGenerator {
     if (node.cloudInfo.private_ip != null) {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
-    ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
       extraNode.put("mount_paths", deviceInfo.mountPoints);
@@ -226,6 +225,10 @@ public class YNPConfigGenerator {
     ObjectNode ynpNode = (ObjectNode) rootNode.get("ynp");
     setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
     ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
+    // clockbound uses persisted userIntent value as we have subtask to explicitly save it
+    ynpNode.put(
+        "is_configure_clockbound",
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
     Customer customer = Customer.getOrBadRequest(params.getProvider().getCustomerUUID());
     boolean enableEarlyoomFeature =
         confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
