@@ -490,7 +490,7 @@ On the flip side, automatic preloading of caches may result in higher memory usa
 
 Normally, executing a query repeatedly in the same connection will result in some requests to Master in the first execution, but starting from the second execution, all catalog data should be cached, so it should not make any catalog requests.
 
-For certain queries, the results are not be cached, and every execution makes one or more requests to Master.
+For certain queries, the results are not cached, and every execution makes one or more requests to Master.
 
 To check if this is a problem, open a connection and run the same query twice with EXPLAIN (ANALYZE, DIST). If the second run still makes catalog read requests, then you have a negative caching issue.
 
@@ -654,7 +654,7 @@ Enabling negative caching requires setting two configuration parameters:
 1. Enable negative caching by setting the `yb_enable_negative_catcache_entries` parameter to true.
 
 {{< warning title="The order is important" >}}
-Be sure to follow this exact sequence, otherwise correctness issues may result. Enabling catalog version increment on all DDLs is _mandatory_ for enabling negative caching. Using negative caching without first enbling the catalog version increment on all DDLs can lead to unexpected errors.
+Be sure to follow this exact sequence, otherwise correctness issues may result. Enabling catalog version increment on all DDLs is _mandatory_ for enabling negative caching. Using negative caching without first enabling the catalog version increment on all DDLs can lead to unexpected errors.
 {{< /warning >}}
 
 Negative caching is available in v2025.2.2.0 and later.
@@ -699,7 +699,7 @@ If you prefer to enable negative caching without a rolling restart, you can do t
     (1 row)
     ```
 
-    You will use this as the fence timestamp, waiting until all transactions that started before this timestamp have completed before proceding.
+    You will use this as the fence timestamp, waiting until all transactions that started before this timestamp have completed before proceeding.
 
 1. Wait for all transactions that started before `t_fence` to complete.
 
