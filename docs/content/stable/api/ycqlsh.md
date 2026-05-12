@@ -151,14 +151,14 @@ To view the current consistency level, use `CONSISTENCY` with no arguments.
 SERIAL CONSISTENCY <level>
 ```
 
-Sets the serial consistency level for statements that use it (for example, conditional updates with `IF`). This is separate from the regular consistency set by [`CONSISTENCY`](#consistency).
+Sets the serial consistency level for statements that use it (for example, conditional updates with `IF`). This is separate from the regular consistency set by [CONSISTENCY](#consistency).
 
 Valid levels are `SERIAL` and `LOCAL_SERIAL`.
 
 To show the current serial consistency, run `SERIAL CONSISTENCY` with no arguments.
 
 {{< note title="Not the SERIAL data type" >}}
-This command does not relate to an auto-increment SQL-style `SERIAL` type. In YCQL, use [`SERIAL CONSISTENCY`](#serial-consistency) only for serial consistency on the read path of conditional (LWT-style) operations. For auto-increment–style keys in YCQL, use other patterns (for example `uuid` or application-side IDs).
+This command does not relate to an auto-increment SQL-style `SERIAL` type. In YCQL, use [SERIAL CONSISTENCY](#serial-consistency) only for serial consistency on the read path of conditional (LWT-style) operations. For auto-increment-style keys in YCQL, use other patterns (for example, `uuid` or application-side IDs).
 {{< /note >}}
 
 ### TRACING
@@ -180,7 +180,7 @@ When tracing is on, the server can attach trace information to responses. How mu
 To read this help in the shell:
 
 ```cql
-HELP UNICODE;
+HELP UNICODE
 ```
 
 ### COPY FROM
@@ -362,7 +362,7 @@ Example:
 ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
 
-For request tracing from the shell, see [`TRACING`](#tracing).
+For request tracing from the shell, see [TRACING](#tracing).
 
 ### TIMING
 
