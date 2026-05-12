@@ -488,13 +488,13 @@ On the flip side, automatic preloading of caches may result in higher memory usa
 
 ### Negative caching issue
 
-Normally, executing a query repeatedly in the same connection will result in some requests to Master in the first execution, but starting from the second execution, all catalog data should be cached, so it should not make any catalog requests.
+Normally, executing a query repeatedly in the same connection results in some requests to Master in the first execution, but starting from the second execution, all catalog data should be cached, there should be no further catalog requests.
 
-For certain queries, the results are not cached, and every execution makes one or more requests to Master.
+However, for some queries, the results are not cached, and every execution makes one or more requests to Master.
 
 To check if this is a problem, open a connection and run the same query twice with EXPLAIN (ANALYZE, DIST). If the second run still makes catalog read requests, then you have a negative caching issue.
 
-For example, you can try the following:
+For example, try the following:
 
 1. Open and close a connection to ensure there is no preloading.
 
@@ -648,7 +648,7 @@ To enable minimal catalog cache preloading, set the [YB-TServer flag](../../refe
 
 ### Enable negative caching
 
-Enabling negative caching requires setting two configuration parameters:
+Enabling negative caching requires setting two [configuration parameters](../../reference/configuration/yb-tserver/#postgresql-configuration-parameters):
 
 1. Enable the catalog version increment on all DDLs by setting the `yb_always_increment_catalog_version_on_ddl` parameter to true.
 1. Enable negative caching by setting the `yb_enable_negative_catcache_entries` parameter to true.
