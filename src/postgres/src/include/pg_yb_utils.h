@@ -1744,6 +1744,8 @@ extern bool YBHasSkippedIntentsWrite();
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
 struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
 extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
 											  Index rti,
 											  const char *tserver_uuid);
@@ -1751,4 +1753,5 @@ extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *
 													  Index rti);
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
 #endif							/* PG_YB_UTILS_H */
