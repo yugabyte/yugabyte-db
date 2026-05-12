@@ -178,6 +178,19 @@ public class NodeScriptRunner {
   private NodeResult executeOnNode(Universe universe, NodeDetails node, ScriptParams scriptParams) {
     long nodeStartTime = System.currentTimeMillis();
 
+    if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+      long executionTime = System.currentTimeMillis() - nodeStartTime;
+      return NodeResult.builder()
+          .nodeName(node.nodeName)
+          .nodeAddress(node.cloudInfo.private_ip)
+          .exitCode(-1)
+          .stdout("")
+          .errorMessage("Node is unreachable")
+          .executionTimeMs(executionTime)
+          .success(false)
+          .build();
+    }
+
     try {
       ShellProcessContext.ShellProcessContextBuilder contextBuilder =
           ShellProcessContext.builder()

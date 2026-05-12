@@ -137,6 +137,7 @@
 | "OIDC feature enhancements" | "yb.security.oidc_feature_enhancements" | "GLOBAL" | "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA on login, etc." | "Boolean" |
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
 | "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
+| "Node reachability check timeout" | "yb.node_script.reachability_check_timeout_sec" | "GLOBAL" | "Timeout in seconds for the pre-check that determines whether a node is reachable for per-node platform APIs such as run-script and file-collections. Unreachable nodes are reported as failed nodes rather than producing per-file/per-command errors." | "Integer" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |

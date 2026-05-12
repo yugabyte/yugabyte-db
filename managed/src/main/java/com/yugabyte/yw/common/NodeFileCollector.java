@@ -247,6 +247,24 @@ public class NodeFileCollector {
     int failed = 0;
     long bytesCollected = 0;
 
+    // Fail fast on unreachable nodes; otherwise per-file probes swallow the
+    // connection error and the node is mis-reported as successful with file-level failures.
+    if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+      long executionTime = System.currentTimeMillis() - nodeStartTime;
+      return NodeResult.builder()
+          .nodeName(node.nodeName)
+          .nodeAddress(node.cloudInfo.private_ip)
+          .success(false)
+          .filesCollected(0)
+          .filesSkipped(0)
+          .filesFailed(0)
+          .totalBytesCollected(0)
+          .executionTimeMs(executionTime)
+          .errorMessage("Node is unreachable")
+          .files(new ArrayList<>())
+          .build();
+    }
+
     try {
       // Collect all file paths to tar
       List<String> filesToCollect = new ArrayList<>();
