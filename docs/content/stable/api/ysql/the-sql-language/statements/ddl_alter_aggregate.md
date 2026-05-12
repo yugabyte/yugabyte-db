@@ -7,8 +7,6 @@ menu:
   stable_api:
     identifier: ddl_alter_aggregate
     parent: statements
-aliases:
-  - /stable/api/ysql/commands/ddl_alter_aggregate/
 type: docs
 ---
 
@@ -26,7 +24,7 @@ Use the `ALTER AGGREGATE` statement to change the definition of an aggregate fun
 
 ## Semantics
 
-See the semantics in the [PostgreSQL documentation][postgresql-docs-alter-aggregate].
+See the semantics in the [PostgreSQL documentation](https://www.postgresql.org/docs/15/sql-alteraggregate.html).
 
 ## Examples
 
@@ -55,5 +53,3 @@ yugabyte=# ALTER AGGREGATE sumdouble (float8) SET SCHEMA public;
 
 - [CREATE AGGREGATE](../ddl_create_aggregate)
 - [DROP AGGREGATE](../ddl_drop_aggregate)
-
-[postgresql-docs-alter-aggregate]: https://www.postgresql.org/docs/15/sql-alteraggregate.html
