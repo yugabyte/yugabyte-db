@@ -7521,7 +7521,7 @@ PostgresMain(const char *dbname, const char *username)
 					 */
 					yb_conn_mgr_is_auth_passthrough_backend = true;
 					MyProcPort->yb_is_auth_passthrough_req = true;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
+					MyProcPort->yb_has_auth_passthrough_finished = false;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -7620,7 +7620,7 @@ PostgresMain(const char *dbname, const char *username)
 						 * instead, to avoid closing the control backend. Thus,
 						 * the subsequent steps need to be manually skipped.
 						 */
-						if (!MyProcPort->yb_has_auth_passthrough_failed)
+						if (!MyProcPort->yb_has_auth_passthrough_finished)
 						{
 							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
 
@@ -7628,6 +7628,7 @@ PostgresMain(const char *dbname, const char *username)
 								YbAuthPassthroughSetupGUCAndReport();
 						}
 
+						MyProcPort->yb_has_auth_passthrough_finished = true;
 						yb_abort_xact_command();
 					}
 
@@ -7639,7 +7640,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
+					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;

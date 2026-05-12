@@ -170,7 +170,14 @@ typedef struct Port
 	 * is invoked due to Auth Passthrough Request packet.
 	 */
 	bool		yb_is_auth_passthrough_req;
-	bool		yb_has_auth_passthrough_failed;
+
+	/*
+	 * YB: Set to true once Authentication + GUC reporting is done,
+	 * regardless failure or success.
+	 * Skips remaining auth steps in case of failure and disables GUC reporting
+	 * during txn abort after auth attempt.
+	 */
+	bool		yb_has_auth_passthrough_finished;
 
 	/*
 	 * YB: To be used for the authentication of logical connections from the

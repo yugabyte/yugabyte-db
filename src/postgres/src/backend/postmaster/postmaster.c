@@ -4883,7 +4883,7 @@ BackendInitialize(Port *port)
 	 * YB: Initialize custom vars to avoid issue in control/auth backend startup
 	 */
 	port->yb_is_auth_passthrough_req = false;
-	port->yb_has_auth_passthrough_failed = false;
+	port->yb_has_auth_passthrough_finished = false;
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
 
