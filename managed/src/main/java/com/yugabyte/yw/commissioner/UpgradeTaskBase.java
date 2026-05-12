@@ -209,6 +209,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // create comprehensive precheck tasks for all nodes to be restarted
   private void createComprehensivePrecheckTasks(MastersAndTservers nodesToBeRestarted) {
+    Universe universe = getUniverse();
+    long checkServiceLivenessTimeoutMs =
+        confGetter
+            .getConfForScope(
+                universe, UniverseConfKeys.comprehensivePrecheckCheckServiceLivenessTimeout)
+            .toMillis();
+
     // Check service liveness for all nodes
     doInPrecheckSubTaskGroup(
         "CheckServiceLiveness",
@@ -217,7 +224,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
             params.setUniverseUUID(taskParams().getUniverseUUID());
             params.nodeName = node.nodeName;
-            params.timeoutMs = 10000; // Default timeout
+            params.timeoutMs = checkServiceLivenessTimeoutMs;
 
             CheckServiceLiveness checkServiceLiveness = createTask(CheckServiceLiveness.class);
             checkServiceLiveness.initialize(params);

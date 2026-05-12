@@ -1300,6 +1300,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Duration> comprehensivePrecheckCheckServiceLivenessTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.check_service_liveness_timeout",
+          ScopeType.UNIVERSE,
+          "CheckServiceLiveness timeout for comprehensive prechecks",
+          "Timeout for CheckServiceLiveness subtasks during comprehensive prechecks "
+              + "(universe create/edit and rolling upgrades).",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
       new ConfKeyInfo<>(
           "yb.checks.nodes_safe_to_take_down.parallelism",
