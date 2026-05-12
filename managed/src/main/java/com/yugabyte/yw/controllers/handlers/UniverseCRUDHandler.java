@@ -200,7 +200,7 @@ public class UniverseCRUDHandler {
         taskParams, clusterOperation, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
   }
 
-  private static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  public static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation,
       Cluster cluster,
@@ -2717,7 +2717,7 @@ public class UniverseCRUDHandler {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Cannot delete default partition " + cur.getName());
             }
-          } else {
+          } else if (curCluster.isGeoPartitioned()) {
             boolean autoTablespaceUpdate =
                 confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
             if (!autoTablespaceUpdate

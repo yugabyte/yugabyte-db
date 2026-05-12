@@ -10,7 +10,10 @@ import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
+import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
@@ -25,6 +28,7 @@ import api.v2.models.FileCollectionSummary;
 import api.v2.models.NodeFileCollectionResult;
 import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
+import api.v2.models.ResizeUpdateOption;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
@@ -33,7 +37,9 @@ import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseSpec;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,6 +68,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -129,6 +136,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private NodeFileCollector nodeFileCollector;
   @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
+  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -1283,6 +1291,22 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
   }
 
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec)
+      throws JsonProcessingException {
+    Set<String> errors =
+        kubernetesOverridesHandler.validateKubernetesOverrides(
+            spec.getYbSoftwareVersion(),
+            spec.getNodePrefix(),
+            ClusterMapper.INSTANCE.toV1PlacementInfo(spec.getPlacementSpec()),
+            spec.getIsReadonlyCluster(),
+            spec.getOverrides(),
+            spec.getAzOverrides());
+    YBAValidationResponse response = new YBAValidationResponse();
+    errors.forEach(response::addErrorsItem);
+    return response;
+  }
+
   /**
    * Helper method to convert NodeSelection API model to NodeScriptRunner.NodeFilter. Reused by both
    * runScript and collectFiles handlers.
@@ -1409,5 +1433,48 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
+  }
+
+  public CheckResizeOptionsResp checkResizeOptions(
+      UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(uniUUID, customer).getUniverseDetails();
+
+    Cluster cluster = taskParams.getClusterByUuid(spec.getClusterUuid());
+    if (cluster == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
+    }
+    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+        spec.getNodeSpec(), cluster.userIntent);
+    log.debug(
+        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
+
+    Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+
+    PlacementInfoUtil.updateUniverseDefinitionV2(
+        dbUniverse,
+        taskParams,
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
+    log.info(
+        "Check resize options for universe {} cluster {}: {}",
+        uniUUID,
+        spec.getClusterUuid(),
+        updateOptions);
+    List<ResizeUpdateOption> res = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
+      try {
+        res.add(ResizeUpdateOption.valueOf(updateOption.name()));
+      } catch (Exception ignored) {
+        log.error("Incorrect option: " + updateOption);
+      }
+    }
+    return new CheckResizeOptionsResp().options(res);
   }
 }

@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
@@ -59,7 +60,7 @@ import play.mvc.Http.Request;
 @Mapper(
     config = CentralConfig.class,
     mappingControl = DeepClone.class,
-    uses = {ClusterMapper.class, UserMapper.class})
+    uses = {ClusterMapper.class, UserMapper.class, CommunicationPortsMapper.class})
 public interface UniverseDefinitionTaskParamsMapper {
   public static UniverseDefinitionTaskParamsMapper INSTANCE =
       Mappers.getMapper(UniverseDefinitionTaskParamsMapper.class);
@@ -135,6 +136,10 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @InheritConfiguration(name = "defaultMapping")
   public ResizeNodeParams toResizeNodeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public ProxyConfigUpdateParams toProxyConfigUpdateParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
   @Mapping(target = "spec", source = ".")

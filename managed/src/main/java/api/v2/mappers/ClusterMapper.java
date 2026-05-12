@@ -2,16 +2,22 @@
 
 package api.v2.mappers;
 
+import static play.mvc.Http.Status.NOT_FOUND;
+
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
+import api.v2.models.ClusterPlacementSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
 import api.v2.models.UniverseResizeNodesCluster;
+import api.v2.models.UniverseUpdateProxyConfigClustersInner;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.List;
+import java.util.UUID;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
@@ -90,6 +96,23 @@ public interface ClusterMapper {
     return v1Clusters;
   }
 
+  @Mapping(target = "userIntent", source = ".")
+  Cluster toV1ClusterFromUniverseUpdateProxyConfigClustersInner(
+      UniverseUpdateProxyConfigClustersInner source, @MappingTarget Cluster v1Cluster);
+
+  default List<Cluster> toV1ClustersFromUniverseUpdateProxyConfigClustersInner(
+      List<UniverseUpdateProxyConfigClustersInner> updateClusters,
+      @MappingTarget List<Cluster> v1Clusters) {
+    if (updateClusters == null) {
+      return v1Clusters;
+    }
+    for (UniverseUpdateProxyConfigClustersInner updateCluster : updateClusters) {
+      Cluster v1Cluster = findCluster(v1Clusters, updateCluster.getUuid());
+      toV1ClusterFromUniverseUpdateProxyConfigClustersInner(updateCluster, v1Cluster);
+    }
+    return v1Clusters;
+  }
+
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
@@ -123,7 +146,19 @@ public interface ClusterMapper {
   @InheritInverseConfiguration
   PlacementAZ toV2PlacementAZ(PlacementInfo.PlacementAZ placementAZ);
 
+  PlacementInfo toV1PlacementInfo(ClusterPlacementSpec clusterPlacementSpec);
+
   @ValueMappings(@ValueMapping(target = "ASYNC", source = "READ_REPLICA"))
   UniverseDefinitionTaskParams.ClusterType toV1ClusterType(
       ClusterAddSpec.ClusterTypeEnum v2ClusterType);
+
+  default Cluster findCluster(List<Cluster> v1Clusters, UUID clusterUUID) {
+    return v1Clusters.stream()
+        .filter(c -> c.uuid.equals(clusterUUID))
+        .findAny()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    NOT_FOUND, "Cluster " + clusterUUID + " is not found"));
+  }
 }
