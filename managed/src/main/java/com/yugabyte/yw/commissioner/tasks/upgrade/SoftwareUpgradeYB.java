@@ -806,8 +806,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       Map<UUID, Set<UUID>> tserverCompletedByCluster = new HashMap<>();
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         List<UUID> azs = sortAZs(cluster, universe);
+        List<NodeDetails> tserverNodesForCluster =
+            tserverNodes.stream()
+                .filter(n -> cluster.uuid.equals(n.placementUuid))
+                .collect(Collectors.toList());
         for (UUID azUUID : azs) {
-          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
           if (nodesInAZ.isEmpty()) {
             continue;
           }
@@ -963,11 +967,15 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           azs,
           pauseAfterAZs,
           completedForCluster);
+      List<NodeDetails> tserverNodesForCluster =
+          tserverNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toList());
       for (UUID azUUID : azs) {
         if (completedForCluster.contains(azUUID)) {
           continue;
         }
-        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
         if (nodesInAZ.isEmpty()) {
           continue;
         }
