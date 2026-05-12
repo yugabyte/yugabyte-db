@@ -151,6 +151,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
     createCheckSshConnectionTasks(liveNodes);
 
+    long checkServiceLivenessTimeoutMs =
+        confGetter
+            .getConfForScope(
+                universe, UniverseConfKeys.comprehensivePrecheckCheckServiceLivenessTimeout)
+            .toMillis();
+
     doInPrecheckSubTaskGroup(
         "CheckServiceLiveness",
         subTaskGroup -> {
@@ -158,7 +164,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
             params.setUniverseUUID(taskParams().getUniverseUUID());
             params.nodeName = node.nodeName;
-            params.timeoutMs = 10000;
+            params.timeoutMs = checkServiceLivenessTimeoutMs;
             CheckServiceLiveness task = createTask(CheckServiceLiveness.class);
             task.initialize(params);
             subTaskGroup.addSubTask(task);
