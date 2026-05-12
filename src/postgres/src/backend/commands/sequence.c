@@ -236,7 +236,6 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 			HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
 												  seqoid,
 												  YbGetCatalogCacheVersion(),
-												  YBIsDBCatalogVersionMode(),
 												  seqdataform.last_value,
 												  false /* is_called */ ));
 	}
@@ -318,7 +317,6 @@ ResetSequence(Oid seq_relid)
 		HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 											  seq_relid,
 											  YbGetCatalogCacheVersion(),
-											  YBIsDBCatalogVersionMode(),
 											  startv /* last_val */ ,
 											  false /* is_called */ ,
 											  &skipped));
@@ -549,7 +547,6 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 			HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 												relid,
 												YbGetCatalogCacheVersion(),
-												YBIsDBCatalogVersionMode(),
 												&last_val,
 												&is_called));
 
@@ -610,7 +607,6 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 				HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 													  ObjectIdGetDatum(relid),
 													  YbGetCatalogCacheVersion(),
-													  YBIsDBCatalogVersionMode(),
 													  newdataform->last_value /* last_val */ ,
 													  newdataform->is_called /* is_called */ ,
 													  &skipped));
@@ -745,7 +741,6 @@ YBReadSequenceTuple(Relation seqrel)
 		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
 											YbGetCatalogCacheVersion(),
-											YBIsDBCatalogVersionMode(),
 											&last_val,
 											&is_called));
 		seqdataform.last_value = last_val;
@@ -922,7 +917,6 @@ nextval_internal(Oid relid, bool check_permissions)
 			YbcStatus	s = YBCFetchSequenceTuple(MyDatabaseId,
 												  relid,
 												  YbGetCatalogCacheVersion(),
-												  YBIsDBCatalogVersionMode(),
 												  cache,
 												  incby,
 												  minv,
@@ -955,7 +949,6 @@ nextval_internal(Oid relid, bool check_permissions)
 				HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 													relid,
 													YbGetCatalogCacheVersion(),
-													YBIsDBCatalogVersionMode(),
 													&last,
 													&is_called));
 				/*
@@ -1035,7 +1028,6 @@ nextval_internal(Oid relid, bool check_permissions)
 				HandleYBStatus(YBCUpdateSequenceTupleConditionally(MyDatabaseId,
 																   relid,
 																   YbGetCatalogCacheVersion(),
-																   YBIsDBCatalogVersionMode(),
 																   last_val,
 																   true /* is_called */ ,
 																   last,
@@ -1453,7 +1445,6 @@ do_setval(Oid relid, int64 next, bool iscalled)
 		HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 											  relid,
 											  YbGetCatalogCacheVersion(),
-											  YBIsDBCatalogVersionMode(),
 											  next,
 											  iscalled,
 											  NULL));

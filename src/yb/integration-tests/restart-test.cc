@@ -37,6 +37,8 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+
 DECLARE_bool(log_enable_background_sync);
 
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
@@ -139,6 +141,82 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
   ASSERT_TRUE(segment->footer().close_timestamp_micros() > timestamp_before_write &&
               segment->footer().close_timestamp_micros() < timestamp_after_write);
+}
+
+// Verify that when a tserver is abruptly restarted before its memtable has been
+// flushed, tablet bootstrap correctly recovers all writes from the WAL.
+//
+// Setup:
+//   1. Disable flush on shutdown so writes stay only in memtable + WAL.
+//   2. Simulate abrupt restart so the WAL segment is not closed with a footer.
+//   3. Insert N rows.
+//   4. Restart all tservers.
+//
+// Expectations after bootstrap:
+//   - All N rows are visible (replayed from WAL).
+//   - The previously-active WAL segment has a footer reconstructed by tail-scan.
+//   - Subsequent writes work normally.
+TEST_F(RestartTest, BootstrapReplaysUnflushedWritesFromWAL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  // Disable reuse-unclosed-segment so bootstrap exercises the footer-rebuild path.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
+
+  string tablet_id;
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+
+  // Verifies all expected key/value pairs are present using set membership
+  // (independent of scan order, which is lexicographic in YCQL).
+  auto check_all_keys_present = [this](int n) {
+    auto result_kvs = GetScanResults(client::TableRange(table_));
+    ASSERT_EQ(n, result_kvs.size());
+    std::map<std::string, std::string> got(result_kvs.begin(), result_kvs.end());
+    for (int i = 0; i < n; ++i) {
+      auto k = "key_" + std::to_string(i);
+      auto v = "value_" + std::to_string(i);
+      auto it = got.find(k);
+      ASSERT_NE(it, got.end()) << "missing key " << k;
+      ASSERT_EQ(it->second, v) << "wrong value for key " << k;
+    }
+  };
+
+  constexpr int kNumRows = 50;
+  for (int i = 0; i < kNumRows; ++i) {
+    PutKeyValue("key_" + std::to_string(i), "value_" + std::to_string(i));
+  }
+
+  ASSERT_NO_FATALS(check_all_keys_present(kNumRows));
+
+  for (size_t i = 0; i < mini_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(mini_cluster()->mini_tablet_server(i)->Restart());
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+
+  for (size_t i = 0; i < mini_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(mini_cluster()->mini_tablet_server(i)->WaitStarted());
+  }
+
+  ASSERT_NO_FATALS(check_all_keys_present(kNumRows));
+
+  // The previously-active segment should now have a footer rebuilt by tail-scan during bootstrap.
+  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap is
+  // guaranteed to close the prior segment and allocate a fresh tail, so >= 2 segments must exist.
+  {
+    auto* ts = mini_cluster()->mini_tablet_server(0);
+    auto peer = ASSERT_RESULT(ts->server()->tablet_manager()->GetServingTablet(tablet_id));
+    log::SegmentSequence segments;
+    auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    ASSERT_GE(segments.size(), 2);
+    log::ReadableLogSegmentPtr first = ASSERT_RESULT(segments.front());
+    ASSERT_TRUE(first->HasFooter()) << "first segment missing footer after bootstrap";
+  }
+
+  PutKeyValue("post_restart_key", "post_restart_value");
+  auto result_kvs = GetScanResults(client::TableRange(table_));
+  ASSERT_EQ(kNumRows + 1, result_kvs.size());
 }
 
 TEST_F(LogSyncTest, BackgroundSync) {

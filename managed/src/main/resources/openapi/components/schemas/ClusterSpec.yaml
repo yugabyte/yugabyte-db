@@ -41,6 +41,7 @@ properties:
   provider_spec:
     $ref: "./ClusterProviderSpec.yaml"
   placement_spec:
+    description: Overall placement for cluster.
     $ref: "./ClusterPlacementSpec.yaml"
   partitions_spec:
     type: array

@@ -1,6 +1,10 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
 import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
+import {
+  MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
+} from '../../universe-actions/edit-multi-tenancy/multiTenancyQosDbCount';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -151,6 +155,7 @@ export interface UserIntent {
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
   enableConnectionPooling?: boolean;
+  multiTenancy?: { enableQos: boolean; qosMaxDbCpuPercent?: number; qosMaxDbCount?: number };
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -591,6 +596,9 @@ export interface AdvancedConfigFormValue {
   communicationPorts: CommunicationPorts;
   enablePGCompatibitilty: boolean;
   enableConnectionPooling?: boolean;
+  enableMultiTenancyQos?: boolean;
+  multiTenancyQosMaxDbCpuPercent?: number;
+  multiTenancyQosMaxDbCount?: number;
 }
 
 export interface InstanceTag {
@@ -699,7 +707,10 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   ybSoftwareVersion: null,
   communicationPorts: DEFAULT_COMMUNICATION_PORTS,
   enablePGCompatibitilty: false,
-  enableConnectionPooling: false
+  enableConnectionPooling: false,
+  enableMultiTenancyQos: false,
+  multiTenancyQosMaxDbCpuPercent: MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  multiTenancyQosMaxDbCount: MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];

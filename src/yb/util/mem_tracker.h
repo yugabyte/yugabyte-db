@@ -715,4 +715,12 @@ void DumpMemoryUsage();
 bool CheckMemoryPressureWithLogging(
     const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
+namespace internal {
+// Validate that the given memory-limit ratio flag is valid.
+// The value must be larger than 0 and not exceed 1, except the special sentinel value,
+// `USE_RECOMMENDED_MEMORY_VALUE`. The conditions are somewhat too specific to become
+// a general function in flags.h, hence declared here.
+bool ValidateMemoryLimitToRamRatio(const char* flag_name, double value);
+}  // namespace internal
+
 } // namespace yb

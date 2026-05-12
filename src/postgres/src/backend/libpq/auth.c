@@ -277,13 +277,13 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 
 	/*
 	 * YB: When using Auth Passthrough mode of connection manager, mark the
-	 * current auth attempt as failed so that the control backend knows to abort
-	 * auth and reset to its base state. The fact that we are in a call to
+	 * current auth attempt as finished so that the control backend knows to
+	 * abort auth and reset to its base state. The fact that we are in a call to
 	 * `auth_failed()` is sufficient to conclude that auth has failed.
 	 */
 
 	if (yb_is_auth_passthrough)
-		port->yb_has_auth_passthrough_failed = true;
+		port->yb_has_auth_passthrough_finished = true;
 
 	/*
 	 * If we failed due to EOF from client, just quit; there's no point in
@@ -296,8 +296,8 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	 * events.)
 	 *
 	 * YB: When conn mgr is enabled and in auth passthrough mode, avoid calling
-	 * proc_exit here, instead returning a failure result via
-	 * port->yb_has_auth_passthrough_failed.
+	 * proc_exit here, instead returning a failure result by setting
+	 * port->yb_has_auth_passthrough_finished.
 	 */
 	if (status == STATUS_EOF)
 	{
@@ -463,7 +463,7 @@ set_authn_id(Port *port, const char *id)
  * YB: This function *does* return in case connection manager is active and this
  * is a control backend being used for authentication with auth passthrough mode
  * enabled.
- * If auth fails, `port->yb_has_auth_passthrough_failed` is used to signal
+ * If auth fails, `port->yb_has_auth_passthrough_finished` is used to signal
  * authentication failure. This is set in the call to `auth_failed()`. Else it
  * must be set manually where auth_failed is not called before returning.
  */
@@ -589,7 +589,7 @@ ClientAuthentication(Port *port)
 					if (yb_auth_passthrough)
 					{
 						YbSendFatalForLogicalConnectionPacket();
-						port->yb_has_auth_passthrough_failed = true;
+						port->yb_has_auth_passthrough_finished = true;
 					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
@@ -666,7 +666,7 @@ ClientAuthentication(Port *port)
 					if (yb_auth_passthrough)
 					{
 						YbSendFatalForLogicalConnectionPacket();
-						port->yb_has_auth_passthrough_failed = true;
+						port->yb_has_auth_passthrough_finished = true;
 					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),

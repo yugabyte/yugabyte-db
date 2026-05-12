@@ -166,6 +166,12 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
+  Status SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const LWQLValuePB& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
   Status AddExternalIntents(
       const TransactionId& txn_id,
       SubTransactionId subtransaction_id,
@@ -191,7 +197,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
     return InsertSubDocument(
-        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+        doc_path, ValueRef(*MakeLWValue(value)), hybrid_time, ttl, read_ht);
   }
 
   Status ExtendSubDocument(
@@ -208,7 +214,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
     return ExtendSubDocument(
-        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+        doc_path, ValueRef(*MakeLWValue(value)), hybrid_time, ttl, read_ht);
   }
 
   Status ExtendList(

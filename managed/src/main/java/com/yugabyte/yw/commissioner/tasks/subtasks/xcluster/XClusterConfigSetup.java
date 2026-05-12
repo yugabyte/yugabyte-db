@@ -38,7 +38,6 @@ import org.yb.util.NetUtil;
  */
 @Slf4j
 public class XClusterConfigSetup extends XClusterConfigTaskBase {
-
   @Inject
   protected XClusterConfigSetup(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
@@ -92,7 +91,12 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
                 .getConsumerRegistry()
                 .getProducerMapMap()
                 .get(xClusterConfig.getReplicationGroupName());
+        // If replication group already exists, it will either wait to succeed or fail. It must not
+        // continue to set up the replication group again because the replication streams might be
+        // consumed already.
         if (Objects.nonNull(existingReplicationGroup)) {
+          waitForTaskTableStreamsInActiveStatus(
+              xClusterConfig, sourceUniverse, taskParams().tableIds);
           syncXClusterConfigWithReplicationGroup(
               clusterConfig, xClusterConfig, taskParams().tableIds);
           if (xClusterConfig.getTables().stream()
@@ -106,7 +110,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           return;
         }
       } catch (Exception e) {
-        log.warn("Failed to get cluster config from target universe: {}", e.getMessage());
+        throw new RuntimeException(e);
       }
 
       // Find bootstrap ids, and check replication is not already set up for that table.
@@ -212,6 +216,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         }
       }
       waitForXClusterOperation(xClusterConfig, client::isSetupUniverseReplicationDone);
+      waitForTaskTableStreamsInActiveStatus(xClusterConfig, sourceUniverse, taskParams().tableIds);
 
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();

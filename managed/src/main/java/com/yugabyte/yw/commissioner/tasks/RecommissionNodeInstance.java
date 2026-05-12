@@ -4,17 +4,14 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.nodeagent.DestroyServerInput;
-import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,7 +31,6 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
   @Override
   public void run() {
     NodeInstance nodeInstance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
-
     if (nodeInstance.getState() != NodeInstance.State.DECOMMISSIONED) {
       throw new RuntimeException(
           String.format(
@@ -44,22 +40,21 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
               nodeInstance.getState(),
               NodeInstance.State.DECOMMISSIONED));
     }
-
     if (!nodeInstance.isManuallyDecommissioned()) {
       log.debug("Cleaning up node instance {}", nodeInstance.getNodeUuid());
       Provider provider = taskParams().getProvider();
       try {
-        Optional<NodeAgent> optional =
-            confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-                ? Optional.empty()
-                : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                    nodeInstance.getDetails().ip, provider, null /* optional universe */);
-        if (optional.isPresent()) {
+        // Node agent must exist for onprem non-sudo.
+        NodeAgent nodeAgent =
+            provider.isManualOnprem()
+                ? nodeAgentClient.getAndUpgradeOrThrow(nodeInstance.getDetails().ip)
+                : nodeAgentClient.maybeGetAndUpgrade(nodeInstance.getDetails().ip).orElse(null);
+        if (nodeAgent != null) {
           DestroyServerInput.Builder builder = DestroyServerInput.newBuilder();
           builder.setIsProvisioningCleanup(!provider.getDetails().skipProvisioning);
           builder.setYbHomeDir(provider.getYbHome());
           nodeAgentClient.runDestroyServer(
-              optional.get(), builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+              nodeAgent, builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         } else {
           nodeManager
               .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
@@ -70,7 +65,7 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
         throw e;
       }
       log.debug("Successfully cleaned up node instance: {}", nodeInstance.getNodeUuid());
-      if (provider.getCloudCode() == CloudType.onprem && !provider.getDetails().skipProvisioning) {
+      if (!provider.isManualOnprem()) {
         NodeAgent.maybeGetByIp(nodeInstance.getDetails().ip)
             .ifPresent(
                 n -> {
@@ -84,7 +79,6 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
           "Skipping clean up node instance {} as node instance was manually decommissioned by user",
           nodeInstance.getNodeUuid());
     }
-
     nodeInstance.clearNodeDetails();
   }
 }

@@ -24,14 +24,14 @@ Create two clusters, the Source cluster which will serve reads and writes, and t
 
 Ensure the clusters have the following characteristics:
 
-- Both clusters are running the same version of YugabyteDB ({{<release "2025.2.2.0">}} or later).
+- Both clusters are running the same version of YugabyteDB ({{<release "2025.2.2.1">}} or later).
 - Both clusters are deployed in a [VPC](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/) and are on the same cloud provider.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the Target cluster. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
-- DR enables point-in-time-recovery (PITR) on both the Source and the Target. Although PITR is not required on the Source for DR purposes, enabling it reduces the switchover task execution time. This leads to increase storage use for the sake of performance.
+- DR enables point-in-time-recovery (PITR) on both the Source and the Target. Although PITR is not required on the Source for DR purposes, enabling it reduces the switchover task execution time. This leads to increased storage use for the sake of performance.
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the Target cluster already has PITR configured, that configuration is replaced by the PITR configuration set during DR setup.
 
-Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The Source can be empty or have data. If the Source has a lot of data, the DR setup will take longer because the data must be copied in full to the Target before on-going asynchronous replication starts.
+Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. Source databases must have at least one table, but tables can be empty or have data. If the Source tables have a lot of data, the DR setup will take longer because the data must be copied in full to the Target before ongoing asynchronous replication starts.
 
 DR performs a full copy of the data to be replicated on the Source, and restores the data to the Target.
 
@@ -102,7 +102,7 @@ The state of the system at time t = 50 ms is as follows:
 - Safe time is the time at which T1 was replicated, namely t = 0.001 ms.
 - Safe time lag is the difference between the current time and the safe time. As of t = 50 ms, the safe time lag is 49.999 ms (50 ms - 0.001 ms).
 
-If a failover were to occur at this moment (t = 50 ms) the Target will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the DR Replica, and will be ignored when it arrives.
+If a failover were to occur at this moment (t = 50 ms) the Target will be restored to its state as of the safe time (that is, t = 0.001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the Target, and will be ignored when it arrives.
 
 In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T2) (the transaction that is lagging the most).
 
@@ -142,7 +142,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for the databases those tables belong to. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for the databases those tables belong to. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#disaster-recovery-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Aeon is unable to obtain the status (for example, due to a heavy workload being run on the cluster), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -155,12 +155,12 @@ The table statuses are described in the following table.
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
 
-The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+The following statuses [trigger an alert](#disaster-recovery-alerts).
 
 | Status | Description |
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
-| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#disaster-recovery-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the Source without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
 | Dropped From Target | The table was in replication, but was dropped from the Target without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
 | Extra Table On Source | The table is newly created on the Source but is not in replication yet. |

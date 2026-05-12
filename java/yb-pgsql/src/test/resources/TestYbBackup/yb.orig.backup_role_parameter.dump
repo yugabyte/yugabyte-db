@@ -74,6 +74,7 @@ CREATE TABLE public.test_table (
     CONSTRAINT test_table_pkey PRIMARY KEY((id) HASH)
 )
 SPLIT INTO 2 TABLETS;
+ALTER TABLE public.test_table SET (yb_presplit='2');
 
 
 \if :use_roles

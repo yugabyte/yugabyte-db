@@ -90,6 +90,7 @@ class Env;
 
 namespace yb {
 
+class Cgroup;
 class Env;
 class MaintenanceManager;
 class ObjectLockTracker;
@@ -167,6 +168,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
+  std::map<std::string, std::string> ExtendedFlagValidation(
+      const std::map<std::string, std::string>& flags_to_validate,
+      CoarseTimePoint deadline) override;
   void HandleMasterHeartbeatResponse(
       HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
 
@@ -185,6 +189,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   TServerCgroupManager* cgroup_manager() const override {
     return cgroup_manager_.get();
   }
+
+  Cgroup* PerDbCgroupProvider(rpc::ThreadPoolTag tag);
 #endif
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
@@ -334,11 +340,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  std::optional<bool> catalog_version_table_in_perdb_mode() const EXCLUDES(lock_) {
-    std::lock_guard l(lock_);
-    return catalog_version_table_in_perdb_mode_;
-  }
-
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
@@ -397,6 +398,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterCertificateReloader(CertificateReloader reloader) override;
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+  void RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator generator) override;
   void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
@@ -485,6 +487,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   friend class TabletServerTestBase;
 
   Status DisplayRpcIcons(std::stringstream* output) override;
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
   Status ValidateMasterAddressResolution() const;
 
@@ -589,9 +592,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesInfo>;
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
 
-  // See same variable comments in CatalogManager.
-  std::optional<bool> catalog_version_table_in_perdb_mode_ GUARDED_BY(lock_) {std::nullopt};
-
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
 
@@ -668,6 +668,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
                                   const Status& status);
   void DoUpdateMasterAddresses();
 
+  std::map<std::string, std::string> ValidateConfCsvViaPg(
+      const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.
@@ -685,6 +688,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
   std::function<Status(void)> pg_killer_;
+  pgwrapper::PgConfigGenerator pg_config_generator_;
 
   std::function<Status(void)> conn_manager_restarter_;
 

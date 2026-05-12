@@ -5,7 +5,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -19,6 +22,8 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
@@ -26,8 +31,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -62,8 +68,11 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     defaultUniverse.save();
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
-    when(mockGFlagsValidation.validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class)))
+    lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+    lenient()
+        .when(
+            mockGFlagsValidation.validateGFlags(
+                any(YBClient.class), anyMap(), any(ServerType.class)))
         .thenReturn(new HashMap<>());
   }
 
@@ -81,13 +90,14 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2025.1.0.0-b168";
-    params.useCLIBinary = false;
+    params.useCLIBinary = true;
 
     ValidateGFlags task = AbstractTaskBase.createTask(ValidateGFlags.class);
     task.initialize(params);
     task.run();
 
-    verify(mockGFlagsValidation, times(4))
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockGFlagsValidation, never())
         .validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class));
   }
 
@@ -125,12 +135,13 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2025.1.0.0-b168";
-    params.useCLIBinary = false;
+    params.useCLIBinary = true;
 
     ValidateGFlags task = AbstractTaskBase.createTask(ValidateGFlags.class);
     task.initialize(params);
     task.run();
 
+    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
     verify(mockGFlagsValidation, never())
         .validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class));
   }
@@ -145,15 +156,13 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
-    Map<String, String> validationErrors = new HashMap<>();
-    validationErrors.put("invalid_flag", "Error validating flag");
-    when(mockGFlagsValidation.validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class)))
-        .thenReturn(validationErrors);
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+        .thenReturn(ShellResponse.create(1, "ERROR invalid gflag"));
 
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2025.1.0.0-b168";
-    params.useCLIBinary = false;
+    params.useCLIBinary = true;
 
     ValidateGFlags task = AbstractTaskBase.createTask(ValidateGFlags.class);
     task.initialize(params);
@@ -161,6 +170,29 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     PlatformServiceException exception =
         assertThrows(PlatformServiceException.class, () -> task.run());
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
+  }
+
+  @Test
+  public void testAppendGflagCliArgNonBoolUsesEqualsFormWithEmptyValue() {
+    List<String> cmd = new ArrayList<>();
+    GFlagDetails meta = new GFlagDetails();
+    meta.type = "string";
+    ValidateGFlags.appendGflagCliArg(cmd, "my_string_flag", "", meta);
+    assertEquals("--my_string_flag=", cmd.get(0));
+  }
+
+  @Test
+  public void testAppendGflagCliArgBoolOneAndZeroUseGflagsForms() {
+    GFlagDetails boolMeta = new GFlagDetails();
+    boolMeta.type = "bool";
+
+    List<String> cmdTrue = new ArrayList<>();
+    ValidateGFlags.appendGflagCliArg(cmdTrue, "enable_feature", "1", boolMeta);
+    assertEquals("--enable_feature", cmdTrue.get(0));
+
+    List<String> cmdFalse = new ArrayList<>();
+    ValidateGFlags.appendGflagCliArg(cmdFalse, "enable_feature", "0", boolMeta);
+    assertEquals("--noenable_feature", cmdFalse.get(0));
   }
 
   private NodeDetails createNode(

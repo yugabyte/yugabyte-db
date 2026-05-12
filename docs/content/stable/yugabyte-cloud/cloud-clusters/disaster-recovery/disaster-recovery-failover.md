@@ -22,7 +22,7 @@ If the Source is terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Navigate to your Source cluster **Disaster Recovery** tab.
+1. Navigate to your Target cluster **Disaster Recovery** tab.
 
 1. Note the **Potential data loss on failover** to understand the extent of possible data loss as a result of the outage, and determine if the extent of data loss is acceptable for your situation.
 

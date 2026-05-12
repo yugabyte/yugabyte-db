@@ -1,4 +1,5 @@
-import { FC } from 'react';
+import { FC, Fragment } from 'react';
+import type { ReactNode } from 'react';
 import { mui, YBButton, YBDropdown, YBTable } from '@yugabyte-ui-library/core';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { KeyboardArrowDown } from '@material-ui/icons';
@@ -6,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ClusterPlacementSpec,
   ClusterSpec,
+  ClusterSpecClusterType,
   NodeDetailsDedicatedTo,
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -19,6 +21,17 @@ import {
 } from '../EditUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 
+export type ClusterInstanceCardEditMenuItem = {
+  id: string;
+  label: ReactNode;
+  onClick: () => void;
+  dataTestId?: string;
+  /** When true, inserts a divider before this item (e.g. before a destructive action). */
+  showDividerBefore?: boolean;
+  destructive?: boolean;
+  startIcon?: ReactNode;
+};
+
 interface ClusterInstanceCardProps {
   title: React.ReactNode;
   editPlacementClicked?: () => void;
@@ -26,8 +39,10 @@ interface ClusterInstanceCardProps {
   editMasterServerNodeAllocationClicked?: () => void;
   cluster: ClusterSpec;
   placement: ClusterPlacementSpec;
+  /** When set, replaces the default three-item edit menu (primary / geo primary card). */
+  editMenuItems?: ClusterInstanceCardEditMenuItem[];
 }
-const { Box, Typography, MenuItem, styled } = mui;
+const { Box, Typography, MenuItem, Divider, styled } = mui;
 
 const StyledClusterInfo = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.grey[200]}`,
@@ -54,13 +69,15 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   editResilienceAndRegionsClicked,
   editMasterServerNodeAllocationClicked,
   cluster,
-  placement
+  placement,
+  editMenuItems
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const { universeData } = useEditUniverseContext();
   if (!universeData) return null;
   const regionStats = countRegionsAzsAndNodes(placement);
   const resilientType = getResilientType(regionStats, t);
+  const isReadReplicaCluster = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
   const hasDedicatedTo = hasDedicatedNodes(universeData);
   const regionList = placement.cloud_list.map((cloud) => cloud.region_list).flat();
 
@@ -154,7 +171,9 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           dataTestId="edit-placement-actions"
           slotProps={{
             paper: {
-              sx: { width: '340px' }
+              sx: editMenuItems
+                ? { minWidth: 220, width: 'max-content', py: 1, border: '1px solid #E9EEF2' }
+                : { width: '340px' }
             }
           }}
           origin={
@@ -168,48 +187,113 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
             </YBButton>
           }
         >
-          <MenuItem
-            data-test-id="edit-placement-add-region"
-            onClick={() => {
-              editResilienceAndRegionsClicked?.();
-            }}
-          >
-            {<EditIcon />}
-            {t('editResilienceAndRegions')}
-          </MenuItem>
-          <MenuItem
-            data-test-id="edit-placement-auto-balance"
-            onClick={() => {
-              editPlacementClicked?.();
-            }}
-          >
-            {<EditIcon />}
-            {t('editNodesAndAvailabilityZones')}
-          </MenuItem>
-          <MenuItem
-            data-test-id="edit-placement-clear-affinities"
-            onClick={() => {
-              editMasterServerNodeAllocationClicked?.();
-            }}
-          >
-            {<EditIcon />}
-            {t('editMasterServerNodeAllocation')}
-          </MenuItem>
+          {editMenuItems
+            ? editMenuItems.map((item) => (
+                <Fragment key={item.id}>
+                  {item.showDividerBefore ? (
+                    <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
+                  ) : null}
+                  <MenuItem
+                    data-test-id={item.dataTestId}
+                    onClick={item.onClick}
+                    sx={{
+                      px: 2,
+                      py: 0.5,
+                      alignItems: 'flex-start',
+                      color: item.destructive ? '#DA1515' : '#0B1117'
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '4px',
+                        width: '100%'
+                      }}
+                    >
+                      {item.startIcon ? (
+                        <Box
+                          sx={{
+                            width: 24,
+                            height: 24,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: item.destructive ? '#DA1515' : 'inherit',
+                            '& svg': { display: 'block' }
+                          }}
+                        >
+                          {item.startIcon}
+                        </Box>
+                      ) : null}
+                      <Typography
+                        component="span"
+                        sx={{
+                          fontSize: '13px',
+                          lineHeight: '16px',
+                          fontWeight: 400,
+                          py: 0.5,
+                          color: item.destructive ? '#DA1515' : '#0B1117'
+                        }}
+                      >
+                        {item.label}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                </Fragment>
+              ))
+            : [
+                <MenuItem
+                  key="resilience"
+                  data-test-id="edit-placement-add-region"
+                  onClick={() => {
+                    editResilienceAndRegionsClicked?.();
+                  }}
+                >
+                  {<EditIcon />}
+                  {t('editResilienceAndRegions')}
+                </MenuItem>,
+                <MenuItem
+                  key="nodes-az"
+                  data-test-id="edit-placement-auto-balance"
+                  onClick={() => {
+                    editPlacementClicked?.();
+                  }}
+                >
+                  {<EditIcon />}
+                  {t('editNodesAndAvailabilityZones')}
+                </MenuItem>,
+                <MenuItem
+                  key="master-alloc"
+                  data-test-id="edit-placement-clear-affinities"
+                  onClick={() => {
+                    editMasterServerNodeAllocationClicked?.();
+                  }}
+                >
+                  {<EditIcon />}
+                  {t('editMasterServerNodeAllocation')}
+                </MenuItem>
+              ]}
         </YBDropdown>
       </Box>
       <StyledClusterInfo>
-        <div>
-          <Typography variant="subtitle1" color="textSecondary">
-            {t('faultTolerance')}
-          </Typography>
-          <StyledValue>{resilientType}</StyledValue>
-        </div>
-        <div>
-          <Typography variant="subtitle1" color="textSecondary">
-            {t('replicationFactor')}
-          </Typography>
-          <StyledValue>{cluster?.replication_factor ?? '-'}</StyledValue>
-        </div>
+        {!isReadReplicaCluster && (
+          <>
+            <div>
+              <Typography variant="subtitle1" color="textSecondary">
+                {t('faultTolerance')}
+              </Typography>
+              <StyledValue>{resilientType}</StyledValue>
+            </div>
+            <div>
+              <Typography variant="subtitle1" color="textSecondary">
+                {t('replicationFactor')}
+              </Typography>
+              <StyledValue>{cluster?.replication_factor ?? '-'}</StyledValue>
+            </div>
+          </>
+        )}
         <div>
           <Typography variant="subtitle1" color="textSecondary">
             {t('totalNodes')}

@@ -8,10 +8,13 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.CapacityReservationMetrics;
@@ -20,6 +23,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,17 +44,23 @@ public class DoCapacityReservation extends ServerSubTaskBase {
   private AZUClientFactory azuClientFactory;
   private CloudAPI.Factory cloudAPIFactory;
   private CapacityReservationMetrics reservationMetrics;
+  private RuntimeConfGetter runtimeConfGetter;
+  private GCPProjectApiClientFactory gcpClientFactory;
 
   @Inject
   protected DoCapacityReservation(
       BaseTaskDependencies baseTaskDependencies,
       AZUClientFactory azuClientFactory,
       CloudAPI.Factory cloudAPIFactory,
-      CapacityReservationMetrics reservationMetrics) {
+      GCPProjectApiClientFactory gcpClientFactory,
+      CapacityReservationMetrics reservationMetrics,
+      RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
     this.cloudAPIFactory = cloudAPIFactory;
+    this.gcpClientFactory = gcpClientFactory;
     this.reservationMetrics = reservationMetrics;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -100,6 +110,10 @@ public class DoCapacityReservation extends ServerSubTaskBase {
         UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo =
             fillAwsReservationInfo(capacityReservationState, provider, clusterType);
         doAwsReservation(universe, awsReservationInfo, provider, retries, sleepMs);
+      } else if (provider.getCloudCode() == Common.CloudType.gcp) {
+        UniverseDefinitionTaskParams.GcpReservationInfo gcpReservationInfo =
+            fillGcpReservationInfo(capacityReservationState, provider, clusterType);
+        doGcpReservation(universe, gcpReservationInfo, provider, retries, sleepMs);
       } else {
         throw new UnsupportedOperationException("Not supported for " + provider.getCloudCode());
       }
@@ -297,6 +311,47 @@ public class DoCapacityReservation extends ServerSubTaskBase {
     return awsReservationInfo;
   }
 
+  private UniverseDefinitionTaskParams.GcpReservationInfo fillGcpReservationInfo(
+      UniverseDefinitionTaskParams.CapacityReservationState capacityReservationState,
+      Provider provider,
+      UniverseDefinitionTaskParams.ClusterType clusterType) {
+    UniverseDefinitionTaskParams.GcpReservationInfo gcpReservationInfo =
+        CapacityReservationUtil.getReservationForProvider(capacityReservationState, provider);
+    Map<UUID, AvailabilityZone> zones = new HashMap<>();
+    for (NodeDetails node : taskParams().nodes) {
+      AvailabilityZone zone =
+          zones.computeIfAbsent(node.azUuid, uuid -> AvailabilityZone.getOrBadRequest(node.azUuid));
+
+      String instanceType = taskParams().nodeToInstanceType.get(node.nodeName);
+      UniverseDefinitionTaskParams.GcpZoneReservation zoneReservation =
+          gcpReservationInfo
+              .getReservationsByZoneMap()
+              .computeIfAbsent(
+                  zone.getCode(),
+                  code -> {
+                    UniverseDefinitionTaskParams.GcpZoneReservation r =
+                        new UniverseDefinitionTaskParams.GcpZoneReservation();
+                    r.setRegion(zone.getRegion().getCode());
+                    r.setZone(code);
+                    return r;
+                  });
+      UniverseDefinitionTaskParams.PerInstanceTypeReservation perType =
+          zoneReservation.getReservationsByType().get(instanceType);
+      if (perType == null) {
+        perType = new UniverseDefinitionTaskParams.PerInstanceTypeReservation();
+        zoneReservation.getReservationsByType().put(instanceType, perType);
+      }
+      String zoneCode = zone.getCode();
+      UniverseDefinitionTaskParams.ZonedReservation zonedReservation =
+          perType
+              .getZonedReservation()
+              .computeIfAbsent(zoneCode, x -> new UniverseDefinitionTaskParams.ZonedReservation());
+      zonedReservation.setZone(zoneCode);
+      zonedReservation.getVmNames().add(node.nodeName);
+    }
+    return gcpReservationInfo;
+  }
+
   private void doAwsReservation(
       Universe universe,
       UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo,
@@ -364,6 +419,86 @@ public class DoCapacityReservation extends ServerSubTaskBase {
         });
   }
 
+  private void doGcpReservation(
+      Universe universe,
+      UniverseDefinitionTaskParams.GcpReservationInfo gcpReservationInfo,
+      Provider provider,
+      int retries,
+      long sleepBetweenRetriesMs) {
+    GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
+    Set<String> processedReservations = new HashSet<>();
+    UniverseDefinitionTaskParams.ClusterType clusterType =
+        CommonUtils.getClusterType(provider, universe);
+
+    doWithConstTimeout(
+        sleepBetweenRetriesMs,
+        sleepBetweenRetriesMs * retries,
+        () -> {
+          for (UniverseDefinitionTaskParams.GcpZoneReservation zoneReservation :
+              gcpReservationInfo.getReservationsByZoneMap().values()) {
+
+            for (Map.Entry<String, UniverseDefinitionTaskParams.PerInstanceTypeReservation> entry :
+                zoneReservation.getReservationsByType().entrySet()) {
+              String instanceType = entry.getKey();
+              entry
+                  .getValue()
+                  .getZonedReservation()
+                  .forEach(
+                      (zoneCode, reservation) -> {
+                        String reservationName =
+                            reservation.getReservationName() != null
+                                ? reservation.getReservationName()
+                                : getGcpZoneInstanceCapacityReservationName();
+                        if (processedReservations.contains(reservationName)) {
+                          return;
+                        }
+                        log.debug(
+                            "Processing {} zone {} vms {}",
+                            instanceType,
+                            reservation.getZone(),
+                            reservation.getVmNames());
+                        Integer count = reservation.getVmNames().size();
+                        String capacityReservation =
+                            reservationMetrics.wrapWithMetrics(
+                                universe.getUniverseUUID(),
+                                count,
+                                Common.CloudType.gcp,
+                                CapacityReservationUtil.ReservationAction.RESERVE,
+                                () -> {
+                                  try {
+                                    return apiClient.createCapacityReservation(
+                                        reservationName,
+                                        reservation.getZone(),
+                                        instanceType,
+                                        count,
+                                        Map.of(
+                                            "universe-name",
+                                            universe.getName(),
+                                            "universe-uuid",
+                                            universe.getUniverseUUID().toString(),
+                                            "instance-type",
+                                            instanceType,
+                                            "zone",
+                                            reservation.getZone(),
+                                            "cluster-type",
+                                            clusterType.name()));
+                                  } catch (IOException e) {
+                                    throw new RuntimeException(
+                                        "Failed to create GCP capacity reservation: "
+                                            + e.getMessage(),
+                                        e);
+                                  }
+                                });
+                        log.info(
+                            "Created reservation {} for {}", capacityReservation, instanceType);
+                        reservation.setReservationName(reservationName);
+                        processedReservations.add(reservationName);
+                      });
+            }
+          }
+        });
+  }
+
   public static Integer extractZoneNumber(String zone) {
     Matcher matcher = ZONE_NUMBER_PATTERN.matcher(zone);
     if (matcher.find()) {
@@ -399,5 +534,9 @@ public class DoCapacityReservation extends ServerSubTaskBase {
       String zone,
       String instanceType) {
     return instanceType + "-" + zone + "-" + universeUUID.toString() + "-" + clusterType;
+  }
+
+  public static String getGcpZoneInstanceCapacityReservationName() {
+    return "r-" + UUID.randomUUID().toString();
   }
 }

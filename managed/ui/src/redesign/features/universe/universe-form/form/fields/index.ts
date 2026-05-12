@@ -18,6 +18,7 @@ export * from './K8VolumeInfoField/K8VolumeInfoField';
 export * from './IPV6Field/IPV6Field';
 export * from './KMSConfigField/KMSConfigField';
 export * from './MasterPlacementField/MasterPlacementField';
+export * from './MultiTenancyField/MultiTenancyField';
 export * from './NetworkAccessField/NetworkAccessField';
 export * from './NodeToNodeTLSField/NodeToNodeTLSField';
 export * from './PGCompatibilityField/PGCompatibilityField';

@@ -89,8 +89,6 @@ public class AccessManager extends DevopsBase {
   @Transactional
   private void writeKeyFileData(AccessKey.KeyInfo keyInfo) {
     try {
-      FileData.upsertFileInDB(keyInfo.vaultFile);
-      FileData.upsertFileInDB(keyInfo.vaultPasswordFile);
       if (keyInfo.privateKey != null) {
         FileData.upsertFileInDB(keyInfo.privateKey);
       }
@@ -247,14 +245,6 @@ public class AccessManager extends DevopsBase {
     } else {
       keyInfo.privateKey = destination.toAbsolutePath().toString();
     }
-    JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
-    if (vaultResponse.has("error")) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          "Vault Creation failed with : " + vaultResponse.get("error").asText());
-    }
-    keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
-    keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
     keyInfo.deleteRemote = deleteRemote;
     keyInfo.keyPairName = keyCode;
     keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(destination));
@@ -352,7 +342,7 @@ public class AccessManager extends DevopsBase {
 
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
-  // and return the file names. It will also create the vault file.
+  // and return the file names.
   public AccessKey addKey(
       UUID regionUUID,
       String keyCode,
@@ -461,14 +451,6 @@ public class AccessManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.publicKey = response.get("public_key").asText();
       keyInfo.privateKey = response.get("private_key").asText();
-      JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
-      if (response.has("error")) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR,
-            "Vault Creation failed with : " + response.get("error").asText());
-      }
-      keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
-      keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
       keyInfo.keyPairName = keyCode;
       // In case of add, keys will be YBA managed.
       keyInfo.setManagementState(AccessKey.KeyInfo.KeyManagementState.YBAManaged);
@@ -512,22 +494,6 @@ public class AccessManager extends DevopsBase {
     }
 
     return accessKey;
-  }
-
-  public JsonNode createVault(UUID regionUUID, String privateKeyFile) {
-    List<String> commandArgs = new ArrayList<String>();
-
-    if (!new File(privateKeyFile).exists()) {
-      throw new RuntimeException("File " + privateKeyFile + " doesn't exists.");
-    }
-    commandArgs.add("--private_key_file");
-    commandArgs.add(privateKeyFile);
-    return execAndParseShellResponse(
-        DevopsCommand.builder()
-            .regionUUID(regionUUID)
-            .command("create-vault")
-            .commandArgs(commandArgs)
-            .build());
   }
 
   public JsonNode listKeys(UUID regionUUID) {

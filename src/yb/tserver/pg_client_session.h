@@ -35,6 +35,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -57,24 +58,27 @@ namespace tserver {
     (CreateReplicationSlot) \
     (CreateTable) \
     (CreateTablegroup) \
-    (DeleteDBSequences) \
-    (DeleteSequenceTuple) \
     (DropDatabase) \
     (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FetchSequenceTuple) \
     (FinishTransaction) \
-    (InsertSequenceTuple) \
-    (ReadSequenceTuple) \
     (RollbackToSubTransaction) \
     (TruncateTable) \
-    (UpdateSequenceTuple) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
     (ReleaseSessionObjectLock) \
+    /**/
+
+#define PG_CLIENT_SESSION_LW_METHODS \
+    (DeleteDBSequences) \
+    (DeleteSequenceTuple) \
+    (FetchSequenceTuple) \
+    (InsertSequenceTuple) \
+    (ReadSequenceTuple) \
+    (UpdateSequenceTuple) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -83,6 +87,9 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    /**/
+
+#define PG_CLIENT_SESSION_ASYNC_LW_METHODS \
     (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
@@ -139,7 +146,7 @@ class PgClientSession final {
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
   void Perform(
-      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      LWPgPerformRequestPB& req, LWPgPerformResponsePB& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(
@@ -159,21 +166,29 @@ class PgClientSession final {
 
   Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
 
-  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, ctx_type, method) \
+  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, ctx_type, prefix, method) \
     ret method( \
-        const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
-        BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+        const YB_PG_CLIENT_METHOD_ARG(prefix, method, Request)& req, \
+        YB_PG_CLIENT_METHOD_ARG(prefix, method, Response)* resp, \
         ctx_type context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data_tuple, method) \
     PG_CLIENT_SESSION_METHOD_DECLARE_IMPL( \
-        BOOST_PP_TUPLE_ELEM(2, 0, data_tuple), BOOST_PP_TUPLE_ELEM(2, 1, data_tuple), method)
+        BOOST_PP_TUPLE_ELEM(3, 0, data_tuple), BOOST_PP_TUPLE_ELEM(3, 1, data_tuple), \
+        BOOST_PP_TUPLE_ELEM(3, 2, data_tuple), method)
 
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, BOOST_PP_NIL),
+        PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, (LW)),
+        PG_CLIENT_SESSION_LW_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE,
-        (void, rpc::RpcContext&&), PG_CLIENT_SESSION_ASYNC_METHODS);
+        (void, rpc::RpcContext&&, BOOST_PP_NIL), PG_CLIENT_SESSION_ASYNC_METHODS);
+BOOST_PP_SEQ_FOR_EACH(
+        PG_CLIENT_SESSION_METHOD_DECLARE,
+        (void, rpc::RpcContext&&, (LW)), PG_CLIENT_SESSION_ASYNC_LW_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL

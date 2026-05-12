@@ -36,7 +36,7 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
 
   private void runIsolationRegressTest() throws Exception {
     runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_pg_isolation_schedule",
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_isolation_schedule",
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
   }
 

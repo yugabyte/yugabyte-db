@@ -38,6 +38,7 @@
 #include "utils/timestamp.h"
 
 /* YB includes */
+#include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
@@ -55,6 +56,11 @@ static ParamListInfo EvaluateParams(ParseState *pstate,
 									PreparedStatement *pstmt, List *params,
 									EState *estate);
 static Datum build_regtype_array(Oid *param_types, int num_params);
+static void YbConnMgrDropAllInvalidProtocolLevelPreparedStmts(void);
+static inline bool
+			YbConnMgrShouldRetainCachedQuery(CachedPlanSource *plansource,
+											 bool yb_conn_mgr_deallocate_selectively);
+static void YbConnMgrSendCloseComplete(PreparedStatement *entry);
 
 /*
  * Implements the 'PREPARE' utility statement.
@@ -522,7 +528,12 @@ void
 DeallocateQuery(DeallocateStmt *stmt)
 {
 	if (stmt->name)
-		DropPreparedStatement(stmt->name, true);
+		/*
+		 * YB: yb_conn_mgr_close_prepared_statement is true for close packet sent
+		 * by ConnMgr. Since this DEALLOCATE query, set yb_conn_mgr_close_prepared_statement
+		 * argument to false.
+		 */
+		DropPreparedStatement(stmt->name, true, /* yb_conn_mgr_close_prepared_statement */ false);
 	else
 		DropAllPreparedStatements();
 }
@@ -531,71 +542,62 @@ DeallocateQuery(DeallocateStmt *stmt)
  * Internal version of DEALLOCATE
  *
  * If showError is false, dropping a nonexistent statement is a no-op.
+ * YB: yb_conn_mgr_close_prepared_statement is true when conn mgr forwards a CLOSE packet.
  */
 void
-DropPreparedStatement(const char *stmt_name, bool showError)
+DropPreparedStatement(const char *stmt_name, bool showError,
+					  bool yb_conn_mgr_close_prepared_statement)
 {
+	bool		yb_conn_mgr_deallocate_selectively =
+		YbIsClientYsqlConnMgr() && (yb_conn_mgr_close_prepared_statement ||
+									yb_conn_mgr_selective_deallocate);
+
 	PreparedStatement *entry;
 
-	/* Find the query's hash table entry; raise error if wanted */
-	entry = FetchPreparedStatement(stmt_name, showError);
+	/*
+	 * Find the query's hash table entry; raise error if wanted
+	 *
+	 * YB: When selectively dropping prepared statements due to connection
+	 * manager, we don't throw an error if the statement is not found
+	 * irrespective of showError. This is because this is an expected scenario
+	 * due to hashmap sync issue. Instead for
+	 * - DEALLOCATE: drop all invalid prepared statements
+	 * - CLOSE: make it a no-op.
+	 */
+	entry = FetchPreparedStatement(stmt_name, showError && !yb_conn_mgr_deallocate_selectively);
 
 	if (entry)
 	{
-		/* Release the plancache entry */
-		DropCachedPlan(entry->plansource);
-
-		/* Now we can remove the hash table entry */
-		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
-	}
-}
-
-/*
- * YB: YbDropPreparedStatement is similar to DropPreparedStatement,
- * used for YSQL Connection Manager to deallocate a prepared statement.
- *
- * A Prepare statement is deallocated only when atleast one of the following conditions is
- * satisfied:
- * 1. Connection is sticky.
- * 2. Cached plan is invalid.
- * This is done to allow sharing of prepared statements on a backend by different logical
- * connections with conn mgr.
- *
- * If showError is false, dropping a nonexistent statement is a no-op.
- */
-bool
-YbDropPreparedStatement(const char *stmt_name, bool showError)
-{
-	PreparedStatement *entry;
-
-	/* Find the query's hash table entry; raise error if wanted */
-	entry = FetchPreparedStatement(stmt_name, showError);
-
-	if (entry)
-	{
-		int change = 0;
-		bool is_conn_sticky = YbIsStickyConnection(&change);
-		bool is_cached_plan_valid = YbIsCachedQueryValid(entry->plansource);
-		if (is_conn_sticky || !is_cached_plan_valid)
+		if (!YbConnMgrShouldRetainCachedQuery(entry->plansource, yb_conn_mgr_deallocate_selectively))
 		{
 			/* Release the plancache entry */
 			DropCachedPlan(entry->plansource);
-			elog(LOG, "Deallocated Conn Mgr given Prep Stmt %s, because conn sticky: %s or "
-						"prep stmt plan invalid: %s",
-				stmt_name, is_conn_sticky ? "true" : "false",
-				!is_cached_plan_valid ? "true" : "false");
+
+			/* YB: Send close complete packet if connection manager is used */
+			YbConnMgrSendCloseComplete(entry);
 
 			/* Now we can remove the hash table entry */
 			hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
-			return true;
 		}
 	}
-	else
+	else if (yb_conn_mgr_deallocate_selectively)
 	{
-		elog(WARNING, "Conn mgr provided prepared statement %s does not exist; possible hashmap "
-					  "sync issue", stmt_name);
+		if (yb_conn_mgr_close_prepared_statement)
+			elog(WARNING, "Conn mgr provided prepared statement %s does not exist; possible "
+				 "hashmap sync issue", stmt_name);
+		else
+		{
+			/*
+			 * YB: For a SQL DEALLOCATE, we would have found the entry if it referred to a
+			 * SQL-level prepared statement. If we didn't find it, it either named a
+			 * nonexistent statement or a protocol-level prepared statement whose conn mgr given
+			 * hash, PG doesn't know. We skip erroring out, and since we can't identify the
+			 * specific protocol-level statement, we conservatively drop all invalid
+			 * protocol-level prepared statements.
+			 */
+			YbConnMgrDropAllInvalidProtocolLevelPreparedStmts();
+		}
 	}
-	return false;
 }
 
 /*
@@ -607,6 +609,9 @@ DropAllPreparedStatements(void)
 	HASH_SEQ_STATUS seq;
 	PreparedStatement *entry;
 
+	bool		yb_conn_mgr_deallocate_selectively = YbIsClientYsqlConnMgr() &&
+		yb_conn_mgr_selective_deallocate;
+
 	/* nothing cached */
 	if (!prepared_queries)
 		return;
@@ -615,8 +620,14 @@ DropAllPreparedStatements(void)
 	hash_seq_init(&seq, prepared_queries);
 	while ((entry = hash_seq_search(&seq)) != NULL)
 	{
+		if (YbConnMgrShouldRetainCachedQuery(entry->plansource, yb_conn_mgr_deallocate_selectively))
+			continue;
+
 		/* Release the plancache entry */
 		DropCachedPlan(entry->plansource);
+
+		/* YB: Send close complete packet if connection manager is used */
+		YbConnMgrSendCloseComplete(entry);
 
 		/* Now we can remove the hash table entry */
 		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
@@ -791,4 +802,71 @@ build_regtype_array(Oid *param_types, int num_params)
 	result = construct_array(tmp_ary, num_params, REGTYPEOID,
 							 4, true, TYPALIGN_INT);
 	return PointerGetDatum(result);
+}
+
+/*
+ * YB: Drop all invalid protocol level prepared statements used by ConnMgr.
+ */
+static void
+YbConnMgrDropAllInvalidProtocolLevelPreparedStmts(void)
+{
+	HASH_SEQ_STATUS seq;
+	PreparedStatement *entry;
+
+	Assert(YbIsClientYsqlConnMgr());
+
+	/* nothing cached */
+	if (!prepared_queries)
+		return;
+
+	/* walk over cache */
+	hash_seq_init(&seq, prepared_queries);
+	while ((entry = hash_seq_search(&seq)) != NULL)
+	{
+		if (YbIsCachedQueryValid(entry->plansource) ||
+			entry->from_sql)
+			continue;
+
+		/* Release the plancache entry */
+		DropCachedPlan(entry->plansource);
+
+		/* YB: Send close complete packet if connection manager is used */
+		YbConnMgrSendCloseComplete(entry);
+
+		/* Now we can remove the hash table entry */
+		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
+
+	}
+}
+
+/*
+ * YB: Determine whether a prepared statement should be retained (not dropped)
+ * during DEALLOCATE or CLOSE when the connection manager is active.
+ *
+ * With connection manager, multiple logical connections share a single backend.
+ * We preserve a cached query to maximize sharing when all three conditions hold:
+ *   1. The connection is NOT sticky -- a sticky connection is exclusively owned
+ *      by one logical connection, so there is no sharing benefit.
+ *   2. The cached plan is still valid -- an invalid plan must be dropped since
+ *      it will need to be re-planned anyway.
+ */
+static inline bool
+YbConnMgrShouldRetainCachedQuery(CachedPlanSource *plansource,
+								 bool yb_conn_mgr_deallocate_selectively)
+{
+	int			change = 0;
+
+	return yb_conn_mgr_deallocate_selectively &&
+		!YbIsStickyConnection(&change) && YbIsCachedQueryValid(plansource);
+}
+
+/* Send close complete packet if connection manager is used. */
+static void
+YbConnMgrSendCloseComplete(PreparedStatement *entry)
+{
+	if (!YbIsClientYsqlConnMgr())
+		return;
+
+	if (!entry->from_sql && whereToSendOutput == DestRemote)
+		pq_puttextmessage('5', entry->stmt_name);
 }

@@ -43,14 +43,14 @@ IndexColumn::IndexColumn(const IndexInfoPB::IndexColumnPB& pb)
     : column_id(ColumnId(pb.column_id())),
       column_name(pb.column_name()), // Default to empty.
       indexed_column_id(ColumnId(pb.indexed_column_id())),
-      colexpr(pb.colexpr()) /* Default to empty message */ {
+      colexpr(rpc::SharedMessage<LWQLExpressionPB>(pb.colexpr())) /* Default to empty message */ {
 }
 
 void IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
   pb->set_column_id(column_id);
   pb->set_column_name(column_name);
   pb->set_indexed_column_id(indexed_column_id);
-  pb->mutable_colexpr()->CopyFrom(colexpr);
+  colexpr->ToGoogleProtobuf(pb->mutable_colexpr());
 }
 
 std::string IndexColumn::ToString() const {
@@ -104,8 +104,8 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
     // - When an expression such as "jsonb->>'field'" is used, then the "jsonb" column should not
     //   be included in the covered list.
     // - Currently we only support "jsonb->>" expression, but this is true for all expressions.
-    if (index_col.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId ||
-        index_col.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET) {
+    if (index_col.colexpr->expr_case() == QLExpressionPB::ExprCase::kColumnId ||
+        index_col.colexpr->expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET) {
       covered_column_ids_.insert(index_col.indexed_column_id);
     } else {
       has_index_by_expr_ = true;

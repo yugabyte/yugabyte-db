@@ -47,13 +47,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
    Storage Table Rows Scanned: 4
 (5 rows)
 
-SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
- h1 | a | b | c | d | e  
-----+---+---+---+---+----
-  1 | 1 | 1 | 1 | 1 | 11
-  2 | 1 | 1 | 2 | 2 | 12
-  3 | 1 | 2 | 2 | 4 | 14
-  4 | 2 | 1 | 1 | 5 | 15
+SELECT yb_hash_code(h1), * FROM test_method where h1 IN (1, 2, 3, 4);
+ yb_hash_code | h1 | a | b | c | d | e  
+--------------+----+---+---+---+---+----
+         4624 |  1 | 1 | 1 | 1 | 1 | 11
+        49348 |  2 | 1 | 1 | 2 | 2 | 12
+        64672 |  3 | 1 | 2 | 2 | 4 | 14
+        40623 |  4 | 2 | 1 | 1 | 5 | 15
 (4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
@@ -95,6 +95,40 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
    Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
 (6 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 4624;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) < 4624))
+(2 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) <= 4624;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=1 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) <= 4624))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) > 64672;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) > 64672))
+(2 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) >= 64672;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=1 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) >= 64672))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
 
 set yb_enable_hash_batch_in = true;
 SELECT * FROM test_method where h1 = 1;
@@ -142,13 +176,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
    Storage Table Rows Scanned: 4
 (5 rows)
 
-SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
- h1 | a | b | c | d | e  
-----+---+---+---+---+----
-  1 | 1 | 1 | 1 | 1 | 11
-  2 | 1 | 1 | 2 | 2 | 12
-  3 | 1 | 2 | 2 | 4 | 14
-  4 | 2 | 1 | 1 | 5 | 15
+SELECT yb_hash_code(h1), * FROM test_method where h1 IN (1, 2, 3, 4);
+ yb_hash_code | h1 | a | b | c | d | e  
+--------------+----+---+---+---+---+----
+         4624 |  1 | 1 | 1 | 1 | 1 | 11
+        49348 |  2 | 1 | 1 | 2 | 2 | 12
+        64672 |  3 | 1 | 2 | 2 | 4 | 14
+        40623 |  4 | 2 | 1 | 1 | 5 | 15
 (4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
@@ -190,6 +224,44 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
    Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
 (6 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 4624;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) < 4624))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) <= 4624;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=1 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) <= 4624))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) > 64672;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) > 64672))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) >= 64672;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using test_method_pkey on test_method (actual rows=1 loops=1)
+   Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) >= 64672))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
 
 DROP TABLE test_method;
 -- Testing IN queries on range keys
@@ -420,7 +492,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 ---------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1, h2) < 8192) AND (h2 = ANY ('{1,2}'::integer[])))
-(2 rows)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
 
 set yb_enable_hash_batch_in = true;
 SELECT * FROM test_method where h1 = 1 ;
@@ -805,28 +879,36 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 ---------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1, h2) < 8192) AND (h2 = ANY ('{1,2}'::integer[])))
-(2 rows)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND yb_hash_code(h1, h2) < 8192;
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1, h2) < 8192) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = 1))
-(2 rows)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND r2 = 2 AND yb_hash_code(h1, h2) < 8192;
                                                                      QUERY PLAN                                                                      
 -----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1, h2) < 8192) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = 1) AND (r2 = 2))
-(2 rows)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) AND yb_hash_code(h1, h2) < 8192;
                                                                                                 QUERY PLAN                                                                                                 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1, h2) < 8192) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = ANY ('{1,2,3,4}'::integer[])) AND (r2 = ANY ('{1,2,3,4}'::integer[])))
-(2 rows)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+(4 rows)
 
 set yb_enable_hash_batch_in = true;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 = 1 ;

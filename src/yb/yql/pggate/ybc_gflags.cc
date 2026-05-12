@@ -213,8 +213,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
-      .ysql_enable_db_catalog_version_mode =
-          &FLAGS_ysql_enable_db_catalog_version_mode,
       .TEST_hide_details_for_pg_regress =
           &FLAGS_TEST_hide_details_for_pg_regress,
       .TEST_generate_ybrowid_sequentially =

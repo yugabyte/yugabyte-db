@@ -88,7 +88,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
     index_(index + 1) {
 
   // Start RPC server on loopback.
-  FLAGS_rpc_server_allow_ephemeral_ports = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_server_allow_ephemeral_ports) = true;
   const std::string rpc_host = server::TEST_RpcAddress(index_, server::Private::kTrue);
   opts_.rpc_opts.rpc_bind_addresses = HostPortToString(rpc_host, rpc_port);
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
@@ -299,15 +299,16 @@ Status MiniTabletServer::CleanTabletLogs() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) { return tablet_peer->RunLogGC(); });
 }
 
-Status MiniTabletServer::Restart() {
+Status MiniTabletServer::Restart(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(started_);
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse);
+  return Start(wait_tablets_bootstrapped);
 }
 
-Status MiniTabletServer::RestartStoppedServer() {
+Status MiniTabletServer::RestartStoppedServer(
+    WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse);
+  return Start(wait_tablets_bootstrapped);
 }
 
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {

@@ -446,6 +446,61 @@ BEGIN
 END $$;
 
 -- ============================================
+-- Test 16d: init_vector_index respects r_schema_name
+-- ============================================
+DO $$
+DECLARE
+  v_index_id UUID;
+  v_table_schema TEXT;
+  v_index_schema TEXT;
+BEGIN
+  RAISE NOTICE '=== Test 16d: init_vector_index creates backing table in r_schema_name ===';
+  CREATE SCHEMA IF NOT EXISTS rag_custom_schema;
+  v_index_id := dist_rag.init_vector_index(
+    r_index_name := 'custom_schema_index',
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536),
+    r_schema_name := 'rag_custom_schema'
+  );
+  ASSERT v_index_id IS NOT NULL, 'Index ID should not be NULL';
+
+  -- Verify the backing table was created in the requested schema, not public.
+  SELECT schemaname INTO v_table_schema
+  FROM pg_tables
+  WHERE tablename = 'custom_schema_index';
+  ASSERT v_table_schema = 'rag_custom_schema',
+    format('Expected backing table in rag_custom_schema, found in %s', v_table_schema);
+
+  -- And the HNSW index should live alongside the table.
+  SELECT schemaname INTO v_index_schema
+  FROM pg_indexes
+  WHERE indexname = 'idx_custom_schema_index_embeddings';
+  ASSERT v_index_schema = 'rag_custom_schema',
+    format('Expected HNSW index in rag_custom_schema, found in %s', v_index_schema);
+
+  RAISE NOTICE 'PASS: backing table and index created in rag_custom_schema';
+END $$;
+
+-- ============================================
+-- Test 16e: init_vector_index rejects missing schema
+-- ============================================
+DO $$
+DECLARE
+  v_index_id UUID;
+BEGIN
+  RAISE NOTICE '=== Test 16e: Reject init_vector_index with non-existent schema ===';
+  v_index_id := dist_rag.init_vector_index(
+    r_index_name := 'missing_schema_index',
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536),
+    r_schema_name := 'this_schema_does_not_exist'
+  );
+  RAISE NOTICE 'FAIL: Should have raised an exception for missing schema';
+EXCEPTION WHEN OTHERS THEN
+  ASSERT SQLERRM LIKE '%does not exist%',
+    format('Expected schema-missing error, got: %s', SQLERRM);
+  RAISE NOTICE 'PASS: Correctly rejected missing schema - %', SQLERRM;
+END $$;
+
+-- ============================================
 -- Test 17: Views - vector_index_pipeline_details
 -- ============================================
 DO $$

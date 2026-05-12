@@ -16,7 +16,6 @@ import shlex
 import time
 import uuid
 
-from ansible.module_utils._text import to_native
 from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import Message
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
@@ -172,7 +171,7 @@ class RpcClient(object):
                 if bash:
                     cmd_args_list = ["/bin/bash", "-c", cmd]
                 else:
-                    cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
+                    cmd_args_list = shlex.split(cmd)
             else:
                 if bash:
                     # Need to join with spaces, but surround arguments with spaces
@@ -212,7 +211,7 @@ class RpcClient(object):
                 if bash:
                     cmd_args_list = ["/bin/bash", "-c", cmd]
                 else:
-                    cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
+                    cmd_args_list = shlex.split(cmd)
             else:
                 if bash:
                     # Need to join with spaces, but surround arguments with spaces

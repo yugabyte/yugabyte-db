@@ -1,13 +1,17 @@
 import { Box } from '@material-ui/core';
 import { useMutation, useQueryClient } from 'react-query';
 import { useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { YBCheckbox, YBModal } from '../../../../components';
 import { PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
 import { Universe } from '../../universe-form/utils/dto';
-import { isNonEmptyArray } from '@app/utils/ObjectUtils';
 import { PerfAdvisorModalIntention } from '../../../../../redesign/helpers/constants';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
+import { transitToUniverse } from '../../universe-form/utils/helpers';
+import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
 
 type PerfAdvisorModalIntentionType =
   (typeof PerfAdvisorModalIntention)[keyof typeof PerfAdvisorModalIntention];
@@ -31,6 +35,8 @@ export const EnablePerfAdvisorModal = ({
   const { t } = useTranslation();
   const [advancedObservability, setAdvancedObservability] = useState(false);
   const queryClient = useQueryClient();
+  const dispatch = useDispatch();
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const isUniverseRegisteredToPA = perfAdvisorStatus?.data?.success;
   const enableAdvancedObservabilityOnly =
     paModalIntention === PerfAdvisorModalIntention.ENABLE_ADVANCED_OBSERVABILITY_ONLY;
@@ -50,7 +56,22 @@ export const EnablePerfAdvisorModal = ({
     onClose();
   };
 
-  // PUT API call to enable only advanced observability (re-register with advancedObservability=true)
+  const handleTaskSuccess = (resp: any) => {
+    setTimeout(() => {
+      dispatch(fetchUniverseInfo(universeData.universeUUID) as any).then((response: any) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    }, 2000);
+    queryClient.invalidateQueries(QUERY_KEY.fetchUniverseRegistrationDetails);
+    if (resp?.taskUUID) {
+      if (isNewTaskUIEnabled) {
+        dispatch(showTaskInDrawer(resp.taskUUID));
+      } else {
+        transitToUniverse(universeData.universeUUID);
+      }
+    }
+  };
+
   const enableAdvancedObservabilityOnlyStatus = useMutation(
     () =>
       PerfAdvisorAPI.attachUniverseToPerfAdvisor(
@@ -59,10 +80,8 @@ export const EnablePerfAdvisorModal = ({
         true
       ),
     {
-      onSuccess: () => {
-        toast.success(
-          t('universeActions.paUniverseStatus.enableAdvancedObservabilitySuccess')
-        );
+      onSuccess: (resp: any) => {
+        handleTaskSuccess(resp);
       },
       onError: (e: any) => {
         toast.error(
@@ -73,7 +92,6 @@ export const EnablePerfAdvisorModal = ({
     }
   );
 
-  // PUT API call to disable advanced observability (re-register with advancedObservability=false)
   const disableAdvancedObservabilityOnlyStatus = useMutation(
     () =>
       PerfAdvisorAPI.attachUniverseToPerfAdvisor(
@@ -82,10 +100,8 @@ export const EnablePerfAdvisorModal = ({
         false
       ),
     {
-      onSuccess: () => {
-        toast.success(
-          t('universeActions.paUniverseStatus.disableAdvancedObservabilitySuccess')
-        );
+      onSuccess: (resp: any) => {
+        handleTaskSuccess(resp);
       },
       onError: (e: any) => {
         toast.error(
@@ -96,7 +112,6 @@ export const EnablePerfAdvisorModal = ({
     }
   );
 
-  // PUT API call to enable Perf Advisdor for the universe
   const enablePerfAdvisorToUniverse = useMutation(
     () =>
       PerfAdvisorAPI.attachUniverseToPerfAdvisor(
@@ -105,9 +120,8 @@ export const EnablePerfAdvisorModal = ({
         advancedObservability
       ),
     {
-      onSuccess: () => {
-        toast.success(t('universeActions.paUniverseStatus.enablePaUniverseSuccess'));
-        queryClient.invalidateQueries(QUERY_KEY.fetchUniverseRegistrationDetails);
+      onSuccess: (resp: any) => {
+        handleTaskSuccess(resp);
       },
       onError: (e: any) => {
         toast.error(
@@ -117,13 +131,11 @@ export const EnablePerfAdvisorModal = ({
     }
   );
 
-  // DELETE API call to disable Perf Advisdor for the universe
   const disablePerfAdvisorToUniverse = useMutation(
     () => PerfAdvisorAPI.deleteUniverseRegistration(universeData.universeUUID),
     {
-      onSuccess: () => {
-        toast.success(t('universeActions.paUniverseStatus.disablePaUniverseSuccess'));
-        queryClient.invalidateQueries(QUERY_KEY.fetchUniverseRegistrationDetails);
+      onSuccess: (resp: any) => {
+        handleTaskSuccess(resp);
       },
       onError: () => {
         toast.error(t('universeActions.paUniverseStatus.disablePaUniverseFailure'));

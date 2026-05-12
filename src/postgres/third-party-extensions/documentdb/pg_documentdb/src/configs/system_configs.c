@@ -19,6 +19,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include <postmaster/postmaster.h>
+#include <utils/memutils.h>
 
 /*
  * Externally defined GUC constants
@@ -207,7 +208,17 @@ YBGetDefaultLocalhostConnStr(void)
 			copy++;
 
 		if (*copy != '\0')
-			return psprintf("host=%s", copy);
+		{
+			/*
+			 * The result is stored as the boot_val of a String GUC and must
+			 * outlive PostmasterContext, which each forked backend deletes
+			 * after InitPostgres (see postgres.c MemoryContextDelete call).
+			 */
+			MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
+			const char *result = psprintf("host=%s", copy);
+			MemoryContextSwitchTo(oldctx);
+			return result;
+		}
 	}
 
 	return DEFAULT_LOCALHOST_CONN_STR;

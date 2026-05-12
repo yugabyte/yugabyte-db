@@ -1,0 +1,9 @@
+title: UniverseListApiFilter
+description: |
+  Optional filter for listing universes. Matches V1 `GET /api/customers/{id}/universes?name=...`
+  behavior (exact name match).
+type: object
+properties:
+  name:
+    description: 'If set, only the universe with this exact name is considered.'
+    type: string

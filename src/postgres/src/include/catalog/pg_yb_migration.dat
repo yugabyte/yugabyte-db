@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V101__30431__plan_id_in_yb_ash.sql
-{ major => '101', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V103__28937__yb_fix_catalog_version_table_perdb_only.sql
+{ major => '103', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

@@ -866,16 +866,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
-  @Test
-  public void testUpdatingRuntimeFlagPGCBackend() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
-    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
-    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
-    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
-    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
-
+  private void updateRuntimeFlagPGCBackend() throws Exception {
     try (
         Connection conn =
             getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
@@ -917,5 +908,33 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
             value);
       }
     }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthBackend() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "true");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthPassthrough() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "false");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
   }
 }

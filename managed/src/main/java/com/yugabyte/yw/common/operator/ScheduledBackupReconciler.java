@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
@@ -25,8 +26,10 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.yugabyte.operator.v1alpha1.BackupSchedule;
+import io.yugabyte.operator.v1alpha1.BackupScheduleStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -64,6 +67,23 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
   @VisibleForTesting
   UUID getScheduleTaskMapValue(String key) {
     return this.scheduleTaskMap.getOrDefault(key, null);
+  }
+
+  private void updateStatus(
+      BackupSchedule backupSchedule, String taskUUID, String scheduleUUID, String message) {
+    BackupScheduleStatus status = backupSchedule.getStatus();
+    if (status == null) {
+      status = new BackupScheduleStatus();
+    }
+    // BackupScheduleStatus has no dedicated message field; surface the message
+    // through the state field so it's visible on the CR.
+    status.setState(message);
+    // Don't override the schedule UUID once set.
+    if (status.getScheduleUUID() == null) {
+      status.setScheduleUUID(scheduleUUID);
+    }
+    backupSchedule.setStatus(status);
+    resourceClient.inNamespace(namespace).resource(backupSchedule).replaceStatus();
   }
 
   // Delete the backup Schedule
@@ -177,6 +197,18 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
         Universe.getOrBadRequest(scheduleParams.getScheduleParams().getUniverseUUID(), cust);
     if (!optionalSchedule.isPresent() && !universe.universeIsLocked()) {
       log.info("Creating new backupSchedule {}", ybaScheduleName);
+      // First Validate the table
+      try {
+        backupHelper.validateTables(
+            new ArrayList<>(),
+            universe,
+            backupSchedule.getSpec().getKeyspace(),
+            scheduleParams.getScheduleParams().backupType);
+      } catch (PlatformServiceException e) {
+        log.error("Got Exception in validating tables", e);
+        updateStatus(backupSchedule, "", "", "Failed in validating tables " + e.getMessage());
+        return;
+      }
       createScheduleTask(scheduleParams, backupSchedule, cust, universe);
     } else {
       Schedule schedule = optionalSchedule.get();

@@ -182,6 +182,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                 "All tables to add are already in the replication group, skipping adding tables to"
                     + " XClusterConfig({})",
                 xClusterConfig.getUuid());
+            waitForTaskTableStreamsInActiveStatus(
+                xClusterConfig, sourceUniverse, tableIdsToAddBootstrapIdsMap.keySet());
           } else {
             log.info(
                 "Adding tables to XClusterConfig({}): tableIdsToAddBootstrapIdsMap {}",
@@ -198,6 +200,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
               throw new RuntimeException(errMsg);
             }
             waitForXClusterOperation(xClusterConfig, client::isAlterUniverseReplicationDone);
+            waitForTaskTableStreamsInActiveStatus(
+                xClusterConfig, sourceUniverse, tableIdsToAddBootstrapIdsMap.keySet());
 
             // Get the stream ids from the target universe and put it in the Platform DB for the
             // added tables to the xCluster config.

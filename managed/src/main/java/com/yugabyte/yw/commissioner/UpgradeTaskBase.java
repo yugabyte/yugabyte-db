@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -186,7 +187,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+        if (isFirstTry()
+            && confGetter.getConfForScope(
+                universe, UniverseConfKeys.enableComprehensivePrechecks)) {
           createComprehensivePrecheckTasks(nodesToBeRestarted);
         }
 
@@ -206,6 +209,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // create comprehensive precheck tasks for all nodes to be restarted
   private void createComprehensivePrecheckTasks(MastersAndTservers nodesToBeRestarted) {
+    Universe universe = getUniverse();
+    long checkServiceLivenessTimeoutMs =
+        confGetter
+            .getConfForScope(
+                universe, UniverseConfKeys.comprehensivePrecheckCheckServiceLivenessTimeout)
+            .toMillis();
+
     // Check service liveness for all nodes
     doInPrecheckSubTaskGroup(
         "CheckServiceLiveness",
@@ -214,7 +224,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
             params.setUniverseUUID(taskParams().getUniverseUUID());
             params.nodeName = node.nodeName;
-            params.timeoutMs = 10000; // Default timeout
+            params.timeoutMs = checkServiceLivenessTimeoutMs;
 
             CheckServiceLiveness checkServiceLiveness = createTask(CheckServiceLiveness.class);
             checkServiceLiveness.initialize(params);
@@ -375,6 +385,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           setTaskQueueAndRun(
               () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
         }
+        if (error == null && isPauseRequested) {
+          // A canary pause is intentional; mark update as succeeded so the universe is not
+          // surfaced as failed/broken while paused. The unlock updater that follows reads it.
+          saveUniverseDetails(
+              universe -> {
+                UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+                details.updateSucceeded = true;
+                universe.setUniverseDetails(details);
+              });
+        }
       } finally {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
@@ -506,10 +526,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public static boolean isBatchRollEnabled(Universe universe, RuntimeConfGetter confGetter) {
-    boolean isK8s =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-            == Common.CloudType.kubernetes;
-    return isK8s
+    return Util.isKubernetesBasedUniverse(universe)
         ? confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollK8sEnabled)
         : confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled);
   }
@@ -715,6 +732,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           processTypes,
           context.reconfigureMaster && activeRole /* remove master from quorum */,
           false /* deconfigure */,
+          isBlacklistLeaders() /* flushTablets */,
           subGroupType);
 
       createDisableMasterOnNonMasterNodesTasks(nodeList, subGroupType);

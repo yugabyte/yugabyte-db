@@ -12,6 +12,9 @@ CREATE TABLE dist_rag.sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   source_uri TEXT,
 
+  -- tenant identifier for multi-tenant isolation; NULL means "no tenant".
+  tenant_id UUID,
+
   --metadata filters for a specific source
   metadata JSONB,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -37,6 +40,8 @@ CREATE TABLE dist_rag.vector_indexes (
 
   -- Vector Index details
   index_name VARCHAR(50) NOT NULL DEFAULT 'pg_rag_default_store',
+  -- Schema that holds the backing vector table.
+  schema_name VARCHAR(50) NOT NULL,
   -- Specify m and ef construction 
   index_options JSONB,
   index_creation_status dist_rag.index_build_status NOT NULL,
@@ -79,6 +84,9 @@ CREATE TABLE dist_rag.documents (
   document_name TEXT,
   document_uri TEXT,
   document_checksum TEXT,
+
+  -- Document type (MIME type, e.g. 'text/plain', 'application/pdf')
+  document_type TEXT,
 
   -- Current state
   status dist_rag.document_processing_status_enum NOT NULL DEFAULT 'QUEUED'
@@ -154,7 +162,8 @@ CREATE OR REPLACE FUNCTION dist_rag.create_source(
     r_source_uri TEXT,
     r_metadata JSONB DEFAULT '{}',
     r_secrets_provider dist_rag.secrets_provider_enum DEFAULT 'LOCAL',
-    r_secrets_provider_params JSONB DEFAULT '{}'
+    r_secrets_provider_params JSONB DEFAULT '{}',
+    r_tenant_id UUID DEFAULT NULL
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -168,9 +177,17 @@ BEGIN
         RAISE EXCEPTION 'source_uri is required and cannot be NULL or empty';
     END IF;
 
-    -- Insert source and capture the ID
-    INSERT INTO dist_rag.sources (source_uri, metadata, secrets_provider, secrets_provider_params)
-    VALUES (r_source_uri, COALESCE(r_metadata, '{}'::jsonb), r_secrets_provider, r_secrets_provider_params)
+    -- Insert source and capture the ID. COALESCE on r_metadata normalizes an
+    -- explicit NULL to '{}'; the parameter DEFAULT only applies when the
+    -- argument is omitted, not when the caller passes NULL. tenant_id is
+    -- nullable; passing NULL records "no tenant".
+    INSERT INTO dist_rag.sources (
+        source_uri, tenant_id, metadata, secrets_provider, secrets_provider_params
+    )
+    VALUES (
+        r_source_uri, r_tenant_id, COALESCE(r_metadata, '{}'::jsonb),
+        r_secrets_provider, r_secrets_provider_params
+    )
     RETURNING id INTO v_id;
 
     -- Validate insertion
@@ -183,7 +200,7 @@ BEGIN
     VALUES (
         'CREATE_SOURCE'::dist_rag.task_type_enum, 
         'QUEUED'::dist_rag.task_queue_status_enum,
-        jsonb_build_object('source_id', v_id)
+        jsonb_build_object('source_id', v_id, 'tenant_id', r_tenant_id)
     );
 
     RETURN v_id;
@@ -192,13 +209,16 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION dist_rag.create_source(TEXT, JSONB, dist_rag.secrets_provider_enum, JSONB)
+COMMENT ON FUNCTION dist_rag.create_source(
+    TEXT, JSONB, dist_rag.secrets_provider_enum, JSONB, UUID
+)
 IS 'Create a new RAG source';
 
 
 CREATE OR REPLACE FUNCTION dist_rag._create_vector_index_table(
     r_index_name VARCHAR(50),
     r_vector_dimensions INTEGER,
+    r_schema_name VARCHAR(50),
     r_index_options JSONB DEFAULT '{}'
 )
 RETURNS VOID
@@ -210,11 +230,24 @@ DECLARE
     v_m INTEGER;
     v_ef_construction INTEGER;
     v_ops_class TEXT;
+    v_qualified_table TEXT;
 BEGIN
 
     -- validate required parameters
     IF r_index_name IS NULL OR r_index_name = '' THEN
         RAISE EXCEPTION 'index_name is required and cannot be NULL or empty';
+    END IF;
+
+    IF r_schema_name IS NULL OR r_schema_name = '' THEN
+        RAISE EXCEPTION 'schema_name is required and cannot be NULL or empty';
+    END IF;
+
+    -- Require the target schema to already exist; we deliberately do not
+    -- auto-create it so callers cannot silently spawn schemas via a typo.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = r_schema_name
+    ) THEN
+        RAISE EXCEPTION 'schema "%" does not exist', r_schema_name;
     END IF;
 
     IF r_vector_dimensions IS NULL OR r_vector_dimensions <= 0 THEN
@@ -238,18 +271,21 @@ BEGIN
         RAISE EXCEPTION 'Invalid distance_metric "%". Must be one of: cosine, l2, ip', v_distance_metric;
     END IF;
 
-    -- Create the vector store table
-    EXECUTE 'CREATE TABLE ' || quote_ident(r_index_name) || ' (
+    v_qualified_table := quote_ident(r_schema_name) || '.' || quote_ident(r_index_name);
+
+    -- Create the vector store table in the target schema
+    EXECUTE 'CREATE TABLE ' || v_qualified_table || ' (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         chunk_text TEXT NOT NULL,
         embeddings vector(' || r_vector_dimensions || ') NOT NULL,
         document_id UUID NOT NULL,
+        tenant_id UUID,
         metadata_filters JSONB NOT NULL DEFAULT ''' || '{}' || '''
     )';
 
     -- Create HNSW index on the embeddings column
     EXECUTE 'CREATE INDEX ' || quote_ident('idx_' || r_index_name || '_embeddings')
-        || ' ON ' || quote_ident(r_index_name)
+        || ' ON ' || v_qualified_table
         || ' USING ybhnsw (embeddings ' || v_ops_class || ')'
         || ' WITH (m = ' || v_m || ', ef_construction = ' || v_ef_construction || ')';
 
@@ -262,7 +298,8 @@ CREATE OR REPLACE FUNCTION dist_rag.init_vector_index(
     r_chunk_params JSONB DEFAULT '{}',
     r_ai_provider dist_rag.ai_provider_enum DEFAULT 'OPENAI',
     r_embedding_model_params JSONB DEFAULT '{}',
-    r_index_options JSONB DEFAULT '{"distance_metric": "cosine", "m": 16, "ef_construction": 64}'
+    r_index_options JSONB DEFAULT '{"distance_metric": "cosine", "m": 16, "ef_construction": 64}',
+    r_schema_name VARCHAR(50) DEFAULT 'public'
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -314,22 +351,26 @@ BEGIN
     
     -- Step 1: Create the vector index table and HNSW index on embeddings
     BEGIN
-        PERFORM dist_rag._create_vector_index_table(r_index_name, v_vector_dimensions, r_index_options);
+        PERFORM dist_rag._create_vector_index_table(
+            r_index_name, v_vector_dimensions, r_schema_name, r_index_options);
     EXCEPTION WHEN OTHERS THEN
-        RAISE EXCEPTION 'Failed to create vector index table "%": % - %', r_index_name, SQLSTATE, SQLERRM;
+        RAISE EXCEPTION 'Failed to create vector index table "%.%": % - %',
+            r_schema_name, r_index_name, SQLSTATE, SQLERRM;
     END;
 
     -- Step 2: Insert vector index metadata
     BEGIN
         INSERT INTO dist_rag.vector_indexes (
-            index_name, 
+            index_name,
+            schema_name,
             index_options,
             index_creation_status, 
             ai_provider, 
             embedding_model_params
         )
         VALUES (
-            r_index_name, 
+            r_index_name,
+            r_schema_name,
             r_index_options,
             'INIT'::dist_rag.index_build_status, 
             r_ai_provider, 
@@ -366,7 +407,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION dist_rag.init_vector_index(VARCHAR, UUID[], JSONB, dist_rag.ai_provider_enum, JSONB, JSONB)
+COMMENT ON FUNCTION dist_rag.init_vector_index(VARCHAR, UUID[], JSONB, dist_rag.ai_provider_enum, JSONB, JSONB, VARCHAR)
 IS 'Initialize a new vector index with optional HNSW index configuration via r_index_options';
 
 CREATE OR REPLACE FUNCTION dist_rag.add_source_to_index(
@@ -401,6 +442,7 @@ AS $$
 DECLARE
     v_document RECORD;
     v_count INTEGER := 0;
+    v_tenant_id UUID;
 BEGIN
     -- Validate required parameter
     IF r_source_id IS NULL THEN
@@ -410,6 +452,15 @@ BEGIN
     -- Validate required parameter
     IF r_index_id IS NULL THEN
         RAISE EXCEPTION 'index_id is required and cannot be NULL';
+    END IF;
+
+    -- Resolve tenant_id once for this source (all documents share it).
+    SELECT tenant_id INTO v_tenant_id
+    FROM dist_rag.sources
+    WHERE id = r_source_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Source % does not exist', r_source_id;
     END IF;
 
     -- Insert work queue entries for all documents in this source
@@ -425,10 +476,12 @@ BEGIN
         jsonb_build_object(
             'index_id', r_index_id,
             'source_id', r_source_id,
+            'tenant_id', v_tenant_id,
             'document_id', d.document_id,
             'document_name', d.document_name,
             'document_uri', d.document_uri,
-            'document_status', d.status
+            'document_status', d.status,
+            'document_type', d.document_type
         ),
         NOW()
     FROM dist_rag.documents d
@@ -491,13 +544,16 @@ BEGIN
         jsonb_build_object(
             'index_id', v_index_id,
             'source_id', m.source_id,
+            'tenant_id', s.tenant_id,
             'document_id', d.document_id,
             'document_name', d.document_name,
             'document_uri', d.document_uri,
-            'document_status', d.status
+            'document_status', d.status,
+            'document_type', d.document_type
         ),
         NOW()
     FROM dist_rag.vector_index_source_mappings m
+    JOIN dist_rag.sources s ON s.id = m.source_id
     JOIN dist_rag.documents d ON d.source_id = m.source_id
     WHERE m.index_id = v_index_id;
 
@@ -522,6 +578,7 @@ SELECT
     vi.ai_provider,
     vi.index_creation_status,
     s.id as source_id,
+    s.tenant_id,
     s.source_uri,
     d.document_id,
     d.document_name,
@@ -537,7 +594,8 @@ SELECT
     pd.created_at as pipeline_created_at,
     pd.last_started_at as pipeline_last_started_at,
     pd.completed_at as pipeline_completed_at,
-    pd.metadata_snapshot
+    pd.metadata_snapshot,
+    vi.schema_name
 FROM dist_rag.vector_indexes vi
 INNER JOIN dist_rag.vector_index_source_mappings vism ON vi.id = vism.index_id
 INNER JOIN dist_rag.sources s ON vism.source_id = s.id
@@ -553,6 +611,7 @@ SELECT
     vi.id as index_id,
     vi.index_name,
     vi.ai_provider,
+    s.tenant_id,
     s.source_uri,
     d.document_id,
     d.document_name,
@@ -564,13 +623,15 @@ SELECT
     ROUND(100.0 * COUNT(CASE WHEN pd.status = 'COMPLETED' THEN 1 END) / NULLIF(COUNT(pd.pipeline_id), 0), 2) as completion_rate_percent,
     MAX(pd.completed_at) as last_completed_at,
     (array_agg(pd.last_error_message ORDER BY pd.created_at DESC) FILTER (WHERE pd.last_error_message IS NOT NULL))[1] as last_error_message,
-    MIN(pd.created_at) as first_pipeline_started_at
+    MIN(pd.created_at) as first_pipeline_started_at,
+    vi.schema_name
 FROM dist_rag.vector_indexes vi
 INNER JOIN dist_rag.vector_index_source_mappings vism ON vi.id = vism.index_id
 INNER JOIN dist_rag.sources s ON vism.source_id = s.id
 INNER JOIN dist_rag.documents d ON s.id = d.source_id
 LEFT JOIN dist_rag.pipeline_details pd ON d.document_id = pd.document_id
-GROUP BY vi.id, vi.index_name, vi.ai_provider, s.source_uri, d.document_id, d.document_name
+GROUP BY vi.id, vi.index_name, vi.ai_provider, vi.schema_name, s.tenant_id, s.source_uri,
+         d.document_id, d.document_name
 ORDER BY vi.index_name, s.source_uri, d.document_name;
 
 COMMENT ON VIEW dist_rag.pipeline_stats

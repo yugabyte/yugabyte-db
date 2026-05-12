@@ -246,9 +246,9 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 
 ### Connect to multiple clusters
 
-For deployments where a single client application needs to connect to more than one YugabyteDB cluster (for example, xCluster or two completely independent clusters), the smart driver can connect to multiple clusters while keeping connections balanced in each connected cluster.
+For deployments where a single client application needs to connect to more than one YugabyteDB cluster (for example, xCluster or two completely independent clusters), the smart driver can connect to multiple clusters while keeping connections balanced across nodes in the respective connected cluster.
 
-Note that connections are not balanced across multiple clusters; rather, the smart driver maintains multiple connection pools, but each is isolated.
+Note that the connections are not balanced across multiple clusters.
 
 The smart driver identifies the cluster from the URL used to connect, and ensures load in the cluster is evenly balanced. You don't need to specify any additional properties.
 

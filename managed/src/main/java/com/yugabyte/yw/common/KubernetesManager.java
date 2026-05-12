@@ -791,9 +791,9 @@ public abstract class KubernetesManager {
     if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
       return null;
     }
-    Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primary);
 
-    if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (provider.getCloudCode() != Common.CloudType.kubernetes) {
       return null;
     } else {
       PlacementInfo pi = universeDetails.getPrimaryCluster().getOverallPlacement();

@@ -12,11 +12,11 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -170,8 +170,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
       // The permission for the certs used to be set to `400` which could be problematic in the case
       // that we want to overwrite the certificate.
-      if (destinationUniverse.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-          != CloudType.kubernetes) {
+      if (!Util.isKubernetesBasedUniverse(destinationUniverse)) {
         nodeUniverseManager
             .runCommand(
                 node,

@@ -178,7 +178,7 @@ export default class TableDetail extends Component {
               currentUniverse={currentUniverse.data}
               showLabelText={true}
               refreshUniverseData={this.getUniverseInfo}
-              shouldDisplayTaskButton={true}
+              shouldDisplayTaskButton={false}
             />
           </div>
         </Col>

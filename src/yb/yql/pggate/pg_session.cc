@@ -18,7 +18,10 @@
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <set>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "yb/client/table_info.h"
 
@@ -33,6 +36,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -69,7 +73,10 @@ DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "The function yb_increment_db_catalog_version_with_inval_messages or "
                        "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
-                       "invalidation messages older than this time");
+                       "invalidation messages older than this time. The effective expiration "
+                       "is automatically raised to at least 10 * --heartbeat_interval_ms so "
+                       "that messages survive long enough for every TServer to receive them "
+                       "via heartbeats.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
                        "If a DDL statement generates more than this number of invalidation "
@@ -89,6 +96,31 @@ void Erase(Container* container, const Key& key) {
   auto it = container->find(key);
   if (it != container->end()) {
     container->erase(it);
+  }
+}
+
+void PublishPendingRpcTableInfo(
+    const std::vector<yb::PgObjectId>& relations,
+    const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
+  if (!dist_trace::HasActiveContext() || relations.empty()) {
+    return;
+  }
+  dist_trace::ClearPendingRpcAttrs();
+  std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
+  std::string joined_names;
+  for (const auto& relation : unique_relations) {
+    if (!relation.IsValid()) {
+      continue;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    auto it = table_cache.find(relation);
+    DCHECK(it != table_cache.end());
+    joined_names += it->second->table_name().table_name();
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
   }
 }
 
@@ -309,6 +341,21 @@ void Update(TablespaceCache& cache, const PgTableDesc& table, const PgsqlOp& op)
   }
 }
 
+// TODO(#29858): In spite of the fact ExplicitRowLockBuffer::ErrorStatusAdditionalInfo is used only
+//               for building proper error message to the user it is reasonable to add it into
+//               Status object to avoid ignoring.
+Status Flush(ExplicitRowLockBuffer& row_lock_buffer) {
+  std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo> error_info;
+  auto status = row_lock_buffer.Flush(error_info);
+  if (PREDICT_FALSE(error_info.has_value())) {
+    LOG(INFO)
+        << "User error message might be inaccurate due to ignoring of "
+        << "ExplicitRowLockBuffer::ErrorStatusAdditionalInfo: " << yb::ToString(*error_info)
+        << " on error status: " << ToString(status);
+  }
+  return status;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -509,8 +556,7 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings,
-    RunRWOperationsHook&& hook)
+    BufferingSettings& buffering_settings)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -525,7 +571,7 @@ PgSession::PgSession(
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher),
       tablespace_cache_(kTablespaceCacheCapacity),
-      rw_operations_hook_{std::move(hook)} {
+      explicit_row_lock_buffer_(*this) {
   Update(&buffering_settings_);
 }
 
@@ -666,22 +712,25 @@ Status PgSession::StartOperationsBuffering() {
 Status PgSession::StopOperationsBuffering() {
   SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
-  return ResultToStatus(FlushBufferedOperations(PgFlushDebugContext::EndOperationsBuffering()));
+  return ResultToStatus(FlushBufferedEntities(PgFlushDebugContext::EndOperationsBuffering()));
 }
 
 void PgSession::ResetOperationsBuffering() {
-  DropBufferedOperations();
+  buffer_.Clear();
   buffering_enabled_ = false;
 }
 
-Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedOperations(
+Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedEntities(
     const PgFlushDebugContext& dbg_ctx) {
+  RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
   RETURN_NOT_OK(buffer_.Flush(dbg_ctx));
   return SetupPerformOptionsAccessorTag{};
 }
 
-SetupPerformOptionsAccessorTag PgSession::DropBufferedOperations() {
+SetupPerformOptionsAccessorTag PgSession::ClearState() {
   buffer_.Clear();
+  explicit_row_lock_buffer_.Clear();
+  ClearAllInsertOnConflictBuffers();
   return {};
 }
 
@@ -884,6 +933,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
+  // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
+  // empty and no table info gets published for the upcoming RPC client span.
+  PublishPendingRpcTableInfo(relations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));
@@ -952,7 +1004,7 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
   RSTATUS_DCHECK(
       pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
       "Expected to be in DDL mode with regular transaction block");
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ExecuteDdl()));
+  RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::ExecuteDdl()));
   RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
@@ -1079,8 +1131,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, first_table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
-  if (group_session_type != SessionType::kCatalog) {
-    RETURN_NOT_OK(rw_operations_hook_(options.marker));
+  if (group_session_type != SessionType::kCatalog &&
+      options.marker != std::optional(PgSessionRunOperationMarker::ExplicitRowLock)) {
+    RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
   }
   auto force_non_bufferable = options.force_non_bufferable;
   std::optional<TxnReadPoint> read_point_before_catalog_ops;
@@ -1180,7 +1233,7 @@ Status PgSession::AcquireAdvisoryLock(
   SCHECK(
       yb_read_time == 0, IllegalState,
       "Advisory lock acquisition can not be performed while yb_read_time is set to nonzero.");
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::AcquireLock(ToString(lock_id))));
+  RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_id)));
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   req.set_wait(wait);
@@ -1234,7 +1287,7 @@ Status PgSession::AcquireObjectLock(
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
   return pg_txn_manager_->AcquireObjectLock(
-      VERIFY_RESULT(FlushBufferedOperations(PgFlushDebugContext::AcquireLock(ToString(lock_id)))),
+      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_id))),
       lock_id, mode, is_session_lock,
       tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
 }
@@ -1250,8 +1303,7 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
       pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(false)));
   RETURN_NOT_OK(SetupPerformOptions(
-      VERIFY_RESULT(FlushBufferedOperations(PgFlushDebugContext::ReleaseLock(ToString(lock_id)))),
-      &options));
+      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::ReleaseLock(lock_id))), &options));
   if (release_all) {
     options.clear_active_sub_transaction_id();
   } else {

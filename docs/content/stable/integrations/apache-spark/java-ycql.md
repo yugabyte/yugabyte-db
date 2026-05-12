@@ -55,9 +55,15 @@ Add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>
+  <groupId>org.scala-lang</groupId>
+  <artifactId>scala-library</artifactId>
+  <version>2.12.15</version>
+</dependency>
+
+<dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.12</artifactId>
-  <version>3.0-yb-8</version>
+  <version>3.3-yb-4</version>
 </dependency>
 ```
 

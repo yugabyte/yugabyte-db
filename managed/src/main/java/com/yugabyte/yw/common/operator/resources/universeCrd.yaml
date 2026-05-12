@@ -311,19 +311,23 @@ spec:
                     default: 100
                   numVolumes:
                     type: integer
-                    description: Number of volumes per tserver( defaults to 2 )
+                    description: >
+                      Number of volumes per tserver( defaults to 2 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
                     default: 2
                   storageClass:
                     type: string
                     description: >
                       Storage class for the volumes. Provider storage class takes precedence over this
                       since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
                   perAZ:
                     description: >
                       Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                      This takes precedence over provider/base volume configuration. When this is being used,
-                      the provider values for storageClass and other volume overrides are not used. If some
-                      AZs are not provided as overrides, the values are picked from base tserverVolume.
+                      This takes precedence over provider/base volume configuration.  Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base tserverVolume. This
+                      can be set to {} to make all AZs use base tserverVolume.
                     type: object
                     additionalProperties:
                       type: object
@@ -333,13 +337,19 @@ spec:
                           description: Volume size in GiB for this AZ
                         numVolumes:
                           type: integer
-                          description: Number of volumes per tserver for this AZ
+                          description: >
+                            Number of volumes per tserver for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                         storageClass:
                           type: string
-                          description: Storage class for this AZ
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                 x-kubernetes-validations:
                   - message: tserverVolume cannot be removed once set.
                     rule: self != null || oldSelf == null
+                  - message: perAZ in tserverVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
               masterVolume:
                 description: >
                   Volume configuration for masters in the universe.
@@ -352,19 +362,23 @@ spec:
                     default: 50
                   numVolumes:
                     type: integer
-                    description: Number of volumes per master( defaults to 1 )
+                    description: >
+                      Number of volumes per master( defaults to 1 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
                     default: 1
                   storageClass:
                     type: string
                     description: >
                       Storage class for the volumes. Provider storage class takes precedence over this
                       since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
                   perAZ:
                     description: >
                       Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                      This takes precedence over provider/base volume configuration. When this is being used,
-                      the provider values for storageClass and other volume overrides are not used. If some
-                      AZs are not provided as overrides, the values are picked from base masterVolume.
+                      This takes precedence over provider/base volume configuration. Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base masterVolume. This 
+                      can be set to {} to make all AZs use base masterVolume.
                     type: object
                     additionalProperties:
                       type: object
@@ -374,13 +388,19 @@ spec:
                           description: Volume size in GiB for this AZ
                         numVolumes:
                           type: integer
-                          description: Number of volumes per master for this AZ
+                          description: >
+                            Number of volumes per master for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                         storageClass:
                           type: string
-                          description: Storage class for this AZ
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                 x-kubernetes-validations:
                   - message: masterVolume cannot be removed once set.
                     rule: self != null || oldSelf == null
+                  - message: perAZ in masterVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
               tserverResourceSpec:
                 description: >
                   Resource specification for the tserver pods in the universe.
@@ -459,18 +479,22 @@ spec:
                         description: Volume size in GiB
                       numVolumes:
                         type: integer
-                        description: Number of volumes per tserver
+                        description: >
+                          Number of volumes per tserver. Modifying values supported with 
+                          DB software versions 2026.1.0 and above.
                       storageClass:
                         type: string
                         description: >
                           Storage class for the volumes. Provider storage class takes precedence over this
                           since it is at AZ level. To use this, provider storage class values should be empty.
+                          Modifying values supported with DB software versions 2026.1.0 and above.
                       perAZ:
                         description: >
                           Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                          This takes precedence over provider/base volume configuration. When this is being used,
-                          the provider values for storageClass and other volume overrides are not used. If some
-                          AZs are not provided as overrides, the values are picked from base tserverVolume.
+                          This takes precedence over provider/base volume configuration.  Once this is used, the
+                          provider values are no longer used for volume configuration. If some
+                          AZs are not provided as overrides, the values are picked from base tserverVolume. This 
+                          can be set to {} to make all AZs use base tserverVolume.
                         type: object
                         additionalProperties:
                           type: object
@@ -480,13 +504,19 @@ spec:
                               description: Volume size in GiB for this AZ
                             numVolumes:
                               type: integer
-                              description: Number of volumes per tserver for this AZ
+                              description: >
+                                Number of volumes per tserver for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
                             storageClass:
                               type: string
-                              description: Storage class for this AZ
+                              description: >
+                                Storage class for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
                     x-kubernetes-validations:
                       - message: tserverVolume cannot be removed once set.
                         rule: self != null || oldSelf == null
+                      - message: perAZ in readReplica tserverVolume cannot be removed once set.
+                        rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
                   tserverResourceSpec:
                     description: >
                       Resource specification for the tserver pods in the universe.

@@ -54,6 +54,21 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
   return ql::CQLMessage::QueryId(to_char_ptr(md5), sizeof(md5));
 }
 
+ql::CQLMessage::QueryId CQLStatement::GetBatchQueryId(
+    const string& keyspace, const std::vector<string>& child_query_texts, string* batch_text_out) {
+  DCHECK_NOTNULL(batch_text_out)->clear();
+  // Semicolons separate child texts so that a single-child batch produces the
+  // same query id as the equivalent non-batch statement.
+  // Semicolon is safe as a separator: the CQL binary protocol strips trailing
+  // semicolons before transmitting query text, so child texts never contain ';'.
+  for (size_t i = 0; i < child_query_texts.size(); ++i) {
+    if (i > 0)
+      batch_text_out->push_back(';');
+    batch_text_out->append(child_query_texts[i]);
+  }
+  return GetQueryId(keyspace, *batch_text_out);
+}
+
 void StmtCounters::WriteAsJson(
     JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
   jw->StartObject();
@@ -66,6 +81,9 @@ void StmtCounters::WriteAsJson(
 
   jw->String("query");
   jw->String(this->query);
+
+  jw->String("is_prepared");
+  jw->Bool(this->is_prepared);
 
   jw->String("calls");
   jw->Int64(this->num_calls);

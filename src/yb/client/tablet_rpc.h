@@ -165,6 +165,9 @@ class TabletInvoker {
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& tablet_consensus_info);
 
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& tablet_consensus_info);
+
  private:
   friend class TabletRpcTest;
   FRIEND_TEST(TabletRpcTest, TabletInvokerSelectTabletServerRace);

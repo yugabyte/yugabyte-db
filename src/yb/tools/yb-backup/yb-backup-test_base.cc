@@ -268,55 +268,6 @@ Status YBBackupTest::WaitForTabletPostSplitCompacted(
       Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));
 }
 
-void YBBackupTest::RestartClusterWithCatalogVersionMode(bool db_catalog_version_mode) {
-  cluster_->Shutdown();
-  const auto db_catalog_version_gflag =
-      Format("--ysql_enable_db_catalog_version_mode=$0",
-             db_catalog_version_mode ? "true" : "false");
-  // Table locks depends on the per db catalog, so we need to disable the features when
-  // ysql_enable_db_catalog_version_mode is disabled.
-  const auto object_locking_gflag =
-      Format("--enable_object_locking_for_table_locks=$0",
-             db_catalog_version_mode ? "true" : "false");
-  const auto ddl_transaction_gflag =
-      Format("--ysql_yb_ddl_transaction_block_enabled=$0",
-             db_catalog_version_mode ? "true" : "false");
-  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-    cluster_->master(i)->mutable_flags()->push_back(object_locking_gflag);
-    cluster_->master(i)->mutable_flags()->push_back(ddl_transaction_gflag);
-  }
-  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-    cluster_->tablet_server(i)->mutable_flags()->push_back(object_locking_gflag);
-    cluster_->tablet_server(i)->mutable_flags()->push_back(ddl_transaction_gflag);
-  }
-  ASSERT_OK(cluster_->Restart());
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SET yb_non_ddl_txn_for_sys_tables_allowed=true; "
-             "SELECT yb_fix_catalog_version_table($0)",
-             db_catalog_version_mode ? "true" : "false"),
-      R"#(
-         SET
-          yb_fix_catalog_version_table
-         ------------------------------
-
-         (1 row)
-      )#"));
-  // Wait for heartbeat to propagate pg_yb_catalog_version contents to tservers.
-  SleepFor(2s);
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT COUNT(*) = 1 AS a FROM pg_yb_catalog_version",
-      Format(
-      R"#(
-
-          a
-         ---
-          $0
-         (1 row)
-      )#", db_catalog_version_mode ? "f" : "t")));
-}
-
 // 1. Insert abc -> 123
 // 2. Backup
 // 3. Insert abc -> 456 OR drop redis table
@@ -612,34 +563,16 @@ void YBBackupTest::TestColocatedDBBackupRestore() {
   }
 }
 
-void YBBackupTest::DoTestYSQLRestoreBackup(
-    std::optional<bool> db_catalog_version_mode) {
-  const bool cross_catalog_version_mode_backup_restore =
-      db_catalog_version_mode.has_value();
-  if (cross_catalog_version_mode_backup_restore) {
-    // Restart the cluster in the opposite catalog version mode and also prepare
-    // the table pg_yb_catalog_version in the opposite catalog version mode. We
-    // do backup in this catalog version mode.
-    RestartClusterWithCatalogVersionMode(!*db_catalog_version_mode);
-  }
-
+void YBBackupTest::DoTestYSQLRestoreBackup() {
   // Create test table and data.
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'abc')"));
 
-  // Do backup in the cluster that has the opposite catalog version mode.
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
        "create"}));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
-
-  if (cross_catalog_version_mode_backup_restore) {
-    // Restart the cluster in the desired catalog version mode that we will
-    // restore the db to and also prepare the table pg_yb_catalog_version to
-    // be in the desired catalog version mode.
-    RestartClusterWithCatalogVersionMode(*db_catalog_version_mode);
-  }
 
   // Do restore in the cluster that has the desired catalog version mode.
   ASSERT_OK(RunBackupCommand(

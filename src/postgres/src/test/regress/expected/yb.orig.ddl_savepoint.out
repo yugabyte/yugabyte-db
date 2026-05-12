@@ -399,3 +399,26 @@ SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
      0
 (1 row)
 
+-- DROP TABLE is reverted correctly with ROLLBACK TO SAVEPOINT operation.
+CREATE TABLE test_drop_table_with_savepoint (id INT PRIMARY KEY, val TEXT);
+BEGIN;
+INSERT INTO test_drop_table_with_savepoint VALUES (1, 'sample');
+SAVEPOINT sp1;
+DROP TABLE test_drop_table_with_savepoint;
+SELECT * FROM test_drop_table_with_savepoint;
+ERROR:  relation "test_drop_table_with_savepoint" does not exist
+LINE 1: SELECT * FROM test_drop_table_with_savepoint;
+                      ^
+ROLLBACK TO SAVEPOINT sp1;
+SELECT * FROM test_drop_table_with_savepoint;
+ id |  val   
+----+--------
+  1 | sample
+(1 row)
+
+DROP TABLE test_drop_table_with_savepoint;
+SELECT * FROM test_drop_table_with_savepoint;
+ERROR:  relation "test_drop_table_with_savepoint" does not exist
+LINE 1: SELECT * FROM test_drop_table_with_savepoint;
+                      ^
+COMMIT;

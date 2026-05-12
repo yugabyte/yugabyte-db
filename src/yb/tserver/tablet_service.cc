@@ -281,8 +281,6 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
 DEFINE_test_flag(bool, block_apply_intent, false,
     "When set, block handling of UpdateTransaction(APPLYING) until the flag is cleared.");
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
-
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
     "Skip aborting active transactions during schema change");
 
@@ -549,13 +547,13 @@ class WriteQueryCompletionCallback {
       }
 
       if (status.IsTryAgain()) {
-          LOG_DETAIL << "Write failed: " << status;
+          LOG(DETAIL) << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
 
       if (include_trace_ && trace_) {
-        response_->set_trace_buffer(trace_->DumpToString(true));
+        response_->dup_trace_buffer(trace_->DumpToString(true));
       }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
@@ -575,7 +573,7 @@ class WriteQueryCompletionCallback {
     }
 
     if (include_trace_ && trace_) {
-      response_->set_trace_buffer(trace_->DumpToString(true));
+      response_->dup_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer_, query_->client_request(), response_);
@@ -2445,26 +2443,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   bool first_run = true;
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
-        // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
-        // sure to handle that case if initdb ever goes through this codepath.
-        bool perdb_mode = false;
-        if (FLAGS_ysql_enable_db_catalog_version_mode) {
-          const std::optional<bool> catalog_version_table_in_perdb_mode =
-            server_->catalog_version_table_in_perdb_mode();
-          if (!catalog_version_table_in_perdb_mode.has_value()) {
-            // This is a temporary known case when this tserver hasn't get the answer
-            // from master yet via heartbeat response.
-            return false;
-          }
-          perdb_mode = catalog_version_table_in_perdb_mode.value();
-        }
-        if (perdb_mode) {
-          server_->get_ysql_db_catalog_version(
-              database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        } else {
-          server_->get_ysql_catalog_version(
-              &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        }
+        server_->get_ysql_db_catalog_version(
+            database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         if (ts_catalog_version >= catalog_version) {
           return true;
         }
@@ -2600,9 +2580,8 @@ Status TabletServiceImpl::PerformWrite(
   }
   ADOPT_TRACE(context->trace());
   TRACE("Start Write");
-  TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
-               "tablet_id", req->tablet_id());
-  VLOG(2) << "Received Write RPC: " << req->DebugString();
+  TRACE_EVENT1("tserver", "TabletServiceImpl::Write", "tablet_id", std::string(req->tablet_id()));
+  VLOG(2) << "Received Write RPC: " << AsString(*req);
 
   UpdateClock(*req, server_->Clock());
   TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestMsg*>(req));

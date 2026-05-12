@@ -21,8 +21,7 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsQueryDeviceNames
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
-from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
-    InitYSQLMethod, CronCheckMethod, AccessEditVaultMethod, \
+from ybops.cloud.common.method import ConfigureInstancesMethod, InitYSQLMethod, CronCheckMethod, \
     TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
     RebootInstancesMethod, RunHooks, WaitForConnection, ManageOtelCollector
 
@@ -78,8 +77,6 @@ class AwsAccessCommand(AccessCommand):
     def add_methods(self):
         self.add_method(AwsAccessAddKeyMethod(self))
         self.add_method(AwsAccessListKeysMethod(self))
-        self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AwsAccessDeleteKeyMethod(self))
 
 

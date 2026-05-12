@@ -362,7 +362,7 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
                                   int max_depth,
                                   bool use_full_path) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
-  *output << "<table class='table table-striped' id='memtrackerstable'>\n";
+  *output << "<table class='table table-striped collapsable-table'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
   for (auto it = trackers.begin(); it != trackers.end(); it++) {

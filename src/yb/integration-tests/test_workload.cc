@@ -281,7 +281,7 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           }
         } else {
           inserting_one_row = true;
-          auto update = table.NewUpdateOp();
+          auto update = table.NewUpdateOp(session->arena());
           auto req = update->mutable_request();
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
@@ -293,7 +293,7 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           break;
         }
       }
-      auto insert = table.NewInsertOp();
+      auto insert = table.NewInsertOp(session->arena());
       auto req = insert->mutable_request();
       int32_t key;
       if (options.sequential_write) {
@@ -324,12 +324,12 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     if (!flush_status.status.ok()) {
       VLOG(1) << "Flush error: " << AsString(flush_status.status);
       for (const auto& error : flush_status.errors) {
-        auto* resp = down_cast<client::YBqlOp*>(&error->failed_op())->mutable_response();
-        resp->Clear();
-        resp->set_status(
+        auto& resp = down_cast<client::YBqlOp*>(&error->failed_op())->response();
+        resp.Clear();
+        resp.set_status(
             error->status().IsTryAgain() ? QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR
                                          : QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
-        resp->set_error_message(error->status().message().ToBuffer());
+        resp.dup_error_message(error->status().message());
       }
     }
     if (txn) {
@@ -343,7 +343,7 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
         if (options.read_only_written_keys) {
           std::lock_guard lock(keys_in_write_progress_mutex_);
           keys_in_write_progress_.erase(
-              op->request().hashed_column_values(0).value().int32_value());
+              op->request().hashed_column_values().front().value().int32_value());
         }
         ++inserted;
       } else if (
@@ -351,7 +351,7 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           op->response().status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
         VLOG(1) << "Op restart required: " << op->ToString() << ": "
                 << op->response().ShortDebugString();
-        auto retry_op = table.NewInsertOp();
+        auto retry_op = table.NewInsertOp(session->arena());
         *retry_op->mutable_request() = op->request();
         retry_ops.push_back(retry_op);
       } else if (options.insert_failures_allowed) {
@@ -390,7 +390,7 @@ void TestYcqlWorkload::State::ReadThread(const TestWorkloadOptions& options) {
 
   while (should_run_.load(std::memory_order_acquire)) {
     auto txn = CHECK_RESULT(MayBeStartNewTransaction(session.get(), options));
-    auto op = table.NewReadOp();
+    auto op = table.NewReadOp(session->arena());
     auto req = op->mutable_request();
     const int32_t next_key = next_key_;
     int32_t key;

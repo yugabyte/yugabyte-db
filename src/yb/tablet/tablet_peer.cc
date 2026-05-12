@@ -195,10 +195,26 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
+void TabletPeer::SetPerDbCgroup(Cgroup* cgroup) {
+  {
+    std::lock_guard l(lock_);
+    if (consensus_) {
+      consensus_->SetPerDbCgroup(cgroup);
+    }
+  }
+  if (log_) {
+    log_->SetPerDbCgroup(cgroup);
+  }
+  if (prepare_thread_) {
+    prepare_thread_->SetPerDbCgroup(cgroup);
+  }
+}
+
 Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
     const std::shared_ptr<MemTracker>& server_mem_tracker,
     Messenger* messenger,
+    rpc::ThreadPoolPtr service_pool,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<Log>& log,
     const scoped_refptr<MetricEntity>& table_metric_entity,
@@ -232,8 +248,10 @@ Status TabletPeer::InitTabletPeer(
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
-    service_thread_pool_ = &messenger->ThreadPool();
-    strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
+
+    service_thread_pool_holder_ = std::move(service_pool);
+    service_thread_pool_.store(service_thread_pool_holder_.get(), std::memory_order_release);
+    strand_.reset(new rpc::Strand(service_thread_pool_holder_.get()));
     messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {
@@ -481,6 +499,11 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
+  auto consensus = GetRaftConsensusUnsafe();
+  if (consensus) {
+    consensus->StartShutdown();
+  }
+
   {
     std::lock_guard lock(lock_);
     DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
@@ -510,9 +533,8 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  auto consensus = GetRaftConsensusUnsafe();
   if (consensus) {
-    consensus->Shutdown();
+    consensus->CompleteShutdown();
   }
 
   return true;
@@ -1513,6 +1535,11 @@ bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
 }
 
+bool TabletPeer::AreWritesStopped() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->AreWritesStopped();
+}
+
 Result<std::shared_ptr<consensus::Consensus>> TabletPeer::GetConsensus() const {
   return GetRaftConsensus();
 }
@@ -1818,6 +1845,17 @@ Result<OpId> TabletPeer::CopyBootstrapStateTo(const std::string& dest_path) {
                 "Tablet $0 bootstrap_state_flusher not initialized",
                 tablet_id_);
   return bootstrap_state_flusher->CopyBootstrapStateTo(dest_path);
+}
+
+Status TabletPeer::CopyBootstrapStateForTabletSplit(const std::string& child_wal_dir) {
+  if (!FlushBootstrapStateEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
+  // We do not use bootstrap_state_flusher for this variant. This means that we do not synchronize
+  // with existing flushes, but tablet split prevents the flusher from proceeding anyways due to
+  // the replica state lock being held (which is also why the flusher cannot be used here).
+  return bootstrap_state_manager_->CopyTo(JoinPathSegments(
+      child_wal_dir, tablet::TabletBootstrapStateManager::FileName()));
 }
 
 Status TabletPeer::SubmitFlushBootstrapStateTask() {

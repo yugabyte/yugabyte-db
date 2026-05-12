@@ -316,7 +316,7 @@ Result<Uuid> DocDBRocksDBUtil::WriteSimpleWithCotablePrefix(
   op_id_.term = index / 2;
   op_id_.index = index;
   auto& dwb = DefaultDocWriteBatch();
-  QLValuePB value;
+  LWQLValuePB value(nullptr);
   value.set_int32_value(index);
   RETURN_NOT_OK(dwb.SetPrimitive(
       DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
@@ -329,7 +329,7 @@ Status DocDBRocksDBUtil::WriteSimple(int index) {
   op_id_.term = index / 2;
   op_id_.index = index;
   auto& dwb = DefaultDocWriteBatch();
-  QLValuePB value;
+  LWQLValuePB value(nullptr);
   value.set_int32_value(index);
   RETURN_NOT_OK(dwb.SetPrimitive(
       DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
@@ -378,13 +378,22 @@ Status DocDBRocksDBUtil::SetPrimitive(
     const ReadHybridTime& read_ht) {
   return SetPrimitive(
       doc_path, control_fields,
-      ValueRef(value),
+      ValueRef(*MakeLWValue(value)),
       hybrid_time, read_ht);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
     const QLValuePB& value,
+    const HybridTime hybrid_time,
+    const ReadHybridTime& read_ht) {
+  return SetPrimitive(
+      doc_path, *MakeLWValue(value), hybrid_time, read_ht);
+}
+
+Status DocDBRocksDBUtil::SetPrimitive(
+    const DocPath& doc_path,
+    const LWQLValuePB& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   return SetPrimitive(doc_path, ValueRef(value), hybrid_time, read_ht);
@@ -528,7 +537,7 @@ Status DocDBRocksDBUtil::ReplaceInList(
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
   return ReplaceInList(
-      doc_path, target_cql_index, ValueRef(value), read_ht, hybrid_time, query_id,
+      doc_path, target_cql_index, ValueRef(*MakeLWValue(value)), read_ht, hybrid_time, query_id,
       default_ttl, ttl, user_timestamp);
 }
 

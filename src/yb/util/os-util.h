@@ -42,6 +42,10 @@
 
 namespace yb {
 
+constexpr int kMaxProcfsThreadNameSize = 15;
+
+Result<std::string> ReadUnixConfigFromPath(const std::string& path, size_t max_length);
+
 // Utility methods to read interesting values from /proc.
 // TODO: Get stats for parent process.
 
@@ -64,15 +68,18 @@ struct ThreadStats {
 };
 
 // Populates ThreadStats object using a given buffer. The buffer is expected to
-// conform to /proc/<pid>/task/<tid>/stat layout; an error will be returned otherwise.
+// conform to /proc/<tid>/stat layout; an error will be returned otherwise.
 //
 // If 'name' is supplied, the extracted thread name will be written to it.
 Status ParseStat(const std::string&buffer, std::string* name, ThreadStats* stats);
 
 // Populates ThreadStats object for a given thread by reading from
-// /proc/<pid>/task/<tid>/stat. Returns OK unless the file cannot be read or is in an
+// /proc/<tid>/stat. Returns OK unless the file cannot be read or is in an
 // unrecognised format, or if the kernel version is not modern enough.
 Status GetThreadStats(int64_t tid, ThreadStats* stats);
+
+// Read thread name from /proc/<tid>/comm.
+Result<std::string> GetProcfsThreadName(int64_t tid);
 
 // Runs a shell command. Returns false if there was any error (either failure to launch or
 // non-0 exit code), and true otherwise. *msg is set to an error message including the OS

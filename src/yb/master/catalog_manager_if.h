@@ -238,7 +238,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
-  virtual Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) = 0;
+  virtual Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) const = 0;
 
   virtual bool AreTablesDeletingOrHiding() = 0;
 

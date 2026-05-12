@@ -1,5 +1,7 @@
 title: FileCollectionOptions
-description: Configuration options for collecting files from database nodes
+description: |
+  Configuration options for collecting files from database nodes.
+  At least one of file_paths or directory_paths must be provided.
 x-yba-api-visibility: internal
 type: object
 properties:
@@ -66,5 +68,3 @@ properties:
     type: string
     example: yugabyte
     default: yugabyte
-required:
-  - file_paths

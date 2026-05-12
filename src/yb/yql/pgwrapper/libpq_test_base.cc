@@ -344,7 +344,6 @@ std::vector<YsqlMetric> LibPqTestBase::ParsePrometheusMetrics(const std::string&
 }
 
 // Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
 std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metrics_output) {
   std::vector<YsqlMetric> parsed_metrics;
 
@@ -361,14 +360,12 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
     std::unordered_map<std::string, std::string> labels;
     if (metric["table_name"].IsValid()) {
       labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric_name;
     }
 
     parsed_metrics.emplace_back(
         metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
-        0  // JSON doesn't include timestamp
-    );
+        0,  // JSON doesn't include timestamp
+        "", "", EXPECT_RESULT(metric["sum"].GetInt64()));
   }
 
   return parsed_metrics;

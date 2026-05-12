@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: docs-mcp-server
     parent: reference
-    weight: 2590
+    weight: 1000
 type: docs
 unversioned: true
 ---
@@ -30,7 +30,7 @@ To add the Yugabyte Docs MCP server, do the following:
 
     {{< tabpane text=true >}}
 
-{{% tab header="Cursor" lang="cursor" %}}
+{{% tab header="Cursor IDE" lang="cursor" %}}
 
 The **Add to Cursor** option opens Cursor to your **Cursor Settings**.
 

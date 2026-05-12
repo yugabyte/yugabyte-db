@@ -82,6 +82,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 500,
+    "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
+    "least recently used statements are closed on the backend. This is enforced periodically at "
+    "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
+    "to disable LRU eviction.");
+
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
@@ -137,12 +143,15 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
-    "When enabled, the YSQL Connection Manager deallocates a prepared statement "
-    "upon receiving a Close message if the statement exists on the backend "
-    "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
-    "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
-    "needs to be enabled to enable this flag.");
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
+    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
+    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
+    "valid plans on non-sticky connections are retained for reuse across logical connections. "
+    "When disabled, Close messages are handled as a no-op by the connection manager itself "
+    "and never reach the backend, which can cause errors. "
+    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
@@ -173,12 +182,25 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
+    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
+    "This is used so that prepared-statement state tracked on the Connection Manager can be "
+    "reconciled with the backend when errors disrupt the expected packet sequence. When "
+    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
+    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
     "Sampling is disabled if this is set to 0. This flag will only be in effect if "
     "ysql_conn_mgr_dump_heap_snapshot_interval is set to greater than 0 i.e if dumping heap "
     "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
     "has set for connection manager process");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
+    "Interval in seconds between tcmalloc page-heap GC checks in Ysql Connection Manager. "
+    "Each tick invokes yb::MemTracker::GcTcmallocIfNeeded(); if the pageheap free-list "
+    "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
+    "excess is returned to the OS. Set to 0 to disable periodic GC.");
 
 namespace {
 
@@ -211,7 +233,7 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
-DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
 namespace yb {

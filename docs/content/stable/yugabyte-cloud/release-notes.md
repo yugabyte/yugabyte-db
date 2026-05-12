@@ -21,6 +21,17 @@ rightNav:
 
 ### 2026
 
+#### April 28, 2026
+
+##### New features
+
+- {{<tags/feature/ga>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. Available for clusters running {{<release "2025.2.2.1">}} or later.
+- {{<tags/feature/ea>}}[Multi-account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development, staging, and production. To try this feature, contact {{% support-cloud %}}.
+
+##### Database
+
+- Early Access track updated to 2025.2.2.2.
+
 #### March 27, 2026
 
 ##### New features

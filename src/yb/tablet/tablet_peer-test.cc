@@ -226,6 +226,7 @@ class TabletPeerTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
+                                           messenger_->ThreadPoolPtr(),
                                            proxy_cache_.get(),
                                            log,
                                            table_metric_entity_,
@@ -288,11 +289,13 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
-    WriteResponsePB resp;
+    auto arena = SharedThreadSafeArena();
+    auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
+    auto& lw_req = *arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet()), nullptr, &resp);
-    query->set_client_request(req);
+        ASSERT_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
+    query->set_client_request(lw_req);
 
     CountDownLatch rpc_latch(1);
     query->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
@@ -310,7 +313,7 @@ class TabletPeerTest : public YBTabletTest {
                                           const Callback& cb) {
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        CHECK_RESULT(tablet_peer->shared_tablet()), nullptr, resp);
+        CHECK_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, resp);
     query->set_client_request(req);
     query->set_callback(cb);
     return query;
@@ -643,8 +646,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
 
   std::string value(kValueSize, 'X');
 
-  std::vector<WriteRequestPB> requests(kNumOps);
-  std::vector<WriteResponsePB> responses(kNumOps);
+  auto arena = SharedThreadSafeArena();
+  std::vector<tserver::LWWriteResponsePB*> responses(kNumOps);
   std::vector<std::unique_ptr<WriteQuery>> queries;
   queries.reserve(kNumOps);
   CountDownLatch latch(kNumOps);
@@ -652,10 +655,10 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   auto* const tablet_peer = tablet_peer_.get();
 
   for (int i = 0; i < kNumOps; ++i) {
-    auto* req = &requests[i];
-    auto* resp = &responses[i];
+    auto* req = arena->NewArenaObject<tserver::LWWriteRequestPB>();
+    auto* resp = responses[i] = arena->NewArenaObject<tserver::LWWriteResponsePB>();
 
-    req->set_tablet_id(tablet()->tablet_id());
+    req->dup_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = CreateQuery(
         tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));
@@ -668,8 +671,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   latch.Wait();
 
   for (size_t i = 0; i < responses.size(); ++i) {
-    const auto& resp = responses[i];
-    ASSERT_FALSE(responses[i].has_error()) << "\n Response[" << i << "]:\n" << resp.DebugString();
+    const auto& resp = *responses[i];
+    ASSERT_FALSE(resp.has_error()) << "\n Response[" << i << "]:\n" << resp.ShortDebugString();
   }
 
   ASSERT_OK(RollLog(tablet_peer_.get()));
@@ -707,13 +710,14 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
 
   std::string value(kValueSize, 'X');
 
-  WriteRequestPB req;
-  WriteResponsePB resp;
+  auto arena = SharedThreadSafeArena();
+  auto& req = *arena->NewArenaObject<tserver::LWWriteRequestPB>();
+  auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
   CountDownLatch latch(1);
 
   auto* const tablet_peer = tablet_peer_.get();
 
-  req.set_tablet_id(tablet()->tablet_id());
+  req.dup_tablet_id(tablet()->tablet_id());
   AddTestRowInsert(1, 1, value, &req);
   auto query = CreateQuery(
       tablet_peer, req, &resp, MakeLatchOperationCompletionCallback(&latch, &resp));
@@ -908,8 +912,7 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   const int kNumOps = 100;
   std::string value(ANNOTATE_UNPROTECTED_READ(FLAGS_log_segment_size_bytes) + 1, 'X');
 
-  std::vector<WriteRequestPB> requests(kNumOps);
-  std::vector<WriteResponsePB> responses(kNumOps);
+  auto arena = SharedThreadSafeArena();
   std::vector<std::unique_ptr<WriteQuery>> queries;
   queries.reserve(kNumOps);
   CountDownLatch latch(kNumOps);
@@ -917,10 +920,10 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   auto* const tablet_peer = tablet_peer_.get();
 
   for (int i = 0; i < kNumOps; ++i) {
-    auto* req = &requests[i];
-    auto* resp = &responses[i];
+    auto* req = arena->NewArenaObject<tserver::LWWriteRequestPB>();
+    auto* resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
 
-    req->set_tablet_id(tablet()->tablet_id());
+    req->dup_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = CreateQuery(
         tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));

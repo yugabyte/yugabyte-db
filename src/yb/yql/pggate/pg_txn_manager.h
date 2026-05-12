@@ -69,6 +69,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   ~PgTxnManager();
 
+  // Abort any active transactions. Must be called before pgapi is destroyed since the abort
+  // path calls YBCIsLegacyModeForCatalogOps which dereferences the global pgapi pointer.
+  void Shutdown();
+
   Status BeginTransaction(int64_t start_time);
 
   Status CalculateIsolation(

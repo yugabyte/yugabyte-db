@@ -76,6 +76,7 @@ using std::shared_ptr;
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(use_priority_thread_pool_for_flushes);
 DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
+DECLARE_bool(TEST_fail_flush_mem_table);
 
 namespace rocksdb {
 
@@ -4758,6 +4759,10 @@ class ModelDB: public DB {
     LOG(FATAL) << "SetAllowCompactionFailures is not supported.";
   }
 
+  Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override {
+    return Status::OK();
+  }
+
  private:
   Status NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");
@@ -8660,6 +8665,34 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
 
     Close();
   }
+}
+
+TEST_F(DBTest, BgErrorGetsResetOnlyOnDBReOpen) {
+  ASSERT_OK(Put("foo", "v1"));
+  ASSERT_OK(Flush());
+  // Mock IO error like disk full by setting flag to fail flush.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_flush_mem_table) = true;
+  ASSERT_OK(Put("bar", "v2"));
+  const auto expected_failure_str =
+      "TEST_fail_flush_mem_table set: Requires a process restart to clear the error from cache.";
+  ASSERT_NOK_STR_CONTAINS(Flush(), expected_failure_str);
+  // Write/Flush fails despite failure flag being reset/ disk space available.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_flush_mem_table) = false;
+  ASSERT_NOK_STR_CONTAINS(Put("baz", "v3"), expected_failure_str);
+  Close();
+
+  // Cached error gets reset on db reopen/tablet shutdown + re-open/process restart.
+  auto options = CurrentOptions();
+  options.env = env_;
+  Reopen(options);
+  ASSERT_OK(Put("baz", "v3"));
+  ASSERT_OK(Flush());
+  Close();
+
+  // Now check keys in read only mode.
+  ASSERT_OK(ReadOnlyReopen(options));
+  ASSERT_EQ("v3", Get("baz"));
+  ASSERT_EQ("v2", Get("bar"));
 }
 
 }  // namespace rocksdb

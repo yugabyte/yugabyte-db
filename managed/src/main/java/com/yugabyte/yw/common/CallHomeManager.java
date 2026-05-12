@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Alert;
@@ -33,10 +34,12 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -139,6 +142,8 @@ public class CallHomeManager {
     private Integer numDatabases;
     private Integer numTables;
     private Map<String, Double> universeMetrics;
+    private Integer totalCpuCores;
+    private Double totalMemGb;
   }
 
   @Inject
@@ -220,6 +225,17 @@ public class CallHomeManager {
               || (universeResp.drConfigUuidsAsTarget != null
                   && !universeResp.drConfigUuidsAsTarget.isEmpty()));
       enrichUniverseXCluster(sourceConfigUuids, targetConfigUuids, universeNode);
+
+      ArrayNode backupPolicies = Json.newArray();
+      try {
+        for (Schedule schedule : Schedule.getAllSchedulesByOwnerUUID(universeResp.universeUUID)) {
+          backupPolicies.add(Json.toJson(schedule));
+        }
+      } catch (Exception e) {
+        backupPolicies = Json.newArray();
+      }
+      universeNode.set("scheduled_backup_policies", backupPolicies);
+
       try {
         Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
         List<CdcStream> cdcStreams = cdcStreamManager.getAllCdcStreams(universe);
@@ -514,6 +530,21 @@ public class CallHomeManager {
               == CloudType.kubernetes;
       Map<String, Double> metrics = getUniverseMetrics(c, nodePrefix, isK8s, clock.instant());
       diag.setUniverseMetrics(metrics);
+
+      int totalCores = 0;
+      double totalMemGb = 0.0;
+      for (UniverseDefinitionTaskParams.Cluster cluster :
+          universeResp.universeDetails.delegate.clusters) {
+        UniverseDefinitionTaskParams.UserIntent intent = cluster.userIntent;
+        InstanceType it = InstanceType.get(UUID.fromString(intent.provider), intent.instanceType);
+        if (it != null) {
+          if (it.getNumCores() != null)
+            totalCores += (int) Math.round(it.getNumCores() * intent.numNodes);
+          if (it.getMemSizeGB() != null) totalMemGb += it.getMemSizeGB() * intent.numNodes;
+        }
+      }
+      diag.setTotalCpuCores(totalCores > 0 ? totalCores : null);
+      diag.setTotalMemGb(totalMemGb > 0 ? totalMemGb : null);
 
       try {
         int tableCount =

@@ -1,6 +1,13 @@
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-export const generateUniverseMockResponse = (): Universe => {
+export type GenerateUniverseMockResponseOptions = {
+  universeUuid?: string;
+};
+
+export const generateUniverseMockResponse = (
+  options?: GenerateUniverseMockResponseOptions
+): Universe => {
+  const universeUuid = options?.universeUuid ?? 'mock-universe-uuid';
   const PRIMARY_CLUSTER_UUID = 'mock-cluster-uuid';
   const CUSTOMER_UUID = 'customer-uuid';
   return {
@@ -76,9 +83,31 @@ export const generateUniverseMockResponse = (): Universe => {
                     name: 'US West (Oregon)',
                     code: 'us-west-2',
                     az_list: [
-                      { uuid: 'us-west-2a-uuid', name: 'us-west-2a', replication_factor: 1, num_nodes_in_az: 1 },
-                      { uuid: 'us-west-2b-uuid', name: 'us-west-2b', replication_factor: 1, num_nodes_in_az: 1 },
-                      { uuid: 'us-west-2c-uuid', name: 'us-west-2c', replication_factor: 1, num_nodes_in_az: 1 }
+                      {
+                        uuid: 'us-west-2a-uuid',
+                        name: 'us-west-2a',
+                        replication_factor: 1,
+                        num_nodes_in_az: 1
+                      },
+                      {
+                        uuid: 'us-west-2b-uuid',
+                        name: 'us-west-2b',
+                        replication_factor: 1,
+                        num_nodes_in_az: 1
+                      }
+                    ]
+                  },
+                  {
+                    uuid: 'sa-east-1-region-uuid',
+                    name: 'South America (São Paulo)',
+                    code: 'sa-east-1',
+                    az_list: [
+                      {
+                        uuid: 'sa-east-1a-uuid',
+                        name: 'sa-east-1a',
+                        replication_factor: 1,
+                        num_nodes_in_az: 1
+                      }
                     ]
                   }
                 ],
@@ -93,7 +122,7 @@ export const generateUniverseMockResponse = (): Universe => {
       ]
     },
     info: {
-      universe_uuid: 'mock-universe-uuid',
+      universe_uuid: universeUuid,
       version: 2,
       creation_date: '2024-06-15T10:00:00Z',
       creating_user: {
@@ -197,7 +226,7 @@ export const generateUniverseMockResponse = (): Universe => {
           node_uuid: 'node-uuid-3',
           node_name: 'node-name-3',
           node_idx: 2,
-          az_uuid: 'us-west-2c-uuid',
+          az_uuid: 'sa-east-1a-uuid',
           placement_uuid: PRIMARY_CLUSTER_UUID,
           state: 'Live',
           is_master: true,
@@ -208,8 +237,8 @@ export const generateUniverseMockResponse = (): Universe => {
           master_state: 'Configured',
           cloud_info: {
             cloud: 'aws',
-            region: 'us-west-2',
-            az: 'us-west-2c',
+            region: 'sa-east-1',
+            az: 'sa-east-1a',
             private_ip: '10.0.1.13',
             public_ip: '54.1.2.13',
             instance_type: 'c5.xlarge',
@@ -220,7 +249,7 @@ export const generateUniverseMockResponse = (): Universe => {
       dr_config_uuids_as_source: [],
       dr_config_uuids_as_target: [],
       resources: {
-        az_list: ['us-west-2a', 'us-west-2b', 'us-west-2c'],
+        az_list: ['us-west-2a', 'us-west-2b', 'sa-east-1a'],
         num_nodes: 3,
         num_cores: 4,
         mem_size_gb: 8,

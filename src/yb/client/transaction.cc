@@ -160,16 +160,30 @@ struct AsyncWriteQuery {
   std::vector<StdStatusCallback> waiters_ = {};
 };
 
-}  // namespace
-
-Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
+template <class PB>
+Result<ChildTransactionData> ChildTransactionDataFromPB(const PB& data) {
   ChildTransactionData result;
   auto metadata = TransactionMetadata::FromPB(data.metadata());
   RETURN_NOT_OK(metadata);
   result.metadata = std::move(*metadata);
   result.read_time = ReadHybridTime::FromReadTimePB(data);
+  return result;
+}
+
+}  // namespace
+
+Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
+  auto result = VERIFY_RESULT(ChildTransactionDataFromPB(data));
   for (const auto& entry : data.local_limits()) {
     result.local_limits.emplace(entry.first, HybridTime(entry.second));
+  }
+  return result;
+}
+
+Result<ChildTransactionData> ChildTransactionData::FromPB(const LWChildTransactionDataPB& data) {
+  auto result = VERIFY_RESULT(ChildTransactionDataFromPB(data));
+  for (const auto& entry : data.local_limits()) {
+    result.local_limits.emplace(entry.key(), HybridTime(entry.value()));
   }
   return result;
 }
@@ -935,7 +949,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return result;
   }
 
-  Status ApplyChildResult(const ChildTransactionResultPB& result) EXCLUDES(mutex_) {
+  template <class PB>
+  Status ApplyChildResult(const PB& result) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     std::vector<std::string> cleanup_tablet_ids;
     auto se = ScopeExit([this, &cleanup_tablet_ids] {
@@ -950,7 +965,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
       cleanup_tablet_ids.reserve(result.tablets().size());
       for (const auto& tablet : result.tablets()) {
-        cleanup_tablet_ids.push_back(tablet.tablet_id());
+        cleanup_tablet_ids.emplace_back(std::string_view(tablet.tablet_id()));
       }
     }
 
@@ -960,7 +975,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     for (const auto& tablet : result.tablets()) {
-      auto& tablet_state = tablets_[tablet.tablet_id()];
+      auto& tablet_state = MappedValue(tablets_, std::string_view(tablet.tablet_id()));
       tablet_state.num_batches += tablet.num_batches();
       tablet_state.has_metadata =
           tablet_state.has_metadata ||
@@ -2425,9 +2440,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
-          auto transaction = transaction_->shared_from_this();
+          auto transaction_ptr = transaction_->shared_from_this();
           SendAbortToOldStatusTabletIfNeeded(
-              TransactionRpcDeadline(), transaction, old_status_tablet);
+              TransactionRpcDeadline(), transaction_ptr, old_status_tablet);
         }
       }
     }
@@ -2750,6 +2765,10 @@ Result<TransactionMetadata> YBTransaction::metadata() const {
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
+  return impl_->ApplyChildResult(result);
+}
+
+Status YBTransaction::ApplyChildResult(const LWChildTransactionResultPB& result) {
   return impl_->ApplyChildResult(result);
 }
 

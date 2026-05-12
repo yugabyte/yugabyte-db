@@ -25,7 +25,7 @@
 
 #include "yb/client/session.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -337,7 +337,7 @@ class TnodeContext {
   // this will do, index: 2 -> 3 and hashed_column_values: [1, 3, 4, 6] -> [1, 3, 5, 6].
   void AdvanceToNextPartition(QLReadRequestMsg *req);
 
-  std::vector<std::vector<QLExpressionMsg>>& hash_values_options() {
+  std::vector<std::vector<QLExpressionMsg*>>& hash_values_options() {
     if (!hash_values_options_) {
       hash_values_options_.emplace();
     }
@@ -436,7 +436,7 @@ class TnodeContext {
   //  hash_values_options_ = [[2, 3], [4, 5], [6]]
   //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [3,5,6]).
   //  current_partition_index_ starts from 0 unless set in the paging state.
-  std::optional<std::vector<std::vector<QLExpressionMsg>>> hash_values_options_;
+  std::optional<std::vector<std::vector<QLExpressionMsg*>>> hash_values_options_;
   uint64_t partitions_count_ = 0;
   uint64_t current_partition_index_ = 0;
 

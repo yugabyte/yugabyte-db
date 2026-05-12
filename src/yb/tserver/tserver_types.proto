@@ -160,4 +160,9 @@ enum TSTabletManagerStatePB {
 
   // Tablet Manager has shutdown.
   MANAGER_SHUTDOWN = 3;
+
+  // Indicates that tablet manager has started executing it's shutdown logic,
+  // and is in the process of signaling the same to its members. The state is
+  // switched to MANAGER_QUIESCING post this.
+  MANAGER_STARTED_QUIESCING = 4;
 }

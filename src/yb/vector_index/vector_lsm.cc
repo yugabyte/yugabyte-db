@@ -100,6 +100,9 @@ DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
 DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
     "Enable Vector LSM background compactions.");
 
+DEFINE_test_flag(bool, vector_index_exact, false,
+    "Use exact brute-force search in vector index to guarantee deterministic results.");
+
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
 
@@ -2533,6 +2536,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
 
   if (metrics_) {
+    uint64_t read_bytes = 0;
+    for (const auto& chunk : scope.chunks()) {
+      read_bytes += chunk->file_size();
+    }
+    metrics_->compact_read_bytes->IncrementBy(read_bytes);
     // TODO(vector_index): include metadata file update in write metrics.
     metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
   }

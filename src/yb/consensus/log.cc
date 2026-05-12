@@ -452,6 +452,12 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
+  void SetPerDbCgroup(Cgroup* cgroup) {
+    if (task_stream_) {
+      task_stream_->SetTaskCgroup(cgroup);
+    }
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -608,7 +614,12 @@ void Log::Appender::Shutdown() {
 // This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
 // segments.
 void Log::SegmentAllocationTask() {
-  allocation_status_.Set(PreAllocateNewSegment());
+  auto status = PreAllocateNewSegment();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(ERROR) << "Failed to pre-allocate new WAL segment: " << status;
+    allocation_state_.store(SegmentAllocationState::kAllocationFailed, std::memory_order_release);
+  }
+  allocation_status_.Set(status);
 }
 
 const Status Log::kLogShutdownStatus(
@@ -838,7 +849,7 @@ Status Log::RollOver() {
 
     DCHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
 
-    LOG_WITH_PREFIX_DETAIL << Format(
+    LOG_WITH_PREFIX(DETAIL) << Format(
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
@@ -847,7 +858,7 @@ Status Log::RollOver() {
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-    LOG_WITH_PREFIX_DETAIL << "Rolled over to a new segment: " << active_segment_->path();
+    LOG_WITH_PREFIX(DETAIL) << "Rolled over to a new segment: " << active_segment_->path();
   }
   return Status::OK();
 }
@@ -1004,6 +1015,14 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       RETURN_NOT_OK(RollOver());
       // Rollover prevents potential overflow.
       segment_will_overflow = false;
+    } else if (allocation_state() == SegmentAllocationState::kAllocationFailed) {
+      auto alloc_status = allocation_status_.Get();
+      LOG_WITH_PREFIX(ERROR)
+          << "WAL segment allocation failed: " << alloc_status
+          << ". Resetting state to allow retry on next append.";
+      allocation_state_.store(
+          SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+      return alloc_status;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
@@ -1599,8 +1618,8 @@ OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  LOG_WITH_PREFIX_DETAIL << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
-                        << ", log segment size = " << options_.segment_size_bytes;
+  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
+                          << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 
@@ -1625,7 +1644,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG_WITH_PREFIX_DETAIL
+      LOG_WITH_PREFIX(DETAIL)
           << "Deleting log segment in path: " << segment->path()
           << " (GCed ops < " << segment->footer().max_replicate_index() + 1
           << ")";
@@ -1719,6 +1738,18 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 
 Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
   return active_segment_->TEST_WriteCorruptedEntryBatchAndSync();
+}
+
+void Log::SetPerDbCgroup(Cgroup* cgroup) {
+  if (appender_) {
+    appender_->SetPerDbCgroup(cgroup);
+  }
+  if (allocation_token_) {
+    allocation_token_->SetTaskCgroup(cgroup);
+  }
+  if (background_sync_threadpool_token_) {
+    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  }
 }
 
 Status Log::Close() {

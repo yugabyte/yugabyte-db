@@ -77,6 +77,7 @@ export const RuntimeConfigKey = {
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
   ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
+  ALLOW_MULTI_TENANCY_TEST_UI: 'yb.universe.allow_multi_tenancy_test_ui',
   USE_ANSIBLE_PROVISIONING: 'yb.node_agent.use_ansible_provisioning',
   RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
@@ -92,7 +93,8 @@ export const RuntimeConfigKey = {
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
   ENABLE_AZ_OVERRIDES_K8S: 'yb.ui.feature_flags.enable_az_overrides_k8s',
-  ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade'
+  ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
+  SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'
 } as const;
 
 /**

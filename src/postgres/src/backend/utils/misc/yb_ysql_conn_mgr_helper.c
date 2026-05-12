@@ -85,6 +85,8 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+bool		yb_conn_mgr_is_auth_passthrough_backend = false;
+
 bool
 YbIsAuthPassthroughInProgress(struct Port *port)
 {
@@ -875,7 +877,7 @@ YbCreateClientId(void)
 
 	YbCheckMyDatabase(MyProcPort->database_name, is_superuser, false, database);
 
-	if (MyProcPort->yb_has_auth_passthrough_failed)
+	if (MyProcPort->yb_has_auth_passthrough_finished)
 		return -1;
 
 	return YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);

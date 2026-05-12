@@ -261,7 +261,7 @@ constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
 constexpr Oid BSONOID = 8095;
-constexpr Oid GRAPHIDOID = 8113;
+constexpr Oid GRAPHIDOID = 8116;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {

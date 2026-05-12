@@ -26,7 +26,7 @@ namespace master {
 
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
-YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexes);
+YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
@@ -64,7 +64,8 @@ class TabletSplitManager {
   Status ValidateSplitCandidateTable(
       const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse,
-      IgnoreVectorIndexes ignore_vector_indexes = IgnoreVectorIndexes::kFalse);
+      IgnoreVectorIndexesValidation ignore_vector_indexes_validation =
+          IgnoreVectorIndexesValidation::kFalse);
 
   // Tablet-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.

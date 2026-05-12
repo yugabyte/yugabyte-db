@@ -115,8 +115,8 @@ class ConnectivityPoller::Impl : public MasterLeaderPollerInterface {
         poll_scheduler_(finder_, *this) {
   }
 
-  Status Start() {
-    return poll_scheduler_.Start();
+  Status Start(Cgroup* cgroup = nullptr) {
+    return poll_scheduler_.Start(cgroup);
   }
 
   void Shutdown() {
@@ -220,8 +220,8 @@ ConnectivityPoller::ConnectivityPoller(server::RpcServerBase& server, const std:
 
 ConnectivityPoller::~ConnectivityPoller() = default;
 
-Status ConnectivityPoller::Start() {
-  return impl_->Start();
+Status ConnectivityPoller::Start(Cgroup* cgroup) {
+  return impl_->Start(cgroup);
 }
 
 void ConnectivityPoller::Shutdown() {

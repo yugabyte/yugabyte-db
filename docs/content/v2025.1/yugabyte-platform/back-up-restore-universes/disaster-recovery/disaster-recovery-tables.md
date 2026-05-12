@@ -73,6 +73,14 @@ Note the following:
 
 When dropping a table, remove the table from DR before dropping the table in the DR primary and replica databases.
 
+{{< warning title="Drop tables after removing from replication" >}}
+
+Disaster Recovery replicates all tables in a database. Remove a table from replication only when you intend to drop the table.
+
+If you remove a table from replication and don't subsequently drop it from the database (on both primary and replica), the [_XCluster Config Tables are in bad state_ alert](../disaster-recovery-setup/#set-up-alerts) will fire.
+
+{{< /warning >}}
+
 Remove tables from DR in the following sequence:
 
 1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.

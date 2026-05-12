@@ -1,4 +1,5 @@
 #ifdef YB_GOOGLE_TCMALLOC
+#include "yb/util/mem_tracker.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_util.h"
 
@@ -99,6 +100,22 @@ char *getTCMallocStats()
 void setTCMallocSamplePeriod(uint64_t sample_period_bytes)
 {
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
+}
+
+/*
+ * Thin C-callable wrapper around yb::MemTracker::GcTcmallocIfNeeded().
+ *
+ * The underlying routine (src/yb/util/mem_tracker.cc) is the exact same
+ * logic used by tserver, master, and postgres backends to keep RSS
+ * bounded: if tcmalloc's pageheap free overhead exceeds
+ * FLAGS_tcmalloc_max_free_bytes_percentage of currently-allocated bytes,
+ * return the excess to the OS via MallocExtension::ReleaseMemoryToSystem
+ * in 1 MB chunks.
+ * Returns 1 if a release was performed, 0 otherwise.
+ */
+bool yb_tcmalloc_gc_if_needed(void)
+{
+  return yb::MemTracker::GcTcmallocIfNeeded();
 }
 #endif // YB_GOOGLE_TCMALLOC
 }

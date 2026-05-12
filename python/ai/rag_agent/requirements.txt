@@ -7,6 +7,9 @@ langchain-text-splitters
 langchain-openai
 langchain-community
 
+# HTML processing
+protego  # robots.txt parser (BSD-3, by Scrapy team)
+
 # Unstructured dependencies for pdf processing
 unstructured
 unstructured-client

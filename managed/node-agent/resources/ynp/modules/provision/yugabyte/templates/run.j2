@@ -1,13 +1,13 @@
 # Check if the user already exists
 if id "{{ yb_user }}" &>/dev/null; then
     echo "User {{ yb_user }} already exists"
-    # FATAL: Check if existing user's home directory matches the configured yb_home_dir
+    # FATAL: Check if existing user's home directory matches the configured yb_user_home
     existing_home=$(getent passwd {{ yb_user }} | cut -d: -f6)
     if [ -z "$existing_home" ]; then
         add_fatal_result "Yugabyte User Home Directory" \
             "Home directory for user {{ yb_user }} is not set"
     else
-        configured_home="{{ yb_home_dir }}"
+        configured_home="{{ yb_user_home }}"
         # Resolve both paths to absolute canonical paths for comparison
         existing_home_abs=$(realpath -m "$existing_home" 2>/dev/null || echo "$existing_home")
         configured_home_abs=$(realpath -m "$configured_home" 2>/dev/null || echo "$configured_home")
@@ -24,10 +24,10 @@ if id "{{ yb_user }}" &>/dev/null; then
     fi
 else
     # Creating the yb_user
-    useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} -U {{ yb_user }}
-    chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}
+    useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_user_home }} -U {{ yb_user }}
+    chown -R {{ yb_user }}:{{ yb_user }} {{ yb_user_home }}
     chown -R {{ yb_user }}:{{ yb_user }} {{ ynp_dir }}/../../scripts
-    chmod -R 711 {{ yb_home_dir }}
+    chmod -R 711 {{ yb_user_home }}
     echo "User {{ yb_user }} created"
 fi
 
@@ -61,19 +61,19 @@ if [[ "{{ os_family }}" == "RedHat" ]]; then
     SELINUX_STATUS=$(sestatus | grep 'SELinux status' | awk '{print $3}')
     if [[ "$SELINUX_STATUS" == "enabled" ]]; then
         # Configuring the correct SELinux context
-        current_context=$(ls -Zd "{{ yb_home_dir }}" | awk '{print $1}' | cut -d: -f3)
+        current_context=$(ls -Zd "{{ yb_user_home }}" | awk '{print $1}' | cut -d: -f3)
         if [[ "$current_context" != "ssh_home_t" ]]; then
             if command -v semanage >/dev/null 2>&1; then
                 echo "semanage command found, using semanage"
-                semanage fcontext -a -t ssh_home_t "{{ yb_home_dir }}(/.*)?"
-                restorecon -ir "{{ yb_home_dir }}"
+                semanage fcontext -a -t ssh_home_t "{{ yb_user_home }}(/.*)?"
+                restorecon -ir "{{ yb_user_home }}"
             else
                 echo "semanage command not found, using chcon"
-                chcon -R -t ssh_home_t "{{ yb_home_dir }}"
+                chcon -R -t ssh_home_t "{{ yb_user_home }}"
             fi
-            echo "SELinux context for {{ yb_home_dir }} changed to ssh_home_t"
+            echo "SELinux context for {{ yb_user_home }} changed to ssh_home_t"
         else
-            echo "SELinux context for {{ yb_home_dir }} is already set to ssh_home_t"
+            echo "SELinux context for {{ yb_user_home }} is already set to ssh_home_t"
         fi
     fi
 else
@@ -95,7 +95,7 @@ done
 
 {% if is_cloud == 'True' %}
     # Set up the ssh key access for yugabyte
-    mkdir -p {{ yb_home_dir }}/.ssh
+    mkdir -p {{ yb_user_home }}/.ssh
     # Determine the current user
     if [ -n "$SUDO_USER" ]; then
         CURRENT_USER=$SUDO_USER
@@ -108,9 +108,9 @@ done
 
     # Check if the current user's authorized_keys file exists
     if [[ -f "$AUTHORIZED_KEYS" ]]; then
-        cat "$AUTHORIZED_KEYS" > {{ yb_home_dir }}/.ssh/authorized_keys
-        chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.ssh
-        chmod 600 "{{ yb_home_dir }}/.ssh/authorized_keys"
+        cat "$AUTHORIZED_KEYS" > {{ yb_user_home }}/.ssh/authorized_keys
+        chown -R {{ yb_user }}:{{ yb_user }} {{ yb_user_home }}/.ssh
+        chmod 600 "{{ yb_user_home }}/.ssh/authorized_keys"
 
         echo "Authorized keys from $CURRENT_USER copied to {{ yb_user }} home directory."
     else
@@ -118,5 +118,12 @@ done
     fi
 {% endif %}
 
-# Ensure the permissions for yb_home_dir are 750
-chmod 750 "{{ yb_home_dir }}"
+# Ensure the permissions for yb_user_home are 750
+chmod 750 "{{ yb_user_home }}"
+
+# Create yugabyte software home directory.
+mkdir -p "{{ yb_home_dir }}"
+chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_home_dir }}"
+chmod -R 750 "{{ yb_home_dir }}"
+
+echo "Yugabyte software home directory created: {{ yb_home_dir }}"

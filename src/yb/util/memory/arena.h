@@ -174,6 +174,14 @@ class ArenaBase {
     return Slice(AddSlice(value), value.size());
   }
 
+  Slice CatSlices(Slice slice1, Slice slice2) {
+    auto full_size = slice1.size() + slice2.size();
+    auto start = static_cast<std::byte*>(AllocateBytes(full_size));
+    memcpy(start, slice1.data(), slice1.size());
+    memcpy(start + slice1.size(), slice2.data(), slice2.size());
+    return Slice(start, full_size);
+  }
+
   // Handy wrapper for placement-new
   template<class T, class... Args>
   T *NewObject(Args&&... args);
@@ -251,6 +259,8 @@ class ArenaBase {
   // Returns how many bytes are used by this arena. This excludes any empty space in the last
   // component.
   size_t UsedBytes();
+
+  bool Contains(const void* ptr);
 
  private:
   typedef typename Traits::mutex_type mutex_type;
@@ -455,6 +465,10 @@ class ArenaComponent {
     auto* result = next_;
     next_ = next;
     return result;
+  }
+
+  bool Contains(const void* ptr) {
+    return ptr >= begin() && ptr < end();
   }
 
  private:

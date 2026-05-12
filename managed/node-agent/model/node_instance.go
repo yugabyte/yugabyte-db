@@ -107,8 +107,9 @@ func (p *CloudInfo) UnmarshalJSON(data []byte) error {
 
 type OnPremCloudInfo struct {
 	Extra
-	YbHomeDir     string `json:"ybHomeDir,omitempty"`
-	UseClockbound bool   `json:"useClockbound,omitempty"`
+	YbHomeDir          string `json:"ybHomeDir,omitempty"`
+	UseClockbound      bool   `json:"useClockbound,omitempty"`
+	EnableMultiTenancy bool   `json:"enableMultiTenancy,omitempty"`
 }
 
 // Register custom marshaller.

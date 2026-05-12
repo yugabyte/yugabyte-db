@@ -92,3 +92,107 @@ DELETE FROM yb_pub_rf_change WHERE a = 6 AND c = 'NSW';
 
 DROP PUBLICATION yb_pub_rf_change;
 DROP TABLE yb_pub_rf_change;
+
+-- Clean up stale FOR ALL TABLES publications from earlier tests so they
+-- don't affect the no-publication scenario below.
+DROP PUBLICATION IF EXISTS pub_all_tables1;
+DROP PUBLICATION IF EXISTS pub_all_tables2;
+
+-- #30885: Test yb_cdcsdk_allow_dml_without_pk flag behavior.
+-- Default (flag=false): CHANGE and DEFAULT RI block UPDATE/DELETE on
+-- non-PK tables under a publication (PG parity). FULL always allows.
+-- Flag=true: CHANGE and DEFAULT RI allow UPDATE/DELETE.
+
+-- Scenario 1: Default blocks CHANGE RI on non-PK table
+CREATE TABLE yb_nopk_change(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_nopk_change REPLICA IDENTITY CHANGE;
+CREATE PUBLICATION yb_pub_nopk_change FOR TABLE yb_nopk_change;
+
+INSERT INTO yb_nopk_change VALUES (1, 10, 'X');
+UPDATE yb_nopk_change SET b = 20 WHERE a = 1 AND c = 'X';
+DELETE FROM yb_nopk_change WHERE a = 1 AND c = 'X';
+
+INSERT INTO yb_nopk_change VALUES (1, 10, 'X');
+ALTER TABLE yb_nopk_change DROP CONSTRAINT yb_nopk_change_pkey;
+
+INSERT INTO yb_nopk_change VALUES (2, 20, 'Y');
+UPDATE yb_nopk_change SET b = 30 WHERE a = 1;
+DELETE FROM yb_nopk_change WHERE a = 1;
+
+DROP PUBLICATION yb_pub_nopk_change;
+DROP TABLE yb_nopk_change;
+
+-- Scenario 2: Default blocks DEFAULT RI on non-PK table
+CREATE TABLE yb_nopk_default(a int, b int, c text, PRIMARY KEY(a,c));
+CREATE PUBLICATION yb_pub_nopk_default FOR TABLE yb_nopk_default;
+
+INSERT INTO yb_nopk_default VALUES (1, 10, 'X');
+UPDATE yb_nopk_default SET b = 20 WHERE a = 1 AND c = 'X';
+DELETE FROM yb_nopk_default WHERE a = 1 AND c = 'X';
+
+INSERT INTO yb_nopk_default VALUES (1, 10, 'X');
+ALTER TABLE yb_nopk_default DROP CONSTRAINT yb_nopk_default_pkey;
+
+INSERT INTO yb_nopk_default VALUES (2, 20, 'Y');
+UPDATE yb_nopk_default SET b = 30 WHERE a = 1;
+DELETE FROM yb_nopk_default WHERE a = 1;
+
+DROP PUBLICATION yb_pub_nopk_default;
+DROP TABLE yb_nopk_default;
+
+-- Scenario 3: Flag=true allows CHANGE RI on non-PK table
+SET yb_cdcsdk_allow_dml_without_pk = true;
+
+CREATE TABLE yb_nopk_allow_change(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_nopk_allow_change REPLICA IDENTITY CHANGE;
+CREATE PUBLICATION yb_pub_allow_change FOR TABLE yb_nopk_allow_change;
+ALTER TABLE yb_nopk_allow_change DROP CONSTRAINT yb_nopk_allow_change_pkey;
+
+INSERT INTO yb_nopk_allow_change VALUES (1, 10, 'X');
+UPDATE yb_nopk_allow_change SET b = 20 WHERE a = 1;
+DELETE FROM yb_nopk_allow_change WHERE a = 1;
+
+DROP PUBLICATION yb_pub_allow_change;
+DROP TABLE yb_nopk_allow_change;
+
+-- Scenario 4: Flag=true allows DEFAULT RI on non-PK table
+CREATE TABLE yb_nopk_allow_default(a int, b int, c text, PRIMARY KEY(a,c));
+CREATE PUBLICATION yb_pub_allow_default FOR TABLE yb_nopk_allow_default;
+ALTER TABLE yb_nopk_allow_default DROP CONSTRAINT yb_nopk_allow_default_pkey;
+
+INSERT INTO yb_nopk_allow_default VALUES (1, 10, 'X');
+UPDATE yb_nopk_allow_default SET b = 20 WHERE a = 1;
+DELETE FROM yb_nopk_allow_default WHERE a = 1;
+
+DROP PUBLICATION yb_pub_allow_default;
+DROP TABLE yb_nopk_allow_default;
+RESET yb_cdcsdk_allow_dml_without_pk;
+
+-- Scenario 5: FULL RI always allows on non-PK table
+CREATE TABLE yb_nopk_full(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_nopk_full REPLICA IDENTITY FULL;
+CREATE PUBLICATION yb_pub_nopk_full FOR TABLE yb_nopk_full;
+ALTER TABLE yb_nopk_full DROP CONSTRAINT yb_nopk_full_pkey;
+
+INSERT INTO yb_nopk_full VALUES (1, 10, 'X');
+UPDATE yb_nopk_full SET b = 20 WHERE a = 1;
+DELETE FROM yb_nopk_full WHERE a = 1;
+
+DROP PUBLICATION yb_pub_nopk_full;
+DROP TABLE yb_nopk_full;
+
+-- Scenario 6: Without a publication, UPDATE/DELETE should work on a table
+-- with CHANGE RI both with and without a primary key.
+CREATE TABLE yb_ri_change_no_pub(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_ri_change_no_pub REPLICA IDENTITY CHANGE;
+INSERT INTO yb_ri_change_no_pub VALUES (1, 10, 'X');
+UPDATE yb_ri_change_no_pub SET b = 20 WHERE a = 1 AND c = 'X';
+DELETE FROM yb_ri_change_no_pub WHERE a = 1 AND c = 'X';
+
+INSERT INTO yb_ri_change_no_pub VALUES (1, 10, 'X');
+ALTER TABLE yb_ri_change_no_pub DROP CONSTRAINT yb_ri_change_no_pub_pkey;
+
+INSERT INTO yb_ri_change_no_pub VALUES (2, 20, 'Y');
+UPDATE yb_ri_change_no_pub SET b = 30 WHERE a = 1;
+DELETE FROM yb_ri_change_no_pub WHERE a = 1;
+DROP TABLE yb_ri_change_no_pub;

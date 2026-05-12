@@ -61,9 +61,6 @@ version_menu_pagelinks = true
   url = "/v2024.2"
   version = "v2024.2 (LTS)"
 [[versions]]
-  url = "/v2024.1"
-  version = "v2024.1 (STS)"
-[[versions]]
   url = "/v2.20"
   version = "v2.20 (LTS)"
 [[versions]]

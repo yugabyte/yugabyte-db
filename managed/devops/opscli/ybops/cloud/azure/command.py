@@ -17,11 +17,10 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzurePauseInstancesMethod, AzureResumeInstancesMethod, AzureChangeInstanceTypeMethod, \
     AzureCreateRootVolumesMethod, AzureReplaceRootVolumeMethod, AzureHardRebootInstancesMethod, \
     AzureQueryCurrentHostMethod, AzureQueryDeviceNames
-from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
-    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
-    AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
-    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
-    WaitForConnection, ManageOtelCollector
+from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
+    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessDeleteKeyMethod, \
+    TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
+    RebootInstancesMethod, RunHooks, WaitForConnection, ManageOtelCollector
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -69,8 +68,6 @@ class AzureAccessCommand(AccessCommand):
 
     def add_methods(self):
         self.add_method(AzureAccessAddKeyMethod(self))
-        self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AccessDeleteKeyMethod(self))
 
 

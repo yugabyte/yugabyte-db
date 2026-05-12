@@ -9,8 +9,24 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-#ifdef __linux__
 #include "yb/util/cgroups.h"
+
+#include <cmath>
+#include <ranges>
+
+#include "yb/gutil/sysinfo.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/os-util.h"
+
+DEFINE_NON_RUNTIME_bool(use_cgroups_cpu, false,
+    "Use the cgroup CPU quota to determine the effective number of CPUs instead of the host CPU "
+    "count. Useful for containerized deployments (e.g. Kubernetes) where the process is limited "
+    "to a fraction of the host's CPUs via cgroup CPU quotas.");
+
+DECLARE_int32(num_cpus);
+
+#ifdef __linux__
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -21,14 +37,12 @@
 #include <syscall.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdlib>
-
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_validators.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
@@ -60,27 +74,6 @@ Status WriteConfigToPath(const std::string& path, std::string_view value) {
   int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_WRONLY);
   ScopeExit s([fd] { close(fd); });
   return WriteConfigToDescriptor(fd, value);
-}
-
-Result<std::string> ReadConfigFromPath(const std::string& path, size_t max_length) {
-  VLOG(3) << "Read config path: " << path;
-  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
-  ScopeExit s([fd] { close(fd); });
-
-  std::string out(max_length + 1, '\0');
-  ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
-  if (static_cast<size_t>(bytes_read) > max_length) {
-    return STATUS_FORMAT(
-        IllegalState, "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
-  }
-
-  if (bytes_read == 0) {
-    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
-  }
-
-  // Last byte is a newline, drop it.
-  out.resize(static_cast<size_t>(bytes_read - 1));
-  return out;
 }
 
 Result<CgroupVersion> GetCgroupVersion() {
@@ -116,7 +109,7 @@ Result<std::string> ReadCpuGroup(
     bool check_controllers = true) {
   // Arbitrary length that is definitely long enough.
   constexpr auto kMaxConfigLength = 65535uz;
-  std::string cgroups = VERIFY_RESULT(ReadConfigFromPath(
+  std::string cgroups = VERIFY_RESULT(ReadUnixConfigFromPath(
       Format("/proc/$0/cgroup", process_or_thread_id), kMaxConfigLength));
   if (!version) {
     version.emplace(VERIFY_RESULT(GetCgroupVersion()));
@@ -141,7 +134,7 @@ Result<std::string> ReadCpuGroup(
     if (check_controllers) {
       // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
       // if CPU controller is available.
-      auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
+      auto controllers = StringSplit(VERIFY_RESULT(ReadUnixConfigFromPath(
           Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
           kMaxConfigLength)), ' ');
       if (std::ranges::find(controllers, "cpu") == controllers.end()) {
@@ -196,15 +189,20 @@ class CgroupManager {
     }
     root_ = std::make_unique<Cgroup>(nullptr /* parent */, "" /* name */);
     RETURN_NOT_OK(root_->Init(true /* is_root */));
-    default_group_ = &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName));
-    RETURN_NOT_OK(default_group_->MoveCurrentThreadToGroup());
+    default_group_.store(
+        &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName)),
+        std::memory_order_release);
+    RETURN_NOT_OK(default_group_.load(std::memory_order_relaxed)->MoveCurrentThreadToGroup());
 
     initialized_ = true;
     return Status::OK();
   }
 
   Cgroup* root_group() { return root_.get(); }
-  Cgroup* default_thread_group() { return default_group_; }
+  Cgroup* default_thread_group() { return default_group_.load(std::memory_order_acquire); }
+  void set_default_thread_group(Cgroup* cg) {
+    default_group_.store(cg, std::memory_order_release);
+  }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
   std::string_view cpu_root_path() { return cpu_root_path_; }
@@ -218,7 +216,7 @@ class CgroupManager {
   std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
-  Cgroup* default_group_;
+  std::atomic<Cgroup*> default_group_{nullptr};
   bool initialized_ = false;
 };
 
@@ -263,7 +261,7 @@ Status Cgroup::WriteConfig(std::string_view config, std::string_view value) cons
 
 Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_length) const {
   VLOG_WITH_PREFIX(1) << "Read config: " << config;
-  auto out = ReadConfigFromPath(CgroupConfigPath(name_, config), max_length);
+  auto out = ReadUnixConfigFromPath(CgroupConfigPath(name_, config), max_length);
   VLOG_WITH_PREFIX(1) << "Config: " << config << " = " << out;
   return out;
 }
@@ -385,10 +383,9 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
   return cg;
 }
 
-Status Cgroup::MoveCurrentThreadToGroup() {
+Status Cgroup::MoveThreadToGroup(int64_t thread_id) {
   DCHECK(parent_) << "Cannot move thread into root group";
 
-  auto thread_id = Thread::CurrentThreadId();
   VLOG_WITH_PREFIX(1) << "Add thread " << thread_id;
 
   int fd = threads_fd_.load();
@@ -407,6 +404,41 @@ Status Cgroup::MoveCurrentThreadToGroup() {
     }
   }
   return WriteConfigToDescriptor(fd, AsString(thread_id));
+}
+
+Status Cgroup::MoveCurrentThreadToGroup() {
+  return MoveThreadToGroup(Thread::CurrentThreadId());
+}
+
+Status Cgroup::MoveProcessToGroup(int64_t pid) {
+  DCHECK(parent_) << "Cannot move process into root group";
+  VLOG_WITH_PREFIX(1) << "Add process " << pid;
+  return WriteConfig("cgroup.procs", AsString(pid));
+}
+
+void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
+  std::vector<Cgroup*> children;
+  {
+    std::lock_guard lock(mutex_);
+    children.reserve(children_.size());
+    for (auto& child : children_ | std::views::values) {
+      children.push_back(&child);
+    }
+  }
+  for (auto& child : children) {
+    visitor(*child);
+  }
+}
+
+void Cgroup::VisitTree(
+    const std::function<void(Cgroup&, size_t)>& visitor, size_t current_depth, size_t max_depth) {
+  visitor(*this, current_depth);
+  if (current_depth == max_depth) {
+    return;
+  }
+  VisitChildren([&](Cgroup& child) {
+    child.VisitTree(visitor, current_depth + 1, max_depth);
+  });
 }
 
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
@@ -441,16 +473,62 @@ Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
 Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
   std::vector<std::string> names;
   for (int64_t thread_id : VERIFY_RESULT(ReadThreadIds())) {
-    auto result = ReadConfigFromPath(
-        Format("/proc/$0/comm", thread_id), Thread::kMaxThreadNameInPerf + 1);
+    auto result = Thread::ThreadName(thread_id);
     if (!result.ok()) {
       // This is possible if thread has exited since ReadThreadIds().
-      LOG(WARNING) << "Failed to read /proc/" << thread_id << "/comm: " << result.status();
+      LOG(WARNING) << "Failed to read thread name: " << result.status();
       continue;
     }
     names.emplace_back(*result);
   }
   return names;
+}
+
+Result<CgroupCpuStats> Cgroup::ReadCpuStats() const {
+  CgroupCpuStats stats;
+
+  if (cgroup_manager.version() == CgroupVersion::kVersion1) {
+    // cpu.stat: "nr_periods N\nnr_throttled N\nthrottled_time N\n"
+    auto cpu_stat = VERIFY_RESULT(ReadConfig("cpu.stat", /*max_length=*/256));
+    for (const auto& line : StringSplit(cpu_stat, '\n')) {
+      auto parts = StringSplit(line, ' ');
+      if (parts.size() < 2) continue;
+      if (parts[0] == "nr_periods") {
+        stats.nr_periods = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "nr_throttled") {
+        stats.nr_throttled = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "throttled_time") {
+        stats.throttled_time_ns = VERIFY_RESULT(CheckedStoll(parts[1]));
+      }
+    }
+    stats.usage_ns = VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage"))));
+    stats.usage_user_ns =
+        VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage_user"))));
+    stats.usage_sys_ns =
+        VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage_sys"))));
+  } else {
+    // cgv2: cpu.stat has all fields in one file.
+    auto cpu_stat = VERIFY_RESULT(ReadConfig("cpu.stat", /*max_length=*/512));
+    for (const auto& line : StringSplit(cpu_stat, '\n')) {
+      auto parts = StringSplit(line, ' ');
+      if (parts.size() < 2) continue;
+      if (parts[0] == "usage_usec") {
+        stats.usage_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "user_usec") {
+        stats.usage_user_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "system_usec") {
+        stats.usage_sys_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "nr_periods") {
+        stats.nr_periods = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "nr_throttled") {
+        stats.nr_throttled = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "throttled_usec") {
+        stats.throttled_time_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      }
+    }
+  }
+
+  return stats;
 }
 
 std::string Cgroup::full_name() const {
@@ -468,6 +546,11 @@ Cgroup* Cgroup::child(std::string_view name) {
     return nullptr;
   }
   return &itr->second;
+}
+
+bool Cgroup::is_leaf() const {
+  std::lock_guard lock(mutex_);
+  return children_.empty();
 }
 
 std::string Cgroup::ToString() const {
@@ -489,6 +572,10 @@ Cgroup* RootCgroup() {
 
 Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
+}
+
+void SetDefaultThreadCgroup(Cgroup* cgroup) {
+  cgroup_manager.set_default_thread_group(cgroup);
 }
 
 Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {
@@ -514,5 +601,78 @@ Status MoveProcessToCgroupPath(std::string_view cgroup_path) {
   return WriteConfigToPath(Format("$0/cgroup.procs", cgroup_path), AsString(getpid()));
 }
 
+Result<int> GetCgroupCpuQuota() {
+  // Arbitrary length that is definitely long enough.
+  constexpr auto kMaxConfigLength = 256uz;
+  auto cgroup_path = VERIFY_RESULT(GetProcessCpuCgroupPath(getpid(), /*check_controllers=*/false));
+  auto version = VERIFY_RESULT(GetCgroupVersion());
+
+  int64_t quota_us = 0;
+  int64_t period_us = 0;
+  if (version == CgroupVersion::kVersion1) {
+    auto quota_str = VERIFY_RESULT(ReadUnixConfigFromPath(
+        cgroup_path + "/cpu.cfs_quota_us", kMaxConfigLength));
+    auto period_str = VERIFY_RESULT(ReadUnixConfigFromPath(
+        cgroup_path + "/cpu.cfs_period_us", kMaxConfigLength));
+    quota_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(quota_str)));
+    period_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(period_str)));
+    // cgroup v1 uses -1 to signal "no limit".
+    if (quota_us < 0) {
+      return -1;
+    }
+  } else {
+    auto max_config = VERIFY_RESULT(ReadUnixConfigFromPath(
+        cgroup_path + "/cpu.max", kMaxConfigLength));
+    auto separator = max_config.find(' ');
+    if (separator == max_config.npos) {
+      return STATUS_FORMAT(IllegalState, "could not parse cpu.max: $0", max_config);
+    }
+    std::string_view max_view = max_config;
+    auto quota_part = max_view.substr(0, separator);
+    if (quota_part == "max") {
+      return -1;
+    }
+    quota_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(quota_part)));
+    period_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(max_view.substr(separator + 1))));
+  }
+
+  if (quota_us <= 0 || period_us <= 0) {
+    return -1;
+  }
+  return static_cast<int>(std::ceil(static_cast<double>(quota_us) / period_us));
+}
+
 } // namespace yb
 #endif // __linux__
+
+namespace yb {
+
+int NumEffectiveCPUs() {
+  // --num_cpus is an explicit operator override and takes precedence over the cgroup quota.
+  if (FLAGS_num_cpus != 0 || !FLAGS_use_cgroups_cpu) {
+    return base::NumCPUs();
+  }
+#ifdef __linux__
+  // Read once and cache for the lifetime of the process. Runtime changes to the cgroup quota
+  // will not be reflected.
+  static const int cached = [] {
+    auto quota = GetCgroupCpuQuota();
+    if (!quota.ok()) {
+      LOG(WARNING) << "Failed to read cgroup CPU quota, falling back to host CPU count: "
+                   << quota.status();
+      return base::NumCPUs();
+    }
+    if (*quota <= 0) {
+      // No cgroup CPU limit set.
+      return base::NumCPUs();
+    }
+    LOG(INFO) << "Using cgroup CPU quota: " << *quota << " (host CPUs: " << base::NumCPUs() << ")";
+    return *quota;
+  }();
+  return cached;
+#else
+  return base::NumCPUs();
+#endif
+}
+
+} // namespace yb

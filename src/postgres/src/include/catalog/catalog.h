@@ -28,8 +28,12 @@
  *
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
+ *
+ * Lastly, make sure to keep the comment below updated with details of the last
+ * last used OID (<system_catalog>.<object_name>). This is intended to act as a
+ * safeguard against silent rebases.
  */
-#define YB_LAST_USED_OID 8113
+#define YB_LAST_USED_OID 8116 /* corresponds to pg_type.graphid */
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

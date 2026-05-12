@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.GcpCapacityReservationGC;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
 import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
@@ -264,6 +265,7 @@ public class MainModule extends AbstractModule {
     bind(PitrConfigPoller.class).asEagerSingleton();
     bind(AutoMasterFailover.class).asEagerSingleton();
     bind(BackupGarbageCollector.class).asEagerSingleton();
+    bind(GcpCapacityReservationGC.class).asEagerSingleton();
     bind(SupportBundleCleanup.class).asEagerSingleton();
     bind(EncryptionAtRestManager.class).asEagerSingleton();
     bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();

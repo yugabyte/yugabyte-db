@@ -85,7 +85,7 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
   void InsertRows(YBSession* session, int32_t hash_seed, int32_t ranges) {
     std::vector<YBOperationPtr> ops;
     for (int32_t range = 0; range != ranges; ++range) {
-      auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
       auto* const req = op->mutable_request();
       AddHash(hash_seed, req);
       QLAddInt32RangeValue(req, range);
@@ -95,8 +95,8 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
       int32_t seed = RowSeed(hash_seed, range);
       for (int i = 1; i <= kCollectionSize; ++i) {
         l1->add_elems()->set_int32_value(ListEntry(hash_seed, range, i));
-        s1->add_elems()->set_string_value(To8LengthHex(seed * i));
-        s2->add_elems()->set_string_value(To8LengthHex((~seed) * i));
+        s1->add_elems()->dup_string_value(To8LengthHex(seed * i));
+        s2->add_elems()->dup_string_value(To8LengthHex((~seed) * i));
       }
       ops.push_back(std::move(op));
     }

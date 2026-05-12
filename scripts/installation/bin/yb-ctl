@@ -660,6 +660,14 @@ class ClusterOptions:
         self.replication_factor = args.replication_factor
         self.custom_binary_dir = args.binary_dir
         self.cluster_base_dir = args.data_dir
+        if self.cluster_base_dir and not os.path.isabs(self.cluster_base_dir):
+            example = os.path.abspath(os.path.expanduser(self.cluster_base_dir))
+            raise ExitWithError(
+                "Invalid --data_dir '{}': must be an absolute path. YugabyteDB's --fs_data_dirs "
+                "does not accept relative paths, and yb-ctl passes this directory through as the "
+                "filesystem root for each node. For example: {}".format(
+                    self.cluster_base_dir, example))
+
         self.num_shards_per_tserver = args.num_shards_per_tserver
         self.ysql_num_shards_per_tserver = args.ysql_num_shards_per_tserver
         self.timeout_yb_admin_sec = args.timeout_yb_admin_sec
@@ -939,7 +947,7 @@ class ClusterControl:
             help="Specify a custom directory in which to find the yugabyte binaries.")
         self.parent_parser.add_argument(
             "--data_dir", default=None,
-            help="Specify a custom directory where to store data.")
+            help="Specify a custom directory where to store data (must be an absolute path).")
         self.parent_parser.add_argument(
             "--replication_factor", "--rf", type=int, default=None,
             help="Replication factor for the cluster as well as default number of masters. ")
@@ -1061,7 +1069,7 @@ class ClusterControl:
             help="Specify a custom directory in which to find the yugabyte binaries.")
         self.parser.add_argument(
             "--data_dir", default=get_default_data_dir(), dest="data_dir_dest",
-            help="Specify a custom directory where to store data.")
+            help="Specify a custom directory where to store data (must be an absolute path).")
         self.parser.add_argument(
             "--replication_factor", "--rf", default=DEFAULT_REPLICATION_FACTOR, type=int,
             dest="replication_factor_dest",

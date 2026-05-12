@@ -21,6 +21,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -170,6 +171,9 @@ public class Util {
   // "allowed_preview_flags_csv".
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION = "2.25.1.0-b184";
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION = "2024.2.1.0-b185";
+
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW = "2.29.0.0-b650";
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_STABLE = "2026.1.0.0-b0";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -996,6 +1000,32 @@ public class Util {
     }
   }
 
+  public static boolean configureCgroup(
+      Provider provider, boolean isForProvision, RuntimeConfGetter confGetter) {
+    return configureCgroup(null, provider, isForProvision, confGetter);
+  }
+
+  public static boolean configureCgroup(
+      @Nullable UserIntent userIntent,
+      Provider provider,
+      boolean isForProvision,
+      RuntimeConfGetter confGetter) {
+    if (userIntent != null && userIntent.isCpuCgroupConfigured()) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.onprem)
+        && provider.getDetails().getCloudInfo().onprem.enableMultiTenancy) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      return false;
+    }
+    if (isForProvision && !(provider.getCloudCode().equals(CloudType.onprem))) {
+      return confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
+    }
+    return false;
+  }
+
   /**
    * @param ybServerPackage
    * @return pair of string containing osType and archType of ybc-server-package
@@ -1159,13 +1189,72 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
-    boolean isKubernetesUniverse =
-        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    boolean isKubernetesUniverse = false;
+    if (params.getPrimaryCluster() != null) {
+      isKubernetesUniverse =
+          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    }
     for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static UUID getSingleProviderUUID(Cluster cluster) {
+    return getSingleProviderUUID(cluster.userIntent);
+  }
+
+  public static UUID getSingleProviderUUID(UserIntent userIntent) {
+    return UUID.fromString(userIntent.provider);
+  }
+
+  public static Provider getSingleProvider(Cluster cluster) {
+    return getSingleProvider(cluster.userIntent);
+  }
+
+  public static Provider getSingleProvider(UserIntent userIntent) {
+    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
+    return getProviderGetter(universe.getUniverseDetails());
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams params) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) ->
+        providerMap.computeIfAbsent(
+            n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
+  }
+
+  public static Set<UUID> getAllProviderUUIDs(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .collect(Collectors.toSet());
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
+    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
+    return getSingleProvider(cluster);
+  }
+
+  public static boolean checkAnyProviderType(
+      UserIntent userIntent, Predicate<CloudType> predicate) {
+    return userIntent.getAllCloudTypes().stream().filter(predicate).findFirst().isPresent();
+  }
+
+  public static CloudType getSingleProviderType(Cluster cluster) {
+    return getSingleProviderType(cluster.userIntent);
+  }
+
+  public static CloudType getSingleProviderType(UserIntent userIntent) {
+    return userIntent.providerType;
   }
 
   public static String getYbcNodeIp(Universe universe) {

@@ -150,9 +150,6 @@ func (pg Postgres) Initialize() error {
 
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
-	}
-
-	if viper.GetBool("perfAdvisor.enabled") {
 		pg.createTSDatabase()
 	}
 
@@ -414,6 +411,10 @@ func (pg Postgres) Upgrade() error {
 
 	if err := pg.modifyPostgresConf(); err != nil {
 		return err
+	}
+
+	if viper.GetBool("postgres.install.enabled") {
+		pg.createTSDatabase()
 	}
 	return nil
 }

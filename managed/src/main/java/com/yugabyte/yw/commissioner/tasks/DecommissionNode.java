@@ -10,12 +10,15 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -40,9 +43,31 @@ public class DecommissionNode extends EditUniverseTaskBase {
   }
 
   private void runBasicChecks(Universe universe) {
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (isFirstTry()) {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      if (currentNode == null) {
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
       currentNode.validateActionOnState(NodeActionType.DECOMMISSION);
+      Cluster nodeCluster =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+      long numNodesToCheck =
+          universe.getNodes().stream()
+              .filter(n -> nodeCluster.uuid.equals(currentNode.placementUuid))
+              .filter(
+                  n -> currentNode.dedicatedTo == null || n.dedicatedTo == currentNode.dedicatedTo)
+              .count();
+      if (numNodesToCheck <= nodeCluster.userIntent.replicationFactor) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            currentNode.isMaster
+                ? "Cannot decommission a dedicated master as it causes under-replicated masters"
+                : "Cannot decommission a dedicated tserver as it causes under-replicated"
+                    + " tablets");
+      }
     }
   }
 
@@ -56,12 +81,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (isFirstTry()) {
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      runBasicChecks(universe);
       setToBeRemovedState(currentNode);
       configureTaskParams(universe, true /* moveMastersFirst */);
     }

@@ -100,7 +100,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -530,7 +529,6 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
-    when(nodeAgentClient.maybeGetNodeAgent(any(), any(), any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
         .thenReturn("/tmp/nfs,/nfs");
@@ -542,26 +540,12 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(3);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.numCoresToKeep)))
         .thenReturn(5);
-    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
-        .thenReturn("linear");
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.ansibleConnectionTimeoutSecs)))
-        .thenReturn(60);
-    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleVerbosity)))
-        .thenReturn(0);
-    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleDebug)))
-        .thenReturn(false);
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.ansibleDiffAlways)))
-        .thenReturn(false);
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.dbMemPostgresMaxMemMb)))
         .thenReturn(0);
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
         .thenReturn(false);
-    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
-        .thenReturn("/tmp/ansible_tmp/");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.oidcFeatureEnhancements))).thenReturn(true);
@@ -590,9 +574,6 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
         .thenReturn(3600);
-    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableSystemdDebugLogging)))
-        .thenReturn(false);
-    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ansibleKeepRemoteFiles))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -999,9 +980,8 @@ public class NodeManagerTest extends FakeDBApplication {
           String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(configureParams.allowInsecure);
-
-          String ybHomeDir =
-              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          Provider provider = Util.getSingleProvider(userIntent);
+          String ybHomeDir = provider.getYbHome();
           String certsDir = ybHomeDir + "/yugabyte-tls-config";
           String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
@@ -1073,8 +1053,8 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--yb_process_type");
           expectedCommand.add(processType.toLowerCase());
 
-          String yb_home_dir =
-              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          Provider provider = Util.getSingleProvider(userIntent);
+          String yb_home_dir = provider.getYbHome();
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
           String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 
@@ -1567,8 +1547,6 @@ public class NodeManagerTest extends FakeDBApplication {
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
       keyInfo.publicKey = "/path/to/public.key";
-      keyInfo.vaultFile = "/path/to/vault_file";
-      keyInfo.vaultPasswordFile = "/path/to/vault_password";
       getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
 
       t.provider.getDetails().sshPort = 3333;
@@ -1602,14 +1580,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Provision, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
-          new ArrayList<>(
-              ImmutableList.of(
-                  "--vars_file",
-                  "/path/to/vault_file",
-                  "--vault_password_file",
-                  "/path/to/vault_password",
-                  "--private_key_file",
-                  "/path/to/private.key"));
+          new ArrayList<>(ImmutableList.of("--private_key_file", "/path/to/private.key"));
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyCommands.add("--key_pair_name");
         accessKeyCommands.add(userIntent.accessKeyCode);
@@ -1786,8 +1757,6 @@ public class NodeManagerTest extends FakeDBApplication {
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
       keyInfo.publicKey = "/path/to/public.key";
-      keyInfo.vaultFile = "/path/to/vault_file";
-      keyInfo.vaultPasswordFile = "/path/to/vault_password";
       getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
 
       t.provider.getDetails().sshPort = 3333;
@@ -1823,14 +1792,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
-          new ArrayList<>(
-              ImmutableList.of(
-                  "--vars_file",
-                  "/path/to/vault_file",
-                  "--vault_password_file",
-                  "/path/to/vault_password",
-                  "--private_key_file",
-                  "/path/to/private.key"));
+          new ArrayList<>(ImmutableList.of("--private_key_file", "/path/to/private.key"));
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyCommands.add("--key_pair_name");
         accessKeyCommands.add(userIntent.accessKeyCode);
@@ -2033,8 +1995,6 @@ public class NodeManagerTest extends FakeDBApplication {
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
       keyInfo.publicKey = "/path/to/public.key";
-      keyInfo.vaultFile = "/path/to/vault_file";
-      keyInfo.vaultPasswordFile = "/path/to/vault_password";
       getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
 
       t.provider.getDetails().sshPort = 3333;
@@ -2065,14 +2025,7 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommand =
           ImmutableList.of(
-              "--vars_file",
-              "/path/to/vault_file",
-              "--vault_password_file",
-              "/path/to/vault_password",
-              "--private_key_file",
-              "/path/to/private.key",
-              "--custom_ssh_port",
-              "3333");
+              "--private_key_file", "/path/to/private.key", "--custom_ssh_port", "3333");
       expectedCommand.addAll(expectedCommand.size() - 11, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -3833,8 +3786,6 @@ public class NodeManagerTest extends FakeDBApplication {
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
       keyInfo.publicKey = "/path/to/public.key";
-      keyInfo.vaultFile = "/path/to/vault_file";
-      keyInfo.vaultPasswordFile = "/path/to/vault_password";
       getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
 
       t.provider.getDetails().sshPort = 3333;
@@ -3864,14 +3815,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.CronCheck, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
-          new ArrayList<>(
-              ImmutableList.of(
-                  "--vars_file",
-                  "/path/to/vault_file",
-                  "--vault_password_file",
-                  "/path/to/vault_password",
-                  "--private_key_file",
-                  "/path/to/private.key"));
+          new ArrayList<>(ImmutableList.of("--private_key_file", "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommands);
@@ -4246,8 +4190,6 @@ public class NodeManagerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = "/path/to/private.key";
     keyInfo.publicKey = "/path/to/public.key";
-    keyInfo.vaultFile = "/path/to/vault_file";
-    keyInfo.vaultPasswordFile = "/path/to/vault_password";
     getOrCreate(onpremTD.provider.getUuid(), "mock-access-code-key", keyInfo);
 
     onpremTD.provider.getDetails().sshPort = 3333;

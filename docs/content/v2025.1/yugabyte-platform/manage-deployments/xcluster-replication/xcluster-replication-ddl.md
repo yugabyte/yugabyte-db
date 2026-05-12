@@ -106,7 +106,7 @@ This operation also automatically adds any associated index tables of this table
 Before dropping a table in replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
 {{</tip>}}
 
-When dropping a table, you can drop the tables and YugabyteDB Anywhere automatically updates the xCluster configuration. You can also manually remove the tables from the configuration in YugabyteDB Anywhere, in which case you would still need to drop the tables.
+When dropping a table, you can drop the tables and YugabyteDB Anywhere automatically updates the xCluster configuration. You can also manually remove the tables from the configuration in YugabyteDB Anywhere, in which case you still need to drop the tables.
 
 ## Indexes
 

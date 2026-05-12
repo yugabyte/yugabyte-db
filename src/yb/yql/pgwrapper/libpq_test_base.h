@@ -29,16 +29,18 @@ struct YsqlMetric {
   int64_t time;
   std::string type;
   std::string description;
+  int64_t sum;
 
   YsqlMetric(
       std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time, std::string type = "", std::string description = "")
+      int64_t time, std::string type = "", std::string description = "", int64_t sum = 0)
       : name(std::move(name)),
         labels(std::move(labels)),
         value(value),
         time(time),
         type(type),
-        description(description) {}
+        description(description),
+        sum(sum) {}
 };
 
 class LibPqTestBase : public PgWrapperTestBase {

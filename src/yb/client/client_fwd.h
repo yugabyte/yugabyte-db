@@ -72,6 +72,7 @@ using CreateCallback = boost::function<void(const Status&)>;
 
 class YBTable;
 using YBTablePtr = std::shared_ptr<YBTable>;
+using YBTableConstPtr = std::shared_ptr<const YBTable>;
 using TablePartitionList = std::vector<PartitionKey>;
 using PartitionListVersion = uint32_t;
 struct VersionedTablePartitionList;

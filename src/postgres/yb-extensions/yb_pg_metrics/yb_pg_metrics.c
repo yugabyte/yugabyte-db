@@ -260,6 +260,10 @@ typedef enum YbStatementType
 	CatCacheNegMisses_46, CatCacheNegMisses_47, CatCacheNegMisses_48,
 	CatCacheNegMisses_49, CatCacheNegMisses_50,
 	CatCacheNegMisses_End = CatCacheNegMisses_50,
+	RegularBackendInitLatency,
+	AuthBackendInitLatency, /* Connmgr Auth backend only */
+	RelCacheInitFileRevalidated,
+	RelCacheInitFileRevalidationFailed,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -315,6 +319,8 @@ static long last_hint_cache_misses_val = 0;
 
 static long last_authorized_connection_val = 0;
 static long last_relcache_preload_val = 0;
+static long last_relcache_init_file_revalidated_val = 0;
+static long last_relcache_init_file_revalidation_failed_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -483,6 +489,15 @@ set_metric_names(void)
 		   YSQL_METRIC_PREFIX "AuthorizedConnection");
 	strcpy(ybpgm_table[RelCachePreload].name,
 		   YSQL_METRIC_PREFIX "RelCachePreload");
+	strcpy(ybpgm_table[RegularBackendInitLatency].name,
+		   YSQL_LATENCY_METRIC_PREFIX "BackendInit");
+	strcpy(ybpgm_table[AuthBackendInitLatency].name,
+		   YSQL_LATENCY_METRIC_PREFIX "ConnMgrAuthBackendInit");
+
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].name,
+		   YSQL_METRIC_PREFIX "RelCacheInitFileRevalidated");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].name,
+		   YSQL_METRIC_PREFIX "RelCacheInitFileRevalidationFailed");
 
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
@@ -608,6 +623,24 @@ set_metric_names(void)
 	strcpy(ybpgm_table[RelCachePreload].count_help,
 		   "Number of relcache preloads");
 	strcpy(ybpgm_table[RelCachePreload].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RegularBackendInitLatency].count_help,
+		   "Number of regular backend connections established");
+	strcpy(ybpgm_table[RegularBackendInitLatency].sum_help,
+		   "Total time (microseconds) spent initializing regular backend connections");
+
+	strcpy(ybpgm_table[AuthBackendInitLatency].count_help,
+		   "Number of auth backend connections established (connection manager only)");
+	strcpy(ybpgm_table[AuthBackendInitLatency].sum_help,
+		   "Total time (microseconds) spent initializing auth backend connections");
+
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].count_help,
+		   "Number of successful relcache init file revalidations");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].count_help,
+		   "Number of failed relcache init file revalidations");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].sum_help, "Not applicable");
 }
 
 /*
@@ -1034,6 +1067,19 @@ ybpgm_shmem_request(void)
 static void
 ybpgm_InitPostgres()
 {
+
+	/* Conn initialization latency metric */
+	long		conn_init_secs;
+	int			conn_init_usecs;
+
+	TimestampDifference(MyStartTimestamp, GetCurrentTimestamp(),
+						&conn_init_secs, &conn_init_usecs);
+	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
+	YbStatementType conn_type =
+		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
+
+	ybpgm_Store(conn_type, conn_latency_us, 0);
+
 	/* Authorized connections metric */
 	long		current_authorized_connections = YbGetAuthorizedConnections();
 	long		total_delta = current_authorized_connections - last_authorized_connection_val;
@@ -1047,6 +1093,19 @@ ybpgm_InitPostgres()
 	total_delta = current_relcache_preloads - last_relcache_preload_val;
 	last_relcache_preload_val = current_relcache_preloads;
 	ybpgm_StoreCount(RelCachePreload, 0, total_delta);
+
+	/* Relcache init file revalidation metrics */
+	long		current_revalidated = YbGetRelCacheInitFileRevalidated();
+
+	total_delta = current_revalidated - last_relcache_init_file_revalidated_val;
+	last_relcache_init_file_revalidated_val = current_revalidated;
+	ybpgm_StoreCount(RelCacheInitFileRevalidated, 0, total_delta);
+
+	long		current_revalidation_failed = YbGetRelCacheInitFileRevalidationFailed();
+
+	total_delta = current_revalidation_failed - last_relcache_init_file_revalidation_failed_val;
+	last_relcache_init_file_revalidation_failed_val = current_revalidation_failed;
+	ybpgm_StoreCount(RelCacheInitFileRevalidationFailed, 0, total_delta);
 }
 
 /*

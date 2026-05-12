@@ -694,7 +694,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				YbDropProfileStmt
 %type <rolespec> OptTableGroupOwner
 %type <rowbounds> YbRowBounds
-%type <splitopt> SplitClause YbOptSplit
+%type <splitopt> SplitClause YbOptSplit yb_presplit_value
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
 				read_time row_key_end row_key_start yb_opt_alias
 
@@ -864,6 +864,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %token		MODE_PLPGSQL_ASSIGN1
 %token		MODE_PLPGSQL_ASSIGN2
 %token		MODE_PLPGSQL_ASSIGN3
+%token		MODE_YB_SPLIT_CLAUSE
 
 
 /* Precedence: lowest to highest */
@@ -986,6 +987,34 @@ parse_toplevel:
 				pg_yyget_extra(yyscanner)->parsetree =
 					list_make1(makeRawStmt((Node *) n, 0));
 			}
+			| MODE_YB_SPLIT_CLAUSE yb_presplit_value
+			{
+				/*
+				 * YB: parse a SPLIT clause in isolation (used to reparse
+				 * the value of the yb_presplit reloption).  See the
+				 * yb_presplit_value rule below for accepted forms.
+				 */
+				pg_yyget_extra(yyscanner)->parsetree = list_make1($2);
+			}
+		;
+
+/*
+ * YB: top-level production for RAW_PARSE_YB_SPLIT_CLAUSE.  Accepts any of
+ * the forms that yb_presplit may persist or that a user may write:
+ *   SPLIT INTO N TABLETS
+ *   SPLIT AT VALUES (...)
+ *   SPLIT (INTO N TABLETS)         -- legacy parenthesized form
+ *   SPLIT (AT VALUES (...))        -- legacy parenthesized form
+ *   INTO N TABLETS                 -- bare (callers may pass this)
+ *   AT VALUES (...)                -- bare (callers may pass this)
+ *
+ * Distinct from YbOptSplit so we do not introduce its nullable case at
+ * the toplevel, which would let an empty input reduce to NULL.
+ */
+yb_presplit_value:
+			_YB_SPLIT_P '(' SplitClause ')'		{ $$ = $3; }
+			| _YB_SPLIT_P SplitClause			{ $$ = $2; }
+			| SplitClause						{ $$ = $1; }
 		;
 
 /*

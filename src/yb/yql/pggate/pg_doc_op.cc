@@ -352,8 +352,10 @@ bool PgDocOp::HasActiveOps() const {
 
 Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
-  const auto active_op_count = VERIFY_RESULT(CreateRequests());
-
+  size_t active_op_count;
+  do {
+    active_op_count = VERIFY_RESULT(CreateRequests());
+  } while (!active_op_count && !request_population_completed_);
   if (!active_op_count) {
     return Status::OK();
   }

@@ -15,11 +15,9 @@
 
 namespace yb::pgwrapper {
 
-Result<uint64_t> GetCatalogVersion(PGConn* conn, bool db_catalog_version_mode) {
+Result<uint64_t> GetCatalogVersion(PGConn* conn) {
   return conn->FetchRow<PGUint64>(
-      !db_catalog_version_mode
-          ? "SELECT current_version FROM pg_yb_catalog_version"
-          : "SELECT current_version FROM"
+            "SELECT current_version FROM"
             "    pg_yb_catalog_version AS v INNER JOIN pg_database AS d ON (v.db_oid = d.oid)"
             "    WHERE datname = current_database()");
 }

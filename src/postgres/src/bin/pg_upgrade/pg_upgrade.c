@@ -124,6 +124,15 @@ main(int argc, char **argv)
 		umask(pg_mode_mask);
 
 		/*
+		 * YB: External monitoring agents run as a different user than the
+		 * yugabyte DB user and must be able to read the *.log files under
+		 * pg_upgrade_output.d/<timestamp>/log. Relax the process umask so
+		 * files created are group/world readable.
+		 */
+		if (is_yugabyte_enabled())
+			umask(pg_mode_mask & ~S_IRGRP & ~S_IXGRP & ~S_IROTH & ~S_IXOTH);
+
+		/*
 		 * This needs to happen after adjusting the data directory of the new
 		 * cluster in adjust_data_dir().
 		 */
@@ -140,6 +149,10 @@ main(int argc, char **argv)
 					 old_cluster.pgdata, strerror(errno));
 
 		umask(pg_mode_mask);
+
+		/* YB: see matching comment above. */
+		if (is_yugabyte_enabled())
+			umask(pg_mode_mask & ~S_IRGRP & ~S_IXGRP & ~S_IROTH & ~S_IXOTH);
 
 		/* YB: Make sure we have a place for log files. */
 		make_outputdirs(old_cluster.pgdata);
@@ -346,6 +359,33 @@ make_outputdirs(char *pgdata)
 		pg_fatal("could not create directory \"%s\": %m\n", log_opts.dumpdir);
 	if (mkdir(log_opts.logdir, pg_dir_create_mode) < 0)
 		pg_fatal("could not create directory \"%s\": %m\n", log_opts.logdir);
+
+	/*
+	 * YB: External monitoring agents need to reach the *.log files under
+	 * pg_upgrade_output.d/<timestamp>/log to collect pg_upgrade logs.
+	 * Loosen the traversal path from the default 0700 to 0755:
+	 *   - pgdata (pg_upgrade_data_15) -- created by initdb as 0700.
+	 *   - rootdir (pg_upgrade_output.d) and basedir (the timestamp dir).
+	 *   - logdir itself so its *.log files can be listed and read.
+	 */
+	if (is_yugabyte_enabled())
+	{
+		mode_t		yb_dir_mode =
+			S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+
+		if (chmod(pgdata, yb_dir_mode) != 0)
+			pg_fatal("could not set permissions on directory \"%s\": %m\n",
+					 pgdata);
+		if (chmod(log_opts.rootdir, yb_dir_mode) != 0)
+			pg_fatal("could not set permissions on directory \"%s\": %m\n",
+					 log_opts.rootdir);
+		if (chmod(log_opts.basedir, yb_dir_mode) != 0)
+			pg_fatal("could not set permissions on directory \"%s\": %m\n",
+					 log_opts.basedir);
+		if (chmod(log_opts.logdir, yb_dir_mode) != 0)
+			pg_fatal("could not set permissions on directory \"%s\": %m\n",
+					 log_opts.logdir);
+	}
 
 	len = snprintf(filename_path, sizeof(filename_path), "%s/%s",
 				   log_opts.logdir, INTERNAL_LOG_FILE);

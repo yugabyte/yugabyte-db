@@ -11,6 +11,7 @@
 // under the License.
 
 #include <chrono>
+#include <optional>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
@@ -85,10 +86,9 @@ namespace yb::master {
  *      rollback/rollforward necessary. In this case, the tables remain with the DDL state on them.
  *      If a future DDL transaction tries to modify the same table, it will re-trigger the DDL
  *      verification if it sees that the transaction is in kDdlPostProcessingFailed. A master
- *      restart will also re-trigger the DDL verification. In future we could have a background
- *      thread that periodically checks for such transactions and re-triggers the DDL verification.
+ *      restart will also re-trigger the DDL verification.
  * If DDL transaction is verified successfully, it will be removed from the map. Note that DDL
- * transaction verificaion can thus be kicked off in 4 ways:
+ * transaction verificaion can thus be kicked off in 5 ways:
  * a) When a DDL is started, we kick off a poller through ysql_transaction_ddl that checks the
  *    transaction status and starts the DDL transaction verification once the transaction finishes.
  * b) When a DDL is finished, YSQL will send a ReportYsqlDdlTxnStatus RPC to the master with the
@@ -98,6 +98,8 @@ namespace yb::master {
  *    verification if the transaction is in kDdlPostProcessingFailed state.
  * d) When another DDL tries to modify the same table, it will trigger DDL verification if the
  *    old transaction is in kDdlPostProcessingFailed state.
+ * e) When a DDL transaction is in kDdlPostProcessingFailed state, the master leader will
+ *    re-trigger the DDL verification periodically via a background task.
 */
 Status CatalogManager::ScheduleYsqlTxnVerification(
     const TableInfoPtr& table, const TransactionMetadata& txn,
@@ -523,7 +525,7 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
             rollback_till_ddl_state_index));
     DCHECK_EQ(
         mutable_pb.ysql_ddl_txn_verifier_state_size(), rollback_till_ddl_state_index + 1);
-    return ClearYsqlDdlTxnState(txn_data, rollback_till_ddl_state_index);
+    return ClearYsqlDdlTxnState(txn_data, rollback_till_ddl_state_index, /*is_success=*/false);
   }
 
   // There might be more than one YsqlDdlTxnVerifierStatePB with alter table op but since we are
@@ -556,7 +558,7 @@ void RemoveDdlTxnVerifierStateFromIndex(
 }
 
 Status CatalogManager::ClearYsqlDdlTxnState(
-    const YsqlTableDdlTxnState txn_data, int rollback_till_ddl_state_index) {
+    const YsqlTableDdlTxnState txn_data, int rollback_till_ddl_state_index, bool is_success) {
   auto& pb = txn_data.write_lock.mutable_data()->pb;
   VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table "
           << txn_data.table->id() << ", txn_id: " << txn_data.ddl_txn_id
@@ -567,8 +569,12 @@ Status CatalogManager::ClearYsqlDdlTxnState(
     pb.clear_ysql_ddl_txn_verifier_state();
     pb.clear_transaction();
 
-    RETURN_NOT_OK(
-        GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(txn_data.table, pb, txn_data.epoch));
+    // Don't clean up xCluster metadata unless the DDLs succeed since retries will still need
+    // this metadata.
+    if (is_success) {
+      RETURN_NOT_OK(GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(
+          txn_data.table, pb, txn_data.epoch));
+    }
   } else {
     // Only a part of the ysql_ddl_txn_verifier_state needs to be cleared.
     // Represents a rollback to a sub-transaction.
@@ -699,11 +705,7 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
     verifier_state->processed_tables.insert(table->id());
   }
 
-  RETURN_NOT_OK(DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch));
-  if (is_rollback_to_subtxn) {
-    RemoveDdlRollbackToSubTxnState(table->id(), txn_data.ddl_txn_id);
-  }
-  return Status::OK();
+  return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
 
 Status CatalogManager::IsYsqlDdlVerificationDone(
@@ -966,6 +968,36 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, true /* ddl_atomicity_enabled */);
   return Status::OK();
+}
+
+void CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch) {
+  std::vector<TransactionId> txn_ids;
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
+      if (verifier_state.state == YsqlDdlVerificationState::kDdlPostProcessingFailed) {
+        txn_ids.push_back(txn_id);
+      }
+    }
+  }
+
+  for (const auto& txn_id : txn_ids) {
+    TransactionMetadata txn_meta;
+    txn_meta.transaction_id = txn_id;
+    WARN_NOT_OK(
+        TriggerDdlVerificationIfNeeded(txn_meta, epoch),
+        Format("Failed to re-trigger DDL verification for transaction $0", txn_meta));
+  }
+}
+
+std::optional<YsqlDdlVerificationState> CatalogManager::TEST_GetYsqlDdlVerificationState(
+    const TransactionId& txn_id) const {
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  const auto* verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn_id);
+  if (!verifier_state) {
+    return std::nullopt;
+  }
+  return verifier_state->state;
 }
 
 // Call TriggerDdlVerificationIfNeeded with a delay.

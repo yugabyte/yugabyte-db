@@ -20,14 +20,18 @@ namespace yb {
 namespace tablet {
 
 struct QLReadRequestResult {
-  QLResponsePB response;
+  explicit QLReadRequestResult(ThreadSafeArena& arena)
+      : response(arena.NewArenaObject<LWQLResponsePB>()) {}
+
+  LWQLResponsePB* response;
   ReadRestartData read_restart_data;
 };
 
 struct PgsqlReadRequestResult {
-  explicit PgsqlReadRequestResult(WriteBuffer* rows_data_) : rows_data(rows_data_) {}
+  PgsqlReadRequestResult(ThreadSafeArena& arena, WriteBuffer* rows_data_)
+      : response(arena.NewArenaObject<LWPgsqlResponsePB>()), rows_data(rows_data_) {}
 
-  PgsqlResponseMsg response;
+  PgsqlResponseMsg* response;
   ReadRestartData read_restart_data;
   size_t num_rows_read;
   WriteBuffer* rows_data;

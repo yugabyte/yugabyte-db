@@ -1256,7 +1256,23 @@ heapam_index_build_range_scan(Relation heapRelation,
 		 */
 		if (!TransactionIdIsValid(OldestXmin))
 		{
-			snapshot = RegisterSnapshot(GetTransactionSnapshot());
+			/*
+			 * YB Note: A prior DML could have set the read time which
+			 * when reused would read stale data for index creation. Hence,
+			 * register a latest snapshot to read up to date data.
+			 *
+			 * Whereas for PG, things work with
+			 * 1. the current transaction snapshot for concurrent index builds
+			 * 2. SnapshotAny for serial index builds which skips MVCC and
+			 *    scans all tuples in the relation.
+			 * because it doesn't have the sticky read time/serial logic.
+			 *
+			 * Additionally, YB takes the latest snapshot route here even when
+			 * indexInfo->ii_Concurrent is true, which might not be necessary.
+			 * Can revert to GetTransactionSnapshot if it leads to any issues.
+			 */
+			snapshot = RegisterSnapshot(IsYugaByteEnabled() ? GetLatestSnapshot() :
+										GetTransactionSnapshot());
 			need_unregister_snapshot = true;
 		}
 		else

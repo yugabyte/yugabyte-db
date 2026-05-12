@@ -215,19 +215,11 @@ public class AttachDetachControllerTest extends FakeDBApplication {
         String.format("%s/keys/%s/private-key.pem", storagePath, defaultProvider.getUuid());
     keyInfo.publicKey =
         String.format("%s/keys/%s/public-key.pem", storagePath, defaultProvider.getUuid());
-    keyInfo.vaultFile =
-        String.format("%s/keys/%s/key.vault", storagePath, defaultProvider.getUuid());
-    keyInfo.vaultPasswordFile =
-        String.format("%s/keys/%s/key.vault_password", storagePath, defaultProvider.getUuid());
     Files.createDirectories(Paths.get(accessKeyDir));
     File privateKeyFile = new File(keyInfo.privateKey);
     privateKeyFile.createNewFile();
     File publicKeyFile = new File(keyInfo.publicKey);
     publicKeyFile.createNewFile();
-    File vaultFile = new File(keyInfo.vaultFile);
-    vaultFile.createNewFile();
-    File vaultPasswordFile = new File(keyInfo.vaultPasswordFile);
-    vaultPasswordFile.createNewFile();
     defaultAccessKey =
         AccessKey.create(defaultProvider.getUuid(), "key-aws-" + mainUniverseName, keyInfo);
 
@@ -408,8 +400,6 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     String expectedKeyCode = expectedAccessKey.getIdKey().keyCode;
     String expectedPublicKey = expectedAccessKey.getKeyInfo().publicKey;
     String expectedPrivateKey = expectedAccessKey.getKeyInfo().privateKey;
-    String expectedVaultPassword = expectedAccessKey.getKeyInfo().vaultPasswordFile;
-    String expectedVault = expectedAccessKey.getKeyInfo().vaultFile;
     assertEquals(expectedProviderUUID.toString(), providerJson.get("uuid").textValue());
     JsonNode cloudInfoJson = providerJson.get("details").get("cloudInfo");
     assertEquals(
@@ -423,8 +413,6 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     JsonNode keyInfoJson = accessKeyJson.get("keyInfo");
     assertEquals(expectedPublicKey, keyInfoJson.get("publicKey").textValue());
     assertEquals(expectedPrivateKey, keyInfoJson.get("privateKey").textValue());
-    assertEquals(expectedVaultPassword, keyInfoJson.get("vaultPasswordFile").textValue());
-    assertEquals(expectedVault, keyInfoJson.get("vaultFile").textValue());
 
     // Assert universe information.
     JsonNode universeJson = specJson.get("universe");
@@ -452,12 +440,8 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     // Delete all existing entities and files.
     File expectedPublicKeyFile = new File(expectedPublicKey);
     File expectedPrivateKeyFile = new File(expectedPublicKey);
-    File expectedVaultPasswordFile = new File(expectedVaultPassword);
-    File expectedVaultFile = new File(expectedVault);
     expectedPublicKeyFile.delete();
     expectedPrivateKeyFile.delete();
-    expectedVaultPasswordFile.delete();
-    expectedVaultFile.delete();
     defaultProvider.delete();
     mainUniverse.delete();
     assertThrows(
@@ -480,8 +464,6 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     // Verify that all files exist.
     assertTrue(expectedPublicKeyFile.exists());
     assertTrue(expectedPrivateKeyFile.exists());
-    assertTrue(expectedVaultPasswordFile.exists());
-    assertTrue(expectedVaultFile.exists());
 
     // Verify all entities exist.
     assertTrue(Universe.maybeGet(mainUniverseUUID).isPresent());
@@ -494,8 +476,6 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertEquals(expectedKeyCode, importedAccessKey.getIdKey().keyCode);
     assertEquals(expectedPublicKey, importedAccessKey.getKeyInfo().publicKey);
     assertEquals(expectedPrivateKey, importedAccessKey.getKeyInfo().privateKey);
-    assertEquals(expectedVaultPassword, importedAccessKey.getKeyInfo().vaultPasswordFile);
-    assertEquals(expectedVault, importedAccessKey.getKeyInfo().vaultFile);
     // Provider sensitive information.
     assertEquals(
         defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeyID,

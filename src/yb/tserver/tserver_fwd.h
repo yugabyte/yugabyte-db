@@ -96,30 +96,30 @@ struct PgTxnSnapshot;
 YB_STRONGLY_TYPED_UUID_DECL(PgTxnSnapshotLocalId);
 
 // Temporary typedef for lightweight protobuf migration
-using TabletConsensusInfoMsg = TabletConsensusInfoPB;
-using ReadRequestMsg = ReadRequestPB;
-using ReadResponseMsg = ReadResponsePB;
-using WriteRequestMsg = WriteRequestPB;
-using WriteResponseMsg = WriteResponsePB;
-using PgPerformRequestMsg = PgPerformRequestPB;
-using PgPerformResponseMsg = PgPerformResponsePB;
-using PgAcquireObjectLockRequestMsg = PgAcquireObjectLockRequestPB;
-using PgAcquireObjectLockResponseMsg = PgAcquireObjectLockResponsePB;
-using PgInsertSequenceTupleRequestMsg = PgInsertSequenceTupleRequestPB;
-using PgInsertSequenceTupleResponseMsg = PgInsertSequenceTupleResponsePB;
-using PgUpdateSequenceTupleRequestMsg = PgUpdateSequenceTupleRequestPB;
-using PgUpdateSequenceTupleResponseMsg = PgUpdateSequenceTupleResponsePB;
-using PgFetchSequenceTupleRequestMsg = PgFetchSequenceTupleRequestPB;
-using PgFetchSequenceTupleResponseMsg = PgFetchSequenceTupleResponsePB;
-using PgReadSequenceTupleRequestMsg = PgReadSequenceTupleRequestPB;
-using PgReadSequenceTupleResponseMsg = PgReadSequenceTupleResponsePB;
-using PgDeleteSequenceTupleRequestMsg = PgDeleteSequenceTupleRequestPB;
-using PgDeleteSequenceTupleResponseMsg = PgDeleteSequenceTupleResponsePB;
-using PgDeleteDBSequencesRequestMsg = PgDeleteDBSequencesRequestPB;
-using PgDeleteDBSequencesResponseMsg = PgDeleteDBSequencesResponsePB;
-using PgGetTableKeyRangesRequestMsg = PgGetTableKeyRangesRequestPB;
-using PgGetTableKeyRangesResponseMsg = PgGetTableKeyRangesResponsePB;
-using TabletServerErrorMsg = TabletServerErrorPB;
+using TabletConsensusInfoMsg = LWTabletConsensusInfoPB;
+using ReadRequestMsg = LWReadRequestPB;
+using ReadResponseMsg = LWReadResponsePB;
+using WriteRequestMsg = LWWriteRequestPB;
+using WriteResponseMsg = LWWriteResponsePB;
+using PgPerformRequestMsg = LWPgPerformRequestPB;
+using PgPerformResponseMsg = LWPgPerformResponsePB;
+using PgAcquireObjectLockRequestMsg = LWPgAcquireObjectLockRequestPB;
+using PgAcquireObjectLockResponseMsg = LWPgAcquireObjectLockResponsePB;
+using PgInsertSequenceTupleRequestMsg = LWPgInsertSequenceTupleRequestPB;
+using PgInsertSequenceTupleResponseMsg = LWPgInsertSequenceTupleResponsePB;
+using PgUpdateSequenceTupleRequestMsg = LWPgUpdateSequenceTupleRequestPB;
+using PgUpdateSequenceTupleResponseMsg = LWPgUpdateSequenceTupleResponsePB;
+using PgFetchSequenceTupleRequestMsg = LWPgFetchSequenceTupleRequestPB;
+using PgFetchSequenceTupleResponseMsg = LWPgFetchSequenceTupleResponsePB;
+using PgReadSequenceTupleRequestMsg = LWPgReadSequenceTupleRequestPB;
+using PgReadSequenceTupleResponseMsg = LWPgReadSequenceTupleResponsePB;
+using PgDeleteSequenceTupleRequestMsg = LWPgDeleteSequenceTupleRequestPB;
+using PgDeleteSequenceTupleResponseMsg = LWPgDeleteSequenceTupleResponsePB;
+using PgDeleteDBSequencesRequestMsg = LWPgDeleteDBSequencesRequestPB;
+using PgDeleteDBSequencesResponseMsg = LWPgDeleteDBSequencesResponsePB;
+using PgGetTableKeyRangesRequestMsg = LWPgGetTableKeyRangesRequestPB;
+using PgGetTableKeyRangesResponseMsg = LWPgGetTableKeyRangesResponsePB;
+using TabletServerErrorMsg = LWTabletServerErrorPB;
 
 } // namespace tserver
 } // namespace yb

@@ -785,11 +785,11 @@ export default class UniverseOverviewNew extends Component {
 
     return (
       <Fragment>
-        {isRollBackFeatureEnabled &&
+        {isRollBackFeatureEnabled && !isCanaryUpgradeEnabled &&
           ybSoftwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
-        {isRollBackFeatureEnabled &&
+        {isRollBackFeatureEnabled && !isCanaryUpgradeEnabled &&
           !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState

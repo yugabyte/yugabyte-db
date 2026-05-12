@@ -39,6 +39,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -516,6 +517,12 @@ MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
   attrs["table_name"] = table_name;
   attrs["table_type"] = TableType_Name(table_type);
   attrs["namespace_name"] = namespace_name;
+  if (table_type == PGSQL_TABLE_TYPE && !namespace_id.empty()) {
+    auto db_oid = GetPgsqlDatabaseOid(namespace_id);
+    if (db_oid.ok()) {
+      attrs["database_oid"] = std::to_string(*db_oid);
+    }
+  }
   return attrs;
 }
 
@@ -1720,7 +1727,7 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
   return Flush();
 }
 
-Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
+Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
     bool require_history_cutoff, bool initial_retention_barrier) {
 
@@ -1730,7 +1737,18 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
+  if (!initial_retention_barrier) {
+    if (cdc_min_replicated_index() < cdc_wal_index) {
+      VLOG_WITH_PREFIX(1) << "Moving cdc_min_replicated index WAL retention barrier to "
+                          << cdc_wal_index;
+      set_cdc_min_replicated_index_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving cdc_min_replicated index WAL retention barrier. "
+                          << "The barrier is set at " << cdc_min_replicated_index()
+                          << ", current requirement is for " << cdc_wal_index
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (cdc_min_replicated_index() > cdc_wal_index) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1742,7 +1760,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // History Retention
   if (require_history_cutoff) {
-    if (!initial_retention_barrier ||
+    if (!initial_retention_barrier) {
+      if (cdc_sdk_safe_time() < cdc_sdk_history_cutoff) {
+        VLOG_WITH_PREFIX(1) << "Moving history retention barrier to " << cdc_sdk_history_cutoff;
+        set_cdc_sdk_safe_time_check = true;
+      } else {
+        VLOG_WITH_PREFIX(1) << "Skipping moving history retention barrier. "
+                            << "The barrier is set at " << cdc_sdk_safe_time()
+                            << ", current requirement is for " << cdc_sdk_history_cutoff
+                            << ", cannot move the barrier backwards.";
+      }
+    } else if (
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
       VLOG_WITH_PREFIX(1) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
@@ -1756,7 +1784,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier ||
+  if (!initial_retention_barrier) {
+    if (cdc_sdk_min_checkpoint_op_id() < cdc_sdk_intents_op_id) {
+      VLOG_WITH_PREFIX(1) << "Moving intents retention barrier to " << cdc_sdk_intents_op_id;
+      set_cdc_min_checkpoint_op_id_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving intents retention barrier. "
+                          << "The barrier is set at " << cdc_sdk_min_checkpoint_op_id()
+                          << ", current requirement is for " << cdc_sdk_intents_op_id
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (
       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
@@ -1778,7 +1816,7 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
                                                 set_cdc_sdk_safe_time_check));
   }
 
-  return set_cdc_min_checkpoint_op_id_check;
+  return Status::OK();
 }
 
 std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {
@@ -1997,11 +2035,15 @@ Status RaftGroupMetadata::OldSchemaGC(
             << "Unknown table during " << __func__ << ": " << table_id.ToString();
         continue;
       }
-      if (!it->second->doc_read_context->schema_packing_storage.HasVersionBelow(schema_version)) {
+      const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
+      const auto min_active = schema_packing_storage.registry().MinActiveVersion();
+      const auto new_min_schema_version =
+          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
+                                                                        : schema_version;
+      if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
-      auto new_value = std::make_shared<TableInfo>(
-          *it->second, schema_version);
+      auto new_value = std::make_shared<TableInfo>(*it->second, new_min_schema_version);
       RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",

@@ -20,6 +20,7 @@ export const NonDedicatedView = () => {
   const [isEditHardwareModalVisible, setEditHardwareModalVisible] = useToggle(false);
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
 
   return (
@@ -48,6 +49,14 @@ export const NonDedicatedView = () => {
           setEditHardwareModalVisible(true);
         }}
       />
+      {readReplicaCluster && (
+        <InstanceCard
+          title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
+          nodeSpec={readReplicaCluster.node_spec}
+          storageSpec={readReplicaCluster.node_spec?.storage_spec}
+          onEditClicked={() => {}}
+        />
+      )}
       <EditHardwareConfirmModal
         visible={isEditHardwareModalVisible}
         title={t('tServerInstance')}

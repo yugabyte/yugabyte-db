@@ -65,6 +65,7 @@
 
 namespace yb {
 
+class Cgroup;
 class MetricEntity;
 class ThreadPool;
 
@@ -88,6 +89,7 @@ YB_DEFINE_ENUM(
     (kAllocationNotStarted)  // No segment allocation requested
     (kAllocationInProgress)  // Next segment allocation started
     (kAllocationFinished)    // Next segment ready
+    (kAllocationFailed)      // Next segment allocation failed
 );
 
 YB_DEFINE_ENUM(
@@ -300,6 +302,14 @@ class Log : public RefCountedThreadSafe<Log> {
 
   uint64_t active_segment_sequence_number() const;
 
+  SegmentAllocationState allocation_state() {
+    return allocation_state_.load(std::memory_order_acquire);
+  }
+
+  Status TEST_GetAllocationStatus() {
+    return allocation_status_.Get();
+  }
+
   Status TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
   // Returns the number of segments.
@@ -345,6 +355,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   HybridTime GetMinStartHTOfRunningTxnsFromGCSegments() const;
 
+  // Set per-DB cgroup on all internal pool tokens for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -355,7 +368,6 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestLogMetrics);
   FRIEND_TEST(LogTest, TestLogMetricsWithSegmentReuse);
   FRIEND_TEST(LogTest, AsyncRolloverMarker);
-
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
 
@@ -476,10 +488,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
   Status AsyncAllocateSegment();
-
-  SegmentAllocationState allocation_state() {
-    return allocation_state_.load(std::memory_order_acquire);
-  }
 
   Result<std::unique_ptr<LogEntryBatch>> ReserveMarker(LogEntryTypePB type);
 

@@ -102,11 +102,6 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
         replication_info.ShortDebugString());
 
   if (read_replicas.size() == 1) {
-    if (!read_replicas[0].has_placement_uuid())
-      return STATUS_FORMAT(
-          Corruption, "missing \"placement_uuid\" for read replica: $0",
-          read_replicas[0].ShortDebugString());
-
     replicas_to_validate.push_back(&read_replicas[0]);
   }
 

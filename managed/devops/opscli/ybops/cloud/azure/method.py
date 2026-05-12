@@ -81,7 +81,7 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
     def callback(self, args):
         super(AzureCreateInstancesMethod, self).callback(args)
 
-    def run_ansible_create(self, args):
+    def run_create_instance(self, args):
         return self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
 
 
@@ -95,8 +95,8 @@ class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
     def callback(self, args):
         super(AzureProvisionInstancesMethod, self).callback(args)
 
-    def update_ansible_vars_with_args(self, args):
-        super(AzureProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(AzureProvisionInstancesMethod, self).update_extra_vars_with_args(args)
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
 
@@ -111,10 +111,10 @@ class AzureCreateRootVolumesMethod(CreateRootVolumesMethod):
     def create_master_volume(self, args):
         # Don't need public IP as we will delete the VM.
         args.assign_public_ip = False
-        # Also update the ssh user and other Ansible vars used during VM creation.
-        self.create_method.update_ansible_vars_with_args(args)
+        # Update the extra vars with the arguments passed.
+        self.create_method.update_extra_vars_with_args(args)
         try:
-            self.create_method.run_ansible_create(args)
+            self.create_method.run_create_instance(args)
         except Exception as e:
             logging.error("Could not create Azure master volume. Failed with error {}.".format(e))
             host_info = self.cloud.get_host_info(args)
@@ -349,7 +349,7 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         host_info = self.cloud.get_host_info(args)
         if host_info is None:

@@ -726,7 +726,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
           << ". Destination peer: " << peer_uuid;
       return s;
     } else {
-      LOG_WITH_PREFIX(FATAL)
+      LOG_WITH_PREFIX(WARNING)
           << "Error reading the log while preparing peer request or GetChanges response: "
           << s.ToString() << ". Destination peer: " << peer_uuid;
       return s;
@@ -2021,6 +2021,10 @@ std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicatio
     result.emplace_back(peer_uuid, peer->last_successful_communication_time);
   }
   return result;
+}
+
+void PeerMessageQueue::SetNotificationStrandCgroup(Cgroup* cgroup) {
+  notifications_strand_->SetTaskCgroup(cgroup);
 }
 
 void PeerMessageQueue::TEST_WaitForNotificationToFinish() {

@@ -13,21 +13,20 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -37,12 +36,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.YBClient;
 
 @RunWith(MockitoJUnitRunner.class)
 public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
@@ -57,6 +57,14 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
           + "\n"
           + "\n"
           + "Clusters are compatible";
+
+  private YBClient mockClient;
+
+  @Before
+  public void setUp() {
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+  }
 
   @Test
   public void testParsePGUpgradeOutputSuccess() {
@@ -148,15 +156,9 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
     when(mockReleaseManager.getReleaseByVersion(anyString()))
         .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
 
-    factory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.nodeAgentDisableConfigureServer.getKey(), "true");
-
     when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn(CUSTOM_VM_TMP);
     when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
-    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Configure), any()))
-        .thenReturn(ShellResponse.create(0, "Command output: ok"));
-
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     ShellResponse logReadResponse =
         ShellResponse.create(0, "Command output:\n" + SUCCESS_PG_UPGRADE_OUTPUT);
     ShellResponse okResponse = ShellResponse.create(0, "Command output: ok");
@@ -171,10 +173,13 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
               return okResponse;
             });
 
-    Universe universe =
-        ModelFactory.createUniverse(
-            "pg-upgrade-vm", UUID.randomUUID(), defaultCustomer.getId(), CloudType.aws);
-    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 3);
+    // AWS by default.
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    UserIntent userIntent = ApiUtils.getDefaultUserIntent(defaultProvider);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
     params.setUniverseUUID(universe.getUniverseUUID());

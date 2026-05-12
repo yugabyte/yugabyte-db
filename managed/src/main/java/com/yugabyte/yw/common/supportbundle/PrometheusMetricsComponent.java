@@ -615,8 +615,6 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
     log.debug("Collecting the following Prometheus metrics: {}", data.prometheusMetricsTypes);
 
-    dateValidation(data);
-
     if (data.promExportType == PromExportType.REMOTE_READ
         && data.prometheusMetricsTypes != null
         && !data.prometheusMetricsTypes.isEmpty()) {
@@ -738,7 +736,6 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
 
-    dateValidation(bundleData);
     Long totalMins =
         TimeUnit.MILLISECONDS.toMinutes(
             bundleData.promDumpEndDate.getTime() - bundleData.promDumpStartDate.getTime());
@@ -787,23 +784,5 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     sum += 5000000L * bundleData.promQueries.size() * timeMultiplier;
     res.put("promSizeEstimate", sum);
     return res;
-  }
-
-  // validate the start & end dates of prometheus metrics dump
-  // 1. If both the dates are given; Continue
-  // 2. If no dates are specified, download all the exports from last 'x' duration
-  private void dateValidation(SupportBundleFormData data) {
-    boolean startDateIsValid = supportBundleUtil.isValidDate(data.promDumpStartDate);
-    boolean endDateIsValid = supportBundleUtil.isValidDate(data.promDumpEndDate);
-    if (!startDateIsValid && !endDateIsValid) {
-      int defaultPromDumpRange =
-          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPromDumpRange);
-      log.debug(
-          "'promDumpStartDate' and 'promDumpEndDate' are not valid. Defaulting the duration to {}",
-          defaultPromDumpRange);
-      data.promDumpEndDate = data.endDate;
-      data.promDumpStartDate =
-          supportBundleUtil.getDateNMinutesAgo(data.promDumpEndDate, defaultPromDumpRange);
-    }
   }
 }

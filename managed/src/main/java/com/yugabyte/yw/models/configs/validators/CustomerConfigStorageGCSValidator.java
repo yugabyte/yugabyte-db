@@ -104,7 +104,12 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     } else {
       CloudLocationInfo locationInfo = gcpUtil.getCloudLocationInfo(region, gcsData, gsUriPath);
       try {
-        gcpUtil.validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
+        gcpUtil.validateOnBucket(
+            storage,
+            locationInfo.bucket,
+            locationInfo.cloudPath,
+            permissions,
+            gcsData.immutableStorage);
       } catch (StorageException exp) {
         throwBeanConfigDataValidatorError(fieldName, exp.getMessage());
       }

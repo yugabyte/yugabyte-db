@@ -69,6 +69,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+import org.yb.util.TabletServerInfo;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -2061,6 +2062,20 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  public FlushTabletsResponse flushTablets(String tserverIp, int rpcPort, List<String> tabletIds)
+      throws Exception {
+    HostAndPort hp = HostAndPort.fromParts(tserverIp, rpcPort);
+    // This filters out non-live or blacklisted or tservers without tablets.
+    TabletServerInfo serverInfo = listLiveTabletServers().getTabletServers().stream()
+        .filter(ts -> tserverIp.equals(ts.getPrivateAddress().getHost())).findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("No live tserver with ip " + tserverIp));
+    LOG.debug("Got permanent UUID {} for tserver with ip {}", serverInfo.getPermanentUuid(),
+        tserverIp);
+    Deferred<FlushTabletsResponse> d =
+        asyncClient.flushTablets(hp, serverInfo.getPermanentUuid(), tabletIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse commitCheckpoint(
       YBTable table,
       String streamId,
@@ -2452,6 +2467,18 @@ public class YBClient implements AutoCloseable {
 
   public GetXClusterSafeTimeResponse getXClusterSafeTime() throws Exception {
     Deferred<GetXClusterSafeTimeResponse> d = asyncClient.getXClusterSafeTime();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public XClusterFailoverResponse xClusterFailover(String replicationGroupId) throws Exception {
+    Deferred<XClusterFailoverResponse> d = asyncClient.xClusterFailover(replicationGroupId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public IsXClusterFailoverDoneResponse isXClusterFailoverDone(String replicationGroupId)
+      throws Exception {
+    Deferred<IsXClusterFailoverDoneResponse> d =
+        asyncClient.isXClusterFailoverDone(replicationGroupId);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -61,17 +61,18 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download).
-
-### Prerequisites
+## Prerequisites
 
 {{% readfile "include-prerequisites-macos.md" %}}
 
-#### Set file limits
+### Set file limits
 
-Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You should ensure the file limit is set sufficiently high.
+
+<details>
+  <summary>Set file limits in macOS.</summary>
+
+Execute the following command to ensure that the limit is set to a large number:
 
 ```sh
 launchctl limit
@@ -154,9 +155,11 @@ sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
 
 You might need to `unload` the service before loading it.
 
-### Download
+</details>
 
-You download YugabyteDB as follows:
+## Download
+
+Download YugabyteDB as follows:
 
 {{< tabpane text=true >}}
 
@@ -196,6 +199,17 @@ You download YugabyteDB as follows:
 
 {{< /tabpane >}}
 
+{{< tip title="Developer not verified error" >}}
+
+After extracting the files, macOS may quarantine the binaries and prevent them from running. In this case, you may see an error when starting YugabyteDB to the effect that the developer cannot be verified. To remove the quarantine, run the following command:
+
+```sh
+xattr -dr com.apple.quarantine yugabyte-{{< yb-version version="stable">}}/
+```
+
+{{< /tip >}}
+
+
 ## Create a local cluster
 
 Use the [yugabyted](/stable/reference/configuration/yugabyted/) utility to create and manage universes.
@@ -214,13 +228,21 @@ On macOS pre-Monterey, create a single-node local cluster with a replication fac
 
   {{% tab header="macOS Monterey" lang="Monterey" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](/stable/reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
+macOS Monterey and later enable AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail.
 
-```sh
-./bin/yugabyted start --master_webserver_port=9999
-```
+You can do one of the following:
 
-Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+- Disable AirPlay receiving in System Settings (typically under **General > AirPlay & Handoff**). Then start YugabyteDB by running the following command:
+
+    ```sh
+    ./bin/yugabyted start
+    ```
+
+- Start YugabyteDB on a different port by running the following command:
+
+    ```sh
+    ./bin/yugabyted start --master_webserver_port=7001
+    ```
 
   {{% /tab %}}
 
@@ -240,17 +262,18 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ## Migrate from PostgreSQL
 
-For PostgreSQL users seeking to transition to a modern, horizontally scalable database solution with built-in resilience, YugabyteDB offers a seamless lift-and-shift approach that ensures compatibility with PostgreSQL syntax and features while providing the scalability benefits of distributed SQL.
+[YugabyteDB Voyager](../../yugabyte-voyager/) simplifies moving applications from traditional RDBMS platforms to YugabyteDB. While YugabyteDB Voyager handles migration logistics, its primary value is modernizing your database architecture for cloud-native scale and performance.
 
-YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
+Voyager creates an end-to-end modernization workflow by analyzing multiple signals across your source database and application, including schema layout, IOPS and table/index access patterns, column count and row size, query plan efficiency, potential performance bottlenecks, extensions, and more.
 
-[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+Key capabilities:
 
-You can [install](/stable/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+- Schema modernization: Evaluates and transforms features, data types, query constructs, and PL/pgSQL objects for optimal distributed database performance
+- Sizing recommendations: Provides accurate infrastructure sizing estimates
+- Performance analysis: Delivers workload analysis, optimization recommendations, and inefficiency identification
+- Migration planning: Estimates migration timeline for confident, predictable execution
 
-In addition to [offline migration](/stable/yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](/stable/yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](/stable/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/stable/yugabyte-voyager/migrate/live-fall-back/) capabilities.
-
-Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
+For more information, refer to [YugabyteDB Voyager](../../yugabyte-voyager/).
 
 ## Next steps
 

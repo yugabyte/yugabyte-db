@@ -1110,7 +1110,6 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
                           const string& string_val,
                           const MonoDelta& timeout) {
   WriteRequestPB req;
-  WriteResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);
 
@@ -1118,9 +1117,12 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 
   AddTestRowInsert(key, int_val, string_val, &req);
 
-  RETURN_NOT_OK(replica->tserver_proxy->Write(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  auto arena = SharedThreadSafeArena();
+  auto lw_req = arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
+  auto lw_resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+  RETURN_NOT_OK(replica->tserver_proxy->Write(*lw_req, lw_resp, &rpc));
+  if (lw_resp->has_error()) {
+    return StatusFromPB(lw_resp->error().status());
   }
   return Status::OK();
 }

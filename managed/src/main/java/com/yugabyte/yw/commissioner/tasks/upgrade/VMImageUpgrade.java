@@ -12,13 +12,17 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -27,6 +31,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -62,6 +67,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private final XClusterUniverseService xClusterUniverseService;
 
   private volatile RuntimeInfo runtimeInfo;
+
+  private volatile boolean enableEarlyoom;
 
   @Inject
   protected VMImageUpgrade(
@@ -125,6 +132,33 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     }
     addBasicPrecheckTasks();
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
+
+    Customer customer = Customer.get(universe.getCustomerId());
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+
+    enableEarlyoom =
+        UpdateOOMServiceState.isEarlyoomInstallationPossible(
+                confGetter, universe.getUniverseDetails(), customer)
+            && (universe.getUniverseDetails().additionalServicesStateData == null
+                || !universe.getUniverseDetails().additionalServicesStateData.isEarlyoomEnabled())
+            && confGetter.getConfForScope(
+                provider, ProviderConfKeys.enableEarlyoomByDefaultForProvider)
+            && confGetter.getConfForScope(provider, ProviderConfKeys.enableEarlyoomOnOSUpgrade);
+
+    if (enableEarlyoom) {
+      Set<String> nodesWithoutNA =
+          universe.getUniverseDetails().nodeDetailsSet.stream()
+              .map(n -> new Pair<>(n, nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, n)))
+              .filter(p -> p.getSecond().isEmpty())
+              .map(p -> p.getFirst().nodeName)
+              .collect(Collectors.toSet());
+      if (!nodesWithoutNA.isEmpty()) {
+        log.warn("Cannot install earlyoom: found nodes without node agent: {}", nodesWithoutNA);
+        enableEarlyoom = false;
+      }
+    }
   }
 
   @Override
@@ -160,6 +194,33 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             // Update software version in the universe metadata.
             createUpdateSoftwareVersionTask(newVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
+          }
+
+          if (enableEarlyoom) {
+            Universe universe = getUniverse();
+            AdditionalServicesStateData servicesStateData =
+                universe.getUniverseDetails().additionalServicesStateData;
+            if (servicesStateData == null) {
+              servicesStateData = new AdditionalServicesStateData();
+              Provider p =
+                  Provider.getOrBadRequest(
+                      UUID.fromString(
+                          getUniverse()
+                              .getUniverseDetails()
+                              .getPrimaryCluster()
+                              .userIntent
+                              .provider));
+              String earlyoomArgs =
+                  confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+              servicesStateData.setEarlyoomConfig(
+                  AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+            }
+            servicesStateData.setEarlyoomEnabled(true);
+
+            createConfigureOOMServiceSubtasks(servicesStateData, universe.getNodes());
+            AdditionalServicesStateData finalServicesStateData = servicesStateData;
+            createUpdateUniverseFieldsTask(
+                u -> u.getUniverseDetails().additionalServicesStateData = finalServicesStateData);
           }
 
           createMarkUniverseForHealthScriptReUploadTask();
@@ -285,7 +346,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 createServerControlTask(
                         node, processType, "stop", params -> params.isIgnoreError = true)
                     .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
-        createRootVolumeReplacementTask(node)
+        createRootVolumeReplacementTask(node, sshPortOverride)
             .setSubTaskGroupType(getTaskSubGroupType())
             .setAfterGroupRunListener(
                 g ->
@@ -304,28 +365,34 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
-      // Must use ansible provisioning for non-systemd universes
-      Customer customer = Customer.get(universe.getCustomerId());
-      boolean useAnsibleProvisioning =
-          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-              || !userIntent.useSystemd;
-      // TODO This can be improved to skip already provisioned nodes as there are long running
-      // subtasks.
+      // Persist updated node SSH fields to DB before provisioning subtasks, as subtasks
+      // like SetupYNP and YNPProvisioning reload the node from DB and need the target
+      // image bundle's SSH port/user to connect to the node after root volume replacement.
+      // Note: machineImage is intentionally NOT persisted here -- doing so would cause
+      // getImageSettingsForNodes to skip this node on retry (image already matches target).
+      createUpdateUniverseFieldsTask(
+              u -> {
+                NodeDetails nodeDetails = u.getNode(node.nodeName);
+                if (nodeDetails != null) {
+                  nodeDetails.sshUserOverride = node.sshUserOverride;
+                  nodeDetails.sshPortOverride = node.sshPortOverride;
+                  nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;
+                }
+              })
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning) {
-          boolean isYbPrebuiltImage =
-              !shouldInstallDbSoftware(
-                  universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
-          createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
-              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        }
+        boolean isYbPrebuiltImage =
+            !shouldInstallDbSoftware(
+                universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
+        createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeList)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+      if (userIntent.providerType == CloudType.local) {
         createSetupServerTasks(
                 nodeList,
                 p -> {
@@ -344,8 +411,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               new ArrayList<>(universe.getNodes()),
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       createConfigureServerTasks(
-              nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
+              nodeList,
+              params -> {
+                params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                params.configureCgroupOverride =
+                    Util.configureCgroup(cluster.userIntent, provider, true, confGetter);
+              })
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Copy the source root certificate to the node.
@@ -425,6 +500,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                       info -> info.replacementCompletedNodes.add(node.getNodeUuid())));
     }
 
+    createPersistCpuCgroupConfiguredTask(universe);
+
     // Update the imageBundleUUID in the cluster -> userIntent
     if (!clusterToImageBundleMap.isEmpty()) {
       clusterToImageBundleMap.forEach(
@@ -482,7 +559,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     return subTaskGroup;
   }
 
-  private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
+  private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node, Integer sshPortOverride) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume", getTaskSubGroupType());
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
@@ -490,6 +567,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerNodePerZone = this.replacementRootVolumes;
     replaceParams.rootDevicePerZone = this.replacementRootDevices;
+    replaceParams.sshPortOverride = sshPortOverride;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);

@@ -114,10 +114,10 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816 h1:J6v8awz+me+xeb/cUTotKgceAYouhIB3pjzgRd6IlGk=
 github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816/go.mod h1:tzym/CEb5jnFI+Q0k4Qq3+LvRF4gO3E2pxS8fHP8jcA=
-github.com/yugabyte/platform-go-client v0.0.0-20251226052501-5591c4735178 h1:MwqT0dMet/V6Y8ow+jBIneik7jnyNyv7QGCHaRMADFM=
-github.com/yugabyte/platform-go-client v0.0.0-20251226052501-5591c4735178/go.mod h1:8a2ONsBR0hUTroy6MRrMHaSmxD/peQNQOznL5EIw5no=
-github.com/yugabyte/platform-go-client/v2 v2.0.0-20251229055735-b1b2fd7617d4 h1:EUK2Nl9KfADr9AW1ts6aR3VjIrtsuheoOJehFGA98GQ=
-github.com/yugabyte/platform-go-client/v2 v2.0.0-20251229055735-b1b2fd7617d4/go.mod h1:d4Q0DnaoMs61ZufxsPrdd1P3WHV7qvwmh3Qi0huyFvk=
+github.com/yugabyte/platform-go-client v0.0.0-20260424070128-33f8cf839dd2 h1:AG1wa5kUOXVcv5wWxtdRhEOdszHJcCRBOLypfz3igRI=
+github.com/yugabyte/platform-go-client v0.0.0-20260424070128-33f8cf839dd2/go.mod h1:8a2ONsBR0hUTroy6MRrMHaSmxD/peQNQOznL5EIw5no=
+github.com/yugabyte/platform-go-client/v2 v2.0.0-20260424070128-33f8cf839dd2 h1:RU0JxVxTWljafk8LpweB3UBF3Sj5mCiy16MLpi7739Y=
+github.com/yugabyte/platform-go-client/v2 v2.0.0-20260424070128-33f8cf839dd2/go.mod h1:d4Q0DnaoMs61ZufxsPrdd1P3WHV7qvwmh3Qi0huyFvk=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 go.yaml.in/yaml/v3 v3.0.4 h1:tfq32ie2Jv2UxXFdLJdh3jXuOzWiL1fo0bu/FbuKpbc=
 go.yaml.in/yaml/v3 v3.0.4/go.mod h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=

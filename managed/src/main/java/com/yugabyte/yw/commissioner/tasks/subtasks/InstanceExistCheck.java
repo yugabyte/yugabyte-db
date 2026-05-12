@@ -6,7 +6,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,7 +38,10 @@ public class InstanceExistCheck extends NodeTaskBase {
 
   @Override
   public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
-    if (taskParams().getPrimaryCluster().userIntent.providerType == Common.CloudType.onprem) {
+    Universe universe = getUniverse();
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+
+    if (Util.getProviderForNode(node, universe).getCloudCode() == Common.CloudType.onprem) {
       return false;
     }
 

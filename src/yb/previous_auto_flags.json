@@ -12,6 +12,10 @@
           "class": 3
         },
         {
+          "name": "allow_three_shared_parts_data_block_key_value_encoding",
+          "class": 3
+        },
+        {
           "name": "cdc_write_post_apply_metadata",
           "class": 2
         },
@@ -30,6 +34,10 @@
         {
           "name": "enable_flush_retryable_requests",
           "class": 2
+        },
+        {
+          "name": "enable_rpc_pool_tags",
+          "class": 1
         },
         {
           "name": "enable_xcluster_auto_flag_validation",
@@ -56,12 +64,20 @@
           "class": 2
         },
         {
+          "name": "skip_prefix_locks_for_upgrade",
+          "class": 2
+        },
+        {
           "name": "store_last_wal_op_log_ht",
           "class": 2
         },
         {
           "name": "store_min_start_ht_running_txns",
           "class": 2
+        },
+        {
+          "name": "xcluster_automatic_mode_schema_handling_v2",
+          "class": 3
         },
         {
           "name": "xcluster_enable_subtxn_abort_propagation",
@@ -81,6 +97,10 @@
         },
         {
           "name": "ysql_enable_auto_analyze_infra",
+          "class": 2
+        },
+        {
+          "name": "ysql_enable_object_locking_infra",
           "class": 2
         },
         {
@@ -128,6 +148,10 @@
           "class": 2
         },
         {
+          "name": "ysql_yb_enable_ddl_savepoint_infra",
+          "class": 2
+        },
+        {
           "name": "ysql_yb_enable_docdb_vector_type",
           "class": 3
         },
@@ -142,6 +166,10 @@
         {
           "name": "ysql_yb_enable_index_aggregate_pushdown",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_enable_pg_export_snapshot",
+          "class": 2
         },
         {
           "name": "ysql_yb_enable_pg_locks",
@@ -180,6 +208,10 @@
           "class": 1
         },
         {
+          "name": "ysql_yb_test_make_all_ddl_statements_incrementing",
+          "class": 1
+        },
+        {
           "name": "ysql_yb_update_optimization_infra",
           "class": 2
         },
@@ -199,6 +231,14 @@
         {
           "name": "TEST_auto_flags_new_install",
           "class": 3
+        },
+        {
+          "name": "allow_three_shared_parts_data_block_key_value_encoding",
+          "class": 3
+        },
+        {
+          "name": "cdc_enable_dynamic_schema_changes",
+          "class": 2
         },
         {
           "name": "cdc_enable_postgres_replica_identity",
@@ -239,6 +279,10 @@
         {
           "name": "enable_object_retention_due_to_snapshots",
           "class": 2
+        },
+        {
+          "name": "enable_rpc_pool_tags",
+          "class": 1
         },
         {
           "name": "enable_tablespace_based_transaction_placement",
@@ -285,6 +329,10 @@
           "class": 2
         },
         {
+          "name": "skip_prefix_locks_for_upgrade",
+          "class": 2
+        },
+        {
           "name": "store_last_wal_op_log_ht",
           "class": 2
         },
@@ -295,6 +343,10 @@
         {
           "name": "use_parent_table_id_field",
           "class": 2
+        },
+        {
+          "name": "xcluster_automatic_mode_schema_handling_v2",
+          "class": 3
         },
         {
           "name": "xcluster_enable_ddl_replication",
@@ -330,6 +382,10 @@
         },
         {
           "name": "ysql_enable_auto_analyze_infra",
+          "class": 2
+        },
+        {
+          "name": "ysql_enable_object_locking_infra",
           "class": 2
         },
         {
@@ -377,6 +433,10 @@
           "class": 2
         },
         {
+          "name": "ysql_yb_enable_ddl_savepoint_infra",
+          "class": 2
+        },
+        {
           "name": "ysql_yb_enable_docdb_vector_type",
           "class": 3
         },
@@ -391,6 +451,10 @@
         {
           "name": "ysql_yb_enable_index_aggregate_pushdown",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_enable_pg_export_snapshot",
+          "class": 2
         },
         {
           "name": "ysql_yb_enable_pg_locks",
@@ -426,6 +490,10 @@
         },
         {
           "name": "ysql_yb_pushdown_strict_inequality",
+          "class": 1
+        },
+        {
+          "name": "ysql_yb_test_make_all_ddl_statements_incrementing",
           "class": 1
         },
         {

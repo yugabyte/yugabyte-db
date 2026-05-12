@@ -12,6 +12,18 @@ menu:
 type: docs
 ---
 
+## Upgrade limitations
+
+Before starting an upgrade, note the following: 
+
+- It is strongly recommended to upgrade to the latest minor version of every release.
+
+    For example, if you are upgrading from v2.20.2.0, and the latest release in the v2024.2 release series is v2024.2.8.0, then you should upgrade to v2024.2.8.0 (and not v2024.2.1.0 or v2024.2.0.0).
+
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+
+- Upgrades are not supported between preview and stable versions.
+
 ## Verify software requirements for nodes
 
 Make sure the universe nodes meet the software requirements for running the version of YugabyteDB you are installing.

@@ -138,16 +138,6 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		allAccessKeys := make([]ybaclient.AccessKey, 0)
-		accessKey := ybaclient.AccessKey{
-			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:              util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
-				SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
-			},
-		}
-		allAccessKeys = append(allAccessKeys, accessKey)
-
 		regions, err := cmd.Flags().GetStringArray("region")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -173,11 +163,10 @@ var createAWSProviderCmd = &cobra.Command{
 		awsImageBundles := buildAWSImageBundles(imageBundles, regionOverrides, len(awsRegions))
 
 		requestBody := ybaclient.Provider{
-			Code:          util.GetStringPointer(providerCode),
-			AllAccessKeys: allAccessKeys,
-			ImageBundles:  awsImageBundles,
-			Name:          util.GetStringPointer(providerName),
-			Regions:       awsRegions,
+			Code:         util.GetStringPointer(providerCode),
+			ImageBundles: awsImageBundles,
+			Name:         util.GetStringPointer(providerName),
+			Regions:      awsRegions,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				NtpServers:    ntpServers,
@@ -185,6 +174,18 @@ var createAWSProviderCmd = &cobra.Command{
 					Aws: &awsCloudInfo,
 				},
 			},
+		}
+		requestBody.AllAccessKeys = make([]ybaclient.AccessKey, 0)
+
+		if !util.IsEmptyString(keyPairName) && !util.IsEmptyString(sshFileContent) {
+			accessKey := ybaclient.AccessKey{
+				KeyInfo: ybaclient.KeyInfo{
+					KeyPairName:              util.GetStringPointer(keyPairName),
+					SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
+					SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
+				},
+			}
+			requestBody.AllAccessKeys = append(requestBody.AllAccessKeys, accessKey)
 		}
 
 		rTask, response, err := authAPI.CreateProvider().

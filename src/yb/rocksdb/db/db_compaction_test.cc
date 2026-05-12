@@ -2844,8 +2844,8 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
     std::shared_ptr<RateLimiter> rate_limiter(NewGenericRateLimiter(kMaxCompactFlushRate));
     struct DbInfo {
       std::unique_ptr<DB> db;
-      std::shared_ptr<CompactionStartedListener> compactions_listener =
-          std::make_shared<CompactionStartedListener>();
+      std::shared_ptr<TestCompactionListener> compactions_listener =
+          std::make_shared<TestCompactionListener>();
       std::shared_ptr<test::FlushedFileCollector> flushed_file_collector =
           std::make_shared<test::FlushedFileCollector>();
       std::string db_path;

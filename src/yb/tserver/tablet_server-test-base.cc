@@ -179,10 +179,11 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
                                                int32_t row_idx,
                                                int32_t new_val,
                                                TimeSeries *ts) {
-  WriteRequestPB req;
-  req.set_tablet_id(kTabletId);
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  req.ref_tablet_id(kTabletId);
 
-  WriteResponsePB resp;
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
   string new_string_val(strings::Substitute("mutated$0", row_idx));
@@ -236,10 +237,11 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
     num_batches = count;
   }
 
-  WriteRequestPB req;
-  req.set_tablet_id(tablet_id);
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  req.ref_tablet_id(tablet_id);
 
-  WriteResponsePB resp;
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
 
   uint64_t inserted_since_last_report = 0;
@@ -299,11 +301,12 @@ void TabletServerTestBase::DeleteTestRowsRemote(int32_t first_row,
     proxy = proxy_.get();
   }
 
-  WriteRequestPB req;
-  WriteResponsePB resp;
+  ThreadSafeArena arena;
+  LWWriteRequestPB req(&arena);
+  LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
 
-  req.set_tablet_id(tablet_id);
+  req.ref_tablet_id(tablet_id);
 
   for (int32_t rowid = first_row; rowid < first_row + count; rowid++) {
     AddTestRowDelete(rowid, &req);

@@ -13,19 +13,15 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
-import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +38,8 @@ import org.yb.CommonTypes;
 import org.yb.YBTestRunner;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.SnapshotInfo;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
@@ -307,16 +305,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
     fail("Notifications poller did not restart within 30 seconds");
     return -1;
-  }
-
-  private void waitAndAssertNoNotifications(Connection listenConn, String msg) throws Exception {
-    Thread.sleep(5000);
-    try (Statement listenerStmt = listenConn.createStatement()) {
-      listenerStmt.execute("SELECT 1");
-      PGConnection pgConn = listenConn.unwrap(PGConnection.class);
-      PGNotification[] n = pgConn.getNotifications();
-      assertTrue(msg, n == null || n.length == 0);
-    }
   }
 
   /**
@@ -601,16 +589,24 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, "yugabyte",
         /* retentionInSecs */ 600, /* timeIntervalInSecs */ 10);
 
-    // Wait for at least one snapshot to be created.
+    // Wait for at least one snapshot to reach COMPLETE state.
     TestUtils.waitFor(() -> {
       ListSnapshotSchedulesResponse resp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo info : resp.getSnapshotScheduleInfoList()) {
-        if (!info.getSnapshotInfoList().isEmpty()) {
-          return true;
+        for (SnapshotInfo snap : info.getSnapshotInfoList()) {
+          if (snap.getState()
+              == CatalogEntityInfo.SysSnapshotEntryPB.State.COMPLETE) {
+            return true;
+          }
         }
       }
       return false;
     }, 60000);
+
+    // The snapshot's timestamp is assigned as MaxGlobalNow, which can be ahead
+    // of the physical clock. The clone's restore timestamp uses the physical
+    // clock, so wait for it to exceed the snapshot's timestamp.
+    Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
     try (Statement stmt = connection.createStatement()) {
@@ -779,40 +775,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Polls the given connection for notifications by executing "SELECT 1",
-   * collecting all received notifications until one matching the expected
-   * channel and payload is found. Returns the complete list of notifications
-   * received (including the match).
-   */
-  private List<PGNotification> waitForNotification(Connection connection,
-      String expectedChannel, String expectedPayload) throws Exception {
-    List<PGNotification> allNotifications = new ArrayList<>();
-    PGConnection pgConn = connection.unwrap(PGConnection.class);
-    boolean found = false;
-    try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 75 && !found; attempt++) {
-        stmt.execute("SELECT 1");
-        PGNotification[] notifications = pgConn.getNotifications();
-        if (notifications != null) {
-          for (PGNotification n : notifications) {
-            allNotifications.add(n);
-            if (n.getName().equals(expectedChannel)
-                && n.getParameter().equals(expectedPayload)) {
-              found = true;
-            }
-          }
-        }
-        if (!found) {
-          Thread.sleep(200);
-        }
-      }
-    }
-    assertTrue("Expected to receive notification on channel '" + expectedChannel
-        + "' with payload '" + expectedPayload + "'", found);
-    return allNotifications;
-  }
-
-  /**
    * Verifies that LISTEN succeeds, and that a NOTIFY sent from another
    * connection is delivered to the listener.
    */
@@ -918,6 +880,114 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     verifyListenNotifyWorks();
   }
 
+  /**
+   * When the NOTIFY queue is full, the notifications poller should terminate the slowest listener
+   * to let the queue tail advance if another listener has caught up to the head. Verify that the
+   * slow listener is terminated while the fast listener stays alive.
+   *
+   * Uses yb_test_notify_queue_max_pages to artificially limit the queue so it fills up with a
+   * handful of large-payload notifications.
+   */
+  @Test
+  public void testQueueFullTerminatesSlowestListener() throws Exception {
+    setNotifyQueueMaxPages("2");
+    try {
+      Connection connSlow = getConnectionBuilder().connect();
+      Connection connFast = getConnectionBuilder().connect();
+      Connection connNotifier = getConnectionBuilder().connect();
+
+      // Register a listener and make it slow by starting an indefinite transaction (notifications
+      // are not delivered when the backend is inside a transaction).
+      try (Statement stmt = connSlow.createStatement()) {
+        stmt.execute("LISTEN ch1");
+        stmt.execute("BEGIN");
+      }
+      try (Statement stmt = connFast.createStatement()) {
+        stmt.execute("LISTEN ch1");
+      }
+
+      // Send enough large-payload notifications to fill the small queue.
+      char[] chars = new char[7000];
+      Arrays.fill(chars, 'x');
+      String largePayload = new String(chars);
+      try (Statement stmt = connNotifier.createStatement()) {
+        for (int i = 0; i < 10; i++) {
+          stmt.execute("NOTIFY ch1, '" + largePayload + "'");
+        }
+      }
+
+      // Wait for the poller to detect the full queue and terminate the slow
+      // listener, then verify its connection is dead.
+      Thread.sleep(5000);
+      try (Statement stmt = connSlow.createStatement()) {
+        stmt.execute("SELECT 1");
+        fail("Slow listener should have been terminated");
+      } catch (SQLException e) {
+        LOG.info("Slow listener error (expected): {}", e.getMessage());
+      }
+
+      // Fast listener should still be alive.
+      waitForNotification(connFast, "ch1", largePayload);
+
+      connFast.close();
+      connNotifier.close();
+    } finally {
+      setNotifyQueueMaxPages("0");
+    }
+  }
+
+  /**
+   * Verifies that LISTEN/NOTIFY works even after a non-INSERT/DELETE record (i.e., an UPDATE)
+   * appears in the pg_yb_notifications CDC stream. The notifications poller consumes the CDC
+   * stream for pg_yb_notifications; an UPDATE record is unexpected (users never UPDATE this
+   * table) and must not break the poller.
+   *
+   * Scenario:
+   *   1. Session starts LISTEN.
+   *   2. NOTIFY is sent and received by the listener.
+   *   3. A dummy row is INSERTed into pg_yb_notifications and then UPDATEd (producing a
+   *      non-INSERT/DELETE CDC record).
+   *   4. Another NOTIFY is sent and received by the listener, proving the poller survived.
+   */
+  @Test
+  public void testNotifyWorksAfterUpdateOnNotificationsTable() throws Exception {
+    final String channel = "update_test";
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+      }
+
+      // First NOTIFY: baseline check.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'before_update'");
+      }
+      waitForNotification(listenerConn, channel, "before_update");
+      LOG.info("Received notification before UPDATE on pg_yb_notifications");
+
+      // INSERT a dummy row into pg_yb_notifications and UPDATE it.
+      try (Connection ybSystemConn =
+               getConnectionBuilder().withDatabase("yb_system").connect();
+           Statement stmt = ybSystemConn.createStatement()) {
+        stmt.execute("INSERT INTO pg_yb_notifications"
+            + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data)"
+            + " VALUES ('00000000-0000-0000-0000-000000000001',"
+            + " '00000000-0000-0000-0000-000000000002', 0, 0, false, '\\x00')");
+        stmt.execute("UPDATE pg_yb_notifications SET sender_pid = 1"
+            + " WHERE notif_uuid = '00000000-0000-0000-0000-000000000001'");
+        LOG.info("Inserted and updated dummy row in pg_yb_notifications");
+      }
+
+      // Second NOTIFY: must still work after the UPDATE record hit the CDC stream.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'after_update'");
+      }
+      waitForNotification(listenerConn, channel, "after_update");
+      LOG.info("Received notification after UPDATE on pg_yb_notifications");
+    }
+  }
+
   private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
@@ -937,6 +1007,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Set<HostAndPort> tservers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tserver : tservers) {
       miniCluster.getClient().setFlag(tserver, "cdc_max_virtual_wal_per_tserver", value);
+    }
+  }
+
+  private void setNotifyQueueMaxPages(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_notify_queue_max_pages", value);
     }
   }
 

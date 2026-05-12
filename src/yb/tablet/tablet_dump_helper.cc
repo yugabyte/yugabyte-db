@@ -145,6 +145,11 @@ Status DumpTabletData(
     }
   }
 
+  // Hold a RequestScope for the lifetime of all iterators to ensure a consistent snapshot
+  // Without this, transaction cleanup may race with the scan, causing intents to be resolved
+  // inconsistently and producing incorrect row counts.
+  RequestScope request_scope = VERIFY_RESULT(tablet.CreateRequestScope());
+
   for (const auto& table_id : table_ids) {
     if (IsColocationParentTableId(table_id)) {
       continue;

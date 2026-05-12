@@ -36,7 +36,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -472,8 +471,9 @@ public class CreateBackupTest extends CommissionerBaseTest {
   @Test
   public void testEnableBackupsDuringDDLFlagInSubtasks() {
     // Set enableBackupsDuringDDL runtime config flag to true
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, UniverseConfKeys.enableBackupsDuringDDL.getKey(), "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableBackupsDuringDDL.getKey(), "true");
 
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");

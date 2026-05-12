@@ -337,6 +337,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
 
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const yb::TabletId& tablet_id);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const override;
 
@@ -628,8 +630,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Create a PG connection to the given database. If node_index is not set, a random node is
   // chosen.
   Result<pgwrapper::PGConn> ConnectToDB(
-      const std::string& db_name = "yugabyte", std::optional<size_t> tserver_index = std::nullopt,
-      bool simple_query_protocol = false, const std::string& user = "postgres");
+      std::string_view db_name = "yugabyte", std::optional<size_t> tserver_index = std::nullopt,
+      bool simple_query_protocol = false, std::string_view user = "postgres");
 
   Result<pgwrapper::PGConn> ConnectToDB(ExternalClusterPGConnectionOptions&& options);
 

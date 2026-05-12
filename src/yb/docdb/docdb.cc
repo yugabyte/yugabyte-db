@@ -340,7 +340,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
       // Ensure we set appropriate error in the response object for QL errors.
       const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
       resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(std::move(error_msg));
+      resp->dup_error_message(error_msg);
       continue;
     }
 

@@ -39,8 +39,9 @@ class RedisWriteOperation :
     public DocOperationBase<DocOperationType::REDIS_WRITE_OPERATION, RedisWriteRequestMsg> {
  public:
   // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
-  explicit RedisWriteOperation(std::reference_wrapper<const RedisWriteRequestMsg> request)
-      : DocOperationBase(request) {
+  RedisWriteOperation(
+      std::reference_wrapper<const LWRedisWriteRequestPB> request, LWRedisResponsePB& response)
+      : DocOperationBase(request), response_(response) {
   }
 
   bool RequireReadSnapshot() const override { return false; }
@@ -74,7 +75,7 @@ class RedisWriteOperation :
   Status ApplyAdd(const DocOperationApplyData& data);
   Status ApplyRemove(const DocOperationApplyData& data);
 
-  RedisResponsePB response_;
+  LWRedisResponsePB& response_;
   // TODO: Currently we have a separate iterator per operation, but in future, we leave the option
   // open for operations to share iterators.
   IntentAwareIteratorPtr iterator_;
@@ -85,6 +86,7 @@ class RedisWriteOperation :
 class RedisReadOperation {
  public:
   RedisReadOperation(const RedisReadRequestMsg& request,
+                     RedisResponseMsg& response,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data);
 
@@ -127,7 +129,7 @@ class RedisReadOperation {
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 
   const RedisReadRequestMsg& request_;
-  RedisResponseMsg response_;
+  RedisResponseMsg& response_;
   const DocDB doc_db_;
   const ReadOperationData read_operation_data_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation

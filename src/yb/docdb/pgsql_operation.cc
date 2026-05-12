@@ -374,8 +374,17 @@ class DocKeyAccessor {
     return Status::OK();
   }
 
-  Status Apply(const PgsqlExpressionMsg& ybctid) {
-    const auto& value = ybctid.value().binary_value();
+  Status Apply(const PgsqlExpressionPB& ybctid) {
+    return ApplyExpr(ybctid);
+  }
+
+  Status Apply(const LWPgsqlExpressionPB& ybctid) {
+    return ApplyExpr(ybctid);
+  }
+
+  template <class ExprPB>
+  Status ApplyExpr(const ExprPB& ybctid) {
+    Slice value(ybctid.value().binary_value());
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
     pk_is_known_ = true;
@@ -786,10 +795,10 @@ class ExpressionHelper {
       }
     }
     auto executor = VERIFY_RESULT(builder.Build(request.col_refs()));
-    return ResultToStatus(executor.Exec(table_row, &results_));
+    return ResultToStatus(executor.Exec(table_row, &request.arena(), &results_));
   }
 
-  QLExprResult* NextResult(const PgsqlColumnValueMsg& column_value) {
+  qlexpr::LWExprResult* NextResult(const PgsqlColumnValueMsg& column_value) {
     if (!IsExpression(column_value)) {
       return nullptr;
     }
@@ -798,7 +807,7 @@ class ExpressionHelper {
   }
 
  private:
-  std::vector<QLExprResult> results_;
+  std::vector<qlexpr::LWExprResult> results_;
   size_t next_result_idx_ = 0;
 };
 
@@ -1038,11 +1047,17 @@ class PgsqlVectorFilter {
     if (!row_) {
       return true;
     }
+    if (!status_.ok()) {
+      return false;
+    }
     ++num_checked_entries_;
 
-    // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
-    if (ybctid.empty()) {
+    auto ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
+    if (!ybctid.ok()) {
+      status_ = std::move(ybctid.status());
+      return false;
+    }
+    if (ybctid->empty()) {
       ++num_removed_;
       return false;
     }
@@ -1053,13 +1068,17 @@ class PgsqlVectorFilter {
     if (need_refresh_) {
       iter_.Refresh();
     }
-    auto fetch_result = CHECK_RESULT(iter_.FetchTuple(ybctid, &*row_));
+    auto fetch_result = iter_.FetchTuple(*ybctid, &*row_);
+    if (!fetch_result.ok()) {
+      status_ = std::move(fetch_result.status());
+      return false;
+    }
     // TODO(vector_index) Actually we already have all necessary info to generate response,
     // but we don't know whether this row will be in top or not.
     // So need to extend usearch interface to also provide us ability to store fetched row.
 
-    need_refresh_ = fetch_result == FetchResult::NotFound;
-    if (fetch_result != FetchResult::Found) {
+    need_refresh_ = *fetch_result == FetchResult::NotFound;
+    if (*fetch_result != FetchResult::Found) {
       return false;
     }
     ++num_found_entries_;
@@ -1077,11 +1096,17 @@ class PgsqlVectorFilter {
     ++num_accepted_entries_;
     return true;
   }
+
+  const Status& status() const {
+    return status_;
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
   docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
+  Status status_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
@@ -1345,7 +1370,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
         table_row.projection().columns[column_idx].data_type, &existing_value_buffer);
 
     // Evaluate column value.
-    QLExprResult expr_result;
+    qlexpr::LWExprResult expr_result(&response_->arena());
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
     new_value_buffer.Clear();
     RETURN_NOT_OK(pggate::WriteColumn(expr_result.Value(), &new_value_buffer));
@@ -1480,11 +1505,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       VLOG_WITH_FUNC(3) << "Applying backfill insert at DocDB layer"
                         << ", read_time: " << data.read_time()
                         << ", doc_key: " << doc_key_
-                        << ", request: " << request_.DebugString();
+                        << ", request: " << AsString(request_);
       if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
         // Unique index value conflict found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-        response_->set_error_message("Duplicate key found in unique index");
+        response_->ref_error_message("Duplicate key found in unique index");
         return Status::OK();
       }
     } else {
@@ -1496,7 +1521,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
         VLOG(4) << "Duplicate row: " << table_row.ToString();
         // Primary key or unique index value found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-        response_->set_error_message("Duplicate key found in primary key or unique index");
+        response_->ref_error_message("Duplicate key found in primary key or unique index");
         return Status::OK();
       }
     }
@@ -1594,7 +1619,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 Status PgsqlWriteOperation::UpdateColumn(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row,
     const PgsqlColumnValueMsg& column_value, dockv::PgTableRow* returning_table_row,
-    QLExprResult* result, RowPackContext* pack_context) {
+    qlexpr::LWExprResult* result, RowPackContext* pack_context) {
   // Get the column.
   if (!column_value.has_column_id()) {
     return STATUS_FORMAT(InternalError, "column id missing: $0", column_value);
@@ -1605,7 +1630,7 @@ Status PgsqlWriteOperation::UpdateColumn(
   DCHECK(!doc_read_context_->schema().is_key_column(column_id));
 
   // Evaluate column value.
-  QLExprResult result_holder;
+  qlexpr::LWExprResult result_holder(&column_value);
   if (!result) {
     // Check column-write operator.
     SCHECK(qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
@@ -1689,7 +1714,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_pack_full_row_update &&
         ShouldYsqlPackRow(schema.is_colocated()) &&
-        make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
+        request_.column_new_values().size() == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)),
           FLAGS_ysql_mark_update_packed_row /* is_update */);
@@ -1735,7 +1760,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // table.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLExprResult match(&request_);
+      qlexpr::LWExprResult match(&request_);
       RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, match.Writer()));
       is_match = match.Value().bool_value();
     }
@@ -1756,7 +1781,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             InternalError, "Illegal write instruction");
 
         // Evaluate column value.
-        QLExprResult expr_result(&request_);
+        qlexpr::LWExprResult expr_result(&request_);
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         // Inserting into specified column.
@@ -1909,7 +1934,7 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 
   // Update the sequence row
   if (!is_called->bool_value()) {
-    QLValuePB new_is_called;
+    LWQLValuePB new_is_called(nullptr);
     new_is_called.set_bool_value(true);
     DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(is_called_column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -1917,7 +1942,7 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
         data.read_operation_data, request_.stmt_id()));
   }
   if (last_value->int64_value() != last_fetched) {
-    QLValuePB new_last_value;
+    LWQLValuePB new_last_value(nullptr);
     new_last_value.set_int64_value(last_fetched);
     DocPath sub_path(encoded_doc_key_.as_slice(),
                      KeyEntryValue::MakeColumnId(last_value_column_id));
@@ -1997,7 +2022,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const dockv::PgTableRow* table_row
   ++result_rows_;
   for (const auto& expr : request_.targets()) {
     if (expr.has_column_id()) {
-      QLExprResult value;
+      qlexpr::LWExprResult value(response_);
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
         // Strip cotable ID / colocation ID from the serialized DocKey before returning it
         // as ybctid.
@@ -2007,7 +2032,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const dockv::PgTableRow* table_row
         } else if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kColocationId)) {
           tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
-        value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
+        value.Writer().NewValue().dup_binary_value(tuple_id);
       } else {
         RETURN_NOT_OK(EvalExpr(expr, *table_row, value.Writer()));
       }
@@ -2699,6 +2724,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       could_have_missing_entries,
       data_.read_operation_data.statistics
   ));
+  RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
   // TODO(vector_index) Order keys by ybctid for fetching.
@@ -2989,12 +3015,12 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   auto* paging_state = response_.mutable_paging_state();
   auto encoded_row_key = row_key.Encode().ToStringBuffer();
   if (schema.num_hash_key_columns() > 0) {
-    paging_state->set_next_partition_key(
+    paging_state->dup_next_partition_key(
         dockv::PartitionSchema::EncodeMultiColumnHashValue(row_key.doc_key().hash()));
   } else {
-    paging_state->set_next_partition_key(encoded_row_key);
+    paging_state->dup_next_partition_key(encoded_row_key);
   }
-  paging_state->set_next_row_key(std::move(encoded_row_key));
+  paging_state->dup_next_row_key(encoded_row_key);
 
   BindReadTimeToPagingState(read_time);
 
@@ -3091,8 +3117,9 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
   if (aggr_result_.empty()) {
-    int column_count = request_.targets().size();
-    aggr_result_.resize(column_count);
+    while (aggr_result_.size() < request_.targets().size()) {
+      aggr_result_.emplace_back(&request_.arena());
+    }
   }
 
   int aggr_index = 0;
@@ -3103,15 +3130,14 @@ Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
 }
 
 Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
-  int column_count = request_.targets().size();
-  for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
+  for (auto rscol_index : Range(request_.targets().size())) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));
   }
   return Status::OK();
 }
 
 Status GetIntents(
-    const PgsqlReadRequestPB& request, const Schema& schema, IsolationLevel level,
+    const LWPgsqlReadRequestPB& request, const Schema& schema, IsolationLevel level,
     LWKeyValueWriteBatchPB* out) {
   const auto row_mark = request.has_row_mark_type() ? request.row_mark_type() : ROW_MARK_ABSENT;
   if (IsValidRowMarkType(row_mark)) {

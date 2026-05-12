@@ -12,8 +12,14 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertTrue;
+
+import com.yugabyte.PGConnection;
+import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.Before;
@@ -44,7 +50,7 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
    * Waits for the {@code yb_system} database and the
    * {@code pg_yb_notifications} table to exist.
    */
-  protected static void waitForNotificationsTableReady(
+  public static void waitForNotificationsTableReady(
       Connection defaultConn, ConnectionBuilder connBuilder) throws Exception {
     waitForCondition(defaultConn,
         "SELECT CASE WHEN EXISTS ("
@@ -73,6 +79,52 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
       Row row = getSingleRow(statement, stmt);
       return row.getInt(0) == 1;
     }, Timeouts.adjustTimeoutSecForBuildType(120 * 1000));
+  }
+
+  /**
+   * Polls the given connection for notifications until one matching the
+   * expected channel and payload is found. Returns all notifications received.
+   */
+  public static List<PGNotification> waitForNotification(Connection connection,
+      String expectedChannel, String expectedPayload) throws Exception {
+    List<PGNotification> allNotifications = new ArrayList<>();
+    PGConnection pgConn = connection.unwrap(PGConnection.class);
+    boolean found = false;
+    try (Statement stmt = connection.createStatement()) {
+      for (int attempt = 0; attempt < 75 && !found; attempt++) {
+        stmt.execute("SELECT 1");
+        PGNotification[] notifications = pgConn.getNotifications();
+        if (notifications != null) {
+          for (PGNotification n : notifications) {
+            allNotifications.add(n);
+            if (n.getName().equals(expectedChannel)
+                && n.getParameter().equals(expectedPayload)) {
+              found = true;
+            }
+          }
+        }
+        if (!found) {
+          Thread.sleep(200);
+        }
+      }
+    }
+    assertTrue("Expected to receive notification on channel '" + expectedChannel
+        + "' with payload '" + expectedPayload + "'", found);
+    return allNotifications;
+  }
+
+  /**
+   * Waits briefly and asserts that no notifications are pending on the
+   * given connection.
+   */
+  public static void waitAndAssertNoNotifications(Connection conn, String msg) throws Exception {
+    Thread.sleep(5000);
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+      PGConnection pgConn = conn.unwrap(PGConnection.class);
+      PGNotification[] n = pgConn.getNotifications();
+      assertTrue(msg, n == null || n.length == 0);
+    }
   }
 
   @Override

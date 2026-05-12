@@ -357,6 +357,47 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRunScript_BothMastersAndTserversOnly_returnsBadRequest() {
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    RunScriptRequest request = new RunScriptRequest();
+    ScriptOptions scriptOptions = new ScriptOptions();
+    scriptOptions.setScriptContent("echo 'test'");
+    request.setScriptOptions(scriptOptions);
+
+    NodeSelection nodeSelection = new NodeSelection();
+    nodeSelection.setMastersOnly(true);
+    nodeSelection.setTserversOnly(true);
+    request.setNodes(nodeSelection);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/run-script");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.runScript(
+                    httpRequest,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    request));
+
+    assertEquals(400, exception.getHttpStatus());
+    assertTrue(
+        exception.getMessage().contains("masters_only and tservers_only cannot both be true"));
+    verify(mockNodeScriptRunner, never()).runScript(any(), any(), any());
+  }
+
+  @Test
   public void testRunScript_NoMatchingNodes() {
     // Setup
     when(mockConfGetter.getConfForScope(
@@ -566,6 +607,47 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
     assertNotNull(response);
     assertEquals(Integer.valueOf(6), response.getSummary().getTotalFilesCollected());
     assertEquals(Integer.valueOf(3), response.getSummary().getTotalFilesSkipped());
+  }
+
+  @Test
+  public void testCreateFileCollection_BothMastersAndTserversOnly_returnsBadRequest() {
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    CollectFilesRequest request = new CollectFilesRequest();
+    FileCollectionOptions options = new FileCollectionOptions();
+    options.setFilePaths(Arrays.asList("/home/yugabyte/tserver/conf/server.conf"));
+    request.setCollectionOptions(options);
+
+    NodeSelection nodeSelection = new NodeSelection();
+    nodeSelection.setMastersOnly(true);
+    nodeSelection.setTserversOnly(true);
+    request.setNodes(nodeSelection);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/file-collections");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.createFileCollection(
+                    httpRequest,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    request));
+
+    assertEquals(400, exception.getHttpStatus());
+    assertTrue(
+        exception.getMessage().contains("masters_only and tservers_only cannot both be true"));
+    verify(mockNodeFileCollector, never()).collectFiles(any(), any(), any(), any());
   }
 
   // ==================== DOWNLOAD FILE COLLECTION TESTS ====================

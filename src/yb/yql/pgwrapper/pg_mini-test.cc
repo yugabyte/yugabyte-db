@@ -155,7 +155,7 @@ namespace {
 
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
   auto version_getter =
-      [conn]() { return GetCatalogVersion(conn, FLAGS_ysql_enable_db_catalog_version_mode); };
+      [conn]() { return GetCatalogVersion(conn); };
   const auto initial_version = VERIFY_RESULT(version_getter());
   RETURN_NOT_OK(conn->Execute(ddl_query));
   return initial_version != VERIFY_RESULT(version_getter());
@@ -594,13 +594,15 @@ TEST_P(PgMiniTestTracing, Tracing) {
     std::atomic<size_t> last_logged_bytes_{0};
   };
 
-  TraceLogSink trace_log_sink;
 
+  TraceLogSink trace_log_sink;
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
-  auto conn = ASSERT_RESULT(Connect());
+  // Wait for all tablet servers to be registered at the master.
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
 
+  auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
 
   LOG(INFO) << "Doing Insert";

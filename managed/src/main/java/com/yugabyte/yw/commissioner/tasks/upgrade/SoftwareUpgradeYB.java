@@ -388,7 +388,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    createClearSoftwareUpgradeProgressTask();
     createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
         .setSubTaskGroupType(getTaskSubGroupType());
     if (!taskParams().rollbackSupport) {
@@ -402,6 +401,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
             true /* isSoftwareRollbackAllowed */);
       } else {
+        createClearSoftwareUpgradeProgressTask();
         createUpdateUniverseSoftwareUpgradeStateTask(
             UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
             true /* isSoftwareRollbackAllowed */);
@@ -583,8 +583,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               universe.getUniverseUUID(),
               true /* ignoreErrors */,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-          createClearSoftwareUpgradeProgressTask();
           createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
               .setSubTaskGroupType(getTaskSubGroupType());
 
@@ -601,6 +599,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
                   true /* isSoftwareRollbackAllowed */);
             } else {
+              createClearSoftwareUpgradeProgressTask();
               createUpdateUniverseSoftwareUpgradeStateTask(
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
                   true /* isSoftwareRollbackAllowed */);
@@ -807,8 +806,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       Map<UUID, Set<UUID>> tserverCompletedByCluster = new HashMap<>();
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         List<UUID> azs = sortAZs(cluster, universe);
+        List<NodeDetails> tserverNodesForCluster =
+            tserverNodes.stream()
+                .filter(n -> cluster.uuid.equals(n.placementUuid))
+                .collect(Collectors.toList());
         for (UUID azUUID : azs) {
-          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
           if (nodesInAZ.isEmpty()) {
             continue;
           }
@@ -964,11 +967,15 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           azs,
           pauseAfterAZs,
           completedForCluster);
+      List<NodeDetails> tserverNodesForCluster =
+          tserverNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toList());
       for (UUID azUUID : azs) {
         if (completedForCluster.contains(azUUID)) {
           continue;
         }
-        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
         if (nodesInAZ.isEmpty()) {
           continue;
         }
@@ -1241,8 +1248,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       Set<UUID> done = completedByCluster.getOrDefault(cluster.uuid, Collections.emptySet());
       Set<UUID> inProgress = inProg.getOrDefault(cluster.uuid, Collections.emptySet());
       Set<UUID> failedAzs = failed.getOrDefault(cluster.uuid, Collections.emptySet());
+      // Restrict role nodes to this cluster so AZs shared between primary and read-replica
+      // do not leak entries (e.g., MASTER entries for read-replica clusters).
+      List<NodeDetails> roleNodesInCluster =
+          roleNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toList());
       for (UUID azUUID : azOrder) {
-        if (getNodesInAZ(roleNodes, azUUID).isEmpty()) {
+        if (getNodesInAZ(roleNodesInCluster, azUUID).isEmpty()) {
           continue;
         }
         AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
@@ -1281,7 +1294,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         != UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
       return false;
     }
-    if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
+    UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+    if (!getUserTaskUUID().equals(d.placementModificationTaskUuid)) {
       return false;
     }
     List<TaskInfo> subtasks = TaskInfo.getOrBadRequest(getUserTaskUUID()).getSubTasks();
