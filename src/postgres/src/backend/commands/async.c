@@ -3243,9 +3243,9 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 			break;
 
 		default:
-			ereport(ERROR,
+			ereport(WARNING,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid record found by notification poller process")));
+					 errmsg("ignoring record with action type %d in notification poller process", record->action)));
 	}
 }
 
