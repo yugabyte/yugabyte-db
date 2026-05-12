@@ -388,7 +388,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    createClearSoftwareUpgradeProgressTask();
     createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
         .setSubTaskGroupType(getTaskSubGroupType());
     if (!taskParams().rollbackSupport) {
@@ -402,6 +401,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
             true /* isSoftwareRollbackAllowed */);
       } else {
+        createClearSoftwareUpgradeProgressTask();
         createUpdateUniverseSoftwareUpgradeStateTask(
             UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
             true /* isSoftwareRollbackAllowed */);
@@ -583,8 +583,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               universe.getUniverseUUID(),
               true /* ignoreErrors */,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-          createClearSoftwareUpgradeProgressTask();
           createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
               .setSubTaskGroupType(getTaskSubGroupType());
 
@@ -601,6 +599,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
                   true /* isSoftwareRollbackAllowed */);
             } else {
+              createClearSoftwareUpgradeProgressTask();
               createUpdateUniverseSoftwareUpgradeStateTask(
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
                   true /* isSoftwareRollbackAllowed */);

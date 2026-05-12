@@ -4041,6 +4041,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
     Universe universe = getUniverse();
 
+    createClearSoftwareUpgradeProgressTask();
+
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
         false /* isSoftwareRollbackAllowed */,
