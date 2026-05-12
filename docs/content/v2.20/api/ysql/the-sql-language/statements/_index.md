@@ -19,10 +19,12 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 | Statement | Description |
 | :-------- | :---------- |
+| [ALTER AGGREGATE](ddl_alter_aggregate/) | Change aggregate function definition |
 | [ALTER DATABASE](ddl_alter_db/) | Change database definition |
 | [ALTER DOMAIN](ddl_alter_domain/) | Change domain definition |
 | [ALTER FOREIGN DATA WRAPPER](ddl_alter_foreign_data_wrapper/) | Change foreign data wrapper definition |
 | [ALTER FOREIGN TABLE](ddl_alter_foreign_table/) | Change foreign table definition |
+| [ALTER ROUTINE](ddl_alter_routine/) | Change a function or procedure definition |
 | [ALTER SEQUENCE](ddl_alter_sequence/) | Change sequence definition |
 | [ALTER SERVER](ddl_alter_server/) | Change foreign server definition |
 | [ALTER SCHEMA](ddl_alter_schema/) | Change schema definition |
