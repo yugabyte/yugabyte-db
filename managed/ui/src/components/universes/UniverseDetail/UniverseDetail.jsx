@@ -635,9 +635,12 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isReadReplicaAsymmetricBlocked =
+      (hasAsymmetricAsyncCluster) &&
+      !(isKubernetesUniverse && enableAzOverridesK8s);
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
-      hasAsymmetricAsyncCluster ||
+      isReadReplicaAsymmetricBlocked ||
       isActionFrozen(
         allowedTasks,
         this.hasReadReplica(universeInfo) ? UNIVERSE_TASKS.EDIT_RR : UNIVERSE_TASKS.ADD_RR
@@ -1310,7 +1313,7 @@ class UniverseDetail extends Component {
                     >
                       <YBTooltip
                         title={
-                          hasAsymmetricAsyncCluster
+                          isReadReplicaAsymmetricBlocked
                             ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                             : ''
                         }
