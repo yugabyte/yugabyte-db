@@ -110,7 +110,7 @@ void Operation::set_consensus_round(const consensus::ConsensusRoundPtr& consensu
     // We are not using set_op_id here so we can acquire the mutex only once.
     consensus_round_ = consensus_round;
     consensus_round_atomic_.store(consensus_round.get(), std::memory_order_release);
-    op_id_.store(consensus_round_->id(), std::memory_order_release);
+    set_op_id_unlocked(consensus_round_->id());
   }
   UpdateRequestFromConsensusRound();
 }
@@ -136,7 +136,7 @@ Status Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) 
 
   {
     std::lock_guard l(mutex_);
-    op_id_ = op_id;
+    set_op_id_unlocked(op_id);
     auto* replicate_msg = consensus_round_->replicate_msg().get();
     op_id.ToPB(replicate_msg->mutable_id());
     committed_op_id.ToPB(replicate_msg->mutable_committed_op_id());
@@ -248,3 +248,4 @@ consensus::LWReplicateMsg* CreateReplicateMsg(ThreadSafeArena* arena, OperationT
 
 }  // namespace tablet
 }  // namespace yb
+
