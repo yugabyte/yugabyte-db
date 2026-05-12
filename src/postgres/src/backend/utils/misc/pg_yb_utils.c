@@ -105,6 +105,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/pathnodes.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
@@ -127,6 +128,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/relcache.h"
 #include "utils/snapmgr.h"
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
@@ -2405,6 +2407,8 @@ int			yb_test_fail_next_ddl = 0;
 bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
+
+bool		yb_test_invalidate_relcache_in_planner = false;
 
 bool		yb_test_fail_next_inc_catalog_version = false;
 
@@ -9040,4 +9044,39 @@ YbGetTraceparentFromTraceContext(const char *trace_context, size_t trace_context
 	traceparent_out[YB_TRACEPARENT_VALUE_LEN] = '\0';
 
 	return YB_TRACEPARENT_OK;
+}
+
+/*
+ * YbInvalidatePlannerRelcache -- test hook implementation for
+ * yb_test_invalidate_relcache_in_planner.  Invalidates every base relation
+ * and its index relcache entries on the given PlannerInfo so that
+ * subsequent relation_open() calls rebuild fresh entries.
+ */
+void
+YbInvalidatePlannerRelcache(PlannerInfo *root)
+{
+	Index		rti;
+
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
+	{
+		RelOptInfo *brel = root->simple_rel_array[rti];
+		RangeTblEntry *brte = root->simple_rte_array[rti];
+		ListCell   *lc;
+
+		if (brel == NULL)
+			continue;
+
+		/* Invalidate the base relation itself (if it's a real table). */
+		if (brte != NULL && brte->rtekind == RTE_RELATION &&
+			OidIsValid(brte->relid))
+			RelationCacheInvalidateEntry(brte->relid);
+
+		/* Invalidate each of its indexes. */
+		foreach(lc, brel->indexlist)
+		{
+			IndexOptInfo *idx = (IndexOptInfo *) lfirst(lc);
+
+			RelationCacheInvalidateEntry(idx->indexoid);
+		}
+	}
 }

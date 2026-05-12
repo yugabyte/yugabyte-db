@@ -2841,6 +2841,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_invalidate_relcache_in_planner", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the relcache entries for every base relation "
+						 "and its indexes will be invalidated after "
+						 "add_base_rels_to_query() in query_planner()."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_invalidate_relcache_in_planner,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, the next increment catalog version will "
 						 "fail right before it's done. This only works when "
