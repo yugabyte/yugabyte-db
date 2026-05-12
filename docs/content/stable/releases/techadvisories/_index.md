@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 30772>}}
+| Potential database inconsistency with very large transactions
+| {{<product "ysql">}}
+| {{<release "All">}}
+| {{<nobreak "11 May 2026">}}
+|
 | {{<ta 30653>}}
 | Index inconsistency with in-place update on INCLUDE column
 | {{<product "ysql">}}
