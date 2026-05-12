@@ -179,7 +179,7 @@ DR failover is available after step 3; DR switchover is available after both uni
 
 ### Upgrade bidirectional xCluster
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both universes at the same time. Perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 The sequence is as follows:
 
