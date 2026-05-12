@@ -10,25 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 package org.yb.pgsql;
 
 import java.util.Collections;
-import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressIsolation extends BasePgRegressTest {
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("yb_enable_read_committed_isolation", "true");
-    return flagMap;
-  }
-
+@RunWith(value=YBTestRunner.class)
+public class TestPgRegressIsolationPorted extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -36,7 +27,8 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
 
   private void runIsolationRegressTest() throws Exception {
     runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_isolation_schedule",
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
+        "yb_pg_isolation_schedule",
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
   }
 
