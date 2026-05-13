@@ -101,6 +101,7 @@ Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if use
   -d /tmp/claude/pr-desc-<issue>.md \
   -T /tmp/claude/pr-testplan-<issue>.md \
   [-U /tmp/claude/pr-upgrade-<issue>.md] \
+  [-D] \
   -r <reviewers>
 ```
 
@@ -113,6 +114,7 @@ Inputs:
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
 - **`-r`**: comma-separated handles and/or team slugs (`alice,bob,yugabyte/db-approvers`). Optional.
+- **`-D` (optional)**: open the PR as a GitHub draft (`gh pr create --draft`). Use when the user wants to read the rendered PR before notifications fire and before reviewers are auto-pinged. After the user reviews, convert with `gh pr ready <num>`. **Use whenever the user asks for "draft PR(s)" or says they want to inspect the PR on GitHub before sending it out.** When `-D` is set, the script still requests reviewers via the REST endpoint as usual — GitHub silences review-requested notifications until the PR is marked ready, so the two settings combine cleanly.
 
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.

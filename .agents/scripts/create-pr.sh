@@ -6,7 +6,7 @@
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
 #
 # usage: new-pr -i <issue> -t <title> -d <description-file> -T <test-plan-file>
-#               [-U <upgrade-file>] [-r <reviewers>] [-b <base>]
+#               [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-D]
 #
 # Required inputs:
 #   -i issue       GitHub issue number ("31151" or "#31151") or JIRA key
@@ -32,6 +32,10 @@
 #                  arrive as "org/slug"; the org/ prefix is stripped before
 #                  routing the slug to team_reviewers[].
 #   -b base        Base branch on the upstream repo (default: master).
+#   -D             Open the PR as a GitHub draft. Useful when you want to
+#                  read the rendered PR before notifications fire and before
+#                  reviewers are auto-pinged. Convert with
+#                  `gh pr ready <num>` when ready for review.
 #
 # Env overrides:
 #   GH_REPO         default: yugabyte/yugabyte-db
@@ -54,12 +58,13 @@ test_plan_file=""
 upgrade_file=""
 reviewers=""
 base_branch="master"
+draft=0
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
 usage() {
   cat <<EOF >&2
 usage: $(basename "$0") -i <issue> -t <title> -d <description-file> -T <test-plan-file> \\
-                        [-U <upgrade-file>] [-r <reviewers>] [-b <base>]
+                        [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-D]
 
 Required:
   -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN)
@@ -74,6 +79,8 @@ Optional:
                  .proto file** -- the script aborts otherwise.
   -r reviewers   Comma-separated handles and/or team slugs (org/slug)
   -b base        Base branch (default: master)
+  -D             Open the PR as a GitHub draft (\`gh pr create --draft\`).
+                 Convert with \`gh pr ready <num>\` when ready for review.
 
 Example:
   $(basename "$0") -i 31151 -t "DocDB: Fix flake in SamplingProfilerTest" \\
@@ -83,7 +90,7 @@ EOF
   exit 1
 }
 
-while getopts ":i:t:d:T:U:r:b:h" opt; do
+while getopts ":i:t:d:T:U:r:b:Dh" opt; do
   case "$opt" in
     i) issue="$OPTARG" ;;
     t) title="$OPTARG" ;;
@@ -92,6 +99,7 @@ while getopts ":i:t:d:T:U:r:b:h" opt; do
     U) upgrade_file="$OPTARG" ;;
     r) reviewers="$OPTARG" ;;
     b) base_branch="$OPTARG" ;;
+    D) draft=1 ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
     :)  echo "error: -$OPTARG requires an argument" >&2; usage ;;
@@ -275,7 +283,11 @@ fi
 # same value (and got fragile for SSH aliases / non-standard remote URLs).
 pr_head="${gh_user}:${current_branch}"
 
-echo ">>> creating PR: ${full_title}"
+if (( draft )); then
+  echo ">>> creating PR (draft): ${full_title}"
+else
+  echo ">>> creating PR: ${full_title}"
+fi
 # Assemble the body: description -> ## Summary, optional -> ## Upgrade/
 # Rollback safety, test plan -> ## Test plan. Forcing each as a separate
 # arg means a caller can't accidentally omit a section.
@@ -300,8 +312,12 @@ trap 'rm -f "$combined_body"' EXIT
   echo
   cat "$test_plan_file"
 } > "$combined_body"
-pr_url=$(gh pr create -R "$GH_REPO" -B "$base_branch" -H "$pr_head" \
-                     -t "$full_title" -F "$combined_body")
+gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
+                   -t "$full_title" -F "$combined_body")
+if (( draft )); then
+  gh_pr_create_args+=(--draft)
+fi
+pr_url=$(gh pr create "${gh_pr_create_args[@]}")
 echo "$pr_url"
 pr_num="${pr_url##*/}"
 
