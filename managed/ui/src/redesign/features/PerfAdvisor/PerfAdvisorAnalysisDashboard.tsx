@@ -23,7 +23,6 @@ export const PerfAdvisorAnalysisDashboard = ({
 }: PerfAdvisorAnalysisDashboardProps) => {
   const { t } = useTranslation();
 
-  const [paData, setPaData] = useState<any>([]);
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const [selectedTroubleshootUuid, setSelectedTroubleshootUuid] = useState<string | null>(
     troubleshootUuid
@@ -33,23 +32,20 @@ export const PerfAdvisorAnalysisDashboard = ({
     api.fetchUniverse(universeUuid)
   );
 
-  // Initialize troubleshootUuid from URL parameter
+  const perfAdvisorUniverseList = useQuery(
+    PERF_ADVISOR_QUERY_KEY.fetchPerfAdvisorList,
+    () => PerfAdvisorAPI.fetchPerfAdvisorList()
+  );
+
+  const paUrl = perfAdvisorUniverseList.data?.[0]?.paUrl;
+  const apiUrl = isNonEmptyString(paUrl) ? `${paUrl}/api` : '';
+
   useEffect(() => {
     if (troubleshootUuid) {
       setSelectedTroubleshootUuid(troubleshootUuid);
       setQueryId(null);
     }
   }, [troubleshootUuid]);
-
-  const perfAdvisorUniverseList = useQuery(
-    PERF_ADVISOR_QUERY_KEY.fetchPerfAdvisorList,
-    () => PerfAdvisorAPI.fetchPerfAdvisorList(),
-    {
-      onSuccess: (data) => {
-        setPaData(data);
-      }
-    }
-  );
 
   const onSelectedIssue = (selectedIssueId: string | null) => {
     setSelectedTroubleshootUuid(selectedIssueId);
@@ -75,7 +71,8 @@ export const PerfAdvisorAnalysisDashboard = ({
   if (
     perfAdvisorUniverseList.isLoading ||
     universe.isLoading ||
-    (universe.isIdle && universe.data === undefined)
+    (universe.isIdle && universe.data === undefined) ||
+    !isNonEmptyString(apiUrl)
   ) {
     return <YBLoading />;
   }
@@ -97,7 +94,7 @@ export const PerfAdvisorAnalysisDashboard = ({
           onSelectedIssue={onSelectedIssue}
           onSelectedQuery={onSelectedQuery}
           timezone={currentUserTimezone}
-          apiUrl={isNonEmptyString(paData?.[0]?.paUrl) ? `${paData[0].paUrl}/api` : ''}
+          apiUrl={apiUrl}
         />
       </Box>
     </>
