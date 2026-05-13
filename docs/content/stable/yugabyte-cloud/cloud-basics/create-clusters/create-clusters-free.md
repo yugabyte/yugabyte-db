@@ -22,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- Access to [Preview, Innovation, and Early Access release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
+- Access to [Extended and Rapid release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
 - Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Built-in [connection pooling](../../../../additional-features/connection-manager-ysql/).
 
