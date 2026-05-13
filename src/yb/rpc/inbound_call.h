@@ -77,9 +77,11 @@ class InboundCallHandler {
 
   virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
 
-  virtual std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
+  virtual std::optional<int64_t> CallQueued(InboundCall* call, int64_t rpc_queue_limit) = 0;
 
   virtual void CallDequeued(InboundCall* call) = 0;
+
+  virtual std::string name() const { return ""; }
 
  protected:
   ~InboundCallHandler() = default;
@@ -316,6 +318,17 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     void Run() override;
 
     void Done(const Status& status) override;
+
+    std::string ToString() const override {
+      if (call_) {
+        std::string res = call_->method_name().ToBuffer();
+        if (handler_ && !handler_->name().empty()) {
+          res += " (source: " + handler_->name() + ")";
+        }
+        return res;
+      }
+      return "";
+    }
 
     ~InboundCallTask() override = default;
 

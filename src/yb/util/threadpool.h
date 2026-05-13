@@ -136,6 +136,10 @@ class ThreadPool {
     underlying_->BusyWait(MonoTime::kUninitialized);
   }
 
+  void DumpThreadStacks(std::string* out) {
+    underlying_->DumpThreadStacks(out);
+  }
+
   size_t NumWorkers() const {
     return underlying_->NumWorkers();
   }

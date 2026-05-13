@@ -180,7 +180,7 @@ MonoDelta InboundCall::GetTimeInQueue() const {
 
 ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit) {
   auto shared_this = shared_from(this);
-  std::optional<int64_t> rpc_queue_position = handler->CallQueued(rpc_queue_limit);
+  std::optional<int64_t> rpc_queue_position = handler->CallQueued(this, rpc_queue_limit);
   if (!rpc_queue_position) {
     return nullptr;
   }

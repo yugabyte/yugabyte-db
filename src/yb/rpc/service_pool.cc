@@ -321,6 +321,10 @@ class ServicePoolImpl final : public InboundCallHandler {
     return service_->service_name();
   }
 
+  std::string name() const override {
+    return service_name();
+  }
+
   ServiceIfPtr TEST_get_service() const {
     return service_;
   }
@@ -530,7 +534,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     return Format("Top methods currently queued: $0", JoinStrings(parts, ", "));
   }
 
-  std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
+  std::optional<int64_t> CallQueued(InboundCall* call, int64_t rpc_queue_limit) override {
     size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
     // Use the bounded fetch-add so that a rejected enqueue does NOT speculatively
     // increment queued_calls_ above max_queued_calls and pollute the high-water-mark
@@ -553,10 +557,17 @@ class ServicePoolImpl final : public InboundCallHandler {
       // queued_calls is the pre-add value; the actual post-add queue depth is +1.
       int64_t new_depth = queued_calls + 1;
       if (implicit_cast<size_t>(new_depth) >= threshold) {
+        auto thread_pool = thread_pool_provider_(call->pool_tag());
+        std::string thread_stacks;
+        if (thread_pool) {
+          thread_pool->DumpThreadStacks(&thread_stacks);
+        }
         YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
             << "Queue depth " << new_depth << " exceeds threshold of "
             << threshold << " (" << pct << "% of " << max_queued_calls_ << "). "
-            << DumpTopKMethods();
+            << DumpTopKMethods() << "\n"
+            << "Thread pool stacks:\n"
+            << thread_stacks;
       }
     }
 

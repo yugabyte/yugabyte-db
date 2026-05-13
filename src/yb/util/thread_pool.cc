@@ -122,6 +122,20 @@ class Worker : public boost::intrusive::list_base_hook<> {
   Worker(const Worker& worker) = delete;
   void operator=(const Worker& worker) = delete;
 
+  void DumpThreadStack(std::string* out) {
+    if (thread_) {
+      *out += yb::DumpThreadStack(thread_->tid_for_stack());
+      std::lock_guard lock(active_task_mutex_);
+      if (active_task_) {
+        std::string desc = active_task_->ToString();
+        if (!desc.empty()) {
+          *out += "  Currently processing: " + desc + "\n";
+        }
+      }
+      *out += "\n";
+    }
+  }
+
   void Stop() {
     ThreadPoolTask* task;
     {
@@ -213,15 +227,31 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 #endif
       auto start = MonoTime::NowIf(has_run_metrics);
+      {
+        std::lock_guard lock(active_task_mutex_);
+        active_task_ = task;
+      }
       if (!task->run_token()) {
         task->Run();
+        {
+          std::lock_guard lock(active_task_mutex_);
+          active_task_ = nullptr;
+        }
         task->Done(Status::OK());
       } else {
         auto run_token = task->run_token()->lock();
         if (run_token) {
           task->Run();
+          {
+            std::lock_guard lock(active_task_mutex_);
+            active_task_ = nullptr;
+          }
           task->Done(Status::OK());
         } else {
+          {
+            std::lock_guard lock(active_task_mutex_);
+            active_task_ = nullptr;
+          }
           task->Done(kShuttingDownStatus);
         }
       }
@@ -318,6 +348,8 @@ class Worker : public boost::intrusive::list_base_hook<> {
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
   ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
+  std::mutex active_task_mutex_;
+  ThreadPoolTask* active_task_ GUARDED_BY(active_task_mutex_) = nullptr;
 };
 
 struct WorkerLink {
@@ -563,6 +595,13 @@ class YBThreadPool::Impl {
     workers.clear_and_dispose(std::default_delete<Worker>());
   }
 
+  void DumpThreadStacks(std::string* out) {
+    std::lock_guard lock(mutex_);
+    for (auto& worker : workers_) {
+      worker.DumpThreadStack(out);
+    }
+  }
+
   bool Owns(Thread* thread) {
     return thread && thread->user_data() == &share_;
   }
@@ -649,6 +688,10 @@ void YBThreadPool::Shutdown() {
 
 const ThreadPoolOptions& YBThreadPool::options() const {
   return impl_->options();
+}
+
+void YBThreadPool::DumpThreadStacks(std::string* out) {
+  impl_->DumpThreadStacks(out);
 }
 
 bool YBThreadPool::Owns(Thread* thread) {

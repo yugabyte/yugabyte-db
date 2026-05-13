@@ -66,6 +66,8 @@ class ThreadPoolTask {
   void set_cgroup(Cgroup* cgroup) { task_cgroup_ = cgroup; }
   Cgroup* cgroup() const { return task_cgroup_; }
 
+  virtual std::string ToString() const { return ""; }
+
  protected:
   virtual ~ThreadPoolTask() {}
 
@@ -214,6 +216,8 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
   bool Owns(Thread* thread);
   bool OwnsThisThread();
   bool BusyWait(MonoTime deadline);
+
+  void DumpThreadStacks(std::string* out);
 
   size_t NumWorkers() const;
   bool Idle() const;
