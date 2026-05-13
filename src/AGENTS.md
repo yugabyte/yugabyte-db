@@ -15,7 +15,7 @@ The `yugabyte/yugabyte-db` repo is public. Every GitHub issue, PR, comment, comm
 **Never write any of the following into a GitHub issue title/body/comment, PR title/description/comment, Phorge diff title/summary/test plan/comment, commit subject or body, code or test comment, test code, test fixture, test data file, golden output file, log example, fixture YAML, mock response, or file name:**
 
 - **Customer-identifying information** — company names, account IDs, universe/cluster UUIDs or names, environment names, region/zone names tied to a customer deployment, or any string that ties a behavior back to a specific customer. Substitute with `customer-1`, `acme-corp`, a generic description, or omit. This includes filenames: do **not** name a test `test_repro_acme_orders.cc`.
-- **PII** — real emails, names, phone numbers, postal addresses, real IP addresses (public **or** private — a customer's `10.x` address is still theirs). In tests, use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`.
+- **PII** — real emails, names, phone numbers, postal addresses, real IP addresses (public **or** private — a customer's `10.x` address is still theirs). In tests, use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phone numbers `555-0100`–`555-0199`.
 - **Unanonymized customer schemas, queries, plans, or data** — table names, column names, query text, query plans (including `EXPLAIN` output), sample rows, JSON payloads, or any byte taken from a real customer. Reconstruct a minimal reproducer with synthetic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect. Renaming a single column is **not** anonymization if the rest of the schema is intact and recognizable.
 - **Secrets and credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 bucket names, internal-only Slack/JIRA/Linear URLs, internal hostnames, vault paths. This includes test fixtures: don't bake a real-looking access key into a mock — use obvious placeholders like `AKIAIOSFODNN7EXAMPLE` (AWS docs example) or `dummy_token`.
 - **YugabyteDB-internal information not yet public** — unreleased roadmap details, internal SLAs, embargoed security findings, internal infra hostnames.
@@ -43,12 +43,12 @@ It is a common mistake to think "the test file isn't the PR description, so the 
 
 Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
 
-- [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names.
+- [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
 - [ ] No customer-derived table names, column names, SQL text, query plans, JSON payloads, or sample rows.
-- [ ] No tokens, API keys, passwords, certificates, private keys, license keys, or kubeconfigs.
-- [ ] No internal-only hostnames, URLs, Grafana/Slack links, or vault paths.
-- [ ] No unreleased internal information (roadmap, embargoed CVEs, unshipped gflag/code names).
+- [ ] No tokens, API keys, passwords, certificates, private keys, license keys, kubeconfigs, or production S3 bucket names.
+- [ ] No internal-only hostnames, URLs, Jenkins/Grafana/Slack/Linear links, or vault paths.
+- [ ] No unreleased internal information (roadmap, SLAs, embargoed security findings, unshipped gflag/code names, internal infra hostnames).
 - [ ] Test filenames, test function names, and golden-output files reviewed too — not just the prose.
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
