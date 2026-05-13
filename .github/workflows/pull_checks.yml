@@ -65,7 +65,7 @@ jobs:
           if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then"
             body="${{ github.event.pull_request.body }}"
             bp_error=0
-            COMMIT_HDR_RE="(^|$'\n')Original commit(s)?:"
+            COMMIT_HDR_RE='(^|$'\n')Original commit(s)?:'
             COMMIT_LIST_RE='(- )?[0-9a-f]+ / [#D][0-9]+'
             if [[ "$body" =~ $COMMIT_HDR_RE ]]; then
               echo "Found commit header: ${BASH_REMATCH[0]}"
