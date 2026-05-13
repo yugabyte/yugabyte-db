@@ -201,9 +201,9 @@ class ServicePoolImpl final : public InboundCallHandler {
           EscapeMetricNameForPrometheus(&id);
           string description = id + " metric for ServicePoolImpl";
           rpcs_in_queue_ = entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
-              std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+              std::make_shared<OwningGaugePrototype<int64_t>>(
                   entity->prototype().name(), std::move(id),
-                  description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
+                  description, MetricUnit::kRequests, description, MetricLevel::kInfo),
               static_cast<int64>(0) /* initial_value */);
 
           rpcs_queue_max_size_ = METRIC_rpcs_queue_max_size.Instantiate(entity, max_queued_calls_);
@@ -555,19 +555,27 @@ class ServicePoolImpl final : public InboundCallHandler {
     if (pct > 0) {
       size_t threshold = (max_queued_calls_ * pct) / 100;
       // queued_calls is the pre-add value; the actual post-add queue depth is +1.
-      int64_t new_depth = queued_calls + 1;
-      if (implicit_cast<size_t>(new_depth) >= threshold) {
-        auto thread_pool = thread_pool_provider_(call->pool_tag());
-        std::string thread_stacks;
-        if (thread_pool) {
-          thread_pool->DumpThreadStacks(&thread_stacks);
+      if (implicit_cast<size_t>(queued_calls + 1) >= threshold) {
+        // Use an explicit LogThrottler (rather than YB_LOG_EVERY_N_SECS) so that the
+        // expensive DumpThreadStacks() call is also gated by the throttle; the macro
+        // version would still pay the cost of the signal-based stack capture before
+        // discarding the log line.
+        static logging_internal::LogThrottler throttler;
+        int suppressed = throttler.ShouldLog(5);
+        if (suppressed >= 0) {
+          auto thread_pool = thread_pool_provider_(call->pool_tag());
+          std::string thread_stacks;
+          if (thread_pool) {
+            thread_pool->DumpThreadStacks(&thread_stacks);
+          }
+          LOG(WARNING) << LogPrefix()
+              << "Queue depth " << (queued_calls + 1) << " exceeds threshold of "
+              << threshold << " (" << pct << "% of " << max_queued_calls_ << "). "
+              << DumpTopKMethods() << "\n"
+              << "Thread pool stacks:\n"
+              << thread_stacks
+              << (suppressed > 0 ? Format(" [suppressed $0 similar messages]", suppressed) : "");
         }
-        YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
-            << "Queue depth " << new_depth << " exceeds threshold of "
-            << threshold << " (" << pct << "% of " << max_queued_calls_ << "). "
-            << DumpTopKMethods() << "\n"
-            << "Thread pool stacks:\n"
-            << thread_stacks;
       }
     }
 
@@ -672,9 +680,9 @@ class ServicePoolImpl final : public InboundCallHandler {
     EscapeMetricNameForPrometheus(&id);
     auto label = Format("$0 ($1::$2)", description, service_->service_name(), method);
     return metric_entity_->FindOrCreateMetric<Counter>(
-        std::shared_ptr<CounterPrototype>(new OwningCounterPrototype(
+        std::make_shared<OwningCounterPrototype>(
             metric_entity_->prototype().name(), id, label, MetricUnit::kRequests, description,
-            MetricLevel::kInfo)));
+            MetricLevel::kInfo));
   }
 
   scoped_refptr<AtomicGauge<int64_t>> MakeGauge(
