@@ -711,8 +711,7 @@ public class CertificateHelper {
   }
 
   public static PrivateKey getPrivateKey(String keyContent) {
-    try {
-      PEMParser parser = new PEMParser(new StringReader(keyContent));
+    try (PEMParser parser = new PEMParser(new StringReader(keyContent))) {
       PEMKeyPair pemKeyPair = (PEMKeyPair) parser.readObject();
       return new JcaPEMKeyConverter().getPrivateKey(pemKeyPair.getPrivateKeyInfo());
     } catch (Exception e) {

@@ -66,6 +66,7 @@ message SubmitTaskRequest {
         DownloadSoftwareInput downloadSoftwareInput = 13;
         DestroyServerInput destroyServerInput = 14;
         YnpPreflightCheckInput ynpPreflightCheckInput = 15;
+        RotateSshKeyInput rotateSshKeyInput = 16;
     }
 }
 
@@ -94,6 +95,7 @@ message DescribeTaskResponse {
         DownloadSoftwareOutput DownloadSoftwareOutput = 13;
         DestroyServerOutput destroyServerOutput = 14;
         YnpPreflightCheckOutput ynpPreflightCheckOutput = 15;
+        RotateSshKeyOutput rotateSshKeyOutput = 16;
     }
 }
 

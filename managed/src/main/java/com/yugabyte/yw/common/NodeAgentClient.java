@@ -55,6 +55,8 @@ import com.yugabyte.yw.nodeagent.PingRequest;
 import com.yugabyte.yw.nodeagent.PingResponse;
 import com.yugabyte.yw.nodeagent.PreflightCheckInput;
 import com.yugabyte.yw.nodeagent.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.RotateSshKeyInput;
+import com.yugabyte.yw.nodeagent.RotateSshKeyOutput;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -1231,6 +1233,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), YnpPreflightCheckOutput.class);
+  }
+
+  public RotateSshKeyOutput runRotateSshKey(
+      NodeAgent nodeAgent, RotateSshKeyInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setRotateSshKeyInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), RotateSshKeyOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {

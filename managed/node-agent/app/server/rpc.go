@@ -451,6 +451,17 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	rotateSshKeyInput := req.GetRotateSshKeyInput()
+	if rotateSshKeyInput != nil {
+		rotateSshKeyHandler := task.NewRotateSSHKeyHandler(rotateSshKeyInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, rotateSshKeyHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running rotate SSH key - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 
