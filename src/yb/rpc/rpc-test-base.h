@@ -230,6 +230,7 @@ class RpcTestBase : public YBTest {
   Messenger* server_messenger() const { return server_->messenger(); }
   TestServer& server() const { return *server_; }
   const scoped_refptr<MetricEntity>& metric_entity() const { return metric_entity_; }
+  MetricRegistry* metric_registry() { return &metric_registry_; }
 
  private:
   MetricRegistry metric_registry_;

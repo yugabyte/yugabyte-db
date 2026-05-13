@@ -59,6 +59,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
@@ -104,6 +105,27 @@ METRIC_DEFINE_counter(server, rpcs_queue_overflow,
                       "Number of RPCs dropped because the service queue "
                       "was full.");
 
+METRIC_DEFINE_counter(server, rpcs_added_to_queue,
+                      "RPCs Added To Service Queue",
+                      yb::MetricUnit::kRequests,
+                      "Cumulative count of RPCs that were successfully placed onto a service "
+                      "queue. Diff against rpcs_started_processing to tell whether the queue is "
+                      "growing because of an arrival surge or because of slow draining.");
+
+METRIC_DEFINE_counter(server, rpcs_dequeued,
+                      "RPCs Removed From Service Queue",
+                      yb::MetricUnit::kRequests,
+                      "Cumulative count of RPCs removed from a service queue. Includes both "
+                      "RPCs that were picked up for processing and RPCs that were popped off "
+                      "the queue because they had already timed out.");
+
+METRIC_DEFINE_counter(server, rpcs_started_processing,
+                      "RPCs That Started Service Handler",
+                      yb::MetricUnit::kRequests,
+                      "Cumulative count of RPCs for which the service handler began executing. "
+                      "rpcs_dequeued - rpcs_started_processing approximates the number of calls "
+                      "discarded after dequeue (e.g. timed out in the queue).");
+
 namespace yb {
 namespace rpc {
 
@@ -111,6 +133,12 @@ namespace {
 
 const CoarseDuration kTimeoutCheckGranularity = 100ms;
 const char* const kTimedOutInQueue = "Call waited in the queue past deadline";
+
+// The maximum number of distinct method names we will emit per-method metrics for.
+// In reality, we won't even come close to this number. This is just a safety measure
+// against DoS attacks (e.g. an attacker sending garbage method names in RPC headers
+// to unbounded-grow our metrics map and exhaust memory).
+constexpr size_t kMaxPerMethodMetrics = 1000;
 
 } // namespace
 
@@ -126,11 +154,15 @@ class ServicePoolImpl final : public InboundCallHandler {
         thread_pool_provider_(std::move(thread_pool_provider)),
         scheduler_(*scheduler),
         service_(std::move(service)),
+        metric_entity_(entity),
         incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
         rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
         rpcs_timed_out_early_in_queue_(
             METRIC_rpcs_timed_out_early_in_queue.Instantiate(entity)),
         rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
+        rpcs_added_to_queue_(METRIC_rpcs_added_to_queue.Instantiate(entity)),
+        rpcs_dequeued_(METRIC_rpcs_dequeued.Instantiate(entity)),
+        rpcs_started_processing_(METRIC_rpcs_started_processing.Instantiate(entity)),
         check_timeout_strand_(scheduler->io_service()),
         log_prefix_(Format("$0: ", service_->service_name())) {
 
@@ -196,6 +228,11 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
+    rpcs_added_to_queue_->Increment();
+    if (auto* per_method_counters = GetPerMethodCounters(call->method_name())) {
+      per_method_counters->added->Increment();
+    }
+
     auto call_deadline = call->GetClientDeadline();
     if (call_deadline != CoarseTimePoint::max()) {
       pre_check_timeout_queue_.Push(new WeakInboundCall(std::move(call)));
@@ -233,6 +270,9 @@ class ServicePoolImpl final : public InboundCallHandler {
     YB_LOG_EVERY_N_SECS(WARNING, 3) << LogPrefix() << err_msg;
     const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
+    if (auto* per_method_counters = GetPerMethodCounters(call->method_name())) {
+      per_method_counters->overflow->Increment();
+    }
     call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
     last_backpressure_at_.store(
         CoarseMonoClock::Now().time_since_epoch(), std::memory_order_release);
@@ -272,6 +312,7 @@ class ServicePoolImpl final : public InboundCallHandler {
       error_message = "The server is overloaded. Call waited in the queue past max_time_in_queue.";
     } else {
       if (incoming->TryStartProcessing()) {
+        rpcs_started_processing_->Increment();
         TRACE_TO(incoming->trace(), "Handling call $0", AsString(incoming->method_name()));
         service_->Handle(std::move(incoming));
       }
@@ -410,17 +451,76 @@ class ServicePoolImpl final : public InboundCallHandler {
   void CallDequeued() override {
     queued_calls_.fetch_sub(1, std::memory_order_relaxed);
     rpcs_in_queue_->Decrement();
+    rpcs_dequeued_->Increment();
+  }
+
+  // Per-RPC-method counters. Lazily registered on first occurrence of each method name.
+  // Cardinality is bounded by the number of methods declared on the service (~10-30).
+  struct PerMethodCounters {
+    scoped_refptr<Counter> added;
+    scoped_refptr<Counter> overflow;
+  };
+
+  PerMethodCounters* GetPerMethodCounters(Slice method_name) EXCLUDES(per_method_mutex_) {
+    auto method_str = method_name.ToBuffer();
+    {
+      SharedLock<std::shared_mutex> lock(per_method_mutex_);
+      auto it = per_method_counters_.find(method_str);
+      if (PREDICT_TRUE(it != per_method_counters_.end())) {
+        return &it->second;
+      }
+    }
+    std::lock_guard lock(per_method_mutex_);
+    auto it = per_method_counters_.find(method_str);
+    if (it != per_method_counters_.end()) {
+      return &it->second;
+    }
+    if (per_method_counters_.size() >= kMaxPerMethodMetrics) {
+      return nullptr;
+    }
+    auto [new_it, inserted] = per_method_counters_.try_emplace(std::move(method_str));
+    if (inserted) {
+      new_it->second = MakePerMethodCounters(new_it->first);
+    }
+    return &new_it->second;
+  }
+
+  PerMethodCounters MakePerMethodCounters(const std::string& method) REQUIRES(per_method_mutex_) {
+    return {
+        .added = MakeCounter("rpcs_added_to_queue", method,
+                             "RPCs added to the service queue, by method"),
+        .overflow = MakeCounter("rpcs_queue_overflow", method,
+                                "RPCs dropped because the service queue was full, by method"),
+    };
+  }
+
+  scoped_refptr<Counter> MakeCounter(
+      const std::string& base_name, const std::string& method, const std::string& description) {
+    auto id = Format("$0_$1_$2", base_name, service_->metric_name(), method);
+    EscapeMetricNameForPrometheus(&id);
+    auto label = Format("$0 ($1::$2)", description, service_->service_name(), method);
+    return metric_entity_->FindOrCreateMetric<Counter>(
+        std::shared_ptr<CounterPrototype>(new OwningCounterPrototype(
+            metric_entity_->prototype().name(), id, label, MetricUnit::kRequests, description,
+            MetricLevel::kInfo)));
   }
 
   const size_t max_queued_calls_;
   ThreadPoolProvider thread_pool_provider_;
   Scheduler& scheduler_;
   ServiceIfPtr service_;
+  scoped_refptr<MetricEntity> metric_entity_;
   scoped_refptr<EventStats> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_timed_out_early_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
+  scoped_refptr<Counter> rpcs_added_to_queue_;
+  scoped_refptr<Counter> rpcs_dequeued_;
+  scoped_refptr<Counter> rpcs_started_processing_;
   scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
+  std::shared_mutex per_method_mutex_;
+  std::unordered_map<std::string, PerMethodCounters> per_method_counters_
+      GUARDED_BY(per_method_mutex_);
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
   std::atomic<int64_t> queued_calls_{0};

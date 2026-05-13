@@ -44,6 +44,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -52,6 +53,9 @@
 
 METRIC_DECLARE_counter(rpc_connections_accepted);
 METRIC_DECLARE_counter(rpcs_queue_overflow);
+METRIC_DECLARE_counter(rpcs_added_to_queue);
+METRIC_DECLARE_counter(rpcs_dequeued);
+METRIC_DECLARE_counter(rpcs_started_processing);
 
 using std::string;
 using std::shared_ptr;
@@ -241,10 +245,42 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   ASSERT_EQ(1, errors_backpressure);
   ASSERT_EQ(2, errors_shutdown);
 
-  // Check that RPC queue overflow metric is 1
-  Counter *rpcs_queue_overflow =
-    METRIC_rpcs_queue_overflow.Instantiate(metric_entity()).get();
-  ASSERT_EQ(1, rpcs_queue_overflow->value());
+  // The aggregate counters should reflect: 2 calls successfully queued and 1 call rejected
+  // due to backpressure. The two queued calls are also dequeued during shutdown but never
+  // start processing because the thread pool has zero workers.
+  scoped_refptr<Counter> overflow =
+      METRIC_rpcs_queue_overflow.Instantiate(metric_entity());
+  scoped_refptr<Counter> added =
+      METRIC_rpcs_added_to_queue.Instantiate(metric_entity());
+  scoped_refptr<Counter> dequeued =
+      METRIC_rpcs_dequeued.Instantiate(metric_entity());
+  scoped_refptr<Counter> started =
+      METRIC_rpcs_started_processing.Instantiate(metric_entity());
+  EXPECT_EQ(1, overflow->value());
+  EXPECT_EQ(2, added->value());
+  EXPECT_EQ(2, dequeued->value());
+  EXPECT_EQ(0, started->value());
+
+  // The new metrics should also show up in a Prometheus scrape, including the lazily-created
+  // per-method counters for "Add". This guards against regressions where a metric is wired into
+  // a service pool but never makes it through PrometheusWriter (e.g. wrong aggregation level,
+  // missing label, or filtered out by default options).
+  std::stringstream prom_output;
+  MetricPrometheusOptions prom_opts;
+  PrometheusWriter prom_writer(&prom_output, prom_opts);
+  ASSERT_OK(metric_registry()->WriteForPrometheus(&prom_writer, prom_opts));
+  const std::string prom_text = prom_output.str();
+  for (const char* metric_name : {
+           "rpcs_added_to_queue",
+           "rpcs_dequeued",
+           "rpcs_started_processing",
+           "rpcs_added_to_queue_yb_rpc_test_CalculatorService_Add",
+           "rpcs_queue_overflow_yb_rpc_test_CalculatorService_Add",
+       }) {
+    EXPECT_NE(prom_text.find(metric_name), std::string::npos)
+        << "Metric '" << metric_name << "' missing from Prometheus output. Full output:\n"
+        << prom_text;
+  }
 }
 
 static void HammerServerWithTCPConns(const Endpoint& addr) {
