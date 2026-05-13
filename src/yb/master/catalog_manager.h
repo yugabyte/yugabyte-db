@@ -1346,13 +1346,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch) override;
 
   // API to list all available snapshots.
-  Status ListSnapshots(const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp);
+  Status ListSnapshots(
+      const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp);
+
+  Status ListSnapshotsInternal(
+      const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
+      bool skip_missing_tables = false);
 
   Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req,
       ListSnapshotRestorationsResponsePB* resp) override;
 
-  Result<SnapshotInfoPB> GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id);
+  Result<SnapshotInfoPB> GetSnapshotInfoForClone(const TxnSnapshotId& snapshot_id);
 
   // Generate the SnapshotInfoPB as of read_time from the provided snapshot schedule, and return
   // the set of tablets that were RUNNING as of read_time but were HIDDEN before the actual snapshot
@@ -2746,7 +2751,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ExternalTableSnapshotDataMap& tables_data, const LeaderEpoch& epoch);
 
   Status RepackSnapshotsForBackup(
-      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables);
+      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables,
+      bool skip_missing_tables = false);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
