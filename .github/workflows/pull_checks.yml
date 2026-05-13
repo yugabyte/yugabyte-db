@@ -73,7 +73,7 @@ jobs:
               bp_error=1
             fi
             if (( bp_error == 0 )) && [[ "$body" =~ $COMMIT_LIST_RE ]]; then
-              echo "Found commit info: ${BASH_REMATCH[0]}"
+              echo "Found 'Original commit(s)' tag."
             else
               bp_error=1
             fi
