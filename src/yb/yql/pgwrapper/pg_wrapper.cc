@@ -103,8 +103,7 @@ DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
 
 // Default to 5MB
-DEFINE_NON_RUNTIME_string(
-    pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
+DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
     "defined in mem_tracker.cc. The overriding value is specifically "
     "set for Postgres backends");

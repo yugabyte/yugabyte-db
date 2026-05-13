@@ -216,15 +216,13 @@ DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "flag does not turn on or off encryption at rest, but rather allows or "
                         "disallows a user from enabling it on in the future.");
 
-DEFINE_NON_RUNTIME_int32(
-    get_universe_key_registry_backoff_increment_ms, 100,
+DEFINE_NON_RUNTIME_int32(get_universe_key_registry_backoff_increment_ms, 100,
     "Number of milliseconds added to the delay between retries of fetching the full universe key "
     "registry from master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(get_universe_key_registry_backoff_increment_ms, stable);
 TAG_FLAG(get_universe_key_registry_backoff_increment_ms, advanced);
 
-DEFINE_NON_RUNTIME_int32(
-    get_universe_key_registry_max_backoff_sec, 3,
+DEFINE_NON_RUNTIME_int32(get_universe_key_registry_max_backoff_sec, 3,
     "Maximum number of seconds to delay between retries of fetching the full universe key registry "
     "from master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);

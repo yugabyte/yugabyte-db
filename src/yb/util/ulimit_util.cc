@@ -47,9 +47,11 @@ using std::stringstream;
 using yb::operator""_KB;
 using yb::operator""_MB;
 
-// These flags allow operators to define process resource soft limits at runtime. Note that on some
-// systems, RLIM_INFINITY is defined as -1, and setting these flags to that value will result in an
-// attempt to set these resource limits to infinity. All other negative values are ignored.
+// These flags allow operators to define process resource soft limits without having to change the
+// system ulimits. The values are applied once during process startup via setrlimit(); changing
+// them after startup has no effect. Note that on some systems, RLIM_INFINITY is defined as -1, and
+// setting these flags to that value will result in an attempt to set these resource limits to
+// infinity. All other negative values are ignored.
 DEFINE_NON_RUNTIME_int64(rlimit_data, RLIM_INFINITY, "Data file size limit: bytes.");
 #if defined(__APPLE__)
 // Note that we've chosen 10240 as the default value here since this is the default system limit

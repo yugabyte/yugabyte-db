@@ -55,8 +55,7 @@ static std::string GetDefaultDocumentRoot();
 // not use these directly, but rather access them via WebserverOptions.
 // This makes it easier to instantiate web servers with different options
 // within a single unit test.
-DEFINE_NON_RUNTIME_string(
-    webserver_interface, "",
+DEFINE_NON_RUNTIME_string(webserver_interface, "",
     "Interface to start debug webserver on. If blank, webserver binds to first host IP"
     "present in the list of comma separated rpc_bind_addresses");
 TAG_FLAG(webserver_interface, advanced);
