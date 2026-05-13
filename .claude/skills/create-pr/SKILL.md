@@ -13,6 +13,26 @@ Push the current branch to the user's **fork** of `yugabyte/yugabyte-db` and cre
 
 **Contributors do not have push access to `yugabyte/yugabyte-db`.** The branch must be pushed to a personal fork, and the PR is opened cross-repo from that fork into the upstream repo.
 
+## Confidentiality — read before you write anything public
+
+**The upstream repo, every GitHub issue, every PR title/description/comment, and every commit message are PUBLIC on the internet.** Anything you (the agent) write into them is permanent and indexed by search engines. A leak cannot be unsent.
+
+**Never put any of the following into the GitHub issue (title/body/labels), the PR title, PR description, PR comments, commit messages, code comments, test code, test fixtures, golden output, or filenames:**
+
+- **Customer-identifying data** — company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names. Substitute with `customer-1`, `acme-corp`, or a generic description.
+- **PII** — real names, real email addresses, real phone numbers, real postal addresses, real IP addresses (public or private). In tests use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606).
+- **Unanonymized customer schema or queries** — table names, column names, SQL text, query plans, or sample rows pulled from a real customer report. Reconstruct a synthetic minimal reproducer using generic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect.
+- **Secrets / credentials** — API keys, tokens, passwords, certificates, license keys, kubeconfigs, production S3 buckets, internal Slack/JIRA/Linear URLs, internal hostnames.
+- **YugabyteDB-internal information not yet public** — unreleased roadmap, internal SLAs, embargoed security findings.
+
+**This applies to the test code and test data you write too** — `.cc`, `.py`, `.java`, `.sql`, golden `.out` files, YAML fixtures, mock responses, anything. If a customer's reproducer uses `acme_orders` with a `customer_email` column populated with real addresses, you must rewrite it as `t1`/`email` with `user@example.com` before the test goes anywhere near a PR.
+
+**When the source is a customer report:** read the original from the internal source (JIRA / support ticket / Slack) — never paste or link it from a public artifact. Reproduce locally with synthetic inputs. Land only the synthetic reproducer. Reference the issue by internal ticket ID (`PLAT-20518`) only; don't quote customer-facing text.
+
+**If you're unsure whether a string is sensitive, don't write it down — ask the user.** A clarifying question costs nothing; a leaked customer name in a public PR cannot be retracted.
+
+This rule applies at every step below — when you draft the commit message in Step 1, when you draft the issue body in Step 3, when you write the title in Step 4, and when you compose the description / test plan / upgrade notes in Step 5. See `src/AGENTS.md` § Confidentiality for the canonical list.
+
 ## Prerequisites
 
 This skill requires the `gh` CLI installed and authenticated:
@@ -91,6 +111,8 @@ Examples:
 If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
 ### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
+
+> **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, or license keys; internal-only hostnames, URLs, or Slack/Linear links; unreleased internal information. See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
 Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
 
