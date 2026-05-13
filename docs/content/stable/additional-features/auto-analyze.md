@@ -61,7 +61,7 @@ ALTER TABLE unused_table SET(
 
 The mapping between the flags and relopts is below.
 
-|Flag Name|Relopt (Storage Parameter)|
+|Flag Name|Table level storage parameter (relopt)|
 |---|---|
 |`ysql_enable_auto_analyze`|`yb_auto_analyze_enabled`|
 |`ysql_auto_analyze_threshold`|`yb_auto_analyze_threshold`|
