@@ -945,7 +945,7 @@ alter table atacc1 add constraint atacc_test1 primary key (test);
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-ERROR:  duplicate key value violates unique constraint "atacc1"
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
 insert into atacc1 (test) values (3);
 drop table atacc1;
 -- let's do another one where the primary key constraint fails when added

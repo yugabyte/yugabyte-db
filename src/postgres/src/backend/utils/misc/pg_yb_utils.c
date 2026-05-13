@@ -920,10 +920,12 @@ FetchUniqueConstraintName(Oid relation_id)
 {
 	const char *name = NULL;
 	Relation	rel = RelationIdGetRelation(relation_id);
+	Oid			pkindex = OidIsValid(rel->rd_pkindex) ? rel->rd_pkindex :
+		RelationGetPrimaryKeyIndex(rel);
 
-	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	if (!rel->rd_index && OidIsValid(pkindex))
 	{
-		Relation	pkey = RelationIdGetRelation(rel->rd_pkindex);
+		Relation	pkey = RelationIdGetRelation(pkindex);
 
 		name = pstrdup(RelationGetRelationName(pkey));
 
