@@ -56,12 +56,10 @@ static HTAB *YbPgInheritsCacheByChild;
 
 static bool fully_loaded = false;
 
-static void
-FindChildren(Oid parentOid, List **childTuples)
+static List *
+FindChildren(Oid parentOid)
 {
-	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-
-	*childTuples = NIL;
+	List	   *childTuples = NIL;
 
 	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
 	ScanKeyData key[1];
@@ -80,9 +78,11 @@ FindChildren(Oid parentOid, List **childTuples)
 
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		HeapTuple	copy_inheritsTuple = heap_copytuple(inheritsTuple);
 
-		*childTuples = lappend(*childTuples, copy_inheritsTuple);
+		childTuples = lappend(childTuples, copy_inheritsTuple);
+		MemoryContextSwitchTo(oldcxt);
 		elog(DEBUG3, "Found child %d for parent %d",
 			 ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid,
 			 parentOid);
@@ -90,7 +90,8 @@ FindChildren(Oid parentOid, List **childTuples)
 
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
-	MemoryContextSwitchTo(oldcxt);
+
+	return childTuples;
 }
 
 static void
@@ -128,9 +129,11 @@ YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
 		ResourceOwnerForgetYbPgInheritsRef(CurrentResourceOwner, entry);
 }
 
-static void
-GetChildCacheEntryMiss(Oid relid, YbPgInheritsCacheEntry entry)
+static List *
+FindParents(Oid relid)
 {
+	List	   *parentTuples = NIL;
+
 	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
 	ScanKeyData key[1];
 
@@ -146,19 +149,21 @@ GetChildCacheEntryMiss(Oid relid, YbPgInheritsCacheEntry entry)
 
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
-		Assert(((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid == relid);
 		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+		Assert(((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid == relid);
 		HeapTuple	copy_inheritsTuple = heap_copytuple(inheritsTuple);
 
 		elog(DEBUG3, "Found parent %d for child %d",
 			 ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhparent,
 			 relid);
-		entry->tuples = lappend(entry->tuples, copy_inheritsTuple);
+		parentTuples = lappend(parentTuples, copy_inheritsTuple);
 		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
 
+	return parentTuples;
 }
 
 void
@@ -269,16 +274,21 @@ GetYbPgInheritsCacheEntryByParent(Oid parentOid)
 {
 	Assert(YbPgInheritsCacheByParent);
 	bool		found = false;
+
+	/*
+	 * On a miss, the code below looks up the hash table twice, first for a
+	 * HASH_FIND, then for a subsequent HASH_ENTER to create the entry. Do
+	 * not attempt to replace with a single HASH_ENTER, otherwise an
+	 * empty entry is left behind if the subsequent scan to find the miss fails.
+	 */
 	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCacheByParent,
-											   (void *) &parentOid, HASH_ENTER,
+											   (void *) &parentOid, HASH_FIND,
 											   &found);
 
 	if (!found)
 	{
-		entry->oid = parentOid;
-		entry->tuples = NIL;
-		entry->refcount = 1;
-		/* If we are fully loaded, we don't need to attempt a lookup */
+		List	   *childTuples = NIL;
+
 		if (fully_loaded)
 		{
 			elog(DEBUG3, "YbPgInheritsCacheByParent neg hit for parentOid %d", parentOid);
@@ -289,10 +299,17 @@ GetYbPgInheritsCacheEntryByParent(Oid parentOid)
 				 "YbPgInheritsCacheByParent miss for parent %d", parentOid);
 			YbNumCatalogCacheMisses++;
 			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
-			FindChildren(parentOid, &entry->tuples);
-			if (entry->tuples == NIL)
+			childTuples = FindChildren(parentOid);
+			if (childTuples == NIL)
 				YbNumCatalogCacheNegMisses[YbAdhocCacheTable_pg_inherits]++;
 		}
+
+		entry = hash_search(YbPgInheritsCacheByParent,
+							(void *) &parentOid, HASH_ENTER, &found);
+		Assert(!found);
+		entry->oid = parentOid;
+		entry->tuples = childTuples;
+		entry->refcount = 1;
 	}
 	else
 	{
@@ -307,17 +324,21 @@ GetYbPgInheritsCacheEntryByChild(Oid relid)
 {
 	bool		found = false;
 
+	/*
+	 * On a miss, the code below looks up the hash table twice, first for a
+	 * HASH_FIND, then for a subsequent HASH_ENTER to create the entry. Do
+	 * not attempt to replace with a single HASH_ENTER, otherwise an
+	 * empty entry is left behind if the subsequent scan to find the miss fails.
+	 */
 	Assert(YbPgInheritsCacheByChild);
 	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCacheByChild,
-											   (void *) &relid, HASH_ENTER,
+											   (void *) &relid, HASH_FIND,
 											   &found);
 
 	if (!found)
 	{
-		entry->oid = relid;
-		entry->refcount = 1;
-		entry->tuples = NIL;
-		/* If we are fully loaded, we don't need to attempt a lookup */
+		List	   *parentTuples = NIL;
+
 		if (fully_loaded)
 		{
 			elog(DEBUG3, "YbPgInheritsCacheByChild neg hit for oid %d", relid);
@@ -328,10 +349,22 @@ GetYbPgInheritsCacheEntryByChild(Oid relid)
 			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
 			elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
 				 "YbPgInheritsCacheByChild miss for oid %d", relid);
-			GetChildCacheEntryMiss(relid, entry);
-			if (entry->tuples == NIL)
+			/*
+			 * Perform the scan before inserting into the hash table. This
+			 * avoids leaving a stale empty entry if FindParents throws an
+			 * error (e.g. due to a deadlock detected during the DocDB scan).
+			 */
+			parentTuples = FindParents(relid);
+			if (parentTuples == NIL)
 				YbNumCatalogCacheNegMisses[YbAdhocCacheTable_pg_inherits]++;
 		}
+
+		entry = hash_search(YbPgInheritsCacheByChild,
+							(void *) &relid, HASH_ENTER, &found);
+		Assert(!found);
+		entry->oid = relid;
+		entry->refcount = 1;
+		entry->tuples = parentTuples;
 	}
 	else
 	{
