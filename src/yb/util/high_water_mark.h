@@ -79,6 +79,20 @@ class HighWaterMark {
     UpdateMax(current_value_.fetch_add(amount, std::memory_order_acq_rel) + amount);
   }
 
+  int64_t fetch_add(int64_t amount, std::memory_order order = std::memory_order_seq_cst) {
+    int64_t old_val = current_value_.fetch_add(amount, order);
+    UpdateMax(old_val + amount);
+    return old_val;
+  }
+
+  int64_t fetch_sub(int64_t amount, std::memory_order order = std::memory_order_seq_cst) {
+    return current_value_.fetch_sub(amount, order);
+  }
+
+  int64_t load(std::memory_order order = std::memory_order_seq_cst) const {
+    return current_value_.load(order);
+  }
+
   void set_value(int64_t v) {
     current_value_.store(v, std::memory_order_release);
     UpdateMax(v);

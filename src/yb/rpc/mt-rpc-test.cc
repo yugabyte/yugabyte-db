@@ -56,6 +56,8 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 METRIC_DECLARE_counter(rpcs_added_to_queue);
 METRIC_DECLARE_counter(rpcs_dequeued);
 METRIC_DECLARE_counter(rpcs_started_processing);
+METRIC_DECLARE_gauge_int64(rpc_queue_max_size);
+METRIC_DECLARE_gauge_int64(rpcs_queue_high_water_mark);
 
 using std::string;
 using std::shared_ptr;
@@ -256,10 +258,20 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
       METRIC_rpcs_dequeued.Instantiate(metric_entity());
   scoped_refptr<Counter> started =
       METRIC_rpcs_started_processing.Instantiate(metric_entity());
+  auto max_size = metric_entity()->FindOrNull<AtomicGauge<int64_t>>(
+      METRIC_rpc_queue_max_size);
+  auto hwm = metric_entity()->FindOrNull<FunctionGauge<int64_t>>(
+      METRIC_rpcs_queue_high_water_mark);
+
   EXPECT_EQ(1, overflow->value());
   EXPECT_EQ(2, added->value());
   EXPECT_EQ(2, dequeued->value());
   EXPECT_EQ(0, started->value());
+  ASSERT_TRUE(max_size);
+  EXPECT_EQ(2, max_size->value());
+  ASSERT_TRUE(hwm);
+  EXPECT_GE(hwm->value(), 2);
+  EXPECT_LE(hwm->value(), 3);
 
   // The new metrics should also show up in a Prometheus scrape, including the lazily-created
   // per-method counters for "Add". This guards against regressions where a metric is wired into
@@ -271,6 +283,8 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   ASSERT_OK(metric_registry()->WriteForPrometheus(&prom_writer, prom_opts));
   const std::string prom_text = prom_output.str();
   for (const char* metric_name : {
+           "rpc_queue_max_size",
+           "rpcs_queue_high_water_mark",
            "rpcs_added_to_queue",
            "rpcs_dequeued",
            "rpcs_started_processing",

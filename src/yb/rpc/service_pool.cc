@@ -54,6 +54,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -78,6 +79,11 @@ TAG_FLAG(backpressure_recovery_period_ms, advanced);
 DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
+
+DEFINE_RUNTIME_int32(rpc_queue_high_watermark_pct, 0,
+    "Threshold (percentage of queue capacity) at which to start logging diagnostic "
+    "warnings for high RPC queue depth. A value of 0 (default) disables the logging.");
+TAG_FLAG(rpc_queue_high_watermark_pct, advanced);
 
 DECLARE_bool(TEST_ash_debug_aux);
 
@@ -126,6 +132,16 @@ METRIC_DEFINE_counter(server, rpcs_started_processing,
                       "Cumulative count of RPCs for which the service handler began executing. "
                       "rpcs_dequeued - rpcs_started_processing approximates the number of calls "
                       "discarded after dequeue (e.g. timed out in the queue).");
+
+METRIC_DEFINE_gauge_int64(server, rpc_queue_max_size,
+                           "RPC Queue Max Size",
+                           yb::MetricUnit::kRequests,
+                           "Maximum number of RPCs that can be queued before the service queue is considered full.");
+
+METRIC_DEFINE_gauge_int64(server, rpcs_queue_high_water_mark,
+                           "RPC Queue High Water Mark",
+                           yb::MetricUnit::kRequests,
+                           "Highest number of RPCs concurrently queued in the service queue.");
 
 namespace yb {
 namespace rpc {
@@ -180,10 +196,17 @@ class ServicePoolImpl final : public InboundCallHandler {
                   description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
               static_cast<int64>(0) /* initial_value */);
 
+          rpc_queue_max_size_ = METRIC_rpc_queue_max_size.Instantiate(entity, max_queued_calls_);
+          rpcs_queue_high_water_mark_ = METRIC_rpcs_queue_high_water_mark.InstantiateFunctionGauge(
+              entity, Bind(&ServicePoolImpl::GetQueueHighWaterMark, Unretained(this)));
+
           LOG_WITH_PREFIX(INFO) << "yb::rpc::ServicePoolImpl created at " << this;
   }
 
   ~ServicePoolImpl() {
+    if (rpcs_queue_high_water_mark_) {
+      rpcs_queue_high_water_mark_->DetachToCurrentValue();
+    }
     StartShutdown();
     CompleteShutdown();
   }
@@ -195,6 +218,10 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
     LOG_IF(DFATAL, !pre_check_timeout_queue_.Empty())
         << "Entries pushed to pre_check_timeout_queue_ after shutdown";
+  }
+
+  int64_t GetQueueHighWaterMark() const {
+    return queued_calls_.max_value();
   }
 
   void StartShutdown() {
@@ -442,6 +469,26 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
+  std::string DumpTopKMethods() {
+    std::vector<std::pair<std::string, int64_t>> snapshot;
+    {
+      SharedLock<std::shared_mutex> lock(per_method_mutex_);
+      snapshot.reserve(per_method_counters_.size());
+      for (const auto& [method, counters] : per_method_counters_) {
+        snapshot.emplace_back(method, counters.added->value());
+      }
+    }
+    std::sort(snapshot.begin(), snapshot.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::string result = "Top methods by added RPCs: ";
+    int k = 0;
+    for (const auto& [method, count] : snapshot) {
+      if (k++ >= 5) break;
+      result += Format("$0=$1, ", method, count);
+    }
+    return result;
+  }
+
   std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
     auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
     if (queued_calls < 0) {
@@ -452,6 +499,17 @@ class ServicePoolImpl final : public InboundCallHandler {
     if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
       return std::nullopt;
+    }
+
+    int pct = FLAGS_rpc_queue_high_watermark_pct;
+    if (pct > 0 && pct <= 100) {
+      size_t threshold = (max_queued_calls_ * pct) / 100;
+      if (implicit_cast<size_t>(queued_calls) >= threshold) {
+        YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
+            << "Queue depth " << queued_calls << " exceeds threshold of "
+            << threshold << " (" << pct << "% of " << max_queued_calls_ << "). "
+            << DumpTopKMethods();
+      }
     }
 
     rpcs_in_queue_->Increment();
@@ -557,6 +615,8 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_dequeued_;
   scoped_refptr<Counter> rpcs_started_processing_;
   scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
+  scoped_refptr<AtomicGauge<int64_t>> rpc_queue_max_size_;
+  scoped_refptr<FunctionGauge<int64_t>> rpcs_queue_high_water_mark_;
   std::shared_mutex per_method_mutex_;
   // UnorderedStringMap pairs StringHash (with is_transparent) and std::equal_to<void>
   // so that the steady-state .find() call can accept a std::string_view without
@@ -565,7 +625,7 @@ class ServicePoolImpl final : public InboundCallHandler {
       GUARDED_BY(per_method_mutex_);
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
-  std::atomic<int64_t> queued_calls_{0};
+  HighWaterMark queued_calls_{0};
 
   // It is too expensive to update timeout priority queue when each call is received.
   // So we are doing the following trick.
