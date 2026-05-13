@@ -54,4 +54,4 @@ yugabyte=# ALTER AGGREGATE sumdouble (float8) SET SCHEMA public;
 - [CREATE AGGREGATE](../ddl_create_aggregate)
 - [DROP AGGREGATE](../ddl_drop_aggregate)
 
-[postgresql-docs-alter-aggregate]: https://www.postgresql.org/docs/15/sql-alteraggregate.html
+[postgresql-docs-alter-aggregate]: https://www.postgresql.org/docs/11/sql-alteraggregate.html

@@ -75,4 +75,4 @@ alter routine s1.p(int) rename to q;
 - [`ALTER PROCEDURE`](../ddl_alter_procedure)
 - [`ALTER FUNCTION`](../ddl_alter_function)
 
-[postgresql-docs-alter-routine]: https://www.postgresql.org/docs/15/sql-alterroutine.html
+[postgresql-docs-alter-routine]: https://www.postgresql.org/docs/11/sql-alterroutine.html
