@@ -44,7 +44,31 @@ A table needs to accumulate a minimum number of mutations before it is considere
 
 Separately, Auto Analyze also considers cooldown settings for a table so as to not trigger ANALYZE aggressively. After every run of ANALYZE on a table, a cooldown period is enforced before the next run of ANALYZE on that table, even if the mutation thresholds are met. The cooldown period starts from [ysql_auto_analyze_min_cooldown_per_table](../../reference/configuration/yb-tserver/#ysql_auto_analyze_min_cooldown_per_table) (default: 10 seconds) and exponentially increases to  [ysql_auto_analyze_max_cooldown_per_table](../../reference/configuration/yb-tserver/#ysql_auto_analyze_max_cooldown_per_table) (default: 24 hours). Cooldown values for a table do not reset. This means that in most cases, it is expected that, after a while, a frequently updated table is only analyzed once every `ysql_auto_analyze_max_cooldown_per_table` period.
 
-For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags).
+For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags). 
+
+These settings can also be configured on a per-table basis using [storage parameters](https://docs.yugabyte.com/stable/api/ysql/the-sql-language/statements/ddl_alter_table/#set-param-param), also known as relopts. Per-table storage parameters take precedence over the values specified via flags.
+
+```
+ALTER TABLE tbl1 SET (
+  yb_auto_analyze_threshold = 500,
+  yb_auto_analyze_scale_factor = 0.05
+); -- set scale factor to 0.05 (5%) and minimum threshold to 500 mutations 
+
+ALTER TABLE unused_table SET(
+  yb_auto_analyze_enabled = false
+); -- disable auto analyze for a specific table
+```
+
+The mapping between the flags and relopts is below.
+
+|Flag Name|Relopt (Storage Parameter)|
+|---|---|
+|`ysql_enable_auto_analyze`|`yb_auto_analyze_enabled`|
+|`ysql_auto_analyze_threshold`|`yb_auto_analyze_threshold`|
+|`ysql_auto_analyze_scale_factor`|`yb_auto_analyze_scale_factor`|
+|`ysql_auto_analyze_min_cooldown_per_table`|`yb_auto_analyze_min_cooldown`|
+|`ysql_auto_analyze_max_cooldown_per_table`|`yb_auto_analyze_max_cooldown`|
+|`ysql_auto_analyze_cooldown_per_table_scale_factor`|`yb_auto_analyze_cooldown_scale_factor`|
 
 ## Example
 
