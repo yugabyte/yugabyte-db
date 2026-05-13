@@ -729,11 +729,12 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 
                         QUERY PLAN                         
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtestindex on ybaggtest
          Index Cond: (int_4 > 0)
          Storage Filter: (float_8 > '0'::double precision)
-(4 rows)
+         Partial Aggregate: true
+(5 rows)
 
                         QUERY PLAN                         
 -----------------------------------------------------------
