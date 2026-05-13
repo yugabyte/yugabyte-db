@@ -169,7 +169,6 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
 - CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
-- **Do not post `/gemini review` on a freshly created PR** — GitHub auto-triggers the Gemini bot on PR creation, so a manual comment is a duplicate. The "post `/gemini review` after every push" rule (in agent memory) applies only to **follow-up** pushes (rebases, review-feedback commits, lint fixes) on a branch that already has an open PR — not to the initial push that created the PR.
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`
