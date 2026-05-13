@@ -1259,11 +1259,12 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     std::lock_guard lock(mutex_);
     RETURN_NOT_OK(failed_status_);
 
+    size_t chunk_size = std::max(entries.size(), context.chunk_size);
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk(entries.size()));
+      RETURN_NOT_OK(CreateNewMutableChunk(chunk_size));
     }
     if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
-      RETURN_NOT_OK(RollChunk(entries.size()));
+      RETURN_NOT_OK(RollChunk(chunk_size));
       RSTATUS_DCHECK(
           mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
           RuntimeError, "Failed to register insert into a new mutable chunk");
@@ -1775,6 +1776,31 @@ Result<uint64_t> VectorLSM<Vector, DistanceResult>::GetChunkFileSize(uint64_t se
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::GetProbeIndex() const -> VectorIndexPtr {
+  // TODO(vector_index) Should improve scenario when there is no active chunk.
+  {
+    SharedLock lock(mutex_);
+    if (mutable_chunk_) {
+      return mutable_chunk_->index;
+    }
+    for (const auto& chunk : immutable_chunks_) {
+      if (chunk->index) {
+        return chunk->index;
+      }
+    }
+  }
+  return options_.vector_index_factory(FactoryMode::kCreate);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::EstimateNumVectorsForBytes(size_t bytes_limit) const {
+  if (bytes_limit == 0) {
+    return 0;
+  }
+  return GetProbeIndex()->EstimateNumVectorsForBytes(bytes_limit);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr>
 VectorLSM<Vector, DistanceResult>::CreateVectorIndex(size_t min_vectors) const {
   auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
@@ -1923,25 +1949,7 @@ uint64_t VectorLSM<Vector, DistanceResult>::TEST_LatestChunkSize() const {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
-  VectorIndexPtr index;
-  // TODO(vector_index) Should improve scenario when there is no active chunk.
-  {
-    SharedLock lock(mutex_);
-    if (mutable_chunk_) {
-      index = mutable_chunk_->index;
-    } else {
-      for (const auto& chunk : immutable_chunks_) {
-        index = chunk->index;
-        if (index) {
-          break;
-        }
-      }
-    }
-    if (!index) {
-      index = options_.vector_index_factory(FactoryMode::kCreate);
-    }
-  }
-  return index->Distance(lhs, rhs);
+  return GetProbeIndex()->Distance(lhs, rhs);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

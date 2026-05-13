@@ -2400,6 +2400,18 @@ class index_gt {
     dynamic_allocator_t const& dynamic_allocator() const noexcept { return dynamic_allocator_; }
     tape_allocator_t const& tape_allocator() const noexcept { return tape_allocator_; }
 
+    /**
+     *  @brief  Static byte cost of the per-thread search contexts buffer.
+     *
+     *  Returned size only covers the static layout (`sizeof(context_t)` per slot) -- not the
+     *  dynamic allocations inside each context (visits hash set, top/next candidate buffers).
+     *  Exposed so external memory accountants can attribute the contexts buffer separately
+     *  from the rest of the index.
+     */
+    std::size_t contexts_static_bytes() const noexcept {
+        return limits_.threads() * sizeof(context_t);
+    }
+
 #if defined(USEARCH_USE_PRAGMA_REGION)
 #pragma region Adjusting Configuration
 #endif

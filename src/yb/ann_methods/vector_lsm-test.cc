@@ -37,6 +37,7 @@
 #include "yb/vector_index/vectorann_util.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
@@ -1031,6 +1032,62 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
       1000 * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) = true;
   TestBootstrap(/* flush= */ false);
+}
+
+// Verifies that VectorLSM::EstimateNumVectorsForBytes returns a vector count whose actual on-disk
+// chunk size is close to the requested byte budget. This exercises the per-vector memory
+// accounting in the underlying ann_methods wrappers (usearch / hnswlib).
+TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
+  constexpr size_t kDimensions = 64;
+  constexpr size_t kBytesLimit = 1_MB;
+
+  // Avoid background compactions interfering with the size measurement.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  // The InsertContext below sizes the mutable chunk; the default chunk capacity is just a floor.
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  const size_t num_vectors = lsm.EstimateNumVectorsForBytes(kBytesLimit);
+  LOG(INFO) << "EstimateNumVectorsForBytes(" << kBytesLimit << ") = " << num_vectors;
+  ASSERT_GT(num_vectors, 0u);
+
+  inserted_entries_ = RandomEntries(kDimensions, num_vectors);
+  for (size_t i = 0; i < inserted_entries_.size(); ++i) {
+    key_value_storage_.StoreVector(inserted_entries_[i].vector_id, i + 1);
+  }
+
+  TestFrontiers frontiers;
+  frontiers.Smallest().SetVertexId(inserted_entries_.front().vector_id);
+  frontiers.Largest().SetVertexId(inserted_entries_.front().vector_id);
+  ASSERT_OK(lsm.Insert(inserted_entries_, {
+    .frontiers = &frontiers,
+    .chunk_size = num_vectors,
+  }));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+
+  const uint64_t on_disk_size = lsm.TEST_LatestChunkSize();
+  const double ratio = static_cast<double>(on_disk_size) / kBytesLimit;
+  LOG(INFO) << "On-disk chunk size: " << on_disk_size << " bytes, budget: " << kBytesLimit
+            << " bytes, ratio: " << ratio;
+
+  // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
+  // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
+  // so the on-disk size is expected to be smaller than the budget but still close to it. The
+  // exact ratio depends on the backend layout.
+  const auto on_disk_lower_bound_ratio = [&]() -> double {
+    switch (GetParam()) {
+      case ANNMethodKind::kUsearch:
+        return 0.90;
+      case ANNMethodKind::kHnswlib:
+        return 0.70;
+    }
+    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetParam());
+  }();
+  ASSERT_GE(on_disk_size, kBytesLimit * on_disk_lower_bound_ratio);
+  ASSERT_LE(on_disk_size, kBytesLimit);
 }
 
 TEST_F(VectorLSMTest, MergeChunkResults) {

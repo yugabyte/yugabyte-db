@@ -210,6 +210,16 @@ class HnswlibIndex :
     return options_.dimensions;
   }
 
+  // Estimates how many vectors fit into the given byte budget for this index. The per-vector
+  // overhead mirrors the allocation layout in hnswlib::HierarchicalNSW (see hnswalg.h) and uses
+  // the same per-element terms as indexDataBytes() / searchContextBytes() so that memory
+  // tracked via MemTracker for N inserted vectors is approximately the requested budget.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return HNSWImpl::estimateNumVectorsForBytes(
+        bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+        options_.dimensions * sizeof(Scalar));
+  }
+
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);
