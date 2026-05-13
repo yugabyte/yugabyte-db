@@ -496,21 +496,9 @@ To check if this is a problem, open a connection and run the same query twice wi
 
 For example, try the following:
 
-1. Open and close a connection to ensure there is no preloading.
+1. To ensure there is no preloading, open and close a connection by starting and quitting ysqlsh.
 
-    ```sh
-    ./bin/ysqlsh
-    ```
-
-    ```sql
-    yugabyte=# \q
-    ```
-
-1. Run the following:
-
-    ```sh
-    ./bin/ysqlsh
-    ```
+1. Start ysqlsh and run the following:
 
     ```sql
     EXPLAIN (ANALYZE, DIST) SELECT
@@ -550,21 +538,9 @@ For example, try the following:
 
 Now try the following:
 
-1. Open and close a connection to ensure there is no preloading.
+1. To ensure there is no preloading, open and close a connection by starting and quitting ysqlsh.
 
-    ```sh
-    ./bin/ysqlsh
-    ```
-
-    ```sql
-    yugabyte=# \q
-    ```
-
-1. Run the following:
-
-    ```sh
-    ./bin/ysqlsh
-    ```
+1. Start ysqlsh and run the following:
 
     ```sql
     EXPLAIN (ANALYZE, DIST)
@@ -601,7 +577,6 @@ Now try the following:
 **Possible solution**
 
 - [Enable negative caching](#enable-negative-caching).
-
 
 ## Solution details
 
@@ -673,7 +648,7 @@ If you prefer to enable negative caching without a rolling restart, you can do t
 
 1. Wait for the setting to propagate to all nodes.
 
-    Verify that this has happened as follows:
+    Verify that this has happened by running the following on each node:
 
     ```sql
     SHOW yb_always_increment_catalog_version_on_ddl;
@@ -703,7 +678,7 @@ If you prefer to enable negative caching without a rolling restart, you can do t
 
 1. Wait for all transactions that started before `t_fence` to complete.
 
-    Wait until this query returns zero rows on every node before advancing to the next step:
+    Wait until the following query returns zero rows on every node before advancing to the next step.
 
     ```sql
     SELECT pid, datname, usename, application_name,
@@ -712,10 +687,12 @@ If you prefer to enable negative caching without a rolling restart, you can do t
     WHERE pid <> pg_backend_pid()
     AND backend_type = 'client backend'
     AND state IS DISTINCT FROM 'idle'
-    AND (xact_start IS NULL OR xact_start <= TIMESTAMPTZ '<T_fence>');
+    AND (xact_start IS NULL OR xact_start <= TIMESTAMPTZ '<t_fence>');
     ```
 
-1. Set `yb_enable_negative_catcache_entries=true` in `ysql_pg_conf_csv` (no restart is required).
+    Replace `<t_fence>` with the fence timestamp.
+
+1. Set `yb_enable_negative_catcache_entries=true` in `ysql_pg_conf_csv` (don't restart).
 
 To roll back the change, perform the same steps in the reverse order, but setting the parameters to false; that is, set negative caching to false, then catalog version increment on all DDLs to false.
 
@@ -732,7 +709,7 @@ CREATE VIEW
 CREATE OPERATOR
 CREATE AGGREGATE
 CREATE TYPE
-CREATE TEXT SEARCH ...
+CREATE TEXT SEARCH
 CREATE COLLATION
 COMMENT
 CREATE PROFILE
