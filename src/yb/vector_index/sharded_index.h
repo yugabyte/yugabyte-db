@@ -57,6 +57,16 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
         [](size_t sum, const auto& index) { return sum + index->Capacity(); });
   }
 
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    if (indexes_.empty() || bytes_limit == 0) {
+      return 0;
+    }
+    // The byte budget is shared across all shards, so each shard gets an equal slice. Since
+    // the shards are homogeneous, asking one shard about its slice and multiplying back gives
+    // the same answer as summing per-shard counts.
+    return indexes_[0]->EstimateNumVectorsForBytes(bytes_limit / indexes_.size()) * indexes_.size();
+  }
+
   size_t Dimensions() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->Dimensions();

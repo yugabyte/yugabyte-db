@@ -313,16 +313,21 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const storage::UserFrontiers& frontiers) override {
+      const InsertOptions& insert_options) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
       lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
     }
     vector_index::VectorLSMInsertContext context {
-      .frontiers = &frontiers,
+      .frontiers = insert_options.frontiers,
+      .chunk_size = insert_options.chunk_size,
     };
     return lsm_.Insert(lsm_entries, context);
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return lsm_.EstimateNumVectorsForBytes(bytes_limit);
   }
 
   Result<DocVectorIndexSearchResult> Search(

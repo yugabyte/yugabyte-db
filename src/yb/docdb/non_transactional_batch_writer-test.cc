@@ -43,13 +43,16 @@ class CountingVectorIndex : public DocVectorIndex {
   HybridTime hybrid_time() const override { return HybridTime::kMin; }
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const storage::UserFrontiers& frontiers) override {
+      const InsertOptions& options) override {
     inserted_entries_ += entries.size();
     return Status::OK();
   }
   size_t inserted_entries() const { return inserted_entries_; }
 
   // Unused on the external-apply vector-feed path.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    LOG(FATAL) << "Unexpected call";
+  }
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
   const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }

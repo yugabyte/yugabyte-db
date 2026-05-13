@@ -47,6 +47,13 @@ using namespace std::literals;
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
     "Sleep specified amount of seconds before doing vector index backfill.");
 
+DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 0,
+    "If this flag is non zero, the vector index chunk created during backfill is sized so that "
+    "the underlying HNSW index implementation is expected to consume at most this many bytes of "
+    "memory for the chunk. When this flag is non zero, the indexed table will be read twice, "
+    "the first time to calculate the amount of entries in it (up to the computed limit) and "
+    "then during backfill.");
+
 DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
@@ -121,6 +128,11 @@ class IndexedTableReader {
   Status Init(HybridTime read_ht, Slice start_key) {
     iter_ = VERIFY_RESULT(context_.CreateVectorColumnIterator(read_ht, start_key));
     return Status::OK();
+  }
+
+  void Restart(Slice start_key) {
+    iter_->Refresh(docdb::SeekFilter::kAll);
+    iter_->Seek(start_key);
   }
 
   Result<bool> FetchNext() {
@@ -359,6 +371,10 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
         reverse_mapping_backfiller_(std::move(reverse_mapping_backfiller)) {
   }
 
+  void SetChunkSize(size_t chunk_size) {
+    chunk_size_ = chunk_size;
+  }
+
   size_t num_chunks() const {
     return num_chunks_;
   }
@@ -380,7 +396,11 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     } else {
       frontiers.Largest().SetBackfillPosition(next_ybctid);
     }
-    RETURN_NOT_OK_PREPEND(index.Insert(entries(), frontiers), "Insert entries");
+    docdb::InsertOptions options {
+      .frontiers = &frontiers,
+      .chunk_size = chunk_size_,
+    };
+    RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
 
     if (!next_ybctid.empty()) {
       Reset();
@@ -390,6 +410,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   }
 
  private:
+  size_t chunk_size_ = 0;
   size_t num_chunks_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
 };
@@ -448,6 +469,25 @@ Status TabletVectorIndexes::Backfill(
 
   // Expecting one row at most.
   VectorIndexBackfillHelper helper(backfill_ht, std::move(reverse_mapping_backfiller));
+
+  // Convert the byte budget into a vector count using the index implementation's own per-vector
+  // memory layout. The same number of vectors with different numbers of dimensions can consume
+  // very different amounts of memory, so the wrapper (usearch/hnswlib) computes the equivalent
+  // vector count from its internal per-node accounting.
+  const size_t bytes_limit = FLAGS_vector_index_backfill_single_chunk_size_bytes;
+  const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;
+  if (limit != 0) {
+    size_t rows = 0;
+    while (VERIFY_RESULT(reader.FetchNext()) && rows < limit) {
+      ++rows;
+    }
+    LOG_WITH_FUNC(INFO)
+        << "Backfill with chunk size " << rows
+        << " (memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
+    helper.SetChunkSize(rows);
+    reader.Restart(from_key);
+  }
+
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);

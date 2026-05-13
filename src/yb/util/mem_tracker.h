@@ -33,6 +33,7 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -44,6 +45,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
@@ -599,40 +601,74 @@ class MemTrackerAllocator : public Alloc {
 
 YB_STRONGLY_TYPED_BOOL(AlreadyConsumed);
 
-// Convenience class that adds memory consumption to a tracker when declared,
-// releasing it when the end of scope is reached.
-class ScopedTrackedConsumption {
+// Convenience base class that adds memory consumption to a tracker when declared, releasing it
+// when the end of scope is reached. The template parameter T is the storage type for the current
+// consumption value: use int64_t for single-threaded scenarios, or std::atomic<int64_t> when the
+// consumption needs to be observed/updated from multiple threads.
+template <class T>
+class ScopedTrackedConsumptionBase {
  public:
-  ScopedTrackedConsumption() : consumption_(0) {}
+  ScopedTrackedConsumptionBase() = default;
 
-  ScopedTrackedConsumption(MemTrackerPtr tracker,
-                           int64_t to_consume,
-                           AlreadyConsumed already_consumed = AlreadyConsumed::kFalse)
+  ScopedTrackedConsumptionBase(MemTrackerPtr tracker,
+                               int64_t to_consume,
+                               AlreadyConsumed already_consumed = AlreadyConsumed::kFalse)
       : tracker_(std::move(tracker)), consumption_(to_consume) {
     DCHECK(*this);
     if (!already_consumed) {
-      tracker_->Consume(consumption_);
+      tracker_->Consume(to_consume);
     }
   }
 
-  ScopedTrackedConsumption(const ScopedTrackedConsumption&) = delete;
-  void operator=(const ScopedTrackedConsumption&) = delete;
+  ScopedTrackedConsumptionBase(const ScopedTrackedConsumptionBase&) = delete;
+  void operator=(const ScopedTrackedConsumptionBase&) = delete;
 
-  ScopedTrackedConsumption(ScopedTrackedConsumption&& rhs)
-      : tracker_(std::move(rhs.tracker_)), consumption_(rhs.consumption_) {
+  ScopedTrackedConsumptionBase(ScopedTrackedConsumptionBase&& rhs)
+      : tracker_(std::move(rhs.tracker_)), consumption_(rhs.consumption()) {
     rhs.consumption_ = 0;
   }
 
-  void operator=(ScopedTrackedConsumption&& rhs) {
+  void operator=(ScopedTrackedConsumptionBase&& rhs) {
     if (rhs) {
       DCHECK(!*this);
       tracker_ = std::move(rhs.tracker_);
-      consumption_ = rhs.consumption_;
+      consumption_ = rhs.consumption();
       rhs.consumption_ = 0;
     } else if (tracker_) {
-      tracker_->Release(consumption_);
+      tracker_->Release(consumption());
       tracker_ = nullptr;
     }
+  }
+
+  explicit operator bool() const {
+    return tracker_ != nullptr;
+  }
+
+  ~ScopedTrackedConsumptionBase() {
+    if (tracker_) {
+      tracker_->Release(consumption());
+    }
+  }
+
+  auto consumption() const {
+    return LoadValue(&consumption_);
+  }
+
+  const MemTrackerPtr& mem_tracker() const { return tracker_; }
+
+ protected:
+  MemTrackerPtr tracker_;
+  T consumption_{0};
+};
+
+// Single-threaded ScopedTrackedConsumption: supports Add/Reset/Swap mutations on top of the base.
+class ScopedTrackedConsumption : public ScopedTrackedConsumptionBase<int64_t> {
+ public:
+  using ScopedTrackedConsumptionBase::ScopedTrackedConsumptionBase;
+
+  ScopedTrackedConsumption(ScopedTrackedConsumption&&) noexcept = default;
+  void operator=(ScopedTrackedConsumption&& rhs) {
+    ScopedTrackedConsumptionBase<int64_t>::operator=(std::move(rhs));
   }
 
   void Reset(int64_t new_consumption) {
@@ -646,28 +682,33 @@ class ScopedTrackedConsumption {
     std::swap(consumption_, rhs->consumption_);
   }
 
-  explicit operator bool() const {
-    return tracker_ != nullptr;
-  }
-
-  ~ScopedTrackedConsumption() {
-    if (tracker_) {
-      tracker_->Release(consumption_);
-    }
-  }
-
   void Add(int64_t delta) {
     tracker_->Consume(delta);
     consumption_ += delta;
   }
+};
 
-  int64_t consumption() const { return consumption_; }
+// Thread-safe ScopedTrackedConsumption that only allows monotonically non-decreasing updates.
+// Useful for tracking memory of subsystems (e.g. vector indexes) where memory is never released
+// until destruction, and updates may happen concurrently from multiple threads.
+//
+// Not movable (because of the embedded spinlock); use the in-place Init() method to associate a
+// tracker with a default-constructed instance.
+class MonotonicThreadSafeScopedTrackedConsumption :
+    public ScopedTrackedConsumptionBase<std::atomic<size_t>> {
+ public:
+  using ScopedTrackedConsumptionBase::ScopedTrackedConsumptionBase;
 
-  const MemTrackerPtr& mem_tracker() const { return tracker_; }
+  // Associates this instance with the given tracker. Must be called only once on a
+  // default-constructed instance.
+  void Init(MemTrackerPtr tracker, int64_t to_consume = 0);
+
+  // Atomically updates consumption to max(current, new_bytes). Smaller new values are ignored.
+  // Safe to call concurrently. No-op if there is no associated tracker.
+  void UpdateMonotonic(size_t new_bytes);
 
  private:
-  MemTrackerPtr tracker_;
-  int64_t consumption_;
+  simple_spinlock mutex_;
 };
 
 template <class F>

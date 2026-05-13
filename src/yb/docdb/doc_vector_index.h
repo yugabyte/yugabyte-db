@@ -111,6 +111,11 @@ struct DocVectorIndexMetrics {
   EventStatsPtr result_size;
 };
 
+struct InsertOptions {
+  const storage::UserFrontiers* frontiers = nullptr;
+  size_t chunk_size = 0;
+};
+
 class DocVectorIndex {
  public:
   virtual ~DocVectorIndex() = default;
@@ -125,7 +130,13 @@ class DocVectorIndex {
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
   virtual Status Insert(
-      const DocVectorIndexInsertEntries& entries, const storage::UserFrontiers& frontiers) = 0;
+      const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;
+
+  // Returns an estimate, derived from the underlying vector index implementation, of the number
+  // of vectors that fit into the specified byte budget. Used to size new chunks based on memory
+  // rather than vector count.
+  virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
+
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocDBStatistics* statistics) = 0;
