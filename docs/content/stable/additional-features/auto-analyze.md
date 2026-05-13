@@ -46,7 +46,7 @@ Separately, Auto Analyze also considers cooldown settings for a table so as to n
 
 For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags). 
 
-These settings can also be configured on a per-table basis using [storage parameters](https://docs.yugabyte.com/stable/api/ysql/the-sql-language/statements/ddl_alter_table/#set-param-param), also known as relopts. Per-table storage parameters take precedence over the values specified via flags.
+These settings can also be configured on a per-table basis using [storage parameters](../api/ysql/the-sql-language/statements/ddl_alter_table/#set-param-param), also known as relopts. Per-table storage parameters take precedence over the values specified via flags.
 
 ```
 ALTER TABLE tbl1 SET (
