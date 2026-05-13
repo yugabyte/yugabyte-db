@@ -62,7 +62,7 @@ jobs:
         run: |
           BACKPORT_RE='^\[BACKPORT ([0-9]+(\.[0-9]+)+)\]'
           # Check for true backport, not just target branch in title.
-          if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then"
+          if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
             body="${{ github.event.pull_request.body }}"
             bp_error=0
             COMMIT_HDR_RE='(^|$'\n')Original commit(s)?:'
