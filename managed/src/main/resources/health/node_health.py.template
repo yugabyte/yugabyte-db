@@ -3005,7 +3005,8 @@ def main():
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
 
-    coordinator.add_check(checker, "check_ynp_version")
+    if not n.is_k8s:
+        coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
     for e in entries:

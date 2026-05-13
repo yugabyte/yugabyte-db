@@ -1215,12 +1215,14 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    Object ynpVersion =
-        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
-    if (ynpVersion != null) {
-      commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
-    } else {
-      log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+    if (!nodeInfo.isK8s()) {
+      Object ynpVersion =
+          configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+      if (ynpVersion != null) {
+        commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
+      } else {
+        log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+      }
     }
     ShellResponse response =
         nodeUniverseManager
