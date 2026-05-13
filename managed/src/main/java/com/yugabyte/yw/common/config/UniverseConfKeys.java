@@ -1807,6 +1807,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip auto flags and YSQL migration files validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ysqlMajorUpgradeMinStableDbVersion =
+      new ConfKeyInfo<>(
+          "yb.upgrade.ysql_major_upgrade_min_stable_db_version",
+          ScopeType.UNIVERSE,
+          "YSQL major upgrade minimum stable DB version",
+          "Minimum DB software version required on stable release tracks before a YSQL major"
+              + " version upgrade can proceed. Preview release tracks use a fixed platform"
+              + " minimum. Use a valid YBA DB version string (for example 2024.2.3.0-b1).",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
       new ConfKeyInfo<>(
           "ybc.disk_io_request_size_bytes",

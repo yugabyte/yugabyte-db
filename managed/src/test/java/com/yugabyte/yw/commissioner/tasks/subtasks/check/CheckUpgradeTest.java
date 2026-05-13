@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
 import com.yugabyte.yw.models.Universe;
@@ -181,5 +182,86 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     task.run();
+  }
+
+  @Test
+  public void testYsqlMajorUpgradeRejectsStableBelowConfiguredMinimum() throws Exception {
+    TestHelper.updateUniverseVersion(defaultUniverse, "2024.2.2.0-b1");
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "2024.2.3.0-b1";
+    when(mockGFlagsValidation.ysqlMajorVersionUpgrade(anyString(), anyString())).thenReturn(true);
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1"));
+    AutoFlagDetails flag = new AutoFlagDetails();
+    flag.name = "FLAG_1";
+    AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = Arrays.asList(flag);
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2024.2.2.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2024.2.3.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> task.run());
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("2024.2.3.0-b1"));
+  }
+
+  @Test
+  public void testYsqlMajorUpgradePassesStableWhenRuntimeMinimumLowered() throws Exception {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ysqlMajorUpgradeMinStableDbVersion.getKey(), "2024.2.1.0-b1");
+    TestHelper.updateUniverseVersion(defaultUniverse, "2024.2.2.0-b1");
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "2024.2.3.0-b1";
+    when(mockGFlagsValidation.ysqlMajorVersionUpgrade(anyString(), anyString())).thenReturn(true);
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1"));
+    AutoFlagDetails flag = new AutoFlagDetails();
+    flag.name = "FLAG_1";
+    AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = Arrays.asList(flag);
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2024.2.2.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2024.2.3.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testYsqlMajorUpgradeRejectsPreviewBelowHardcodedMinimum() throws Exception {
+    TestHelper.updateUniverseVersion(defaultUniverse, "2.23.0.0-b1");
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "2.25.0.0-b1";
+    when(mockGFlagsValidation.ysqlMajorVersionUpgrade(anyString(), anyString())).thenReturn(true);
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1"));
+    AutoFlagDetails flag = new AutoFlagDetails();
+    flag.name = "FLAG_1";
+    AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = Arrays.asList(flag);
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2.23.0.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("2.25.0.0-b1"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> task.run());
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("2.25.0.0-b1"));
   }
 }
