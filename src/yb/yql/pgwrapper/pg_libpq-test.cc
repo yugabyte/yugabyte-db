@@ -5484,7 +5484,7 @@ TEST_F(PgLibPqTest, DumpTabletData) {
       "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT, salary NUMERIC(12,2)) SPLIT INTO 1 TABLETS",
       table_name));
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 (id, name, salary) SELECT i, 'test' || i, i * 1000.50 "
+      "INSERT INTO $0 (id, name, salary) SELECT i, 'test' || i, i + 0.50 "
       "FROM generate_series(1, 10) i", table_name));
 
   std::vector<TabletId> tablet_ids;
@@ -5502,6 +5502,16 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   // which is required to reproduce decoding bugs for types like NUMERIC.
   const auto dest_path = GetTestPath("dump_tablet_data.out");
   ASSERT_OK(DumpTabletData(/* tserver_idx */ 0, tablet_id, HybridTime(), dest_path));
+
+  faststring dumped;
+  ASSERT_OK(ReadFileToString(Env::Default(), dest_path, &dumped));
+  const auto dumped_str = dumped.ToString();
+  LOG(INFO) << "Dumped tablet data:\n" << dumped_str;
+  ASSERT_STR_CONTAINS(dumped_str, Format("Tablet ID: $0", tablet_id));
+  ASSERT_STR_CONTAINS(dumped_str, "Row count: 10");
+  for (int i = 1; i <= 10; ++i) {
+    ASSERT_STR_CONTAINS(dumped_str, Format("$0, test$0, $0.5", i));
+  }
 
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
