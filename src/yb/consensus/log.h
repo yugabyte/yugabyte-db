@@ -238,6 +238,19 @@ class Log : public RefCountedThreadSafe<Log> {
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   Status GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
 
+  // Test-only public wrapper around the private GetSegmentsToGC, used by unit tests that need to
+  // compute the GC-eligible prefix Log::GC would pick for a given 'min_op_idx' (with the full
+  // retention policy stack applied: xCluster/CDC retention, FLAGS_log_min_segments_to_retain, and
+  // time-based retention). Production callers should not consult GC's reclaimable set directly --
+  // remote bootstrap, for instance, drives its own trim off a frozen GetSegmentsSnapshot() to
+  // avoid races with the GC thread.
+  //
+  // This method is thread-safe.
+  Status TEST_GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      EXCLUDES(state_lock_) {
+    return GetSegmentsToGC(min_op_idx, segments_to_gc);
+  }
+
   // Returns the file system location of the currently active WAL segment.
   const WritableLogSegment* TEST_ActiveSegment() const {
     return active_segment_.get();

@@ -86,6 +86,24 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 DEFINE_test_flag(bool, skip_metadata_backfill_done, false,
     "Used in tests to skip triggering of RaftGroupMetadata::OnBackfillDone().");
 
+// Forces RaftGroupMetadata::IsLazySuperblockFlushEnabled() to return true for ALL tablets in
+// this process, bypassing the usual gating on colocated() / IsSysCatalog() / etc.
+//
+// This exists only because TabletTestHarness (and YBTabletTest on top of it) currently hardcodes
+// colocated=false when constructing the tablet's RaftGroupMetadata, and there is no test hook to
+// flip RaftGroupMetadata::colocated_ post-construction. As a result, unit tests that need to
+// exercise code paths gated on IsLazySuperblockFlushEnabled() (e.g. the RBS log-shipping clamp
+// in RemoteBootstrapSession::InitBootstrapSession that keeps at least
+// kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments) cannot reach those branches
+// without this flag.
+//
+// TODO: replace with a proper test fixture once TabletTestHarness gains a way to create colocated
+// tablet metadata (e.g. an Options::colocated knob plumbed through CreateTestTablet). Until then
+// callers should set this only in narrow unit tests and reset it immediately after.
+DEFINE_test_flag(bool, force_lazy_superblock_flush, false,
+    "If true, RaftGroupMetadata::IsLazySuperblockFlushEnabled() returns true regardless of "
+    "tablet metadata. Tests-only escape hatch; do not enable in production code paths.");
+
 // Only used for colocated table creation currently.
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
 // unflushed committed CHANGE_METADATA_OP WAL entries are applied and flushed during the tablet
@@ -1894,7 +1912,14 @@ bool RaftGroupMetadata::colocated() const {
 // only applicable on colocated table creation). This feature depends on
 // last_flushed_change_metadata_op_id to be valid. Hence, additionally requires
 // FLAGS_TEST_invalidate_last_change_metadata_op to be false.
+//
+// FLAGS_TEST_force_lazy_superblock_flush short-circuits everything to true so unit tests built on
+// the non-colocated TabletTestHarness can still exercise this branch. See the flag's definition
+// for the rationale and the TODO to replace it with a proper colocated test fixture.
 LazySuperblockFlushEnabled RaftGroupMetadata::IsLazySuperblockFlushEnabled() const {
+  if (PREDICT_FALSE(FLAGS_TEST_force_lazy_superblock_flush)) {
+    return LazySuperblockFlushEnabled::kTrue;
+  }
   bool lazy_superblock_flush_enabled = !FLAGS_TEST_invalidate_last_change_metadata_op &&
                                        FLAGS_lazily_flush_superblock && colocated() &&
                                        !IsSysCatalog();

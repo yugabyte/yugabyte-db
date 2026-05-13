@@ -43,6 +43,7 @@
 #include "yb/gutil/type_traits.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -205,10 +206,27 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
-  // Prevent log GC while we grab log segments and Tablet metadata.
+  // Determine the earliest WAL op index that the source still needs to retain. This is the same
+  // predicate Log::GC() consults: any segment that GC would consider for deletion is already
+  // covered by RocksDB SSTs (or other persistent state) and therefore redundant once the
+  // destination installs the checkpoint. We must compute this BEFORE registering our own log
+  // anchor, because the registry-based GetEarliestRegisteredLogIndex() floor inside
+  // GetEarliestNeededLogIndex() would otherwise pin the result to whatever value we register at.
+  const int64_t rbs_min_op_idx = VERIFY_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+
+  // Prevent log GC from going below rbs_min_op_idx while we grab log segments and tablet
+  // metadata. Pre-fix this code path did Register(MinimumOpId().index() = 0) here and later
+  // UpdateRegistration'd to the first kept segment's min_replicate_index; because the pre-fix
+  // path also kept every on-disk segment, that subsequent bump landed at the oldest on-disk
+  // segment's minimum, effectively pinning GC at the bottom of the log for the duration of the
+  // session. On a slow or repeatedly-retried RBS the same source would then accumulate more and
+  // more redundant segments behind that anchor, forming a vicious cycle in which each new RBS
+  // attempt had to ship strictly more data than the last. Registering at rbs_min_op_idx (the
+  // earliest op index any consumer still needs) breaks that cycle: GC can continue reclaiming
+  // everything strictly below this floor while the session is alive.
   string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
   tablet_peer_->log_anchor_registry()->Register(
-      MinimumOpId().index(), anchor_owner_token, &log_anchor_);
+      rbs_min_op_idx, anchor_owner_token, &log_anchor_);
 
   OpId last_logged_opid;
   for (int retry = 0;; ++retry) {
@@ -262,10 +280,69 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     }
   }
 
-  // Get the current segments from the log, including the active segment.
-  // The Log doesn't add the active segment to the log reader's list until
-  // a header has been written to it (but it will not have a footer).
+  // Get the current segments from the log, including the active segment. The Log doesn't add the
+  // active segment to the log reader's list until a header has been written to it (but it will
+  // not have a footer).
   RETURN_NOT_OK(tablet_peer_->log()->GetSegmentsSnapshot(&log_segments_));
+
+  // Compute the contiguous prefix of segments that the destination does not need directly from
+  // the local `log_segments_` snapshot, instead of re-querying Log::GetSegmentsToGC. Driving the
+  // trim off the frozen snapshot we just took eliminates a race with the GC thread: between
+  // GetSegmentsSnapshot and a second call back into Log, GC could physically reclaim a segment
+  // below rbs_min_op_idx (allowed by our anchor, which only pins at rbs_min_op_idx and above).
+  // The two calls would then disagree about which segments exist, num_to_skip would under-count,
+  // log_segments_ would retain references to a segment whose file is gone, and the destination's
+  // later FetchData would hit WAL_SEGMENT_NOT_FOUND -- the exact vicious-cycle symptom this fix
+  // is meant to break.
+  //
+  // The predicate below mirrors the index-based portion of LogReader::GetSegmentPrefixNotIncluding
+  // (stop at the active footer-less segment; stop at the first segment that still contains entries
+  // we need). The xCluster/CDC/time/min-segments retention bumps that Log::GetSegmentsToGC layers
+  // on top are source-side retention concerns; segments strictly below rbs_min_op_idx are by
+  // definition unneeded by the destination regardless of those source-side policies, so we omit
+  // them here.
+  size_t num_to_skip = 0;
+  for (const auto& segment : log_segments_) {
+    if (!segment->HasFooter()) {
+      break;
+    }
+    if (segment->footer().max_replicate_index() >= rbs_min_op_idx) {
+      break;
+    }
+    ++num_to_skip;
+  }
+
+  // When lazy superblock flush is enabled on this tablet (currently colocated tables only),
+  // local bootstrap on the destination needs to replay at least
+  // kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments to pick up
+  // committed-but-unflushed CHANGE_METADATA_OPs. GetEarliestNeededLogIndex already accounts
+  // for the actual MinUnflushedChangeMetadataOpId, but bound num_to_skip defensively so the
+  // destination always receives at least min(K, log_segments_.size()) trailing segments. The
+  // min() handles the case where the source itself has fewer than K segments -- e.g. the brief
+  // window during a segment rollover where the new active segment has been allocated and given
+  // a footer-less old active, but the new active has not yet been registered with LogReader
+  // via AppendEmptySegment -- by shipping everything we have rather than letting the snapshot
+  // scan trim further. See the long comment around kMinSegmentsToReplayWithLazySuperblockFlush
+  // in tablet_bootstrap.cc.
+  if (tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
+    const size_t min_segments_to_keep = std::min(
+        tablet::kMinSegmentsToReplayWithLazySuperblockFlush, log_segments_.size());
+    num_to_skip = std::min(num_to_skip, log_segments_.size() - min_segments_to_keep);
+  }
+
+  LOG_WITH_PREFIX(INFO)
+      << "Computed WAL segments to ship: keeping=" << log_segments_.size() - num_to_skip
+      << " (skipping " << num_to_skip << " of " << log_segments_.size()
+      << " on-disk segments below earliest-needed op index " << rbs_min_op_idx
+      << ", lazy_sb_flush="
+      << tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()
+      << ", last_logged_opid=" << last_logged_opid << ")";
+
+  while (!log_segments_.empty() && num_to_skip) {
+    RETURN_NOT_OK(log_segments_.pop_front());
+    num_to_skip--;
+  }
+
   log_anchor_index_ = last_logged_opid.index;
   for (const auto& log_segment : log_segments_) {
     if (log_segment->HasFooter() && log_segment->footer().has_min_replicate_index()) {

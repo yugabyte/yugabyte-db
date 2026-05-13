@@ -1352,7 +1352,6 @@ class TabletBootstrap {
     // We should be able to get rid of this requirement when we address:
     // https://github.com/yugabyte/yugabyte-db/issues/16684.
     const bool is_lazy_superblock_flush_enabled = meta_->IsLazySuperblockFlushEnabled();
-    const auto kMinSegmentsToReplayWithLazySuperblockFlush = 2;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
@@ -1411,7 +1410,8 @@ class TabletBootstrap {
         // if segments.size() >= kMinSegmentsToReplayWithLazySuperblockFlush.
         const auto older_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
-            segments.end() - iter < kMinSegmentsToReplayWithLazySuperblockFlush;
+            static_cast<size_t>(segments.end() - iter) <
+                kMinSegmentsToReplayWithLazySuperblockFlush;
         // Continue to older segment if it exists and it may contain unflushed change metadata op.
         if (older_segment_may_contain_unflushed_change_metadata_op &&
             iter != segments.begin()) {
@@ -1429,7 +1429,8 @@ class TabletBootstrap {
         const auto first_segment = *iter;
         const auto current_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
-            segments.end() - iter <= kMinSegmentsToReplayWithLazySuperblockFlush;
+            static_cast<size_t>(segments.end() - iter) <=
+                kMinSegmentsToReplayWithLazySuperblockFlush;
         if (FLAGS_skip_flushed_entries_in_first_replayed_segment &&
             is_first_op_id_low_enough_for_retryable_requests &&
             !current_segment_may_contain_unflushed_change_metadata_op &&
