@@ -47,8 +47,8 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
 - [ ] No customer-derived table names, column names, SQL text, query plans, JSON payloads, or sample rows.
 - [ ] No tokens, API keys, passwords, certificates, private keys, license keys, kubeconfigs, or production S3 bucket names.
-- [ ] No internal-only hostnames, URLs, Jenkins/Grafana/Slack/Linear links, or vault paths.
-- [ ] No unreleased internal information (roadmap, SLAs, embargoed security findings, unshipped gflag/code names, internal infra hostnames).
+- [ ] No internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths.
+- [ ] No unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames).
 - [ ] Test filenames, test function names, and golden-output files reviewed too — not just the prose.
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
