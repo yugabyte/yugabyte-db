@@ -47,7 +47,7 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
 - [ ] No customer-derived table names, column names, SQL text, query plans, JSON payloads, or sample rows.
 - [ ] No tokens, API keys, passwords, certificates, private keys, license keys, or kubeconfigs.
-- [ ] No internal-only hostnames, URLs, Jenkins/Grafana/Slack links, or vault paths.
+- [ ] No internal-only hostnames, URLs, Grafana/Slack links, or vault paths.
 - [ ] No unreleased internal information (roadmap, embargoed CVEs, unshipped gflag/code names).
 - [ ] Test filenames, test function names, and golden-output files reviewed too — not just the prose.
 
