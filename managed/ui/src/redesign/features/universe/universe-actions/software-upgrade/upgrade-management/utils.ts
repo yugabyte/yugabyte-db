@@ -1,10 +1,17 @@
 import {
   AZUpgradeState,
   AZUpgradeStatus,
+  CanaryPauseState,
   DbUpgradePrecheckStatus,
   Task
 } from '@app/redesign/features/tasks/dtos';
 import { AccordionCardState } from './AccordionCard';
+
+/** Returns a unique key for a t-server AZ upgrade stage. 
+ * Just using azUuid is not enough because the same AZ UUID can appear on multiple clusters.
+ */
+export const getTserverAzClusterUpgradeStageKey = (azUUID: string, clusterUUID: string): string =>
+  `${azUUID}|${clusterUUID}`;
 
 const mapAzUpgradeStatusToAccordionCardState = (status: AZUpgradeStatus): AccordionCardState => {
   switch (status) {
@@ -88,14 +95,29 @@ const classifyUpgradeMasterServersStage = (
   return AccordionCardState.NEUTRAL;
 };
 
-export interface DbUpgradeStages {
+export interface AzUpgradeStageMetadata {
+  accordionCardState: AccordionCardState;
+  isLastAzBeforeCanaryPause: boolean;
+}
+
+export interface DbUpgradeStagesMetadata {
   preCheckStage: AccordionCardState;
   upgradeMasterServersStage: AccordionCardState;
-  upgradeAzStages: Record<string, AccordionCardState>;
+  /** Keys from {@link getTserverAzClusterUpgradeStageKey}(azUUID, clusterUUID). */
+  upgradeAzStages: Record<string, AzUpgradeStageMetadata>;
   finalizeStage: AccordionCardState;
 }
-export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStages => {
-  if (!dbUpgradeTask.canaryUpgradeProgress) {
+
+export type DbUpgradeStages = DbUpgradeStagesMetadata;
+
+/**
+ * Classifies a DB software-upgrade task into accordion card states for the progress panel.
+ 
+ * Assumptions:
+ * - tserverAZUpgradeStatesList returned by the backend is ordered by upgrade order (may repeat the same AZ UUID across clusters).
+ */
+export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStagesMetadata => {
+  if (!dbUpgradeTask.softwareUpgradeProgress) {
     return {
       preCheckStage: AccordionCardState.NEUTRAL,
       upgradeMasterServersStage: AccordionCardState.NEUTRAL,
@@ -104,20 +126,47 @@ export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStages =>
     };
   }
 
+  const softwareUpgradeProgress = dbUpgradeTask.softwareUpgradeProgress;
   const preCheckStage = mapDbUpgradePrecheckStatusToAccordionCardState(
-    dbUpgradeTask.canaryUpgradeProgress.precheckStatus
+    softwareUpgradeProgress.precheckStatus
   );
   const upgradeMasterServersStage = classifyUpgradeMasterServersStage(
-    dbUpgradeTask.canaryUpgradeProgress.masterAZUpgradeStatesList
+    softwareUpgradeProgress.masterAZUpgradeStatesList
   );
-  const upgradeAzStages =
-    dbUpgradeTask.canaryUpgradeProgress.tserverAZUpgradeStatesList?.reduce(
-      (accumulator, azUpgradeState) => ({
-        ...accumulator,
-        [azUpgradeState.azUUID]: mapAzUpgradeStatusToAccordionCardState(azUpgradeState.status)
-      }),
-      {} as Record<string, AccordionCardState>
-    ) ?? {};
+
+  const tserverAZUpgradeStatesList = softwareUpgradeProgress.tserverAZUpgradeStatesList ?? [];
+  const upgradeAzStages: Record<string, AzUpgradeStageMetadata> = {};
+  let lastCompletedTserverStageKey: string | undefined;
+  let hasNotStartedTserverAz = false;
+
+  for (const azUpgradeState of tserverAZUpgradeStatesList) {
+    if (azUpgradeState.status === AZUpgradeStatus.NOT_STARTED) {
+      hasNotStartedTserverAz = true;
+    }
+    const stageKey = getTserverAzClusterUpgradeStageKey(
+      azUpgradeState.azUUID,
+      azUpgradeState.clusterUUID
+    );
+    if (azUpgradeState.status === AZUpgradeStatus.COMPLETED) {
+      lastCompletedTserverStageKey = stageKey;
+    }
+    upgradeAzStages[stageKey] = {
+      accordionCardState: mapAzUpgradeStatusToAccordionCardState(azUpgradeState.status),
+      isLastAzBeforeCanaryPause: false
+    };
+  }
+
+  if (
+    softwareUpgradeProgress.canaryPauseState === CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ &&
+    hasNotStartedTserverAz &&
+    lastCompletedTserverStageKey !== undefined
+  ) {
+    const azUpgradeStageMetadata = upgradeAzStages[lastCompletedTserverStageKey];
+    if (azUpgradeStageMetadata) {
+      azUpgradeStageMetadata.isLastAzBeforeCanaryPause = true;
+    }
+  }
+
   const finalizeStage = AccordionCardState.NEUTRAL;
   return { preCheckStage, upgradeMasterServersStage, upgradeAzStages, finalizeStage };
 };

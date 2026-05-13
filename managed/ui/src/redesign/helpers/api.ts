@@ -836,6 +836,7 @@ class ApiService {
       })
       .then((response) => response.data);
   };
+
   getAlerts = (
     offset: number,
     limit: number,

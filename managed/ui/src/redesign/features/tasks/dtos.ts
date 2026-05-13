@@ -34,6 +34,8 @@ export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
   EDIT: 'Update',
   SOFTWARE_UPGRADE: 'SoftwareUpgrade',
+  ROLLBACK_UPGRADE: 'RollbackUpgrade',
+  FINALIZE_UPGRADE: 'FinalizeUpgrade',
   RESIZE_NODE: 'ResizeNode',
   RESTORE_YBA_BACKUP: 'RestoreYbaBackup'
 };
@@ -79,9 +81,9 @@ export const DbUpgradePrecheckStatus = {
 } as const;
 export type DbUpgradePrecheckStatus =
   (typeof DbUpgradePrecheckStatus)[keyof typeof DbUpgradePrecheckStatus];
-export interface CanaryUpgradeProgress {
-  enabled: boolean;
-  pauseState: CanaryPauseState | null;
+export interface SoftwareUpgradeProgress {
+  canaryUpgrade: boolean;
+  canaryPauseState: CanaryPauseState | null;
   precheckStatus: DbUpgradePrecheckStatus;
   masterAZUpgradeStatesList: AZUpgradeState[];
   tserverAZUpgradeStatesList: AZUpgradeState[];
@@ -117,7 +119,7 @@ export interface Task {
     };
   };
 
-  canaryUpgradeProgress?: CanaryUpgradeProgress | null;
+  softwareUpgradeProgress?: SoftwareUpgradeProgress | null;
 }
 
 export interface FailedTask {

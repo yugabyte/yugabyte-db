@@ -1,14 +1,14 @@
 import { makeStyles, Typography } from '@material-ui/core';
-import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 
+import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { DbUpgradeFormStep, UpgradeMethod } from '../constants';
-import { hasPassedOrReachedFormStep } from '../utils/formUtils';
 import { DBUpgradeFormFields } from '../types';
-import { UpgradePlanList } from './components/UpgradePlanList';
+import { hasPassedOrReachedFormStep } from '../utils/formUtils';
 import { SummaryRow } from './components/SummaryRow';
 import { UpgradePaceAndBatchSummary } from './components/UpgradePaceAndBatchSummary';
-import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
+import { UpgradePlanList } from './components/UpgradePlanList';
 
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.summaryCard';
 

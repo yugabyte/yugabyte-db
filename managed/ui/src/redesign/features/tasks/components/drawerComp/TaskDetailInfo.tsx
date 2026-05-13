@@ -71,6 +71,8 @@ const getBadgeType = (status: Task['status']): Badge_Types => {
     case TaskState.INITIALIZING:
     case TaskState.RUNNING:
       return Badge_Types.IN_PROGRESS;
+    case TaskState.PAUSED:
+      return Badge_Types.PAUSED;
     case TaskState.UNKNOWN:
       return Badge_Types.SKIPPED;
     case TaskState.SUCCESS:

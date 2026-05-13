@@ -9,7 +9,6 @@ import { YBTag } from '@yugabyte-ui-library/core';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
-  UniverseStatusContainer,
   NodeDetailsContainer,
   DeleteUniverseContainer,
   UniverseAppsModal,
@@ -608,8 +607,7 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_THIRD_PARTY_SOFTWARE);
     const isEditUniverseDisabled =
       isUniverseStatusPending ||
-      (hasAsymmetricPrimaryCluster &&
-        !(isKubernetesUniverse && enableAzOverridesK8s)) ||
+      (hasAsymmetricPrimaryCluster && !(isKubernetesUniverse && enableAzOverridesK8s)) ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_UNIVERSE) ||
       isK8ActionsDisabled;
     const isEditGFlagsDisabled =
@@ -1168,7 +1166,8 @@ class UniverseDetail extends Component {
                       >
                         <YBTooltip
                           title={
-                            hasAsymmetricPrimaryCluster && !(isKubernetesUniverse && enableAzOverridesK8s)
+                            hasAsymmetricPrimaryCluster &&
+                            !(isKubernetesUniverse && enableAzOverridesK8s)
                               ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                               : ''
                           }
@@ -1233,7 +1232,7 @@ class UniverseDetail extends Component {
                     >
                       <YBTooltip
                         title={
-                          (hasAsymmetricPrimaryCluster) &&
+                          hasAsymmetricPrimaryCluster &&
                           !(isKubernetesUniverse && enableAzOverridesK8s)
                             ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                             : ''
@@ -1761,12 +1760,6 @@ class UniverseDetail extends Component {
               {currentUniverse.data.name}
             </a>
           </h2>
-          <UniverseStatusContainer
-            currentUniverse={currentUniverse.data}
-            showLabelText={true}
-            refreshUniverseData={this.getUniverseInfo}
-            shouldDisplayTaskButton={true}
-          />
         </div>
         <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
@@ -1936,8 +1929,8 @@ class UniverseDetail extends Component {
             visibleModal === 'enableAdvancedObservabilityModal'
               ? PerfAdvisorModalIntention.ENABLE_ADVANCED_OBSERVABILITY_ONLY
               : visibleModal === 'disableAdvancedObservabilityModal'
-              ? PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY
-              : PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
+                ? PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY
+                : PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
           }
           onClose={() => {
             closeModal();

@@ -65,7 +65,6 @@ const useStyles = makeStyles((theme) => ({
   accordionSummaryContent: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(2),
 
     margin: 0,
 
@@ -97,7 +96,7 @@ const useStyles = makeStyles((theme) => ({
     '&:not(:last-child)::after': {
       position: 'absolute',
       bottom: `calc(${theme.spacing(-2)}px - 1px)`,
-      left: theme.spacing(3),
+      left: theme.spacing(4),
       transform: 'translateX(-50%)',
 
       height: theme.spacing(2),
@@ -107,8 +106,10 @@ const useStyles = makeStyles((theme) => ({
       backgroundColor: theme.palette.grey[400]
     }
   },
-  headerAccessoriesContainer: {
-    marginLeft: 'auto'
+  headerPrimarySection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2)
   },
   iconContainer: {
     display: 'flex',
@@ -216,16 +217,18 @@ export const AccordionCard = ({
           expandIcon: classes.accordionSummaryExpandIcon
         }}
       >
-        <div
-          className={clsx(
-            classes.iconContainer,
-            accordionProps?.disabled ? classes.disabledState : stepStateToIcon[state].className
-          )}
-        >
-          {stepStateToIcon[state].iconContent}
+        <div className={classes.headerPrimarySection}>
+          <div
+            className={clsx(
+              classes.iconContainer,
+              accordionProps?.disabled ? classes.disabledState : stepStateToIcon[state].className
+            )}
+          >
+            {stepStateToIcon[state].iconContent}
+          </div>
+          <Typography variant="body1">{title}</Typography>
         </div>
-        <Typography variant="body1">{title}</Typography>
-        <div className={classes.headerAccessoriesContainer}>{headerAccessories}</div>
+        {headerAccessories}
       </AccordionSummary>
       <AccordionDetails
         classes={{ root: classes.accordionDetailRoot }}

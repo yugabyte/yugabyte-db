@@ -1,6 +1,6 @@
 /* Copyright (c) YugabyteDB, Inc. */
 
-@use "sass:color";
+@use 'sass:color';
 @use '../../../_style/colors.scss';
 @use '../../../_style/mixins.scss';
 
@@ -45,10 +45,12 @@
     @include mixins.transition(0.125s);
     background-color: white;
     border-radius: 7px;
-    box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+    box-shadow:
+      0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+      0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   }
 
-  &>*:not(.dropdown-menu) {
+  & > *:not(.dropdown-menu) {
     position: relative;
     z-index: 1;
   }
@@ -83,7 +85,7 @@
 
   .status-icon {
     position: absolute;
-    top: 1px;
+    top: 12px;
     right: 12px;
     z-index: 1000;
   }
@@ -116,8 +118,8 @@
   }
 }
 
-a:hover>.universe-display-item-container,
-a:hover>.schedule-display-item-container,
+a:hover > .universe-display-item-container,
+a:hover > .schedule-display-item-container,
 .create-universe-button:hover {
   &:before {
     @include mixins.transition(0.3s);
@@ -176,15 +178,15 @@ a:hover>.schedule-display-item-container,
     border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
   }
 
-  &>.btn-icon {
+  & > .btn-icon {
     @include mixins.transition(0.125s);
   }
 
-  &>.display-name {
+  & > .display-name {
     @include mixins.transition(0.125s);
   }
 
-  &>.button-group {
+  & > .button-group {
     position: absolute;
     top: 0;
     left: 0;
@@ -294,17 +296,17 @@ a:hover>.schedule-display-item-container,
   }
 
   &:hover {
-    &>.btn-icon {
+    & > .btn-icon {
       @include mixins.transition(0.35s);
       transform: translate(0, -10px);
     }
 
-    &>.display-name {
+    & > .display-name {
       @include mixins.transition(0.35s);
       transform: translate(0, 10px);
     }
 
-    &>.button-group {
+    & > .button-group {
       a.btn {
         opacity: 1;
         @include mixins.transition-property(0.35s, opacity, 0s);
@@ -372,7 +374,7 @@ a:hover>.schedule-display-item-container,
 
 .upgradeLinuxVersionText {
   display: flex;
-  color: #EF5824;
+  color: #ef5824;
   gap: 8px;
   justify-content: flex-end;
   align-items: center;
