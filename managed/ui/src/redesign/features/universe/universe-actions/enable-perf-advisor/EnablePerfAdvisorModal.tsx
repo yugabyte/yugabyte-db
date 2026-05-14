@@ -23,11 +23,13 @@ interface EnablePerfAdvisorModalProps {
   paUuid: string;
   onClose: () => void;
   paModalIntention?: PerfAdvisorModalIntentionType;
+  isPerformanceTabEnabled: boolean;
 }
 export const EnablePerfAdvisorModal = ({
   universeData,
   perfAdvisorStatus,
   paUuid,
+  isPerformanceTabEnabled,
   open,
   onClose,
   paModalIntention = PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
@@ -73,12 +75,7 @@ export const EnablePerfAdvisorModal = ({
   };
 
   const enableAdvancedObservabilityOnlyStatus = useMutation(
-    () =>
-      PerfAdvisorAPI.attachUniverseToPerfAdvisor(
-        paUuid,
-        universeData.universeUUID,
-        true
-      ),
+    () => PerfAdvisorAPI.attachUniverseToPerfAdvisor(paUuid, universeData.universeUUID, true),
     {
       onSuccess: (resp: any) => {
         handleTaskSuccess(resp);
@@ -93,12 +90,7 @@ export const EnablePerfAdvisorModal = ({
   );
 
   const disableAdvancedObservabilityOnlyStatus = useMutation(
-    () =>
-      PerfAdvisorAPI.attachUniverseToPerfAdvisor(
-        paUuid,
-        universeData.universeUUID,
-        false
-      ),
+    () => PerfAdvisorAPI.attachUniverseToPerfAdvisor(paUuid, universeData.universeUUID, false),
     {
       onSuccess: (resp: any) => {
         handleTaskSuccess(resp);
@@ -179,7 +171,7 @@ export const EnablePerfAdvisorModal = ({
           }}
         />
       </span>
-      {!isUniverseRegisteredToPA && (
+      {!isUniverseRegisteredToPA && isPerformanceTabEnabled && (
         <Box mt={2}>
           <YBCheckbox
             checked={advancedObservability}
