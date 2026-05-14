@@ -10,10 +10,10 @@ import {
   tserverAzUpgradeStatesListWithSecondLastInProgress
 } from '@app/mocks/mock-data/taskMocks';
 import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import { withStorybookTasksReduxProvider } from '@app/mocks/storybook/storybookTasksRedux';
 import {
   AZUpgradeStatus,
   CanaryPauseState,
-  DbUpgradePrecheckStatus,
   TaskState,
   TaskType,
   type Task
@@ -34,15 +34,18 @@ const defaultSoftwareUpgradeProgress = defaultDbUpgradeSoftwareUpgradeProgress()
 const defaultDbUpgradeTask = createDbUpgradeTaskMock({
   softwareUpgradeProgress: {
     canaryPauseState: CanaryPauseState.PAUSED_AFTER_MASTERS,
-    precheckStatus: DbUpgradePrecheckStatus.SUCCESS,
-    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map((az) => ({
-      ...az,
-      status: AZUpgradeStatus.COMPLETED
-    })),
-    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map((az) => ({
-      ...az,
-      status: AZUpgradeStatus.NOT_STARTED
-    }))
+    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.COMPLETED
+      })
+    ),
+    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.NOT_STARTED
+      })
+    )
   }
 });
 
@@ -83,7 +86,7 @@ const meta = {
   parameters: storyWithBannerMsw(defaultDbUpgradeTask, {
     universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Paused }
   }).parameters,
-  decorators: [withCustomerId, (Story: ComponentType) => <Story />],
+  decorators: [withCustomerId, withStorybookTasksReduxProvider],
   args: {
     universeUuid: DB_UPGRADE_TASK_MOCK_UNIVERSE_UUID,
     task: defaultDbUpgradeTask
@@ -95,7 +98,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const runningUpgradeSoftwareUpgradeProgress = {
-  precheckStatus: DbUpgradePrecheckStatus.SUCCESS,
   masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map((az) => ({
     ...az,
     status: AZUpgradeStatus.COMPLETED
@@ -136,15 +138,16 @@ export const UpgradeRunningYsqlMajorVersion: Story = {
 
 const pausedAfterMastersSoftwareUpgradeProgress = {
   canaryPauseState: CanaryPauseState.PAUSED_AFTER_MASTERS,
-  precheckStatus: DbUpgradePrecheckStatus.SUCCESS,
   masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map((az) => ({
     ...az,
     status: AZUpgradeStatus.COMPLETED
   })),
-  tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map((az) => ({
-    ...az,
-    status: AZUpgradeStatus.NOT_STARTED
-  }))
+  tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+    (az) => ({
+      ...az,
+      status: AZUpgradeStatus.NOT_STARTED
+    })
+  )
 };
 
 const upgradePausedTask = createDbUpgradeTaskMock({
@@ -162,15 +165,16 @@ export const UpgradePaused: Story = {
 };
 
 const allAzsCompletedSoftwareUpgradeProgress = {
-  precheckStatus: DbUpgradePrecheckStatus.SUCCESS,
   masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map((az) => ({
     ...az,
     status: AZUpgradeStatus.COMPLETED
   })),
-  tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map((az) => ({
-    ...az,
-    status: AZUpgradeStatus.COMPLETED
-  }))
+  tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+    (az) => ({
+      ...az,
+      status: AZUpgradeStatus.COMPLETED
+    })
+  )
 };
 
 const upgradeSuccessfulPendingFinalizeTask = createDbUpgradeTaskMock({
@@ -208,24 +212,44 @@ export const UpgradeSuccessful: Story = {
 const upgradeFailedTask = createDbUpgradeTaskMock({
   status: TaskState.FAILURE,
   softwareUpgradeProgress: {
-    precheckStatus: DbUpgradePrecheckStatus.SUCCESS,
-    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map((az) => ({
-      ...az,
-      status: AZUpgradeStatus.COMPLETED
-    })),
-    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map((az, index) => ({
-      ...az,
-      status: index === 0 ? AZUpgradeStatus.FAILED : AZUpgradeStatus.NOT_STARTED
-    }))
+    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.COMPLETED
+      })
+    ),
+    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+      (az, index) => ({
+        ...az,
+        status: index === 0 ? AZUpgradeStatus.FAILED : AZUpgradeStatus.NOT_STARTED
+      })
+    )
   }
 });
 
 export const UpgradeFailed: Story = {
   ...storyWithBannerMsw(upgradeFailedTask, {
-    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.UpgradeFailed }
+    universeInfoOverrides: {
+      software_upgrade_state: UniverseInfoSoftwareUpgradeState.UpgradeFailed
+    }
   }),
   args: {
     task: upgradeFailedTask
+  }
+};
+
+/** Task failed while universe is Ready (e.g. upgrade aborted) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+const upgradeAbortedTask = createDbUpgradeTaskMock({
+  status: TaskState.FAILURE,
+  omitSoftwareUpgradeProgress: true
+});
+
+export const UpgradeFailedDuringPrecheck: Story = {
+  ...storyWithBannerMsw(upgradeAbortedTask, {
+    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+  }),
+  args: {
+    task: upgradeAbortedTask
   }
 };
 

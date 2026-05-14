@@ -1,9 +1,10 @@
 import { YBModal, YBModalProps } from '@app/redesign/components';
 import { makeStyles, Link as MuiLink, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { AxiosError } from 'axios';
+import { toast } from 'react-toastify';
 
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import ExternalLinkIcon from '@app/redesign/assets/approved/share-04.svg';
 import { useFinalizeSoftwareUpgrade } from '@app/v2/api/universe/universe';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -12,6 +13,7 @@ import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validat
 import { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
 import { YBA_UNIVERSE_UPGRADE_EVALUATION_LINK } from './constants';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 const useStyles = makeStyles((theme) => ({
   modalContainer: {
@@ -51,9 +53,20 @@ export const DbUpgradeFinalizeModal = ({
   });
   const finalizeUpgradeMutation = useFinalizeSoftwareUpgrade({
     mutation: {
-      onSuccess: (_: YBATaskRespResponse, variables: { uniUUID: string }) => {
+      onSuccess: (response: YBATaskRespResponse, variables: { uniUUID: string }) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(
+              <Typography variant="body2">{t('toast.finalizeUpgradeSuccess')}</Typography>
+            );
+          }
+        };
+
         refreshUniverseDetailsCache();
         modalProps.onClose();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, {

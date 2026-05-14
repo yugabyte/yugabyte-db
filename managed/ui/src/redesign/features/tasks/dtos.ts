@@ -84,7 +84,6 @@ export type DbUpgradePrecheckStatus =
 export interface SoftwareUpgradeProgress {
   canaryUpgrade: boolean;
   canaryPauseState: CanaryPauseState | null;
-  precheckStatus: DbUpgradePrecheckStatus;
   masterAZUpgradeStatesList: AZUpgradeState[];
   tserverAZUpgradeStatesList: AZUpgradeState[];
 }

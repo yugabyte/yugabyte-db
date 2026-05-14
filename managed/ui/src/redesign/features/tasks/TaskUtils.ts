@@ -168,6 +168,33 @@ export const getLatestUniverseTask = (
   }, undefined);
 };
 
+/** Latest `SOFTWARE_UPGRADE` task for the universe by `createTime` (matches paged filter `typeList`). */
+export const getLatestSoftwareUpgradeTaskForUniverse = (
+  customerTaskList: Task[] | undefined | null,
+  universeUuid: string
+): Task | undefined => {
+  return (customerTaskList ?? []).reduce((latestTask: Task | undefined, task: Task) => {
+    if (task.targetUUID !== universeUuid || task.type !== TaskType.SOFTWARE_UPGRADE) {
+      return latestTask;
+    }
+    if (!latestTask) {
+      return task;
+    }
+    const taskTime = Date.parse(task.createTime);
+    const latestTime = Date.parse(latestTask.createTime);
+    if (Number.isNaN(taskTime) && Number.isNaN(latestTime)) {
+      return latestTask;
+    }
+    if (Number.isNaN(taskTime)) {
+      return latestTask;
+    }
+    if (Number.isNaN(latestTime)) {
+      return task;
+    }
+    return taskTime > latestTime ? task : latestTask;
+  }, undefined);
+};
+
 /**
  * Prefix that the backend prepends to `CustomerTaskFormData.typeName` when an
  * upgrade-family task is submitted with `UniverseTaskParams.runOnlyPrechecks = true`.
@@ -201,3 +228,34 @@ export const getIsDbUpgradeRollbackTask = (task: Task): boolean =>
 
 export const getIsDbUpgradeFinalizeTask = (task: Task): boolean =>
   task.type === TaskType.FINALIZE_UPGRADE;
+
+/** Non-precheck software upgrade, rollback, or finalize — matches DB upgrade cluster banners (excludes precheck-only). */
+export const getIsSoftwareUpgradeLockingTask = (task: Task): boolean =>
+  getIsDbUpgradeTask(task) || getIsDbUpgradeRollbackTask(task) || getIsDbUpgradeFinalizeTask(task);
+
+/** Latest upgrade / rollback / finalize task for the universe by `createTime` (precheck tasks excluded). */
+export const getLatestSoftwareUpgradeLockingTaskForUniverse = (
+  customerTaskList: Task[] | undefined | null,
+  universeUuid: string
+): Task | undefined => {
+  return (customerTaskList ?? []).reduce((latestTask: Task | undefined, task: Task) => {
+    if (task.targetUUID !== universeUuid || !getIsSoftwareUpgradeLockingTask(task)) {
+      return latestTask;
+    }
+    if (!latestTask) {
+      return task;
+    }
+    const taskTime = Date.parse(task.createTime);
+    const latestTime = Date.parse(latestTask.createTime);
+    if (Number.isNaN(taskTime) && Number.isNaN(latestTime)) {
+      return latestTask;
+    }
+    if (Number.isNaN(taskTime)) {
+      return latestTask;
+    }
+    if (Number.isNaN(latestTime)) {
+      return task;
+    }
+    return taskTime > latestTime ? task : latestTask;
+  }, undefined);
+};

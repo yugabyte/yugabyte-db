@@ -90,6 +90,7 @@ import {
   isVersionPGSupported,
   isVersionConnectionPoolSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
+import { DbUpgradeRollBackModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeRollBackModal';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg?img';
@@ -636,8 +637,7 @@ class UniverseDetail extends Component {
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
     const isReadReplicaAsymmetricBlocked =
-      (hasAsymmetricAsyncCluster) &&
-      !(isKubernetesUniverse && enableAzOverridesK8s);
+      hasAsymmetricAsyncCluster && !(isKubernetesUniverse && enableAzOverridesK8s);
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       isReadReplicaAsymmetricBlocked ||
@@ -1821,15 +1821,31 @@ class UniverseDetail extends Component {
             />
           ))}
 
-        <DBRollbackModal
-          open={showModal && visibleModal === 'rollbackModal'}
-          onClose={() => {
-            closeModal();
-            this.props.fetchCustomerTasks();
-            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
-          }}
-          universeData={currentUniverse.data}
-        />
+        {showModal &&
+          visibleModal === 'rollbackModal' &&
+          (isCanaryUpgradeEnabled ? (
+            <DbUpgradeRollBackModal
+              modalProps={{
+                open: showModal && visibleModal === 'rollbackModal',
+                onClose: () => {
+                  closeModal();
+                  this.props.fetchCustomerTasks();
+                  this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+                }
+              }}
+              universeUuid={currentUniverse.data.universeUUID}
+            />
+          ) : (
+            <DBRollbackModal
+              open={showModal && visibleModal === 'rollbackModal'}
+              onClose={() => {
+                closeModal();
+                this.props.fetchCustomerTasks();
+                this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+              }}
+              universeData={currentUniverse.data}
+            />
+          ))}
 
         <DeleteUniverseContainer
           visible={showModal && visibleModal === 'deleteUniverseModal'}

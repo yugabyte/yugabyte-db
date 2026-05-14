@@ -168,6 +168,18 @@ export default class UniverseStatus extends Component {
           </div>
         );
       }
+      if (
+        latestUniverseTask &&
+        isLatestUniverseTaskFailedOrAborted &&
+        getIsDbUpgradeTask(latestUniverseTask)
+      ) {
+        statusDisplay = (
+          <div className="status-container warning">
+            <AlertIcon width={24} height={24} />
+            {showLabelText && <span>DB upgrade aborted</span>}
+          </div>
+        );
+      }
     } else if (universeStatus.state === UniverseState.PAUSED) {
       statusDisplay = (
         <div className="status-container paused">

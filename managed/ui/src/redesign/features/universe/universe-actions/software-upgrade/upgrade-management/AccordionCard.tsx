@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import { forwardRef } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -164,7 +164,7 @@ const useStyles = makeStyles((theme) => ({
   icon: {}
 }));
 
-export const AccordionCard = ({
+export const AccordionCard = forwardRef<HTMLElement, AccordionCardProps>(({
   state,
   title,
   accordionProps,
@@ -173,7 +173,7 @@ export const AccordionCard = ({
   isExpandDisabled = false,
   stepNumber,
   children
-}: AccordionCardProps) => {
+}, ref) => {
   const classes = useStyles();
   const stepStateToIcon = {
     [AccordionCardState.NEUTRAL]: {
@@ -200,6 +200,7 @@ export const AccordionCard = ({
   return (
     <Accordion
       {...accordionProps}
+      ref={ref}
       expanded={isExpandDisabled ? false : accordionProps?.expanded}
       className={clsx(classes.accordionCard, classes.step, className)}
       classes={{ root: classes.accordionRoot }}
@@ -238,4 +239,5 @@ export const AccordionCard = ({
       </AccordionDetails>
     </Accordion>
   );
-};
+});
+AccordionCard.displayName = 'AccordionCard';

@@ -3,6 +3,7 @@ import { AxiosError } from 'axios';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 
 import { YBModal, YBRadio, type YBModalProps } from '@app/redesign/components';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -12,15 +13,18 @@ import { AZUpgradeStatus, TaskState, TaskType } from '@app/redesign/features/tas
 import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
 import { api, taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import { SortDirection } from '@app/redesign/utils/dtos';
-import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { getUniverse, rollbackSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import type { UniverseRollbackUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import type {
+  UniverseRollbackUpgradeReqBody,
+  YBATaskRespResponse
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { RollingUpdateBatchSettings } from './components/RollingUpdateBatchSettings';
 import { UpgradePace } from './constants';
-import { getPlacementAzMetadataList } from './utils/formUtils';
+import { getPlacementAzDisplayNameForCluster } from './utils/formUtils';
 import { getTaskSoftwareUpgradeProgress } from './upgrade-management/utils';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 import AlertIcon from '@app/redesign/assets/alert.svg';
 import ClockRewindIcon from '@app/redesign/assets/clock-rewind.svg';
@@ -187,18 +191,19 @@ export const DbUpgradeRollBackModal = ({
   const universe = universeDetailsQuery.data;
   const prevVersion = universe?.info?.previous_yb_software_details?.yb_software_version ?? '';
   const maxNodesPerBatchMaximum = universe?.info?.roll_max_batch_size?.primary_batch_size ?? 1;
-  const upgradedAzMetadataList =
-    getPlacementAzMetadataList(getPrimaryCluster(universe?.spec?.clusters ?? [])) ?? [];
-  const upgradedAzDisplayNameByUuid = Object.fromEntries(
-    upgradedAzMetadataList.map((az) => [az.azUuid, az.displayName])
-  );
+  const clusters = universe?.spec?.clusters ?? [];
 
   const upgradedAzs =
-    getTaskSoftwareUpgradeProgress(latestSoftwareUpgradeTask)?.tserverAZUpgradeStatesList
-      ?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
+    getTaskSoftwareUpgradeProgress(latestSoftwareUpgradeTask)
+      ?.tserverAZUpgradeStatesList?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
       .map((az) => ({
         azUuid: az.azUUID,
-        displayName: upgradedAzDisplayNameByUuid[az.azUUID] ?? az.azName ?? az.azUUID
+        displayName: getPlacementAzDisplayNameForCluster(
+          clusters,
+          az.clusterUUID,
+          az.azUUID,
+          az.azName ?? az.azUUID
+        )
       })) ?? [];
 
   const formMethods = useForm<DbUpgradeRollBackFormFields>({
@@ -213,9 +218,18 @@ export const DbUpgradeRollBackModal = ({
   const rollbackMutation = useMutation(
     (data: UniverseRollbackUpgradeReqBody) => rollbackSoftwareUpgrade(universeUuid, data),
     {
-      onSuccess: () => {
+      onSuccess: (response: YBATaskRespResponse) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(<Typography variant="body2">{t('toast.rollbackSuccess')}</Typography>);
+          }
+        };
+
         refreshUniverseTasksCache();
         modalProps.onClose();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, {

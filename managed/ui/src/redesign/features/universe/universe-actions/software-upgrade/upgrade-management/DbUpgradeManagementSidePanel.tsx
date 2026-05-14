@@ -1,20 +1,25 @@
+import { useEffect } from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { useDispatch } from 'react-redux';
 
+import { patchTasksForCustomer } from '@app/actions/tasks';
+import { TASK_SHORT_TIMEOUT } from '@app/components/tasks/constants';
+import { PollingIntervalMs } from '@app/components/xcluster/constants';
 import { YBModal, YBModalProps } from '@app/redesign/components';
-import { TaskType } from '@app/redesign/features/tasks/dtos';
+import { TaskState } from '@app/redesign/features/tasks/dtos';
+import { getLatestSoftwareUpgradeTaskForUniverse } from '@app/redesign/features/tasks/TaskUtils';
 import {
   api,
   dbUpgradeMetadataQueryKey,
   taskQueryKey,
   universeQueryKey
 } from '@app/redesign/helpers/api';
-import { SortDirection } from '@app/redesign/utils/dtos';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { getUniverse, precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
+import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { DbUpgradeProgressPanel } from './DbUpgradeProgressPanel';
-import { PollingIntervalMs } from '@app/components/xcluster/constants';
 
 interface DbUpgradeManagementSidePanelProps {
   universeUuid: string;
@@ -53,26 +58,30 @@ export const DbUpgradeManagementSidePanel = ({
   modalProps
 }: DbUpgradeManagementSidePanelProps) => {
   const classes = useStyles();
+  const dispatch = useDispatch();
   const { t } = useTranslation('translation', {
     keyPrefix: 'universeActions.dbUpgrade.dbUpgradeManagementSidePanel'
   });
 
   const isPanelOpen = !!modalProps.open;
 
-  const getPagedSoftwareUpgradeTasksRequest = {
-    direction: SortDirection.DESC,
-    filter: {
-      typeList: [TaskType.SOFTWARE_UPGRADE],
-      targetUUIDList: [universeUuid]
+  // Universe-scoped task list (same as UniverseTaskList): drives panel + Redux banner sync.
+  const universeTasksQuery = useQuery(
+    taskQueryKey.universe(universeUuid),
+    () => api.fetchCustomerTasks(universeUuid),
+    {
+      enabled: isPanelOpen && !!universeUuid,
+      refetchInterval: TASK_SHORT_TIMEOUT,
+      onSuccess(data) {
+        dispatch(patchTasksForCustomer(universeUuid, data));
+      }
     }
-  };
-  const softwareUpgradeTasksQuery = useQuery(
-    taskQueryKey.paged(getPagedSoftwareUpgradeTasksRequest),
-    () => api.fetchPagedCustomerTasks(getPagedSoftwareUpgradeTasksRequest),
-    { enabled: isPanelOpen && !!universeUuid, refetchInterval: PollingIntervalMs.FOCUSED_TASK }
   );
 
-  const latestSoftwareUpgradeTask = softwareUpgradeTasksQuery.data?.entities[0];
+  const latestSoftwareUpgradeTask = getLatestSoftwareUpgradeTaskForUniverse(
+    universeTasksQuery.data,
+    universeUuid
+  );
 
   const targetDbVersion = latestSoftwareUpgradeTask?.details?.versionNumbers?.ybSoftwareVersion;
   const dbUpgradeMetadataQuery = useQuery(
@@ -87,14 +96,30 @@ export const DbUpgradeManagementSidePanel = ({
       enabled: isPanelOpen && !!targetDbVersion
     }
   );
-  const isYsqlMajorUpgrade = dbUpgradeMetadataQuery.data?.ysql_major_version_upgrade ?? false;
+
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUuid),
     () => getUniverse(universeUuid),
-    { enabled: isPanelOpen && !!universeUuid }
+    { enabled: isPanelOpen && !!universeUuid, refetchInterval: PollingIntervalMs.FOCUSED_TASK }
   );
 
   const universe = universeDetailsQuery.data;
+  const softwareUpgradeState = universe?.info?.software_upgrade_state;
+  const isDbUpgradeFinalizationRequired =
+    (dbUpgradeMetadataQuery.data?.finalize_required ||
+      softwareUpgradeState === UniverseInfoSoftwareUpgradeState.PreFinalize) ??
+    false;
+  const isYsqlMajorUpgrade = dbUpgradeMetadataQuery.data?.ysql_major_version_upgrade ?? false;
+  const latestSoftwareUpgradeTaskStatus = latestSoftwareUpgradeTask?.status;
+
+  // Auto-close once the upgrade has fully settled (universe back in `Ready`) and
+  // the task succeeded.
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    if (softwareUpgradeState !== UniverseInfoSoftwareUpgradeState.Ready) return;
+    if (latestSoftwareUpgradeTaskStatus !== TaskState.SUCCESS) return;
+    modalProps.onClose();
+  }, [isPanelOpen, softwareUpgradeState, latestSoftwareUpgradeTaskStatus, modalProps.onClose]);
 
   return (
     <YBModal
@@ -117,12 +142,14 @@ export const DbUpgradeManagementSidePanel = ({
           {isYsqlMajorUpgrade && <Typography variant="body1">{t('ysqlMajorUpgrade')}</Typography>}
         </div>
       </div>
-      {latestSoftwareUpgradeTask && (
+      {latestSoftwareUpgradeTask && universe && (
         <DbUpgradeProgressPanel
           dbUpgradeTask={latestSoftwareUpgradeTask}
           universe={universe}
           className={classes.progressPanel}
+          isDbUpgradeFinalizeRequired={isDbUpgradeFinalizationRequired}
           isYsqlMajorUpgrade={isYsqlMajorUpgrade}
+          onCloseSidePanel={modalProps.onClose}
         />
       )}
     </YBModal>

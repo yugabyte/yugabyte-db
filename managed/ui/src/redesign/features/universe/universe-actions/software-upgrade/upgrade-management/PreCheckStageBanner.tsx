@@ -1,8 +1,9 @@
-import { Typography } from '@material-ui/core';
+import { Link as MUILink, Typography } from '@material-ui/core';
 import clsx from 'clsx';
-import { Link } from 'react-router';
 import { Trans, useTranslation } from 'react-i18next';
+import { useDispatch } from 'react-redux';
 
+import { showTaskInDrawer } from '@app/actions/tasks';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 import { useOperationBannerStyles } from '../useOperationBannerStyles';
 import { AccordionCardState } from './AccordionCard';
@@ -11,17 +12,18 @@ import InfoIcon from '@app/redesign/assets/approved/info.svg';
 
 interface PreCheckStageBannerProps {
   state: AccordionCardState;
-  universeUuid: string;
   taskUuid: string;
+  onCloseSidePanel: () => void;
 }
 
 const TRANSLATION_KEY_PREFIX =
   'universeActions.dbUpgrade.dbUpgradeManagementSidePanel.progressPanel.operationBanner';
 export const PreCheckStageBanner = ({
   state,
-  universeUuid,
-  taskUuid
+  taskUuid,
+  onCloseSidePanel
 }: PreCheckStageBannerProps) => {
+  const dispatch = useDispatch();
   const bannerClasses = useOperationBannerStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: TRANSLATION_KEY_PREFIX
@@ -54,11 +56,17 @@ export const PreCheckStageBanner = ({
               i18nKey="preCheckFailedBanner"
               components={{
                 viewDetailsLink: (
-                  <Link
-                    to={`/universes/${universeUuid}/tasks/${taskUuid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <MUILink
+                    component="button"
+                    type="button"
                     className={bannerClasses.link}
+                    underline="always"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      dispatch(showTaskInDrawer(taskUuid));
+                      onCloseSidePanel();
+                    }}
                   />
                 )
               }}

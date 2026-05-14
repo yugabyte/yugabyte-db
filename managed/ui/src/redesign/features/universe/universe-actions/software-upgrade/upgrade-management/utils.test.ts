@@ -7,14 +7,18 @@ import {
 import {
   AZUpgradeStatus,
   CanaryPauseState,
-  DbUpgradePrecheckStatus,
   ServerType,
+  TaskState,
   type SoftwareUpgradeProgress,
   type Task
 } from '@app/redesign/features/tasks/dtos';
+import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AccordionCardState } from './AccordionCard';
 import {
+  ActiveAccordionId,
   classifyDbUpgradeStages,
+  getActiveDbUpgradeProgressAccordionId,
+  getTserverAzAccordionId,
   getTserverAzClusterUpgradeStageKey,
   type DbUpgradeStages
 } from './utils';
@@ -33,71 +37,96 @@ describe('classifyDbUpgradeStages', () => {
     createDbUpgradeMockAzUpgradeState(azUUID, status, serverType, clusterUUID);
 
   const createDbUpgradeTask = (
-    softwareUpgradeProgress: SoftwareUpgradeProgress | null | undefined
+    softwareUpgradeProgress: SoftwareUpgradeProgress | null | undefined,
+    taskStatus?: TaskState
   ): Task =>
     ({
       details: {
         taskDetails: [],
-        ...(softwareUpgradeProgress != null ? { softwareUpgradeProgress } : {})
-      }
-    }) as Task;
+        ...(softwareUpgradeProgress !== undefined && softwareUpgradeProgress !== null
+          ? { softwareUpgradeProgress }
+          : {})
+      },
+      ...(taskStatus !== undefined ? { status: taskStatus } : {})
+    }) as unknown as Task;
+
+  const noUniverseSoftwareUpgradeState = undefined;
 
   it('return type matches DbUpgradeStages', () => {
     expectTypeOf(
-      classifyDbUpgradeStages(createDbUpgradeTask(null))
+      classifyDbUpgradeStages(createDbUpgradeTask(null), noUniverseSoftwareUpgradeState)
     ).toEqualTypeOf<DbUpgradeStages>();
     expectTypeOf(
-      classifyDbUpgradeStages(createDbUpgradeTask(createSoftwareUpgradeProgress()))
+      classifyDbUpgradeStages(
+        createDbUpgradeTask(createSoftwareUpgradeProgress()),
+        noUniverseSoftwareUpgradeState
+      )
     ).toEqualTypeOf<DbUpgradeStages>();
   });
 
   describe('when software upgrade progress is absent', () => {
-    it('treats every step as idle so the panel does not show false success or failure', () => {
+    it('infers pre-check from task + universe; keeps other steps neutral', () => {
       for (const softwareUpgradeProgress of [null, undefined]) {
-        const result = classifyDbUpgradeStages(createDbUpgradeTask(softwareUpgradeProgress));
-
-        expect(result.preCheckStage, String(softwareUpgradeProgress)).toBe(
-          AccordionCardState.NEUTRAL
+        const resultWithoutTaskStatus = classifyDbUpgradeStages(
+          createDbUpgradeTask(softwareUpgradeProgress),
+          noUniverseSoftwareUpgradeState
         );
-        expect(result.upgradeMasterServersStage).toBe(AccordionCardState.NEUTRAL);
-        expect(result.upgradeAzStages).toEqual({});
-        expect(result.finalizeStage).toBe(AccordionCardState.NEUTRAL);
+
+        expect(resultWithoutTaskStatus.preCheckStage, String(softwareUpgradeProgress)).toBe(
+          AccordionCardState.SUCCESS
+        );
+        expect(resultWithoutTaskStatus.upgradeMasterServersStage).toBe(AccordionCardState.NEUTRAL);
+        expect(resultWithoutTaskStatus.upgradeAzStages).toEqual({});
+        expect(resultWithoutTaskStatus.finalizeStage).toBe(AccordionCardState.NEUTRAL);
       }
+    });
+
+    it('maps RUNNING task + Ready universe to in-progress pre-check', () => {
+      const result = classifyDbUpgradeStages(
+        createDbUpgradeTask(null, TaskState.RUNNING),
+        UniverseInfoSoftwareUpgradeState.Ready
+      );
+      expect(result.preCheckStage).toBe(AccordionCardState.IN_PROGRESS);
+    });
+
+    it('maps FAILURE task + Ready universe to failed pre-check (warning accordion)', () => {
+      const result = classifyDbUpgradeStages(
+        createDbUpgradeTask(null, TaskState.FAILURE),
+        UniverseInfoSoftwareUpgradeState.Ready
+      );
+      expect(result.preCheckStage).toBe(AccordionCardState.WARNING);
     });
   });
 
-  describe('precheck stage', () => {
-    it.each([
-      [DbUpgradePrecheckStatus.SUCCESS, AccordionCardState.SUCCESS],
-      [DbUpgradePrecheckStatus.RUNNING, AccordionCardState.IN_PROGRESS],
-      [DbUpgradePrecheckStatus.FAILED, AccordionCardState.WARNING]
-    ] as const)(
-      'when precheck status is %s, the precheck stage shows %s',
-      (precheckStatus: DbUpgradePrecheckStatus, expectedAccordionState: AccordionCardState) => {
-        const result = classifyDbUpgradeStages(
-          createDbUpgradeTask(createSoftwareUpgradeProgress({ precheckStatus }))
-        );
-
-        expect(result.preCheckStage).toBe(expectedAccordionState);
-      }
-    );
-
-    it('when precheck status is unrecognized, the precheck stage returns as neutral', () => {
-      const resultUnknownString = classifyDbUpgradeStages(
+  describe('pre-check stage with software upgrade progress present', () => {
+    it('maps RUNNING task + Ready universe to in-progress pre-check regardless of AZ lists', () => {
+      const result = classifyDbUpgradeStages(
         createDbUpgradeTask(
-          createSoftwareUpgradeProgress({
-            precheckStatus: 'unknown' as DbUpgradePrecheckStatus
-          })
-        )
+          createSoftwareUpgradeProgress({ masterAZUpgradeStatesList: [] }),
+          TaskState.RUNNING
+        ),
+        UniverseInfoSoftwareUpgradeState.Ready
       );
-      expect(resultUnknownString.preCheckStage).toBe(AccordionCardState.NEUTRAL);
+      expect(result.preCheckStage).toBe(AccordionCardState.IN_PROGRESS);
+    });
+
+    it('maps FAILURE task + Ready universe to warning pre-check regardless of AZ lists', () => {
+      const result = classifyDbUpgradeStages(
+        createDbUpgradeTask(
+          createSoftwareUpgradeProgress({ masterAZUpgradeStatesList: [] }),
+          TaskState.FAILURE
+        ),
+        UniverseInfoSoftwareUpgradeState.Ready
+      );
+      expect(result.preCheckStage).toBe(AccordionCardState.WARNING);
     });
   });
 
   describe('master servers stage', () => {
     it('stays neutral when no master AZ rows are returned', () => {
       const result = classifyDbUpgradeStages(
-        createDbUpgradeTask(createSoftwareUpgradeProgress({ masterAZUpgradeStatesList: [] }))
+        createDbUpgradeTask(createSoftwareUpgradeProgress({ masterAZUpgradeStatesList: [] })),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeMasterServersStage).toBe(AccordionCardState.NEUTRAL);
@@ -112,7 +141,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-2', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeMasterServersStage).toBe(AccordionCardState.IN_PROGRESS);
@@ -127,7 +157,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-2', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeMasterServersStage).toBe(AccordionCardState.SUCCESS);
@@ -142,7 +173,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-2', AZUpgradeStatus.IN_PROGRESS, ServerType.MASTER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeMasterServersStage).toBe(AccordionCardState.IN_PROGRESS);
@@ -157,7 +189,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-2', AZUpgradeStatus.FAILED, ServerType.MASTER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeMasterServersStage).toBe(AccordionCardState.FAILED);
@@ -174,7 +207,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-east', AZUpgradeStatus.COMPLETED, ServerType.TSERVER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeAzStages[tserverStageKey('az-west')]).toEqual({
@@ -210,17 +244,20 @@ describe('classifyDbUpgradeStages', () => {
               )
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeAzStages[tserverStageKey(sharedAzUUID, primaryClusterUUID)]).toEqual({
         accordionCardState: AccordionCardState.IN_PROGRESS,
         isLastAzBeforeCanaryPause: false
       });
-      expect(result.upgradeAzStages[tserverStageKey(sharedAzUUID, readReplicaClusterUUID)]).toEqual({
-        accordionCardState: AccordionCardState.NEUTRAL,
-        isLastAzBeforeCanaryPause: false
-      });
+      expect(result.upgradeAzStages[tserverStageKey(sharedAzUUID, readReplicaClusterUUID)]).toEqual(
+        {
+          accordionCardState: AccordionCardState.NEUTRAL,
+          isLastAzBeforeCanaryPause: false
+        }
+      );
     });
 
     it.each([
@@ -238,7 +275,8 @@ describe('classifyDbUpgradeStages', () => {
                 createAzUpgradeState('single-az', azStatus, ServerType.TSERVER)
               ]
             })
-          )
+          ),
+          noUniverseSoftwareUpgradeState
         );
 
         expect(result.upgradeAzStages[tserverStageKey('single-az')]).toEqual({
@@ -250,7 +288,8 @@ describe('classifyDbUpgradeStages', () => {
 
     it('exposes no per-AZ entries when the t-server AZ list is empty', () => {
       const result = classifyDbUpgradeStages(
-        createDbUpgradeTask(createSoftwareUpgradeProgress({ tserverAZUpgradeStatesList: [] }))
+        createDbUpgradeTask(createSoftwareUpgradeProgress({ tserverAZUpgradeStatesList: [] })),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeAzStages).toEqual({});
@@ -267,7 +306,8 @@ describe('classifyDbUpgradeStages', () => {
               }
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeAzStages[tserverStageKey('az-x')]).toEqual({
@@ -287,7 +327,8 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-rest', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
       expect(result.upgradeAzStages[tserverStageKey('az-first')]).toEqual({
@@ -314,10 +355,13 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-b', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
-      expect(result.upgradeAzStages[tserverStageKey('az-a')]?.isLastAzBeforeCanaryPause).toBe(false);
+      expect(result.upgradeAzStages[tserverStageKey('az-a')]?.isLastAzBeforeCanaryPause).toBe(
+        false
+      );
     });
 
     it('does not mark a pause boundary when every t-server AZ has completed', () => {
@@ -330,19 +374,311 @@ describe('classifyDbUpgradeStages', () => {
               createAzUpgradeState('az-b', AZUpgradeStatus.COMPLETED, ServerType.TSERVER)
             ]
           })
-        )
+        ),
+        noUniverseSoftwareUpgradeState
       );
 
-      expect(result.upgradeAzStages[tserverStageKey('az-a')]?.isLastAzBeforeCanaryPause).toBe(false);
-      expect(result.upgradeAzStages[tserverStageKey('az-b')]?.isLastAzBeforeCanaryPause).toBe(false);
+      expect(result.upgradeAzStages[tserverStageKey('az-a')]?.isLastAzBeforeCanaryPause).toBe(
+        false
+      );
+      expect(result.upgradeAzStages[tserverStageKey('az-b')]?.isLastAzBeforeCanaryPause).toBe(
+        false
+      );
     });
   });
 
   describe('finalize stage', () => {
     it('stays neutral until finalize classification is implemented', () => {
-      const result = classifyDbUpgradeStages(createDbUpgradeTask(createSoftwareUpgradeProgress()));
+      const result = classifyDbUpgradeStages(
+        createDbUpgradeTask(createSoftwareUpgradeProgress()),
+        noUniverseSoftwareUpgradeState
+      );
 
       expect(result.finalizeStage).toBe(AccordionCardState.NEUTRAL);
     });
+  });
+});
+
+describe('getActiveDbUpgradeProgressAccordionId', () => {
+  const clusterUUID = 'cluster-uuid';
+
+  const tserverStageKey = (azUUID: string, clusterId: string = clusterUUID) =>
+    getTserverAzClusterUpgradeStageKey(azUUID, clusterId);
+
+  const createAzUpgradeState = (azUUID: string, status: AZUpgradeStatus, serverType: ServerType) =>
+    createDbUpgradeMockAzUpgradeState(azUUID, status, serverType, clusterUUID);
+
+  const createDbUpgradeTask = (
+    softwareUpgradeProgress: SoftwareUpgradeProgress | null | undefined,
+    taskStatus?: TaskState
+  ): Task =>
+    ({
+      details: {
+        taskDetails: [],
+        ...(softwareUpgradeProgress !== undefined && softwareUpgradeProgress !== null
+          ? { softwareUpgradeProgress }
+          : {})
+      },
+      ...(taskStatus !== undefined ? { status: taskStatus } : {})
+    }) as unknown as Task;
+
+  it('returns pre-check id when pre-check is running', () => {
+    const task = createDbUpgradeTask(null, TaskState.RUNNING);
+    const stages = classifyDbUpgradeStages(task, UniverseInfoSoftwareUpgradeState.Ready);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: undefined,
+        tserverAZUpgradeStatesList: undefined,
+        softwareUpgradeState: UniverseInfoSoftwareUpgradeState.Ready
+      })
+    ).toBe(ActiveAccordionId.PRE_CHECK);
+  });
+
+  it('returns pre-check id when pre-check has failed (warning state)', () => {
+    const task = createDbUpgradeTask(null, TaskState.FAILURE);
+    const stages = classifyDbUpgradeStages(task, UniverseInfoSoftwareUpgradeState.Ready);
+
+    expect(stages.preCheckStage).toBe(AccordionCardState.WARNING);
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: undefined,
+        tserverAZUpgradeStatesList: undefined,
+        softwareUpgradeState: UniverseInfoSoftwareUpgradeState.Ready
+      })
+    ).toBe(ActiveAccordionId.PRE_CHECK);
+  });
+
+  it('prefers pre-check over later stages when pre-check is running', () => {
+    // Pre-check running, master AZs also in progress; pre-check still wins.
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.IN_PROGRESS, ServerType.MASTER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress, TaskState.RUNNING);
+    const stages = classifyDbUpgradeStages(task, UniverseInfoSoftwareUpgradeState.Ready);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: UniverseInfoSoftwareUpgradeState.Ready
+      })
+    ).toBe(ActiveAccordionId.PRE_CHECK);
+  });
+
+  it('returns upgrade-master id when master upgrade is in progress', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.IN_PROGRESS, ServerType.MASTER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(ActiveAccordionId.UPGRADE_MASTER);
+  });
+
+  it('returns upgrade-master id when the master upgrade has failed', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.IN_PROGRESS, ServerType.MASTER),
+        createAzUpgradeState('az-2', AZUpgradeStatus.FAILED, ServerType.MASTER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(stages.upgradeMasterServersStage).toBe(AccordionCardState.FAILED);
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(ActiveAccordionId.UPGRADE_MASTER);
+  });
+
+  it('returns upgrade-master id when paused after a successful master upgrade', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      canaryPauseState: CanaryPauseState.PAUSED_AFTER_MASTERS,
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER),
+        createAzUpgradeState('az-2', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(stages.upgradeMasterServersStage).toBe(AccordionCardState.SUCCESS);
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(ActiveAccordionId.UPGRADE_MASTER);
+  });
+
+  it('returns the first in-progress t-server AZ id in list order', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-first', AZUpgradeStatus.COMPLETED, ServerType.TSERVER),
+        createAzUpgradeState('az-middle', AZUpgradeStatus.IN_PROGRESS, ServerType.TSERVER),
+        createAzUpgradeState('az-last', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(getTserverAzAccordionId('az-middle', clusterUUID));
+  });
+
+  it('returns the first failed t-server AZ id in list order', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-first', AZUpgradeStatus.COMPLETED, ServerType.TSERVER),
+        createAzUpgradeState('az-failed-1', AZUpgradeStatus.FAILED, ServerType.TSERVER),
+        createAzUpgradeState('az-failed-2', AZUpgradeStatus.FAILED, ServerType.TSERVER),
+        createAzUpgradeState('az-rest', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(getTserverAzAccordionId('az-failed-1', clusterUUID));
+  });
+
+  it('returns the canary-pause boundary t-server AZ id when paused after t-servers', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      canaryPauseState: CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ,
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-first', AZUpgradeStatus.COMPLETED, ServerType.TSERVER),
+        createAzUpgradeState('az-boundary', AZUpgradeStatus.COMPLETED, ServerType.TSERVER),
+        createAzUpgradeState('az-rest', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(stages.upgradeAzStages[tserverStageKey('az-boundary')]?.isLastAzBeforeCanaryPause).toBe(
+      true
+    );
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(getTserverAzAccordionId('az-boundary', clusterUUID));
+  });
+
+  it('returns finalize id when the universe is in pre-finalize state and no earlier stage is active', () => {
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, UniverseInfoSoftwareUpgradeState.PreFinalize);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: UniverseInfoSoftwareUpgradeState.PreFinalize
+      })
+    ).toBe(ActiveAccordionId.FINALIZE);
+  });
+
+  it('returns null when nothing is currently active', () => {
+    // All AZs not started, no pre-check progress, no finalize → no stage demands focus.
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.NOT_STARTED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBeNull();
+  });
+
+  it('does not treat a t-server AZ as active when paused after masters even if last AZ flag is false', () => {
+    // Master pause + earlier completed tservers but pause state is AFTER_MASTERS, not tservers.
+    const softwareUpgradeProgress = createMinimalSoftwareUpgradeProgressForTests({
+      canaryPauseState: CanaryPauseState.PAUSED_AFTER_MASTERS,
+      masterAZUpgradeStatesList: [
+        createAzUpgradeState('az-1', AZUpgradeStatus.COMPLETED, ServerType.MASTER)
+      ],
+      tserverAZUpgradeStatesList: [
+        createAzUpgradeState('az-tserver-1', AZUpgradeStatus.NOT_STARTED, ServerType.TSERVER)
+      ]
+    });
+    const task = createDbUpgradeTask(softwareUpgradeProgress);
+    const stages = classifyDbUpgradeStages(task, undefined);
+
+    expect(
+      getActiveDbUpgradeProgressAccordionId({
+        stages,
+        dbUpgradeTaskPauseState: softwareUpgradeProgress.canaryPauseState,
+        tserverAZUpgradeStatesList: softwareUpgradeProgress.tserverAZUpgradeStatesList,
+        softwareUpgradeState: undefined
+      })
+    ).toBe(ActiveAccordionId.UPGRADE_MASTER);
   });
 });

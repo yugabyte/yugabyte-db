@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { makeStyles } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { YBButton, YBModal, type YBModalProps } from '@app/redesign/components';
@@ -20,7 +21,10 @@ import {
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { getUniverse, startSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import type { UniverseSoftwareUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import type {
+  UniverseSoftwareUpgradeReqBody,
+  YBATaskRespResponse
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CurrentDbUpgradeFormStep } from './CurrentDbUpgradeFormStep';
 import { DbUpgradeModalContextProvider } from './DbUpgradeModalContext';
 import {
@@ -42,6 +46,7 @@ import {
   useRefreshSoftwareUpgradeTasksCache,
   useRefreshUniverseDetailsCache
 } from '@app/redesign/helpers/cacheUtils';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 const MODAL_NAME = 'DbUpgradeModal';
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal';
@@ -171,12 +176,21 @@ export const DbUpgradeModal = ({
   const upgradeSoftware = useMutation(
     (data: UniverseSoftwareUpgradeReqBody) => startSoftwareUpgrade(currentUniverseUuid, data),
     {
-      onSuccess: () => {
+      onSuccess: (response: YBATaskRespResponse) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(<Typography variant="body2">{t('toast.dbUpgradeSuccess')}</Typography>);
+          }
+        };
+
         refreshSoftwareUpgradeTasksCache();
         modalProps.onClose();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: t('toast.dbUpgradeFailed') })
+        handleServerError(error, { customErrorLabel: t('toast.dbUpgradeFailedLabel') })
     }
   );
 
@@ -312,7 +326,11 @@ export const DbUpgradeModal = ({
       titleSeparator
       footerAccessory={
         <div className={classes.footerAccessory}>
-          <YBButton variant="secondary" onClick={modalProps.onClose} data-testid={`${MODAL_NAME}-CancelButton`}>
+          <YBButton
+            variant="secondary"
+            onClick={modalProps.onClose}
+            data-testid={`${MODAL_NAME}-CancelButton`}
+          >
             {cancelLabel}
           </YBButton>
           {currentFormStep !== DB_UPGRADE_FIRST_FORM_STEP && (

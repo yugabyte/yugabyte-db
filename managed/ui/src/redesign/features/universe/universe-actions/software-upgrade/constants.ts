@@ -41,5 +41,7 @@ export type AzClusterKind = (typeof AzClusterKind)[keyof typeof AzClusterKind];
 
 export const YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/upgrade-software/';
+export const YBA_YSQL_MAJOR_UPGRADE_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/ysql-major-upgrade-yba/';
 export const YBA_UNIVERSE_UPGRADE_EVALUATION_LINK =
   'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/upgrade-software-install/#monitor-the-universe';

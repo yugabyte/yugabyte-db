@@ -785,11 +785,13 @@ export default class UniverseOverviewNew extends Component {
 
     return (
       <Fragment>
-        {isRollBackFeatureEnabled && !isCanaryUpgradeEnabled &&
+        {isRollBackFeatureEnabled &&
+          !isCanaryUpgradeEnabled &&
           ybSoftwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
-        {isRollBackFeatureEnabled && !isCanaryUpgradeEnabled &&
+        {isRollBackFeatureEnabled &&
+          !isCanaryUpgradeEnabled &&
           !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState
@@ -814,10 +816,11 @@ export default class UniverseOverviewNew extends Component {
           <Col lg={4} md={6} sm={8} xs={12}>
             {getPromiseState(currentUniverse).isSuccess() && (
               <DBVersionWidget
+                universeUuid={universeInfo.universeUUID}
+                universeDataForLegacyDbUpgrade={universeInfo}
                 higherVersionCount={updateAvailable}
                 isRollBackFeatureEnabled={isRollBackFeatureEnabled}
                 isCanaryUpgradeEnabled={isCanaryUpgradeEnabled}
-                failedTaskDetails={failedTask}
               />
             )}
           </Col>
