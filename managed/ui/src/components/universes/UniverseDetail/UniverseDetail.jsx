@@ -1999,6 +1999,7 @@ class UniverseDetail extends Component {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
+          isPerformanceTabEnabled={isPerformanceTabEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}
