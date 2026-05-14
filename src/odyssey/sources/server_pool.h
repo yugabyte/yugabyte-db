@@ -170,10 +170,9 @@ static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool
 	return server;
 }
 
-static inline od_server_t *
-yb_od_server_pool_idle_version_matching(od_server_pool_t *pool,
-					int64_t logical_client_version,
-					bool version_matching_connect_higher_version)
+static inline od_server_t *yb_od_server_pool_idle_version_matching(
+	od_server_pool_t *pool, int64_t logical_client_version,
+	enum yb_od_alter_guc_adoption guc_adoption_strategy)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server;
@@ -181,11 +180,22 @@ yb_od_server_pool_idle_version_matching(od_server_pool_t *pool,
 	od_list_foreach_safe(target, i, n)
 	{
 		server = od_container_of(i, od_server_t, link);
-		if (!server->marked_for_close &&
-		    (server->logical_client_version == logical_client_version ||
-		     (version_matching_connect_higher_version &&
-		      server->logical_client_version >= logical_client_version)))
+		if (server->yb_marked_for_close)
+			continue;
+		switch (guc_adoption_strategy) {
+		case YB_GUC_ADOPTION_FLUCTUATING:
 			return server;
+		case YB_GUC_ADOPTION_GRADUAL:
+			if (server->yb_logical_client_version >=
+			    logical_client_version)
+				return server;
+			break;
+		case YB_GUC_ADOPTION_CONNECTION_STATIC:
+			if (server->yb_logical_client_version ==
+			    logical_client_version)
+				return server;
+			break;
+		}
 	}
 
 	return NULL;

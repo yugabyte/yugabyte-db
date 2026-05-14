@@ -5,7 +5,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
-
+import org.yb.minicluster.MiniYBClusterBuilder;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -13,6 +13,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -23,6 +25,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RunWith(value=YBTestRunner.class)
 public class TestPgCatalogConsistency extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgCatalogConsistency.class);
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+
+    if (isTestRunningWithConnectionManager()) {
+      Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
+        {
+          put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+              + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+          put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+          put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
+        }
+      };
+      builder.addCommonTServerFlags(additionalTserverFlags);
+    }
+
+  }
 
   /**
    * Test continuously runs the 'ALTER TABLE' query to add/remove column with default value

@@ -62,6 +62,8 @@ DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
+DECLARE_string(ysql_conn_mgr_alter_guc_adoption_strategy);
+DECLARE_int32(ysql_conn_mgr_alter_guc_stale_backend_ttl_ms);
 DECLARE_uint32(ysql_conn_mgr_auth_msg_timeout);
 DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
 
@@ -245,6 +247,9 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_max_prepared_statements%}", std::to_string(FLAGS_ysql_conn_mgr_max_prepared_statements)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
+    {"{%yb_alter_guc_adoption_strategy%}", FLAGS_ysql_conn_mgr_alter_guc_adoption_strategy},
+    {"{%yb_alter_guc_stale_backend_ttl_ms%}",
+        std::to_string(FLAGS_ysql_conn_mgr_alter_guc_stale_backend_ttl_ms)},
     {"{%yb_tcmalloc_gc_interval%}",
         std::to_string(FLAGS_ysql_conn_mgr_tcmalloc_gc_interval)},
     {"{%unix_socket_dir%}",

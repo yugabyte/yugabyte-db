@@ -31,12 +31,6 @@ extern YbLogicalClientVersionType yb_logical_client_version_type;
 /* Send a request to increment the master logical client version. */
 extern bool YbIncrementMasterLogicalClientVersionTableEntry();
 
-/* Send a request to create the master logical client version for the given database. */
-extern void YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid);
-
-/* Send a request to delete the master logical client version for the given database. */
-extern void YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid);
-
 extern YbLogicalClientVersionType YbGetLogicalClientVersionType();
 
 /* Check if the logical client version table exists. */

@@ -39,8 +39,8 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
         put("ysql_conn_mgr_superuser_sticky", "false");
         put("ysql_enable_auth", "true");
         put("ysql_conn_mgr_log_settings", "log_debug,log_query");
-        put("allowed_preview_flags_csv", "ysql_conn_mgr_version_matching");
-        put("ysql_conn_mgr_version_matching", "true");
+        put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy");
+        put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
       }
     };
 

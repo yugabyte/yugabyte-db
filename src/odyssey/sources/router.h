@@ -27,13 +27,17 @@ struct od_router {
 
 	/* router has type of list */
 	od_list_t servers;
+
+	/*
+	 * YB: Maximum known yb_logical_client_version in backends. Evaluated on
+	 * authentication of clients, creation of transaction backends and when backend
+	 * sends a ParameterStatus with yb_logical_client_version (upon execution of ALTER)
+	 */
+	od_atomic_u64_t yb_max_logical_client_version;
 };
 
 #define CONTROL_CONN_USER "control_connection_user"
 #define CONTROL_CONN_DB "control_connection_db"
-
-extern bool version_matching;
-extern bool version_matching_connect_higher_version;
 
 #define od_router_lock(router) pthread_mutex_lock(&router->lock);
 #define od_router_unlock(router) pthread_mutex_unlock(&router->lock);
@@ -75,5 +79,8 @@ od_route_pool_stat_err_router(od_router_t *router,
 {
 	return callback(router->router_err_logger, argv);
 }
+
+void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
+					   int64_t new_logical_client_version);
 
 #endif /* ODYSSEY_ROUTER_H */

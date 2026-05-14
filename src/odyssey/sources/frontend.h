@@ -9,8 +9,6 @@
 
 #define MAX_STARTUP_ATTEMPTS 7
 
-extern bool version_matching;
-extern bool version_matching_connect_higher_version;
 extern int yb_max_query_size;
 extern int yb_wait_timeout;
 

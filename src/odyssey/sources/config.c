@@ -381,6 +381,16 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	       config->TEST_yb_auth_delay_ms);
 
 	od_log(logger, "config", NULL, NULL,
+	       "yb_alter_guc_adoption_strategy     %s",
+	       yb_od_alter_guc_adoption_strategy_keywords
+		       [config->yb_alter_guc_adoption_strategy]
+			       .name);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_alter_guc_stale_backend_ttl_ms     %d",
+	       config->yb_alter_guc_stale_backend_ttl_ms);
+
+	od_log(logger, "config", NULL, NULL,
 	       "yb_max_prepared_statements     %d",
 	       config->yb_max_prepared_statements);
 

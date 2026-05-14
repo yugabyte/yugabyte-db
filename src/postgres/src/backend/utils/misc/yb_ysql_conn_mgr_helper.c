@@ -982,7 +982,7 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 	{
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 		send_oid_info('u', get_role_oid(MyProcPort->user_name, false));
-		SendLogicalClientCacheVersionToFrontend();
+		YbSendLogicalClientCacheVersionToFrontend();
 	}
 }
 

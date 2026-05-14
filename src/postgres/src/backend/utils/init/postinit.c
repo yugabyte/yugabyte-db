@@ -1500,7 +1500,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			process_startup_options(MyProcPort, am_superuser);
 
 		if (YBIsDBLogicalClientVersionMode())
-			SendLogicalClientCacheVersionToFrontend();
+			YbSendLogicalClientCacheVersionToFrontend();
 
 		/* Process pg_db_role_setting options */
 		process_settings(MyDatabaseId, GetSessionUserId());
@@ -1675,7 +1675,7 @@ YbAuthPassthroughSetupGUCAndReport(void)
 			 logical_client_version);
 		YbResetLogicalClientCacheVersion();
 		YbSetLogicalClientCacheVersion(logical_client_version);
-		SendLogicalClientCacheVersionToFrontend();
+		YbSendLogicalClientCacheVersionToFrontend();
 	}
 
 	/* Process pg_db_role_setting options */
