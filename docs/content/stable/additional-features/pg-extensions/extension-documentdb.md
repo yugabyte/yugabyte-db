@@ -121,7 +121,7 @@ for row in people.aggregate(pipeline):
 people.delete_one({"name": "Carol"})
 ```
 
-The same connection string works with the [mongosh](https://www.mongodb.com/docs/mongodb-shell/) shell:
+The same connection string works with the [mongosh](https://www.mongodb.com/docs/mongodb-shell/install/) shell:
 
 ```sh
 mongosh "mongodb://yugabyte:yugabyte@localhost:27017/?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256"
