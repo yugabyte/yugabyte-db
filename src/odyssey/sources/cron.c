@@ -315,6 +315,13 @@ static void od_cron_err_stat(od_cron_t *cron)
 {
 	od_router_t *router = cron->global->router;
 
+	/*
+	 * The router lock protects the route pool list against concurrent
+	 * additions/removals (see od_router_route, od_router_gc, etc.). Acquire it
+	 * before iterating to avoid a data race with worker threads that may be
+	 * appending new routes via od_route_pool_new.
+	 */
+	od_router_lock(router);
 	od_list_t *it;
 	od_list_foreach(&router->route_pool.list, it)
 	{
@@ -330,13 +337,10 @@ static void od_cron_err_stat(od_cron_t *cron)
 		od_route_unlock(current_route);
 	}
 
-	od_router_lock(router)
-	{
-		od_err_logger_inc_interval(router->router_err_logger);
-	}
-	od_router_unlock(router)
+	od_err_logger_inc_interval(router->router_err_logger);
+	od_router_unlock(router);
 
-		od_route_pool_lock(router->route_pool)
+	od_route_pool_lock(router->route_pool)
 	{
 		od_err_logger_inc_interval(router->route_pool.err_logger);
 	}
