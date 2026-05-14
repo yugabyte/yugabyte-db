@@ -1,8 +1,8 @@
 ---
-title: documentdb extension
-headerTitle: documentdb extension
-linkTitle: documentdb
-description: Using the documentdb extension in YugabyteDB
+title: DocumentDB extension
+headerTitle: DocumentDB extension
+linkTitle: DocumentDB
+description: Using the DocumentDB extension in YugabyteDB
 tags:
   feature: tech-preview
 menu:
@@ -14,10 +14,10 @@ type: docs
 ---
 
 {{< warning title="Extension support" >}}
-Support for the documentdb extension is in {{<tags/feature/tp>}}. It is not recommended for use in production.
+Support for the DocumentDB extension is in {{<tags/feature/tp>}}. It is not recommended for use in production.
 {{< /warning >}}
 
-The [documentdb](https://documentdb.io) extension adds a BSON data type and document-store APIs to YugabyteDB, enabling CRUD, aggregation, and indexing operations on JSON-style documents. A built-in gateway worker listens on a separate port and speaks the wire protocol used by open source MongoDB drivers (for example, [PyMongo](https://github.com/mongodb/mongo-python-driver) or [mongosh](https://github.com/mongodb-js/mongosh)).
+The [DocumentDB](https://documentdb.io) extension adds a BSON data type and document-store APIs to YugabyteDB, enabling CRUD, aggregation, and indexing operations on JSON-style documents. A built-in gateway worker listens on a separate port and speaks the wire protocol used by open source MongoDB drivers (for example, [PyMongo](https://github.com/mongodb/mongo-python-driver) or [mongosh](https://github.com/mongodb-js/mongosh)).
 
 The extension ships as three components, all bundled with YugabyteDB:
 
@@ -25,7 +25,7 @@ The extension ships as three components, all bundled with YugabyteDB:
 - `documentdb` — provides the CRUD, indexing, and aggregation API surface.
 - `pg_documentdb_gw_host` — a background worker that translates wire-protocol commands into SQL calls into the extension.
 
-## Set up documentdb
+## Set up DocumentDB
 
 Before you can use the extension, set the following flags on every YB-Master and YB-TServer:
 
@@ -35,7 +35,7 @@ Before you can use the extension, set the following flags on every YB-Master and
 
 By default the gateway listens on port `27017`. You can change this with the `documentdb_port` flag on YB-TServers.
 
-For example, to start a single-node [yugabyted](../../../reference/configuration/yugabyted/) cluster with documentdb enabled:
+For example, to start a single-node [yugabyted](../../../reference/configuration/yugabyted/) cluster with DocumentDB enabled:
 
 ```sh
 ./bin/yugabyted start \
@@ -43,7 +43,7 @@ For example, to start a single-node [yugabyted](../../../reference/configuration
     --tserver_flags "allowed_preview_flags_csv=ysql_enable_documentdb,ysql_enable_documentdb=true,enable_pg_cron=true"
 ```
 
-## Enable documentdb
+## Enable DocumentDB
 
 Connect to the `yugabyte` database with [ysqlsh](../../../api/ysqlsh/) and create the extension:
 
@@ -70,7 +70,7 @@ After creating the extension, restart the cluster so the gateway background work
 
 The restart is a current limitation; see [Limitations](#limitations).
 
-## Use documentdb
+## Use DocumentDB
 
 The gateway authenticates using SCRAM-SHA-256 over TLS with an auto-generated certificate. Connect with any open source MongoDB driver and use the YSQL `yugabyte` user. For example, with [PyMongo](https://github.com/mongodb/mongo-python-driver):
 
@@ -121,9 +121,9 @@ mongosh "mongodb://yugabyte:yugabyte@localhost:27017/?tls=true&tlsAllowInvalidCe
 
 ## Limitations
 
-- A cluster restart is required after running `CREATE EXTENSION documentdb`. The gateway background worker starts before the extension schemas exist and caches that state, so it cannot serve requests until the cluster is restarted. {{<issue 31353>}}
+- A cluster restart is required after running `CREATE EXTENSION documentdb`. The DocumentDB gateway background worker starts before the extension schemas exist and caches that state, so it cannot serve requests until the cluster is restarted. {{<issue 31353>}}
 - Secondary indexes on collections are not yet supported. The extension relies on the RUM index access method, which is not currently available in YugabyteDB. Queries fall back to sequential scans of the underlying collection table. {{<issue 31634>}}
 
 ## Learn more
 
-- [documentdb project](https://documentdb.io)
+- [DocumentDB project](https://documentdb.io)
