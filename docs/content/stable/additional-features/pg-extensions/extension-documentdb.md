@@ -17,7 +17,7 @@ type: docs
 Support for the DocumentDB extension is in {{<tags/feature/tp>}}. It is not recommended for use in production.
 {{< /warning >}}
 
-The [DocumentDB](https://documentdb.io) extension adds a BSON data type and document-store APIs to YugabyteDB, enabling CRUD, aggregation, and indexing operations on JSON-style documents. A built-in gateway worker listens on a separate port and speaks the wire protocol used by open source MongoDB drivers (for example, [PyMongo](https://github.com/mongodb/mongo-python-driver) or [mongosh](https://github.com/mongodb-js/mongosh)).
+The [DocumentDB](https://documentdb.io) extension adds a BSON data type and document-store APIs to YugabyteDB, enabling CRUD, aggregation, and indexing operations on JSON-style documents. A built-in gateway worker listens on a separate port and speaks the wire protocol used by MongoDB drivers and tools (for example, PyMongo or mongosh).
 
 The extension ships as three components, all bundled with YugabyteDB:
 
@@ -72,7 +72,15 @@ The restart is a current limitation; see [Limitations](#limitations).
 
 ## Use DocumentDB
 
-The gateway authenticates using SCRAM-SHA-256 over TLS with an auto-generated certificate. Connect with any open source MongoDB driver and use the YSQL `yugabyte` user. For example, with [PyMongo](https://github.com/mongodb/mongo-python-driver):
+The gateway authenticates using SCRAM-SHA-256 over TLS with an auto-generated certificate. Connect with any MongoDB driver using the YSQL `yugabyte` user.
+
+The following example uses the [PyMongo](https://pymongo.readthedocs.io/) Python driver. Install it with pip:
+
+```sh
+pip install pymongo
+```
+
+Then connect and run document operations:
 
 ```python
 from pymongo import MongoClient
@@ -113,7 +121,7 @@ for row in people.aggregate(pipeline):
 people.delete_one({"name": "Carol"})
 ```
 
-The same connection string works with `mongosh`:
+The same connection string works with the `mongosh` shell:
 
 ```sh
 mongosh "mongodb://yugabyte:yugabyte@localhost:27017/?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256"
@@ -123,7 +131,3 @@ mongosh "mongodb://yugabyte:yugabyte@localhost:27017/?tls=true&tlsAllowInvalidCe
 
 - A cluster restart is required after running `CREATE EXTENSION documentdb`. The DocumentDB gateway background worker starts before the extension schemas exist and caches that state, so it cannot serve requests until the cluster is restarted. {{<issue 31353>}}
 - Secondary indexes on collections are not yet supported. The extension relies on the RUM index access method, which is not currently available in YugabyteDB. Queries fall back to sequential scans of the underlying collection table. {{<issue 31634>}}
-
-## Learn more
-
-- [DocumentDB project](https://documentdb.io)
