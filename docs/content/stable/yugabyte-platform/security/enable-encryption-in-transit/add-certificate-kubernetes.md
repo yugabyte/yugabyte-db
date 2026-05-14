@@ -19,7 +19,7 @@ type: docs
 {{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes cert-manager" active="true" >}}
 {{</tabs>}}
 
-For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configure an existing running instance of the [cert-manager](https://cert-manager.io/) as a TLS certificate provider for a cluster.
+For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configure an existing running instance of the [cert-manager](https://cert-manager.io/) as a TLS certificate provider.
 
 ## Prerequisites
 
@@ -85,9 +85,37 @@ tls:
 
 cert-manager monitors certificates and automatically renews them before expiration, based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
 
-To rotate certificates for a universe, after certificates are renewed in cert-manager, perform a rolling restart of your universe (**Actions > Initiate Rolling Restart**).
+### Rotate server certificates
 
-Note that, if you are using cert-manager for a universe, rotating node-to-node root certificates is not currently supported. To rotate these certificates, contact {{% support-platform %}}.
+To rotate server certificates:
+
+1. Renew the cert-manager certificate resource that backs the universe server certificate as follows:
+
+    ```sh
+    cmctl renew -n <namespace> <server-certificate-name>
+    ```
+
+    To rotate all certificates for the given universe in a given namespace, run the following:
+
+    ```sh
+    cmctl renew -n <namespace> -l yugabyte.io/<universe-name>=<universe-name>
+    ```
+
+    If the universe spans multiple namespaces, add the `-A` option to the command to mark certificates across namespaces for renewal.
+
+1. In YugabyteDB Anywhere, [rotate server certificates](../rotate-certificates/#rotate-server-certificates).
+
+### Rotate cert-manager root certificates
+
+To rotate root certificates:
+
+1. Update the root certificate in the underlying cert manager issuer.
+
+1. [Add the new root certificate](#add-certificates-using-cert-manager) to YugabyteDB Anywhere.
+
+1. Renew the cert-manager certificate resource as per step 1 of [Rotate cert-manager server certificates](#rotate-server-certificates).
+
+1. In YugabyteDB Anywhere, [rotate root certificates](../rotate-certificates/#rotate-root-certificates).
 
 ## Troubleshoot
 
