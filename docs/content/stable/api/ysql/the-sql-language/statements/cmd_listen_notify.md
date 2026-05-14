@@ -14,7 +14,7 @@ type: docs
 
 {{<tags/feature/ea idea="1901">}}LISTEN/NOTIFY provides a communication mechanism for a collection of processes accessing the same YSQL database.
 
-LISTEN/NOTIFY is available in v2025.2.3 and later.
+It is available in v2025.2.3 and later.
 
 ## Synopsis
 
@@ -70,7 +70,7 @@ As in PostgreSQL, `LISTEN` and `NOTIFY` take effect at transaction commit (no ef
 
 ## Enable LISTEN/NOTIFY
 
-LISTEN/NOTIFY is disabled by default. To enable it, set the [ysql_yb_enable_listen_notify](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) flag to `true` on both TServers and Masters.
+The feature is disabled by default. To enable it, set the [ysql_yb_enable_listen_notify](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) flag to `true` on both TServers and Masters.
 
 After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
@@ -88,7 +88,7 @@ Each TServer creates a named logical replication slot derived from the node iden
 Do not drop or repurpose the `yb_notifications_*` replication slots. They are required for notification delivery.
 {{< /warning >}}
 
-Because the poller relies on logical replication internally, LISTEN/NOTIFY also depends on the following TServer flags. These flags all have defaults that are compatible with LISTEN/NOTIFY, so no action is needed unless you have explicitly changed them.
+Because the poller relies on logical replication internally, notification delivery also depends on the following TServer flags. These flags all have defaults that are compatible with the feature, so no action is needed unless you have explicitly changed them.
 
 | TServer flag | Default | Effect on LISTEN/NOTIFY |
 | :------------- | :------ | :---------------------- |
@@ -96,8 +96,8 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | `ysql_yb_enable_replication_slot_consumption` | `true` | LISTEN fails if set to `false`. |
 | `ysql_yb_allow_replication_slot_lsn_types` | `true` | LISTEN fails if set to `false`. |
 | `ysql_yb_allow_replication_slot_ordering_modes` | `false` | LISTEN fails if set to `true`. |
-| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
-| `cdc_max_virtual_wal_per_tserver` | `5` | LISTEN/NOTIFY creates one virtual WAL per node. Ensure this limit is large enough to accommodate it alongside any user-created CDC streams. |
+| `max_replication_slots` | `10` | The notification system creates one internal replication slot per node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
+| `cdc_max_virtual_wal_per_tserver` | `5` | The notification system creates one virtual WAL per node. Ensure this limit is large enough to accommodate it alongside any user-created CDC streams. |
 
 ## Differences from PostgreSQL
 
@@ -142,7 +142,7 @@ SELECT pg_notification_queue_usage();
 
 ### Replication slot monitoring
 
-Because LISTEN/NOTIFY uses CDC internally, you can query `pg_replication_slots` to inspect the notification-related replication slots:
+Because notification delivery uses CDC internally, you can query `pg_replication_slots` to inspect the notification-related replication slots:
 
 ```sql
 SELECT slot_name, active_pid, yb_stream_id, yb_restart_time
@@ -156,7 +156,7 @@ For additional CDC-level metrics, refer to [Monitor CDC metrics](../../../../../
 
 ## Latency
 
-LISTEN/NOTIFY is an asynchronous communication mechanism. In steady state, expect a latency of roughly 100 ms between a `NOTIFY` and its delivery to listeners, depending on the deployment topology. Network partitions or high cluster load will increase this latency.
+Notification delivery is asynchronous. In steady state, expect a latency of upto 100-150 ms between a `NOTIFY` and its delivery to listeners, depending on the deployment topology. Network partitions or high cluster load will increase this latency.
 
 The following TServer flags control the internal polling frequency:
 
@@ -169,7 +169,7 @@ An aggressive polling frequency reduces delivery latency at the cost of higher C
 
 ## Scale
 
-LISTEN/NOTIFY is designed for lightweight signaling — up to a few thousand `NOTIFY` calls per second.
+This is designed for lightweight signaling — up to a few thousand `NOTIFY` calls per second.
 
 The number of listeners scales horizontally with the cluster.
 
