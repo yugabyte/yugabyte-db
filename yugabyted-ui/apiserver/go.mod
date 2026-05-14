@@ -1,6 +1,6 @@
 module apiserver
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/jackc/pgtype v1.14.3
