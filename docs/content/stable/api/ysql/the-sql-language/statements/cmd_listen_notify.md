@@ -156,7 +156,7 @@ For additional CDC-level metrics, refer to [Monitor CDC metrics](../../../../../
 
 ## Latency
 
-Notification delivery is asynchronous. In steady state, expect a latency of upto 100-150 ms between a `NOTIFY` and its delivery to listeners, depending on the deployment topology. Network partitions or high cluster load will increase this latency.
+Notification delivery is asynchronous. In steady state, expect a latency of up to 100-150 ms between a `NOTIFY` and its delivery to listeners, depending on the deployment topology. Network partitions or high cluster load will increase this latency.
 
 The following TServer flags control the internal polling frequency:
 
@@ -181,5 +181,5 @@ If you have a small number of listening sessions and can control which nodes the
 
 ### Connection manager
 
-Listening sessions require a dedicated backend process. If you are using the [YSQL connection manager](../../../../../additional-features/connection-manager-ysql/), `LISTEN` automatically makes the session [sticky](../../../../../additional-features/connection-manager-ysql/ycm-setup/#sticky-connections) for the rest of its lifetime.
+Listening sessions require a dedicated backend process. If you are using [YSQL Connection Manager](../../../../../additional-features/connection-manager-ysql/), `LISTEN` automatically makes the session [sticky](../../../../../additional-features/connection-manager-ysql/ycm-setup/#sticky-connections) for the rest of its lifetime.
 
