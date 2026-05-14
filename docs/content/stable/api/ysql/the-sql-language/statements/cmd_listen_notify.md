@@ -22,6 +22,20 @@ LISTEN/NOTIFY is available in v2025.2.3 and later.
 - `NOTIFY` (or the `pg_notify()` function) sends a notification on a channel, optionally with a payload.
 - `UNLISTEN` removes one or more listener registrations for the current session.
 
+## Syntax
+
+YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to the PostgreSQL documentation:
+
+- [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html)
+- [LISTEN](https://www.postgresql.org/docs/15/sql-listen.html)
+- [UNLISTEN](https://www.postgresql.org/docs/15/sql-unlisten.html)
+
+Client library interaction (for example, polling for notifications via libpq or JDBC) is the same as in PostgreSQL.
+
+{{< note title="Note" >}}
+The sending and receiving sessions must use the same `client_encoding`.
+{{< /note >}}
+
 ## Examples
 
 ```sql
@@ -50,16 +64,6 @@ SELECT pg_notify('fo' || 'o', 'pay' || 'load');
 Asynchronous notification "foo" with payload "payload" received from server process with PID 8448.
 ```
 
-## Syntax
-
-YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to the PostgreSQL documentation:
-
-- [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html)
-- [LISTEN](https://www.postgresql.org/docs/15/sql-listen.html)
-- [UNLISTEN](https://www.postgresql.org/docs/15/sql-unlisten.html)
-
-Client library interaction (for example, polling for notifications via libpq or JDBC) is the same as in PostgreSQL.
-
 ## Transaction semantics
 
 As in PostgreSQL, `LISTEN` and `NOTIFY` take effect at transaction commit (no effect if the transaction aborts). Duplicate notifications (same channel and payload) within a transaction are coalesced. Notifications are delivered in the order they were sent within a transaction, and across transactions in commit order. A listener receives notifications from transactions that commit after its own `LISTEN` commits, though it may receive some additional notifications that committed just before. If a listening session is inside a transaction, incoming notifications are held until the transaction completes (either commits or aborts).
@@ -68,13 +72,21 @@ As in PostgreSQL, `LISTEN` and `NOTIFY` take effect at transaction commit (no ef
 
 LISTEN/NOTIFY is disabled by default. To enable it, set the [ysql_yb_enable_listen_notify](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) flag to `true` on both TServers and Masters.
 
-After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. These objects are for internal use only — please do not modify or drop them. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
+After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
+
+{{< warning title="Do not modify internal objects" >}}
+The `yb_system` database and the `yb_system.pg_yb_notifications` table are for internal use only. Do not modify or drop them.
+{{< /warning >}}
 
 ## How notifications are delivered in YugabyteDB
 
 In vanilla PostgreSQL, notifications are written through shared memory. In YugabyteDB, `NOTIFY` temporarily stores the notifications in the `yb_system.pg_yb_notifications` table. A per-node _notifications poller_ reads that table using CDC-style logical replication (an internal logical replication slot on each TServer) and delivers the notifications to local listeners.
 
-Each TServer creates a named logical replication slot derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
+Each TServer creates a named logical replication slot derived from the node identity (`yb_notifications_<tserver-uuid>`).
+
+{{< warning title="Do not modify internal replication slots" >}}
+Do not drop or repurpose the `yb_notifications_*` replication slots. They are required for notification delivery.
+{{< /warning >}}
 
 Because the poller relies on logical replication internally, LISTEN/NOTIFY also depends on the following TServer flags. These flags all have defaults that are compatible with LISTEN/NOTIFY, so no action is needed unless you have explicitly changed them.
 
@@ -172,6 +184,3 @@ If you have a small number of listening sessions and can control which nodes the
 
 Listening sessions require a dedicated backend process. If you are using the [YSQL connection manager](../../../../../additional-features/connection-manager-ysql/), `LISTEN` automatically makes the session [sticky](../../../../../additional-features/connection-manager-ysql/ycm-setup/#sticky-connections) for the rest of its lifetime.
 
-### Encoding
-
-The sending and receiving sessions must use the same `client_encoding`.
