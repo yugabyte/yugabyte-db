@@ -1,5 +1,5 @@
-# Get the latest docker image
-FROM quay.io/pypa/manylinux2014_x86_64
+# pinning the version
+FROM quay.io/pypa/manylinux2014_x86_64:2026.05.02-2
 
 
 RUN sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*
