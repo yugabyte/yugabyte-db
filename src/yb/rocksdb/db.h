@@ -942,6 +942,8 @@ class DB {
 
   virtual bool NeedsDelay() { return false; }
 
+  virtual bool AreWritesStopped() { return false; }
+
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 

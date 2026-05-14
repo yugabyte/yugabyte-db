@@ -1535,6 +1535,11 @@ bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
 }
 
+bool TabletPeer::AreWritesStopped() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->AreWritesStopped();
+}
+
 Result<std::shared_ptr<consensus::Consensus>> TabletPeer::GetConsensus() const {
   return GetRaftConsensus();
 }

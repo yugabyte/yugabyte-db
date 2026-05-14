@@ -127,6 +127,11 @@ TAG_FLAG(evict_failed_followers, advanced);
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
+DEFINE_test_flag(bool, skip_write_stop_check_in_update_consensus, false,
+    "When true, RaftConsensus::Update() does not reject UpdateConsensus RPCs when "
+    "writes are stopped. Used for negative testing of the write stall cascade fix. "
+    "See #30728.");
+
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
 
@@ -1595,6 +1600,22 @@ Status RaftConsensus::Update(
   response->ref_responder_uuid(state_->GetPeerUuid());
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
+
+  // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
+  // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
+  // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
+  // threads would pile up on the mutex and never reach ShouldApplyWrite(). By checking
+  // here, we free the RPC thread immediately. Heartbeat-only RPCs (no ops) are allowed
+  // through to maintain leader leases and committed index advancement. See #30728.
+  if (!PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_update_consensus) &&
+      !request.ops().empty() && state_->context()->AreWritesStopped()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
+        << "Rejecting UpdateConsensus with " << request.ops().size()
+        << " ops: writes are stopped on this tablet";
+    return STATUS(ServiceUnavailable,
+        "Writes are stopped on this tablet, rejecting UpdateConsensus to prevent "
+        "RPC thread pile-up on update_mutex_");
+  }
 
   UpdateReplicaResult result;
   {

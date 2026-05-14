@@ -734,6 +734,10 @@ class Tablet : public AbstractTablet,
 
   bool ShouldApplyWrite();
 
+  // Returns true if any backing RocksDB (regular_db or intents_db) is in a hard write stop.
+  // Lightweight check on atomic counters, safe to call from outside consensus locks.
+  bool AreWritesStopped();
+
   Status TEST_SwitchMemtable();
 
   // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.

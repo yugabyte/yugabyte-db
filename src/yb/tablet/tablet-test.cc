@@ -56,11 +56,18 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/write_controller.h"
+
+#include "yb/util/cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/flags.h"
+
+DECLARE_bool(TEST_skip_write_stop_check_in_should_apply_write);
 
 using std::string;
 using std::vector;
@@ -249,6 +256,124 @@ TYPED_TEST(TestTablet, TestDocKeyMetrics) {
 
   ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound) - prev_total_keys, 5);
   ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 1);
+}
+
+TYPED_TEST(TestTablet, ShouldApplyWriteRespectsWriteStop) {
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+
+  {
+    auto stop_token = write_controller.GetStopToken();
+    ASSERT_TRUE(write_controller.IsStopped());
+    ASSERT_FALSE(write_controller.NeedsDelay());
+    ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+
+    auto stop_token_2 = write_controller.GetStopToken();
+    ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+
+    stop_token.reset();
+    ASSERT_TRUE(write_controller.IsStopped());
+    ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+  }
+  ASSERT_FALSE(write_controller.IsStopped());
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+}
+
+TYPED_TEST(TestTablet, ShouldApplyWriteRespectsWriteDelay) {
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+
+  {
+    auto delay_token = write_controller.GetDelayToken(1024);
+    ASSERT_FALSE(write_controller.IsStopped());
+    ASSERT_TRUE(write_controller.NeedsDelay());
+    ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+  }
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+}
+
+// Demonstrates that without the AreWritesStopped() check (controlled via
+// TEST_skip_write_stop_check_in_should_apply_write), ShouldApplyWrite() does
+// not detect kStop-type stalls triggered by db_max_flushing_bytes. See #30728.
+TYPED_TEST(TestTablet, ShouldApplyWriteWithoutStopCheckIgnoresWriteStop) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_write_stop_check_in_should_apply_write) = true;
+  auto se = ScopeExit([&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_write_stop_check_in_should_apply_write) = false;
+  });
+
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  // NeedsDelay() only checks total_delayed_, not total_stopped_.
+  // So a stop token is invisible when the AreWritesStopped() check is skipped.
+  auto stop_token = write_controller.GetStopToken();
+  ASSERT_TRUE(write_controller.IsStopped());
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+
+  stop_token.reset();
+
+  // Delay tokens use total_delayed_ and are still detected by NeedsDelay().
+  auto delay_token = write_controller.GetDelayToken(1024);
+  ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+  delay_token.reset();
+}
+
+TYPED_TEST(TestTablet, ShouldApplyWriteRespectsStopAndDelaySimultaneously) {
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  auto stop_token = write_controller.GetStopToken();
+  auto delay_token = write_controller.GetDelayToken(1024);
+  ASSERT_TRUE(write_controller.IsStopped());
+  ASSERT_TRUE(write_controller.NeedsDelay());
+  ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+
+  stop_token.reset();
+  ASSERT_FALSE(write_controller.IsStopped());
+  ASSERT_TRUE(write_controller.NeedsDelay());
+  ASSERT_FALSE(this->tablet()->ShouldApplyWrite());
+
+  delay_token.reset();
+  ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
+}
+
+// Tablet::AreWritesStopped() is the lightweight check used by the early rejection
+// in RaftConsensus::Update() before acquiring update_mutex_. It only checks for hard
+// stops (WriteController::IsStopped()), not delays. See #30728.
+TYPED_TEST(TestTablet, AreWritesStoppedDetectsHardStop) {
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  ASSERT_FALSE(this->tablet()->AreWritesStopped());
+
+  {
+    auto stop_token = write_controller.GetStopToken();
+    ASSERT_TRUE(this->tablet()->AreWritesStopped());
+
+    auto stop_token_2 = write_controller.GetStopToken();
+    ASSERT_TRUE(this->tablet()->AreWritesStopped());
+
+    stop_token.reset();
+    ASSERT_TRUE(this->tablet()->AreWritesStopped());
+  }
+  ASSERT_FALSE(this->tablet()->AreWritesStopped());
+}
+
+// AreWritesStopped() does not react to delay tokens -- only hard stops.
+// This is intentional: the early rejection in RaftConsensus::Update() should only
+// fire for hard stops where DelayWrite() would block indefinitely on bg_cv_.Wait().
+// Delay tokens cause a bounded sleep, not an indefinite block.
+TYPED_TEST(TestTablet, AreWritesStoppedIgnoresDelay) {
+  auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
+  auto& write_controller = db->TEST_write_controler();
+
+  auto delay_token = write_controller.GetDelayToken(1024);
+  ASSERT_TRUE(write_controller.NeedsDelay());
+  ASSERT_FALSE(this->tablet()->AreWritesStopped());
 }
 
 } // namespace tablet

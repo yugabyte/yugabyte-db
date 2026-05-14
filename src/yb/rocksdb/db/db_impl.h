@@ -502,7 +502,7 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   Status Import(const std::string& source_dir) override;
 
-  bool AreWritesStopped();
+  bool AreWritesStopped() override;
   bool NeedsDelay() override;
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
