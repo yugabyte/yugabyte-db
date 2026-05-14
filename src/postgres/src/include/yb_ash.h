@@ -85,6 +85,13 @@ extern bool yb_ash_circular_buffer_size_check_hook(int *newval,
 extern void YbAshSetMetadata(void);
 extern void YbAshUnsetMetadata(void);
 
+/*
+ * Per extended-protocol message helpers wrapping Parse/Bind/Execute
+ * so a previous statement's query_id does not leak into the next message
+ */
+extern void YbAshSetQueryPlanPairForMessage(uint64 query_id);
+extern void YbAshResetQueryPlanPairForMessage(uint64 query_id);
+
 extern void YbAshSetOneTimeMetadata(void);
 extern void YbAshSetMetadataForBgworkers(void);
 extern uint64 YbAshGetConstQueryId(void);

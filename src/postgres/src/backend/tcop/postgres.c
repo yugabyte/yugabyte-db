@@ -1627,6 +1627,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	const char *redacted_query_string;
 	CommandTag	command_tag;
 
+	uint64		yb_msg_query_id = YbAshGetConstQueryId();
+
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -1636,6 +1638,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	command_tag = YbParseCommandTag(query_string);
 	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
+
+	/*
+	 * YB: Drain any deferred query_id from the previous message so it is not
+	 * attributed to the catalog reads in pg_analyze_and_rewrite below. The
+	 * real query_id is pushed later by yb_ash's post_parse_analyze hook.
+	 */
+	YbAshSetQueryPlanPairForMessage(yb_msg_query_id);
 
 	set_ps_display("PARSE");
 
@@ -1849,6 +1858,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (save_log_statement_stats)
 		ShowUsage("PARSE MESSAGE STATISTICS");
 
+	YbAshResetQueryPlanPairForMessage(yb_msg_query_id);
+
 	debug_query_string = NULL;
 }
 
@@ -1883,6 +1894,7 @@ exec_bind_message(StringInfo input_message)
 
 	const char *redacted_query_string;
 	CommandTag	command_tag;
+	uint64		yb_msg_query_id = YbAshGetConstQueryId();
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
@@ -1928,9 +1940,13 @@ exec_bind_message(StringInfo input_message)
 		if (query->queryId != UINT64CONST(0))
 		{
 			pgstat_report_query_id(query->queryId, false);
+			yb_msg_query_id = query->queryId;
 			break;
 		}
 	}
+
+	/* YB: Drain any deferred query_id and push this Bind's cached id. */
+	YbAshSetQueryPlanPairForMessage(yb_msg_query_id);
 
 	set_ps_display("BIND");
 
@@ -2280,6 +2296,14 @@ exec_bind_message(StringInfo input_message)
 	/* Done with the snapshot used for parameter I/O and parsing/planning */
 	if (snapshot_set)
 		PopActiveSnapshot();
+
+	/*
+	 * YB: Pop the Bind-phase query_id before PortalStart so that
+	 * ExecutorStart (called inside PortalStart) correctly picks up the
+	 * deferred-pop mechanism and stores the resolved plan_id rather than
+	 * the placeholder 0 that was pushed at the top of exec_bind_message.
+	 */
+	YbAshResetQueryPlanPairForMessage(yb_msg_query_id);
 
 	/*
 	 * And we're ready to start portal execution.
@@ -2856,6 +2880,7 @@ static void
 exec_describe_statement_message(const char *stmt_name)
 {
 	CachedPlanSource *psrc;
+	uint64		yb_msg_query_id = YbAshGetConstQueryId();
 
 	/*
 	 * Start up a transaction command. (Note that this will normally change
@@ -2907,6 +2932,24 @@ exec_describe_statement_message(const char *stmt_name)
 	if (whereToSendOutput != DestRemote)
 		return;					/* can't actually do anything... */
 
+	{
+		ListCell   *lc;
+
+		foreach(lc, psrc->query_list)
+		{
+			Query	   *query = lfirst_node(Query, lc);
+
+			if (query->queryId != UINT64CONST(0))
+			{
+				yb_msg_query_id = query->queryId;
+				break;
+			}
+		}
+	}
+
+	/* YB: Drain any deferred query_id and push this Describe's cached id. */
+	YbAshSetQueryPlanPairForMessage(yb_msg_query_id);
+
 	/*
 	 * First describe the parameters...
 	 */
@@ -2939,6 +2982,8 @@ exec_describe_statement_message(const char *stmt_name)
 	}
 	else
 		pq_putemptymessage('n');	/* NoData */
+
+	YbAshResetQueryPlanPairForMessage(yb_msg_query_id);
 }
 
 /*
@@ -2950,6 +2995,7 @@ static void
 exec_describe_portal_message(const char *portal_name)
 {
 	Portal		portal;
+	uint64		yb_msg_query_id = YbAshGetConstQueryId();
 
 	/*
 	 * Start up a transaction command. (Note that this will normally change
@@ -2985,6 +3031,24 @@ exec_describe_portal_message(const char *portal_name)
 	if (whereToSendOutput != DestRemote)
 		return;					/* can't actually do anything... */
 
+	{
+		ListCell   *lc;
+
+		foreach(lc, portal->stmts)
+		{
+			PlannedStmt *stmt = lfirst_node(PlannedStmt, lc);
+
+			if (stmt->queryId != UINT64CONST(0))
+			{
+				yb_msg_query_id = stmt->queryId;
+				break;
+			}
+		}
+	}
+
+	/* YB: Drain any deferred query_id and push this Describe's cached id. */
+	YbAshSetQueryPlanPairForMessage(yb_msg_query_id);
+
 	if (portal->tupDesc)
 		SendRowDescriptionMessage(&row_description_buf,
 								  portal->tupDesc,
@@ -2992,6 +3056,8 @@ exec_describe_portal_message(const char *portal_name)
 								  portal->formats);
 	else
 		pq_putemptymessage('n');	/* NoData */
+
+	YbAshResetQueryPlanPairForMessage(yb_msg_query_id);
 }
 
 
