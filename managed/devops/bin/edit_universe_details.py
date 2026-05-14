@@ -109,6 +109,7 @@ def run_psql(psql_query):
         '-h', os.environ.get('POSTGRES_HOST', 'localhost'),
         '-p', os.environ.get('POSTGRES_PORT', '5432'),
         '-t',
+        '-A',
     ]
     if args.install_type == "standalone":
         psql_cmd = ["psql"]

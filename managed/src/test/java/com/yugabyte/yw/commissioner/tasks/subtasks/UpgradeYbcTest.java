@@ -64,7 +64,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(true);
     when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean()))
         .thenReturn(defaultUniverse.getNodes().stream().map(n -> TARGET_YBC_VERSION).toList());
     upgradeYbcTask.run();
@@ -86,7 +86,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(true);
     when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean()))
         .thenReturn(defaultUniverse.getNodes().stream().map(n -> TARGET_YBC_VERSION).toList());
     upgradeYbcTask.run();
@@ -108,7 +108,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(false);
     RuntimeException re = assertThrows(RuntimeException.class, () -> upgradeYbcTask.run());
     assertThat(
         re.getMessage(), containsString("YBC Upgrade task did not complete in expected time."));
@@ -138,7 +138,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(false);
     RuntimeException re = assertThrows(RuntimeException.class, () -> upgradeYbcTask.run());
     assertThat(
         re.getMessage(),
@@ -160,7 +160,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(false);
     RuntimeException re = assertThrows(RuntimeException.class, () -> upgradeYbcTask.run());
     String errMsg =
         "YBC version "
@@ -184,7 +184,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
       assertNull(e);
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
-    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any())).thenReturn(true);
     when(mockYbcClientService.getYbcServerVersion(any(), anyInt(), any()))
         .thenReturn(TARGET_YBC_VERSION);
     upgradeYbcTask.run();

@@ -1354,13 +1354,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Creates a task list to start the yb-controller on the set of passed in nodes and adds it to the
-   * task queue.
+   * task queue. Master-only nodes (K8s master pods or dedicated-master VMs) are skipped because YBC
+   * is only co-located with tservers.
    *
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
+      if (!node.isTserver) {
+        continue;
+      }
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleClusterServerCtl task = createStartYbcTaskForNode(userIntent, node);
       // Add it to the task list.
@@ -3163,8 +3167,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void createYbcSoftwareInstallTasks(
       List<NodeDetails> nodes, String softwareVersion, SubTaskGroupType subTaskGroupType) {
 
+    // YBC is only co-located with tservers; skip master-only nodes (K8s
+    // master pods or dedicated-master VMs).
+    List<NodeDetails> ybcNodes =
+        nodes.stream().filter(n -> n.isTserver).collect(Collectors.toList());
     // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
+    if (ybcNodes.isEmpty()) {
       return;
     }
 
@@ -3176,7 +3184,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Use stable version for YBC
     String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
-    for (NodeDetails node : nodes) {
+    for (NodeDetails node : ybcNodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
               node,
