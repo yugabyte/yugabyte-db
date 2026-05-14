@@ -65,6 +65,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual void DeleteTabletReplicas(
       const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TransactionId& exclude_aborting_transaction_id,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyPrepareDeleteTransactionTabletFinished(
