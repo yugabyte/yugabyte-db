@@ -20,6 +20,7 @@ import type { UniverseRollbackUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywh
 import { RollingUpdateBatchSettings } from './components/RollingUpdateBatchSettings';
 import { UpgradePace } from './constants';
 import { getPlacementAzMetadataList } from './utils/formUtils';
+import { getTaskSoftwareUpgradeProgress } from './upgrade-management/utils';
 
 import AlertIcon from '@app/redesign/assets/alert.svg';
 import ClockRewindIcon from '@app/redesign/assets/clock-rewind.svg';
@@ -193,7 +194,7 @@ export const DbUpgradeRollBackModal = ({
   );
 
   const upgradedAzs =
-    latestSoftwareUpgradeTask?.softwareUpgradeProgress?.tserverAZUpgradeStatesList
+    getTaskSoftwareUpgradeProgress(latestSoftwareUpgradeTask)?.tserverAZUpgradeStatesList
       ?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
       .map((az) => ({
         azUuid: az.azUUID,

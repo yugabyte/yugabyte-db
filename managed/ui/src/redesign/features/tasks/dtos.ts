@@ -102,6 +102,8 @@ export interface Task {
   status: TaskState;
   details: {
     taskDetails: TaskDetails[];
+    /** Present for universe software-upgrade tasks when the backend exposes per-AZ / canary progress. */
+    softwareUpgradeProgress?: SoftwareUpgradeProgress | null;
     versionNumbers?: {
       ybPrevSoftwareVersion?: string;
       ybSoftwareVersion?: string;
@@ -118,8 +120,6 @@ export interface Task {
       previousTaskUUID?: string;
     };
   };
-
-  softwareUpgradeProgress?: SoftwareUpgradeProgress | null;
 }
 
 export interface FailedTask {

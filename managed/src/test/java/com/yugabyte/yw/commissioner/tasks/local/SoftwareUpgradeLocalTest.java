@@ -12,6 +12,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -140,7 +141,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertTrue(doneStatus.isPresent());
     assertFalse(
         "Task status API should omit softwareUpgradeProgress after a successful standard upgrade",
-        doneStatus.get().has("softwareUpgradeProgress"));
+        doneStatus.get().path("details").has("softwareUpgradeProgress"));
   }
 
   @Test
@@ -458,7 +459,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertTrue(statusAfterFinalize.isPresent());
     assertFalse(
         "Task status should omit softwareUpgradeProgress after finalize completes",
-        statusAfterFinalize.get().has("softwareUpgradeProgress"));
+        statusAfterFinalize.get().path("details").has("softwareUpgradeProgress"));
   }
 
   /**
@@ -930,11 +931,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertNotNull(expected);
     Optional<ObjectNode> opt = getTaskStatus(taskUuid);
     assertTrue(opt.isPresent());
+    JsonNode details = opt.get().path("details");
     assertTrue(
         "Task status should include softwareUpgradeProgress while upgrade is in progress",
-        opt.get().has("softwareUpgradeProgress"));
+        details.has("softwareUpgradeProgress"));
     SoftwareUpgradeProgress actual =
-        Json.fromJson(opt.get().get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
+        Json.fromJson(details.get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
     assertEquals(expected, actual);
   }
 

@@ -124,7 +124,7 @@ export const tserverAzUpgradeStatesListWithSecondLastInProgress = <
   });
 };
 
-type CreateDbUpgradeTaskMockOverrides = Partial<Omit<Task, 'softwareUpgradeProgress'>> & {
+type CreateDbUpgradeTaskMockOverrides = Partial<Task> & {
   softwareUpgradeProgress?: Partial<SoftwareUpgradeProgress>;
 };
 
@@ -169,7 +169,8 @@ const buildBaseDbUpgradeTask = (): Task => ({
     versionNumbers: {
       ybPrevSoftwareVersion: '2024.2.1.0-b123',
       ybSoftwareVersion: '2024.2.2.0-b456'
-    }
+    },
+    softwareUpgradeProgress: defaultDbUpgradeSoftwareUpgradeProgress()
   },
   abortable: true,
   retryable: false,
@@ -220,19 +221,25 @@ const buildBaseDbUpgradeTask = (): Task => ({
   ],
   taskInfo: {
     taskParams: {}
-  },
-  softwareUpgradeProgress: defaultDbUpgradeSoftwareUpgradeProgress()
+  }
 });
 
 export const createDbUpgradeTaskMock = (overrides: CreateDbUpgradeTaskMockOverrides = {}): Task => {
   const base = buildBaseDbUpgradeTask();
-  const { softwareUpgradeProgress: progressPartial, ...taskPartial } = overrides;
+  const { softwareUpgradeProgress: progressPartial, details: detailsOverride, ...taskPartial } =
+    overrides;
   return {
     ...base,
     ...taskPartial,
-    softwareUpgradeProgress: {
-      ...base.softwareUpgradeProgress!,
-      ...progressPartial
+    details: {
+      ...base.details,
+      ...detailsOverride,
+      ...(progressPartial !== undefined && {
+        softwareUpgradeProgress: {
+          ...base.details.softwareUpgradeProgress!,
+          ...progressPartial
+        }
+      })
     }
   };
 };
