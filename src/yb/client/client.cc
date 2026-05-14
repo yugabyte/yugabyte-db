@@ -1006,7 +1006,6 @@ Status YBClient::CloneNamespace(
   }
   req.set_restore_ht(HybridTime::FromMicros(yb_clone_info.clone_time).ToUint64());
   req.set_target_namespace_name(target_namespace_name);
-  req.set_pg_source_owner(yb_clone_info.src_owner);
   req.set_pg_target_owner(yb_clone_info.tgt_owner);
 
   // Set clone_deadline to ysql_clone_pg_schema_rpc_timeout_ms to give time to clone pg schema

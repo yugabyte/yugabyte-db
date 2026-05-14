@@ -133,8 +133,8 @@ class CloneStateManagerTest : public YBTest {
     MOCK_METHOD(
         Status, ScheduleClonePgSchemaTask,
         (const std::string& permanent_uuid, const std::string& source_db_name,
-         const std::string& target_db_name, const std::string& source_owner,
-         const std::string& target_owner, HybridTime restore_ht,
+         const std::string& target_db_name, const std::string& target_owner,
+         HybridTime restore_ht,
          AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline), (override));
     MOCK_METHOD(
         Status, ScheduleClearMetaCacheTasks,
@@ -343,8 +343,9 @@ class CloneStateManagerTest : public YBTest {
       CoarseTimePoint deadline,
       const LeaderEpoch& epoch) {
     return clone_state_manager_->CloneNamespace(
-        source_namespace_identifier, restore_time, target_namespace_name, "" /* pg_source_owner */,
-        "" /* pg_target_owner */, deadline, epoch);
+        source_namespace_identifier, restore_time, target_namespace_name,
+        "" /* pg_target_owner */, deadline,
+        epoch);
   }
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
@@ -617,7 +618,7 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(),
       ScheduleClonePgSchemaTask(
-        dummy_ts_desc->permanent_uuid(), source_ns_->name(), target_ns_->name(), _, _, _, _, _))
+        dummy_ts_desc->permanent_uuid(), source_ns_->name(), target_ns_->name(), _, _, _, _))
       .WillOnce(Return(STATUS_FORMAT(IllegalState, "Fail ScheduleClonePgSchemaTask for test")));
 
   auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(

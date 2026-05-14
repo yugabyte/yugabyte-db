@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/algorithm/string/replace.hpp>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/client/transaction.h"
@@ -2332,8 +2334,7 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   YsqlDumpRunner ysql_dump_runner =
       VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
-      req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
-      HybridTime(req->restore_ht())));
+      req->source_db_name(), target_db_name, req->target_owner(), HybridTime(req->restore_ht())));
   VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.

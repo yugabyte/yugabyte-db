@@ -330,7 +330,13 @@ message PgCreateDatabaseRequestPB {
   bool colocated = 7;
   fixed64 clone_time = 8;
   string source_database_name = 9;
-  string source_owner = 10;
+  // Reserved: previously held source_owner. Removed because ysql_dump now
+  // derives the source DB owner from pg_database.datdba via its
+  // --rename-owner machinery, so the master no longer needs to ship it.
+  reserved 10;
+  // Raw role name (as stored in pg_authid.rolname) of the new database
+  // owner. Forwarded to ysql_dump as --rename-owner=<target_owner>; ysql_dump
+  // applies fmtId() at emission time, so no pre-quoting is needed here.
   string target_owner = 11;
   reserved 12; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 13;

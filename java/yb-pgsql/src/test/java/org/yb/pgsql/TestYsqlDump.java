@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.google.common.collect.Sets;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,21 +34,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.sql.Statement;
-
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
-
-import com.google.common.collect.Sets;
 
 /**
  * TestYsqlDump
@@ -566,6 +563,97 @@ public class TestYsqlDump extends BasePgSQLTest {
     LOG.info("ysql_dump correctly prioritized --host flag over PGHOST environment variable");
   }
 
+  /**
+   * Verify that --rename-database substitutes the source database name at every
+   * emission site in the dump (CREATE DATABASE, ALTER DATABASE, the per-DB
+   * GRANT/REVOKE block, and the \connect meta-command).
+   */
+  @Test
+  public void ysqlDumpRenameDatabase() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "rename_db_src" /* dumpedDatabaseName */,
+        "yb.orig.ysql_dump_rename_database.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_rename_database.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dump_rename_database.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.OFF,
+        "rename_db_tgt" /* renameDatabase */,
+        "" /* renameOwner */);
+  }
+
+  /**
+   * Verify that --rename-owner rewrites only those OWNER TO clauses whose
+   * subject equals the source database's owner, leaves third-party owners
+   * untouched, and (with --dump-role-checks) rewrites the role-existence
+   * guard so the role being checked for is the new owner. The expected
+   * golden file captures all three behaviors.
+   */
+  @Test
+  public void ysqlDumpRenameOwner() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "rename_owner_src_db" /* dumpedDatabaseName */,
+        "yb.orig.ysql_dump_rename_owner.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_rename_owner.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dump_rename_owner.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON,
+        "" /* renameDatabase */,
+        "rename_owner_tgt_role" /* renameOwner */);
+  }
+
+  /**
+   * Both --rename-database and --rename-owner depend on dumpDatabase() running,
+   * which only happens under -C/--create. Without it, ysql_dump must abort with
+   * a clear error rather than silently emit an unrenamed dump.
+   */
+  @Test
+  public void ysqlDumpRenameRequiresCreate() throws Exception {
+    String dbStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+        "--rename-database=any_name",
+        "-d", DEFAULT_PG_DATABASE));
+    assertTrue("Expected --rename-database to require -C/--create. Got: " + dbStderr,
+        dbStderr.contains("--rename-database requires option -C/--create"));
+
+    String ownerStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+        "--rename-owner=any_role",
+        "-d", DEFAULT_PG_DATABASE));
+    assertTrue("Expected --rename-owner to require -C/--create. Got: " + ownerStderr,
+        ownerStderr.contains("--rename-owner requires option -C/--create"));
+  }
+
+  /** Run ysql_dump expecting failure; return merged stdout+stderr. */
+  private String runYsqlDumpExpectingFailure(List<String> extraArgs) throws Exception {
+    int tserverIndex = 0;
+    File ysqlDumpExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dump");
+    List<String> args = new ArrayList<>(Arrays.asList(
+        ysqlDumpExec.toString(),
+        "-h", getPgHost(tserverIndex),
+        "-p", Integer.toString(getPgPort(tserverIndex)),
+        "-U", DEFAULT_PG_USER));
+    args.addAll(extraArgs);
+
+    ProcessBuilder pb = new ProcessBuilder(args);
+    pb.redirectErrorStream(true);
+    Process process = pb.start();
+
+    StringBuilder output = new StringBuilder();
+    try (BufferedReader reader = new BufferedReader(
+             new InputStreamReader(process.getInputStream()))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        output.append(line).append("\n");
+      }
+    }
+    process.waitFor(60, TimeUnit.SECONDS);
+    assertNotEquals("ysql_dump should have failed. Output: " + output,
+                    0, process.exitValue());
+    return output.toString();
+  }
+
   @Test
   public void ysqlDumpLegacyColocatedDB() throws Exception {
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
@@ -626,6 +714,22 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final IncludeYbMetadata includeYbMetadata,
                       final NoTableSpaces noTableSpaces,
                       final DumpRoleChecks dumpRoleChecks) throws Exception {
+    ysqlDumpTester(
+        binaryName, dumpedDatabaseName, inputFileRelativePath, expectedDumpRelativePath,
+        outputFileRelativePath, includeYbMetadata, noTableSpaces, dumpRoleChecks,
+        "" /* renameDatabase */, "" /* renameOwner */);
+  }
+
+  void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
+                      final String inputFileRelativePath,
+                      final String expectedDumpRelativePath,
+                      final String outputFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata,
+                      final NoTableSpaces noTableSpaces,
+                      final DumpRoleChecks dumpRoleChecks,
+                      final String renameDatabase,
+                      final String renameOwner) throws Exception {
     File testDir = TestUtils.getClassResourceDir(getClass());
 
     // Create the data
@@ -663,6 +767,18 @@ public class TestYsqlDump extends BasePgSQLTest {
     }
     if (dumpRoleChecks == DumpRoleChecks.ON) {
       args.add("--dump-role-checks");
+    }
+    // YB: --rename-database and --rename-owner both require -C/--create (they
+    // hook into dumpDatabase, which only runs under --create). Add the flag
+    // automatically here so callers don't have to remember the dependency.
+    if (!renameDatabase.isEmpty() || !renameOwner.isEmpty()) {
+      args.add("--create");
+    }
+    if (!renameDatabase.isEmpty()) {
+      args.add("--rename-database=" + renameDatabase);
+    }
+    if (!renameOwner.isEmpty()) {
+      args.add("--rename-owner=" + renameOwner);
     }
 
     if (!dumpedDatabaseName.isEmpty()) {

@@ -61,7 +61,6 @@ class CloneStateManager {
     const NamespaceIdentifierPB& source_namespace,
     HybridTime read_time,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
@@ -79,7 +78,6 @@ class CloneStateManager {
       CoarseTimePoint deadline,
       const NamespaceInfoPtr& source_namespace,
       const std::string& target_namespace_name,
-      const std::string& pg_source_owner,
       const std::string& pg_target_owner);
 
   // Validates that no YSQL major or non-major upgrades occurred between restore_ht and now that
@@ -97,7 +95,6 @@ class CloneStateManager {
       CloneStateInfoPtr clone_state,
       const std::string& source_db_name,
       const std::string& target_db_name,
-      const std::string& pg_source_owner,
       const std::string& pg_target_owner,
       const SnapshotScheduleId& snapshot_schedule_id,
       CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info);

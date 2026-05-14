@@ -499,6 +499,8 @@ main(int argc, char **argv)
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
 		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 12},
+		{"rename-database", required_argument, NULL, 25},
+		{"rename-owner", required_argument, NULL, 26},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -751,6 +753,14 @@ main(int argc, char **argv)
 				with_statistics = true;
 				break;
 
+			case 25:			/* YB: --rename-database=new_db_name */
+				dopt.yb_rename_database = pg_strdup(optarg);
+				break;
+
+			case 26:			/* YB: --rename-owner=new_owner_name */
+				dopt.yb_rename_owner = pg_strdup(optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -803,6 +813,21 @@ main(int argc, char **argv)
 
 	if (dopt.yb_dump_role_checks && !dopt.include_yb_metadata)
 		pg_fatal("options --dump-role-checks requires option --include-yb-metadata");
+
+	/*
+	 * YB: --rename-database overrides datname/qdatname inside dumpDatabase,
+	 * which only runs when --create is set. Without --create the dump would
+	 * not include the DB statements at all, so the option is meaningless.
+	 */
+	if (dopt.yb_rename_database && !dopt.outputCreateDB)
+		pg_fatal("option --rename-database requires option -C/--create");
+
+	/*
+	 * YB: --rename-owner needs the source database owner, which is captured
+	 * from pg_database.datdba in dumpDatabase(); that only runs under --create.
+	 */
+	if (dopt.yb_rename_owner && !dopt.outputCreateDB)
+		pg_fatal("option --rename-owner requires option -C/--create");
 
 	/* reject conflicting "-only" options */
 	if (data_only && schema_only)
@@ -1259,6 +1284,13 @@ help(const char *progname)
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes\n"
 			 "                               linux timestamp in microseconds\n"));
+	printf(_("  --rename-database=NAME       emit the dump as if the source database were named\n"
+			 "                               NAME (CREATE/ALTER/COMMENT/SECURITY LABEL on DATABASE,\n"
+			 "                               GRANT/REVOKE on DATABASE, and \\connect lines all\n"
+			 "                               use NAME). Requires -C/--create.\n"));
+	printf(_("  --rename-owner=NAME          rewrite every OWNER TO clause whose owner equals\n"
+			 "                               the source database owner to OWNER TO NAME (other\n"
+			 "                               owners are emitted unchanged). Requires -C/--create.\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
@@ -3215,6 +3247,26 @@ dumpDatabase(Archive *fout)
 	dopt->db_oid = dbCatId.oid;
 	datname = PQgetvalue(res, 0, i_datname);
 	dba = getRoleName(PQgetvalue(res, 0, i_datdba));
+
+	/*
+	 * YB: when --rename-database=new_db_name was passed, substitute the new name
+	 * here so every CREATE/ALTER/COMMENT/SECURITY-LABEL/ACL/CONFIG/connect
+	 * line built below uses the renamed database. fmtId() handles identifier
+	 * escaping for the quoted form (qdatname); appendPsqlMetaConnect() will
+	 * handle the \connect line at emit time.
+	 */
+	if (dopt->yb_rename_database)
+		datname = dopt->yb_rename_database;
+
+	/*
+	 * YB: when --rename-owner=new_owner was passed, remember the source database
+	 * owner so _printTocEntry() can substitute every "OWNER TO X" clause
+	 * where X equals this owner. dba points into the role-name cache built
+	 * by collectRoleNames(), which lives for the rest of the dump, so we do
+	 * not need to copy it.
+	 */
+	if (dopt->yb_rename_owner && dba && dba[0] != '\0')
+		dopt->yb_source_db_owner = dba;
 	encoding = PQgetvalue(res, 0, i_encoding);
 	datlocprovider = PQgetvalue(res, 0, i_datlocprovider);
 	collate = PQgetvalue(res, 0, i_collate);

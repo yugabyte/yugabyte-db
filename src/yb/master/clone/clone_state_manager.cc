@@ -130,13 +130,12 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
 
   Status ScheduleClonePgSchemaTask(
       const TabletServerId& ts_uuid, const std::string& source_db_name,
-      const std::string& target_db_name, const std::string& pg_source_owner,
-      const std::string& pg_target_owner, HybridTime restore_ht,
-      AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline) override {
+      const std::string& target_db_name, const std::string& pg_target_owner,
+      HybridTime restore_ht, AsyncClonePgSchema::ClonePgSchemaCallbackType callback,
+      MonoTime deadline) override {
     auto task = std::make_shared<AsyncClonePgSchema>(
         master_, catalog_manager_->AsyncTaskPool(), ts_uuid, source_db_name,
-        target_db_name, restore_ht, pg_source_owner, pg_target_owner, std::move(callback),
-        deadline);
+        target_db_name, restore_ht, pg_target_owner, std::move(callback), deadline);
     return catalog_manager_->ScheduleTask(task);
   }
 
@@ -326,7 +325,6 @@ Status CloneStateManager::CloneNamespace(
       req->source_namespace(),
       restore_time,
       req->target_namespace_name(),
-      req->pg_source_owner(),
       req->pg_target_owner(),
       rpc->GetClientDeadline(),
       epoch));
@@ -340,7 +338,6 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
     const NamespaceIdentifierPB& source_namespace_identifier,
     HybridTime restore_time,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch) {
@@ -382,7 +379,7 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
       target_namespace_name, restore_time));
 
   auto status = TryCloneNamespace(clone_state, snapshot_schedule_id, deadline, source_namespace,
-      target_namespace_name, pg_source_owner, pg_target_owner);
+      target_namespace_name, pg_target_owner);
   if (!status.ok()) {
     WARN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()), "Failed to mark clone aborted");
   }
@@ -395,7 +392,6 @@ Status CloneStateManager::TryCloneNamespace(
     CoarseTimePoint deadline,
     const NamespaceInfoPtr& source_namespace,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner) {
   // Export snapshot info.
   HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
@@ -414,7 +410,7 @@ Status CloneStateManager::TryCloneNamespace(
   if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
     RETURN_NOT_OK(ValidateYSQLUpgradeStates(source_namespace->id(), restore_ht));
     status = ClonePgSchemaObjects(
-        clone_state, source_namespace->name(), target_namespace_name, pg_source_owner,
+        clone_state, source_namespace->name(), target_namespace_name,
         pg_target_owner, snapshot_schedule_id, std::move(clone_snapshot_info));
   } else {
     // For YCQL, start tablets cloning directly.
@@ -542,7 +538,6 @@ Status CloneStateManager::ClonePgSchemaObjects(
     CloneStateInfoPtr clone_state,
     const std::string& source_db_name,
     const std::string& target_db_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     const SnapshotScheduleId& snapshot_schedule_id,
     CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info) {
@@ -555,7 +550,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
-      ts->permanent_uuid(), source_db_name, target_db_name, pg_source_owner, pg_target_owner,
+      ts->permanent_uuid(), source_db_name, target_db_name, pg_target_owner,
       HybridTime(clone_state->LockForRead()->pb.restore_time()),
       MakeDoneClonePgSchemaCallback(
           clone_state, snapshot_schedule_id, target_db_name, std::move(clone_snapshot_info),

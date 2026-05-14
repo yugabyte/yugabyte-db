@@ -1804,7 +1804,6 @@ class PgClientSession::Impl {
       yb_clone_info = YbcCloneInfo {
         .clone_time = req.clone_time(),
         .src_db_name = req.source_database_name().c_str(),
-        .src_owner = req.source_owner().c_str(),
         .tgt_owner = req.target_owner().c_str(),
       };
     }

@@ -63,7 +63,6 @@ class CloneStateManagerExternalFunctionsBase {
       const std::string& permanent_uuid,
       const std::string& source_db_name,
       const std::string& target_db_name,
-      const std::string& source_owner,
       const std::string& target_owner,
       HybridTime restore_ht,
       AsyncClonePgSchema::ClonePgSchemaCallbackType callback,

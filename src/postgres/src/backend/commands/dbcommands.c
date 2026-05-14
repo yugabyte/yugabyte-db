@@ -1425,26 +1425,22 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	/*
 	 * YB: CREATE DATABASE using templates other than template0 and template1
-	 * will always go through the DB clone workflow.
+	 * goes through the DB clone workflow, which forwards yb_clone_info to
+	 * ysql_dump on a remote tserver. ysql_dump derives the source database
+	 * owner itself from pg_database.datdba (its --rename-owner machinery
+	 * reads that column directly), so only the target owner — the new owner
+	 * for the cloned objects — is forwarded here, as a raw role name.
 	 */
 	YbcCloneInfo yb_clone_info = {
 		.clone_time = dbclonetime,
 		.src_db_name = dbtemplate,
-		.src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */ ) : NULL,
 		.tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */ ) : NULL,
 	};
 
-	if (is_clone)
-	{
-		if (!yb_clone_info.src_owner)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("could not get source database owner name from oid")));
-		if (!yb_clone_info.tgt_owner)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("could not get target database owner name from oid")));
-	}
+	if (is_clone && !yb_clone_info.tgt_owner)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("could not get target database owner name from oid")));
 
 	if (IsYugaByteEnabled() &&
 		(OidIsValid(dboid) && dboid != Template0DbOid && dboid != PostgresDbOid) &&

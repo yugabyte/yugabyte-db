@@ -940,7 +940,11 @@ typedef struct {
   // The clone time in microseconds since the unix epoch (not a hybrid time).
   uint64_t clone_time;
   const char* src_db_name;
-  const char* src_owner;
+  // Raw role name (as stored in pg_authid.rolname) of the new database owner.
+  // ysql_dump consumes this via its --rename-owner option and quotes it via
+  // fmtId() at emission time, so this must be passed unquoted. The source DB
+  // owner is no longer carried on this struct: ysql_dump derives it itself
+  // from pg_database.datdba.
   const char* tgt_owner;
 } YbcCloneInfo;
 
