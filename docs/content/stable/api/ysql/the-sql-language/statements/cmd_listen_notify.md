@@ -99,7 +99,6 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
 | `cdc_max_virtual_wal_per_tserver` | `5` | LISTEN/NOTIFY creates one virtual WAL per node. Ensure this limit is large enough to accommodate it alongside any user-created CDC streams. |
 
-
 ## Differences from PostgreSQL
 
 | Aspect | PostgreSQL | YugabyteDB |
