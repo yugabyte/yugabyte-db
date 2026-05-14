@@ -273,6 +273,8 @@ class MasterPathHandlers {
                            Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTasksJSON(const Webserver::WebRequest& req,
+                       Webserver::WebResponse* resp);
   void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandleMasters(const Webserver::WebRequest& req,
                      Webserver::WebResponse* resp);
