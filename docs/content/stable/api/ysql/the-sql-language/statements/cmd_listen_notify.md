@@ -91,11 +91,78 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | `pg_notification_queue_usage()` | Returns the usage fraction of the server's notification queue. | Returns the usage fraction of the _local TServer's_ notification queue. |
 | Behavior when the queue is full | New `NOTIFY` calls fail (return an error) until the queue drains. | When new notifications are waiting to be written to the queue, and at least one listener is fully caught up (that is, waiting for new notifications), the _slowest listener_ on that TServer is terminated. This allows the queue tail to advance, making space for new notifications and unblocking the caught up listener(s). Applications must handle disconnections by reconnecting and re-issuing `LISTEN`. |
 
-## Advanced tuning
+## Observability
 
-The following flags control how frequently the notifications poller checks for new notifications.
+### pg_listening_channels()
 
-| tserver flag | Default | Description |
+Returns the set of channel names that the current session is listening on.
+
+```sql
+LISTEN my_channel;
+LISTEN other_channel;
+SELECT * FROM pg_listening_channels();
+```
+
+```output
+ pg_listening_channels
+-----------------------
+ channel1
+ channel2
+```
+
+### pg_notification_queue_usage()
+
+Returns the fraction of the notification queue that is currently occupied by pending notifications on the local TServer.
+
+```sql
+SELECT pg_notification_queue_usage();
+```
+
+```output
+ pg_notification_queue_usage
+-----------------------------
+                          0.2
+```
+
+### Replication slot monitoring
+
+Because LISTEN/NOTIFY uses CDC internally, you can query `pg_replication_slots` to inspect the notification-related replication slots:
+
+```sql
+SELECT slot_name, active_pid, yb_stream_id, yb_restart_time
+FROM pg_replication_slots
+WHERE slot_name LIKE 'yb_notifications_%';
+```
+
+Each row shows the replication slot name (which includes the TServer UUID as a suffix), the notifications poller process ID, the CDC stream ID, and the time up to which the poller has caught up.
+
+For additional CDC-level metrics, refer to [Monitor CDC metrics](../../../../../additional-features/change-data-capture/using-logical-replication/monitor/).
+
+## Latency
+
+LISTEN/NOTIFY is an asynchronous communication mechanism. In steady state, expect a latency of roughly 100 ms between a `NOTIFY` and its delivery to listeners, depending on the deployment topology. Network partitions or high cluster load will increase this latency.
+
+The following TServer flags control the internal polling frequency:
+
+| TServer flag | Default | Description |
 | :------------- | :------ | :---------- |
-| `yb_notifications_poll_sleep_duration_nonempty_ms` | `1` | Wait time in milliseconds before the next poll when the previous poll returned data. |
-| `yb_notifications_poll_sleep_duration_empty_ms` | `100` | Wait time in milliseconds before the next poll when the previous poll returned no data. |
+| `yb_notifications_poll_sleep_duration_nonempty_ms` | `1` | Wait time in milliseconds before the next poll when the previous poll returned notifications. |
+| `yb_notifications_poll_sleep_duration_empty_ms` | `100` | Wait time in milliseconds before the next poll when the previous poll returned no notifications. |
+
+An aggressive polling frequency reduces delivery latency at the cost of higher CPU usage, and vice versa.
+
+## Scale
+
+LISTEN/NOTIFY is designed for lightweight signaling — up to a few thousand `NOTIFY` calls per second.
+
+The number of listeners scales horizontally with the cluster.
+
+{{< tip title="Tip" >}}
+If you have a small number of listening sessions and can control which nodes they connect to, co-locating them on the same TServer reduces the fan-out of notifications across the cluster.
+{{< /tip >}}
+
+## Cross-feature implications
+
+### Connection manager
+
+Listening sessions require a dedicated backend process. If you are using the [YSQL connection manager](../../../../../additional-features/connection-manager-ysql/), `LISTEN` automatically makes the session [sticky](../../../../../additional-features/connection-manager-ysql/ycm-setup/#sticky-connections) for the rest of its lifetime.
