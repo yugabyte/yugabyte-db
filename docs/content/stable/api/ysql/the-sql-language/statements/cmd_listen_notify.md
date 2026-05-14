@@ -50,7 +50,7 @@ SELECT pg_notify('fo' || 'o', 'pay' || 'load');
 Asynchronous notification "foo" with payload "payload" received from server process with PID 8448.
 ```
 
-## Syntax and SQL reference
+## Syntax
 
 YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to the PostgreSQL documentation:
 
