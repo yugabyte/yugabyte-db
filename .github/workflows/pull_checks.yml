@@ -21,9 +21,9 @@ jobs:
           TITLE_RE+=' \S.{8,98}\S$'
 
           if [[ ! "${{ github.event.pull_request.title }}" =~ $TITLE_RE ]]; then
-            echo "::error ::Pull Request title must include issue ID, code area (no extra whitespace),"
-            echo "::error :: and a short description."
-            echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID"
+            echo "::error ::Pull Request title must include issue ID, code area,"
+            echo "::error ::  and a short description, with no extra whitespace."
+            echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID."
             echo "::error ::Short description must be less than 100 characters."
             echo "::error ::Backport branch should be used only for non-master release branches."
             echo "::error ::Examples:"
@@ -37,7 +37,7 @@ jobs:
           BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
           if [[ "${{ github.base_ref }}" == "master" ]]; then
             if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
-              echo "::error ::Pull Request title should not specify target branch if targeting master."
+              echo "::error ::Pull Request title should not specify target branch for master."
               exit 1
             fi
             echo "Pull Request title is valid for master branch."
@@ -51,10 +51,10 @@ jobs:
               fi
               echo "Pull Request title branch reference ($BACKPORT_BRANCH) matches base reference."
             else
-              echo "::error ::Pull Request title must begin with target release branch in square brackets."
+              echo "::error ::Pull Request title must begin with target release branch in brackets."
               echo "::error ::Examples:"
-              echo "::error ::  [BACKPORT 2045.1][#12345] area1,area2: Must have fix from master"
-              echo "::error ::  [2045.2][#12345] area: release-specific change"
+              echo "::error ::[BACKPORT 2045.1][#12345] area1,area2: Must have fix from master"
+              echo "::error ::[2045.2][#12345] area: release-specific change"
               exit 1
             fi
           fi
@@ -78,9 +78,10 @@ jobs:
               bp_error=1
             fi
             if (( bp_error == 1 )); then
-              echo "::error ::Backport Pull Request must include original commit SHA (full or shortened)"
-              echo "::error :: and issue reference in the Pull Request description."
-              echo "::error ::Starting at beginning of a line. Examples:"
+              echo "::error ::Backport Pull Request must include original commit info."
+              echo "::error ::Include SHA (full or prefix) and issue reference in the"
+              echo "::error ::  Pull Request description."
+              echo "::error ::Start at beginning of a line. Examples:"
               echo "::error ::Original commit: 123abc / #12345"
               echo "::error ::Original commits:"
               echo "::error ::- 123abc / #12345"
