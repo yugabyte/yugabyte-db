@@ -60,6 +60,10 @@ YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to th
 
 Client library interaction (for example, polling for notifications via libpq or JDBC) is the same as in PostgreSQL.
 
+## Transaction semantics
+
+As in PostgreSQL, `LISTEN` and `NOTIFY` take effect at transaction commit (no effect if the transaction aborts). Duplicate notifications (same channel and payload) within a transaction are coalesced. Notifications are delivered in the order they were sent within a transaction, and across transactions in commit order. A listener receives notifications from transactions that commit after its own `LISTEN` commits, though it may receive some additional notifications that committed just before. If a listening session is inside a transaction, incoming notifications are held until the transaction completes (either commits or aborts).
+
 ## Enable LISTEN/NOTIFY
 
 LISTEN/NOTIFY is disabled by default. To enable it, set the [ysql_yb_enable_listen_notify](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) flag to `true` on both TServers and Masters.
@@ -81,6 +85,7 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | `ysql_yb_allow_replication_slot_lsn_types` | `true` | LISTEN fails if set to `false`. |
 | `ysql_yb_allow_replication_slot_ordering_modes` | `false` | LISTEN fails if set to `true`. |
 | `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
+| `cdc_max_virtual_wal_per_tserver` | `5` | LISTEN/NOTIFY creates one virtual WAL per node. Ensure this limit is large enough to accommodate it alongside any user-created CDC streams. |
 
 
 ## Differences from PostgreSQL
@@ -98,8 +103,8 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 Returns the set of channel names that the current session is listening on.
 
 ```sql
-LISTEN my_channel;
-LISTEN other_channel;
+LISTEN channel1;
+LISTEN channel2;
 SELECT * FROM pg_listening_channels();
 ```
 
