@@ -2,9 +2,7 @@
 name: create-review
 description: >-
   Create a YugabyteDB Phorge review (diff) for the current branch's changes.
-  Runs `arc lint`, prompts for issue tracker references and component, then
-  uses `arc diff --create` to create the review with the proper title format
-  and subscribers. Use when the user wants to publish their changes for review.
+  Use when the user wants to publish their changes for review.
 ---
 
 # Create Review
@@ -29,9 +27,9 @@ Run `git status`. If there are uncommitted changes:
 
 If the branch already has at least one commit and the working copy is clean, skip to Step 2.
 
-### Step 2: Run `arc lint` and confirm no lint errors
+### Step 2: Run linter and confirm no lint errors
 
-Run `arc lint` from the repo root. Report the output to the user.
+Run `./build-support/lint.sh` from the repo root. Report the output to the user.
 
 - If there are **errors**, stop and fix the issues before continuing. Do not proceed to `arc diff --create`.
 - If there are only **warnings or advice**, show them to the user and ask whether to proceed.
@@ -123,7 +121,7 @@ Output:
 ## Notes
 
 - Never use the Phorge MCP server for creating the diff — use `arc` CLI only.
-- Always run `arc lint` first; a failing lint should block diff creation.
+- Always run `./build-support/lint.sh` first; a failing lint should block diff creation.
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - `ybase` for DB, `yugaware` for YBA/platform — add both when changes span both.
 - The `trigger jenkins` comment kicks off CI; forgetting it is a common mistake.
