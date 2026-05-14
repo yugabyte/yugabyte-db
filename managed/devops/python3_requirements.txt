@@ -48,4 +48,4 @@ requests==2.33.0
 scp==0.14.5
 setuptools==80.10.2
 six
-urllib3==2.6.3
+urllib3==2.7.0
