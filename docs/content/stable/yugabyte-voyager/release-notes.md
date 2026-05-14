@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Support PostgreSQL live migration for partitioned tables whose root has no primary key, but every child partition does. Use [`--use-partition-root false`](../reference/data-migration/import-data/#arguments) with the `import data` command so CDC events are ingested directly into the matching child partition on the target rather than the root.
+- Support PostgreSQL live migration for partitioned tables whose root has no primary key, but every child partition does. Use [--use-partition-root false](../reference/data-migration/import-data/#arguments) with the `import data` command so CDC events are ingested directly into the matching child partition on the target rather than the root.
 
 ## v2026.4.2 - April 28, 2026
 
