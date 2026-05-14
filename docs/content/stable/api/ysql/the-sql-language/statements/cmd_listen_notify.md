@@ -64,7 +64,7 @@ Client library interaction (for example, polling for notifications via libpq or 
 
 LISTEN/NOTIFY is disabled by default. To enable it, set the [ysql_yb_enable_listen_notify](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) flag to `true` on both TServers and Masters.
 
-After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
+After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. These objects are for internal use only — please do not modify or drop them. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
 ## How notifications are delivered in YugabyteDB
 
@@ -166,3 +166,7 @@ If you have a small number of listening sessions and can control which nodes the
 ### Connection manager
 
 Listening sessions require a dedicated backend process. If you are using the [YSQL connection manager](../../../../../additional-features/connection-manager-ysql/), `LISTEN` automatically makes the session [sticky](../../../../../additional-features/connection-manager-ysql/ycm-setup/#sticky-connections) for the rest of its lifetime.
+
+### Encoding
+
+The sending and receiving sessions must use the same `client_encoding`.
