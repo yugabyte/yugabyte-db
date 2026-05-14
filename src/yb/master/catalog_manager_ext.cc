@@ -2102,7 +2102,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(
+        old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
+        TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();

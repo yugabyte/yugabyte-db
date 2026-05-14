@@ -550,8 +550,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // rollback to sub-transaction operation.
   // NOTE: This function must only be called when we know that the table is being deleted i.e. it
   // assumes that the table is being deleted.
-  bool IsTableDeletionDueToRollbackToSubTxn(
-      const scoped_refptr<TableInfo>& table, TransactionId& txn_id);
+  bool IsTableDeletionDueToRollbackToSubTxn(const TableInfo* table, TransactionId& txn_id);
 
   // Rollback all the DDL state changes made by the YSQL transaction from the end till
   // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
@@ -662,7 +661,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
       const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const std::string& reason,
       const LeaderEpoch& epoch, HideOnly hide_only = HideOnly::kFalse,
-      KeepData keep_data = KeepData::kFalse);
+      KeepData keep_data = KeepData::kFalse,
+      const TransactionId& exclude_aborting_transaction_id = TransactionId::Nil());
 
   std::shared_ptr<AsyncDeleteReplica> MakeDeleteReplicaTask(
       const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
@@ -2206,6 +2206,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(
       const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TransactionId& exclude_aborting_transaction_id,
       const LeaderEpoch& epoch) override;
 
   // Returns error if and only if it is forbidden to both:
@@ -2225,7 +2226,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablets should be sorted by tablet_id to avoid deadlocks.
   Status DeleteOrHideTabletsAndSendRequests(
       const TabletInfos& tablets, const TabletDeleteRetainerInfo& delete_retainer,
-      const std::string& reason, const LeaderEpoch& epoch);
+      const std::string& reason, const LeaderEpoch& epoch,
+      TransactionId exclude_abort_txn_id = TransactionId::Nil());
 
   // Sends a prepare delete transaction tablet request to the leader of the status tablet.
   // This will be followed by delete tablet requests to each replica.

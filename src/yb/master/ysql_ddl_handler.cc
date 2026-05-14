@@ -1135,15 +1135,17 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
     }
 
     {
-      LOG(INFO) << "Adding table: " << table->ToString()
-                << " to ysql_ddl_txn_undergoing_subtransaction_rollback_map_";
       LockGuard lock(ddl_txn_verifier_mutex_);
       if (is_table_index) {
+        LOG(INFO) << "Adding table: " << table->ToString()
+                  << " to indexes_skipped_due_to_base_table_deletion";
         ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn]
             .indexes_skipped_due_to_base_table_deletion.insert(table->id());
         continue;
       }
 
+      LOG(INFO) << "Adding table: " << table->ToString()
+                << " to ysql_ddl_txn_undergoing_subtransaction_rollback_map_";
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn].tables.push_back(table);
     }
     tables_to_trigger_rollback_for.push_back(table);
@@ -1307,7 +1309,7 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
 }
 
 bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
-    const scoped_refptr<TableInfo>& table, TransactionId& txn_id) {
+    const TableInfo* table, TransactionId& txn_id) {
   if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     return false;
   }
@@ -1318,6 +1320,7 @@ bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
     auto txn_id_res = l->GetCurrentDdlTransactionId();
     if (!txn_id_res.ok() || txn_id_res->IsNil()) {
       // Transaction ID will always be present in case of rollback to sub-transaction operation.
+      LOG(INFO) << "No transaction id found on table: " << table->ToString();
       return false;
     }
     txn_id = *txn_id_res;

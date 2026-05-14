@@ -890,4 +890,49 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
 }
 
+// Test case for https://github.com/yugabyte/yugabyte-db/issues/30721.
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeletion) {
+  if (GetParam()) {
+    return;
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS existing_table"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+  ASSERT_OK(conn.Execute("CREATE TABLE existing_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO existing_table VALUES (1)"));
+
+  // Ensure that the deletion of the base table is completed before we call
+  // IsTableDeletionDueToRollbackToSubTxn for the index table.
+  // With the fix to call IsTableDeletionDueToRollbackToSubTxn before initiating any tablet
+  // deletion, this ordering is a no-op but this leads to test failures in the old buggy code where
+  // we were calling it from within SendDeleteTabletRequest.
+  SyncPoint::GetInstance()->LoadDependency({
+      {
+          "CatalogManager::CheckTableDeleted:AfterRemoveDdlTransactionState",
+          "CatalogManager::SendDeleteTabletRequest:IndexTable",
+      },
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT PRIMARY KEY, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx_$0 ON $0 (b)", kTableName));
+  // The below insert is important to ensure that we have at least one operation on the index
+  // tablets from this transaction. Otherwise, we will not see the transaction abort while deletion
+  // of the tablet in the old buggy code.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+  ASSERT_OK(conn.Execute("ALTER TABLE existing_table ADD COLUMN b INT"));
+  ASSERT_OK(conn.Execute("INSERT INTO existing_table VALUES (2, 2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
+}
+
 } // namespace yb::pgwrapper
