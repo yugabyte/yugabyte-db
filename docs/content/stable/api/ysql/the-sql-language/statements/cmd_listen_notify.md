@@ -74,7 +74,7 @@ LISTEN/NOTIFY is disabled by default. To enable it, set the [ysql_yb_enable_list
 
 After you enable the feature, the leader Master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
-{{< warning title="Do not modify internal objects" >}}
+{{< warning >}}
 The `yb_system` database and the `yb_system.pg_yb_notifications` table are for internal use only. Do not modify or drop them.
 {{< /warning >}}
 
@@ -84,7 +84,7 @@ In vanilla PostgreSQL, notifications are written through shared memory. In Yugab
 
 Each TServer creates a named logical replication slot derived from the node identity (`yb_notifications_<tserver-uuid>`).
 
-{{< warning title="Do not modify internal replication slots" >}}
+{{< warning >}}
 Do not drop or repurpose the `yb_notifications_*` replication slots. They are required for notification delivery.
 {{< /warning >}}
 
