@@ -45,6 +45,8 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
+  void TestSysCatalogRetentionBarriers(
+      bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -3888,6 +3890,7 @@ TEST_F(
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
@@ -3913,13 +3916,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
     ASSERT_OK(conn1.Execute("COMMIT"));
   }
 
+  // Sleep for few seconds to ensure that the stream expires and master background task runs to
+  // delete table's cdc_state table entries and remove it from stream metadata.
+  SleepFor(MonoDelta::FromSeconds(10));
+
   int expected_dml_records = num_batches * inserts_per_batch;
   auto vwal1_result = GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */);
 
   ASSERT_NOK(vwal1_result);
-  ASSERT_TRUE(vwal1_result.status().IsInternalError());
-  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "expired for Tablet");
+  ASSERT_TRUE(vwal1_result.status().IsNotFound());
+  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "not found under stream");
 
   // A new VWAL on the same stream should again receive the stream expired error.
   auto vwal2_result = GetAllPendingTxnsFromVirtualWAL(
@@ -3927,8 +3934,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
       kVWALSessionId2);
 
   ASSERT_NOK(vwal2_result);
-  ASSERT_TRUE(vwal2_result.status().IsInternalError());
-  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "expired for Tablet");
+  ASSERT_TRUE(vwal2_result.status().IsNotFound());
+  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "not found under stream");
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
@@ -6442,6 +6449,215 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUPAMReleasesBarriersOnIndexTa
   VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
+    bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  struct StreamInfo {
+    std::string ns_name;
+    YBTableName table;
+    xrepl::StreamId stream_id;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    bool is_logical_replication_stream;
+  };
+  std::vector<StreamInfo> streams;
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+
+  if (use_grpc_stream) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
+    for (int i = 1; i <= 2; i++) {
+      auto ns_name = Format("grpc_ns_$0", i);
+      ASSERT_OK(CreateDatabase(&test_cluster_, ns_name));
+      auto table =
+          ASSERT_RESULT(CreateTable(&test_cluster_, ns_name, kTableName, 1 /* num_tablets */));
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+      ASSERT_EQ(tablets.size(), 1);
+
+      auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+          CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT,
+          CDCRecordType::CHANGE, ns_name));
+
+      if (add_dummy_grpc_slot_entry) {
+        CDCStateTableEntry slot_entry(kCDCSDKSlotEntryTabletId, stream_id);
+        slot_entry.confirmed_flush_lsn = 0;
+        slot_entry.restart_lsn = 0;
+        slot_entry.xmin = 0;
+        slot_entry.record_id_commit_time = 1;
+        slot_entry.last_pub_refresh_time = 0;
+        ASSERT_OK(cdc_state_table.InsertEntries({slot_entry}));
+      }
+
+      streams.push_back(
+          {ns_name, table, stream_id, tablets, false /* is_logical_replication_stream */});
+    }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
+  }
+
+  if (use_logical_replication_stream) {
+    for (int i = 1; i <= 2; i++) {
+      auto ns_name = Format("logical_replication_ns_$0", i);
+      ASSERT_OK(CreateDatabase(&test_cluster_, ns_name));
+      auto table =
+          ASSERT_RESULT(CreateTable(&test_cluster_, ns_name, kTableName, 1 /* num_tablets */));
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+      ASSERT_EQ(tablets.size(), 1);
+
+      auto slot_name = Format("logical_replication_slot_$0", i);
+      auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+          slot_name, CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+          ns_name));
+
+      streams.push_back(
+          {ns_name, table, stream_id, tablets, true /* is_logical_replication_stream */});
+    }
+  }
+
+  auto mini_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto tablet_peer = mini_master->tablet_peer();
+
+  auto initial_wal_barrier = tablet_peer->get_cdc_min_replicated_index();
+  auto initial_intent_barrier = tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  auto initial_history_barrier = tablet_peer->get_cdc_sdk_safe_time();
+
+  // Advance gRPC streams via GetChanges with explicit checkpoint.
+  for (auto& info : streams) {
+    if (info.is_logical_replication_stream) {
+      continue;
+    }
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(info.ns_name));
+    CDCSDKCheckpointPB explicit_checkpoint_pb;
+    explicit_checkpoint_pb.CopyFrom(CDCSDKCheckpointPB::default_instance());
+    const CDCSDKCheckpointPB* explicit_checkpoint = &explicit_checkpoint_pb;
+    GetChangesResponsePB change_resp;
+
+    for (int i = 0; i < 2; i++) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0($1, $2) VALUES ($3, $4)", info.table.table_name(), kKeyColumnName,
+          kValueColumnName, i, i + 1));
+      SleepFor(MonoDelta::FromSeconds(2));
+      change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+          info.stream_id, info.tablets, explicit_checkpoint, explicit_checkpoint));
+      ASSERT_FALSE(change_resp.has_error());
+      explicit_checkpoint_pb = change_resp.cdc_sdk_checkpoint();
+      explicit_checkpoint_pb.set_snapshot_time(change_resp.safe_hybrid_time());
+      explicit_checkpoint = &explicit_checkpoint_pb;
+    }
+  }
+
+  // Advance logical replication streams via Virtual WAL flow.
+  uint64_t next_session_id = kVWALSessionId1;
+  for (auto& info : streams) {
+    if (!info.is_logical_replication_stream) {
+      continue;
+    }
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(info.ns_name));
+    for (int i = 0; i < 2; i++) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0($1, $2) VALUES ($3, $4)", info.table.table_name(), kKeyColumnName,
+          kValueColumnName, i, i + 1));
+    }
+
+    auto session_id = next_session_id++;
+    auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+        info.stream_id, {info.table.table_id()}, 2 /* expected_dml_records */,
+        true /* init_virtual_wal */, session_id, true /* allow_sending_feedback */));
+    ASSERT_OK(DestroyVirtualWAL(session_id));
+  }
+
+  // Compute expected min_restart_time across all streams.
+  HybridTime min_restart_time = HybridTime::kMax;
+  for (const auto& info : streams) {
+    HybridTime restart_time;
+    if (info.is_logical_replication_stream) {
+      auto slot_entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+          {kCDCSDKSlotEntryTabletId, info.stream_id},
+          CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
+      ASSERT_TRUE(slot_entry.has_value());
+      ASSERT_TRUE(slot_entry->record_id_commit_time.has_value());
+      restart_time = HybridTime(*slot_entry->record_id_commit_time);
+    } else {
+      auto cdc_sdk_safe_time = ASSERT_RESULT(GetSafeHybridTimeFromCdcStateTable(
+          info.stream_id, info.tablets[0].tablet_id(), test_client()));
+      ASSERT_GT(cdc_sdk_safe_time, 0);
+      restart_time = HybridTime(static_cast<uint64_t>(cdc_sdk_safe_time));
+    }
+    min_restart_time = std::min(min_restart_time, restart_time);
+  }
+
+  // Wait for CDCServiceImpl::CDCMasterBgTask to run for few iterations.
+  SleepFor(MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_master_interval_secs * 10));
+
+  // Verify gRPC slot entries were updated with computed restart time.
+  if (use_grpc_stream && add_dummy_grpc_slot_entry) {
+    for (const auto& info : streams) {
+      if (info.is_logical_replication_stream) {
+        continue;
+      }
+      auto safe_time = ASSERT_RESULT(GetSafeHybridTimeFromCdcStateTable(
+          info.stream_id, info.tablets[0].tablet_id(), test_client()));
+      auto expected_restart_time = HybridTime(static_cast<uint64_t>(safe_time));
+
+      auto slot_entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+          {kCDCSDKSlotEntryTabletId, info.stream_id},
+          CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
+      ASSERT_TRUE(slot_entry.has_value());
+      ASSERT_TRUE(slot_entry->record_id_commit_time.has_value());
+      auto actual_restart_time = HybridTime(*slot_entry->record_id_commit_time);
+      ASSERT_EQ(actual_restart_time, expected_restart_time);
+    }
+  }
+
+  // Verify sys_catalog tablet barriers.
+  if (use_logical_replication_stream) {
+    ASSERT_GT(tablet_peer->get_cdc_min_replicated_index(), initial_wal_barrier);
+    ASSERT_GT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), initial_intent_barrier);
+  } else {
+    ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  }
+
+  if (initial_history_barrier != HybridTime::kInvalid) {
+    ASSERT_GT(tablet_peer->get_cdc_sdk_safe_time(), initial_history_barrier);
+  }
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), min_restart_time);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithOnlyGRPCStreams) {
+  TestSysCatalogRetentionBarriers(/* use_grpc_stream */ true,
+                                  /* use_logical_replication_stream */ false,
+                                  /* add_dummy_grpc_slot_entry */ true);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestSysCatalogBarriersWithOnlyLogicalReplicationStreams) {
+  TestSysCatalogRetentionBarriers(/* use_grpc_stream */ false,
+                                  /* use_logical_replication_stream */ true,
+                                  /* add_dummy_grpc_slot_entry */ true);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestSysCatalogBarriersWithBothGRPCAndLogicalReplicationStreams) {
+  TestSysCatalogRetentionBarriers(/* use_grpc_stream */ true,
+                                  /* use_logical_replication_stream */ true,
+                                  /* add_dummy_grpc_slot_entry */ true);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithoutGRPCSlotEntry) {
+  TestSysCatalogRetentionBarriers(/* use_grpc_stream */ true,
+                                  /* use_logical_replication_stream */ true,
+                                  /* add_dummy_grpc_slot_entry */ false);
 }
 
 }  // namespace cdc

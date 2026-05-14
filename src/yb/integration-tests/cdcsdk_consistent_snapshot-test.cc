@@ -1535,14 +1535,18 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 
   // Check that retention barriers have been released on parent and child tablets
   for (const auto& tablet : {tablets[0], tablets_after_split[0], tablets_after_split[1]}) {
-    auto tablet_peer =
-        ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id()));
+    auto tablet_peer_result = GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id());
+    if (tablet.tablet_id() == tablets[0].tablet_id() && !tablet_peer_result.ok()) {
+      // It implies that the hidden parent tablet got deleted by
+      // CatalogManager::CleanupHiddenTablets(). We can skip asserting checks for this tablet.
+      continue;
+    }
+    auto tablet_peer = ASSERT_RESULT(std::move(tablet_peer_result));
     LogRetentionBarrierDetails(tablet_peer);
     ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
     ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   }
-
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) {

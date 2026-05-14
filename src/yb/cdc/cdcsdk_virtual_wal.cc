@@ -264,7 +264,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (!s.ok()) {
       s = s.CloneAndPrepend(Format(
           "Error fetching tablet list & checkpoints for table_id $0: $1", table_id));
-      LOG_WITH_PREFIX(DFATAL) << s;
+      LOG_WITH_PREFIX(WARNING) << s;
       return s;
     }
     publication_table_list_.insert(table_id);

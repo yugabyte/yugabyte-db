@@ -317,6 +317,11 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
     "configurable threshold.");
 TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
 
+DEFINE_RUNTIME_AUTO_bool(cdc_enable_dynamic_schema_changes, kLocalPersisted, false, true,
+    "When set, enables streaming of dynamic schema changes via CDC. The dynamic schema changes "
+    "include any changes made to the publications and all the DDLs including those which cause "
+    "table rewrites.");
+
 DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
     kLocalPersisted,
     false,

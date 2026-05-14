@@ -36,6 +36,8 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -150,6 +152,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
 namespace yb {
 
@@ -3627,7 +3630,35 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
-  return master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+  auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+
+  DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
+
+  // Until we know that CDC is enabled or not via the cdc_enabled_status_known_, we return a cutoff
+  // of HybridTime::kMin.
+  if (!cdc_enabled_status_known_.load(std::memory_order_acquire)) {
+    cutoff.MakeAtMost({HybridTime::kMin, HybridTime::kMin});
+    return cutoff;
+  }
+
+  auto cdc_service = master_->tablet_server()->GetCDCService();
+  // If CDC service is not enabled, then we don't consult CDC for cutoff calculation.
+  if (!cdc_service || !cdc_service->CDCEnabled()) {
+    return cutoff;
+  }
+
+  // CDC service is enabled, so we can consult it for cutoff calculation.
+  // Until CDCMasterBgTask has not run at least once, return cutoff equal to HybridTime::kMin. Once
+  // it has run, we then use the cdc_sdk_safe_time for cutoff calculation.
+  if (!cdc_service->HasCDCMasterBgTaskRunOnce()) {
+    cutoff.MakeAtMost({HybridTime::kMin, HybridTime::kMin});
+  } else {
+    VLOG(1) << "CDC SDK historycutoff: " << metadata->cdc_sdk_safe_time()
+            << " for tablet: " << metadata->raft_group_id();
+    cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
+  }
+
+  return cutoff;
 }
 
 }  // namespace master

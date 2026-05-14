@@ -336,7 +336,7 @@ rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<MasterCDCServiceContextImpl>(this), metric_entity, metric_registry,
       FLAGS_master_xrepl_get_changes_concurrency, client_future,
-      []() { return FLAGS_update_min_cdc_indices_master_interval_secs; });
+      []() { return FLAGS_update_min_cdc_indices_master_interval_secs; }, true /* is_master */);
 
   return std::static_pointer_cast<rpc::ServiceIf>(cdc_service_);
 }

@@ -157,6 +157,8 @@ DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
 DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
+DECLARE_bool(TEST_cdc_skip_master_bg_task);
 
 namespace yb {
 

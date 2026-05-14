@@ -1650,6 +1650,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   }
 
   RETURN_NOT_OK(LoadXReplStream());
+  cdc_enabled_status_known_.store(true, std::memory_order_release);
+
   RETURN_NOT_OK(LoadUniverseReplication());
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 

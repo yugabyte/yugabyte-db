@@ -157,10 +157,7 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, 
 DEFINE_RUNTIME_uint32(xcluster_max_old_schema_versions, 50,
     "Maximum number of old schema versions to keep in xCluster replication stream metadata");
 
-DEFINE_RUNTIME_AUTO_bool(cdc_enable_dynamic_schema_changes, kLocalPersisted, false, true,
-    "When set, enables streaming of dynamic schema changes via CDC. The dynamic schema changes "
-    "include any changes made to the publications and all the DDLs including those which cause "
-    "table rewrites.");
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
 DEFINE_test_flag(bool, cdc_add_dynamic_index_to_state_table, false,
     "When enabled, adds the tablets of indexes created after slot creation to the cdc state table "
@@ -1440,16 +1437,12 @@ Status CatalogManager::RollbackFailedCreateCDCSDKStream(
                << ", cdcsdk_stream_creation_state = " << cdcsdk_stream_creation_state;
 
   switch (cdcsdk_stream_creation_state) {
-    case CDCSDKStreamCreationState::kAddedToMaps: {
-      std::vector streams{stream};
-      RETURN_NOT_OK(DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING));
-      LockGuard lock(mutex_);
-      return CleanupXReplStreamFromMaps(stream);
-    }
     case CDCSDKStreamCreationState::kPreCommitMutation:
       // Call AbortMutation since we didn't commit the in-memory changes so that the write lock
       // is released.
       stream->mutable_metadata()->AbortMutation();
+      FALLTHROUGH_INTENDED;
+    case CDCSDKStreamCreationState::kAddedToMaps:
       FALLTHROUGH_INTENDED;
     case CDCSDKStreamCreationState::kPostCommitMutation: {
       std::vector streams(1, stream);

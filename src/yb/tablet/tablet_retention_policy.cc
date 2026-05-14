@@ -224,17 +224,6 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
         allowed_cutoff, { *active_readers_.begin(), *active_readers_.begin() });
   }
 
-  if (metadata_.table_id() == kObsoleteShortPrimaryTableId) {
-    auto syscatalog_history_retention_interval_sec = ANNOTATE_UNPROTECTED_READ(
-        FLAGS_timestamp_syscatalog_history_retention_interval_sec);
-    if (syscatalog_history_retention_interval_sec) {
-      HybridTime allowed_from_syscatalog_flag =
-          clock_->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
-      allowed_cutoff = ConstructMinCutoff(
-          allowed_cutoff, { allowed_from_syscatalog_flag, allowed_from_syscatalog_flag });
-    }
-  }
-
   // If cotables_cutoff_ht from provider is invalid then keep it invalid.
   // This happens only on tservers, for the master both of them should be valid.
   if (!provided_allowed_cutoff.cotables_cutoff_ht) {
