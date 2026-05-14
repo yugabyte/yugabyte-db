@@ -52,6 +52,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -1265,6 +1266,13 @@ public class TaskExecutor {
     RunnableTask(ITask task, UUID taskUuid) {
       super(task);
       super.setTaskUUID(taskUuid);
+      // When reusing the same parent task row (e.g. canary resume), continue subTaskPosition past
+      // any surviving children so new subtasks get strictly higher positions than prior Success
+      // rows.
+      OptionalInt maxPos = TaskInfo.maxChildPosition(taskUuid);
+      if (maxPos.isPresent()) {
+        this.subTaskPosition = maxPos.getAsInt() + 1;
+      }
     }
 
     /**

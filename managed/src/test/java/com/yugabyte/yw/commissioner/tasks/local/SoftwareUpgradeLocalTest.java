@@ -556,6 +556,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
     // Pause #1: after masters.
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(taskUuid);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
     UniverseDefinitionTaskParams dAfterMasters = universe.getUniverseDetails();
@@ -582,6 +583,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
             customer.getUuid(), universe.getUniverseUUID(), taskUuid);
     taskInfo = waitForTask(resumed1, 500, 3600);
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed1);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
     assertEquals(resumed1, universe.getUniverseDetails().placementModificationTaskUuid);
@@ -606,6 +608,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
             customer.getUuid(), universe.getUniverseUUID(), resumed1);
     taskInfo = waitForTask(resumed2, 500, 3600);
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed2);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
     assertEquals(resumed2, universe.getUniverseDetails().placementModificationTaskUuid);
@@ -631,6 +634,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         "Upgrade must pause between RR t-server AZs (PLAT-20769)",
         TaskInfo.State.Paused,
         taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed3);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
     assertEquals(resumed3, universe.getUniverseDetails().placementModificationTaskUuid);
@@ -898,6 +902,19 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return commissioner.buildTaskStatus(
         task, taskInfo.getSubTasks(), updatingTasks, lastTaskByTarget);
+  }
+
+  /**
+   * At canary pause: root is Paused; at least one child succeeded. Un-run preview tail rows may
+   * remain Created until resume prunes them by position.
+   */
+  private void assertCanaryPauseSubtaskStates(UUID activeRootTaskUuid) {
+    assertTrue(getTaskStatus(activeRootTaskUuid).isPresent());
+    TaskInfo root = TaskInfo.getOrBadRequest(activeRootTaskUuid);
+    assertEquals(TaskInfo.State.Paused, root.getTaskState());
+    assertTrue(
+        "Expected at least one completed subtask at pause",
+        root.getSubTasks().stream().anyMatch(s -> s.getTaskState() == Success));
   }
 
   /**

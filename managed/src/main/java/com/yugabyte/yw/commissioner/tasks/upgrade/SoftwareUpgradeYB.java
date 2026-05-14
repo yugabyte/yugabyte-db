@@ -190,8 +190,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   /**
    * Creates upgrade subtasks in phase order. Used by both full run and canary resume; ctx.isResume
-   * and ctx.mastersDone / completed AZs determine which phases to run. Returns when a canary pause
-   * is injected (tserver phase only); otherwise runs through POST_TSERVER.
+   * and ctx.mastersDone / completed AZs determine which phases to run. Enqueues the full pipeline
+   * (including POST_TSERVER); canary pause checkpoints are handled by {@code setPausedAfter} in
+   * {@link com.yugabyte.yw.commissioner.TaskExecutor}.
    */
   private void createUpgradeSubtasks(Universe universe, UpgradeTaskCreationContext ctx) {
     MastersAndTservers nodesToApply = ctx.nodesToApply;
@@ -205,18 +206,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     createCatalogBeforeTserversPhase(universe, ctx, nodesToApply);
 
     if (nodesToApply.tserversList.size() > 0) {
-      boolean paused =
-          createTserverUpgradeTasksByAz(
-              universe,
-              nodesToApply.tserversList,
-              ctx.newVersion,
-              ctx.requireYsqlMajorVersionUpgrade,
-              ctx.primaryAZsCompleted,
-              ctx.readReplicaAZsCompleted,
-              true);
-      if (paused) {
-        return;
-      }
+      createTserverUpgradeTasksByAz(
+          universe,
+          nodesToApply.tserversList,
+          ctx.newVersion,
+          ctx.requireYsqlMajorVersionUpgrade,
+          ctx.primaryAZsCompleted,
+          ctx.readReplicaAZsCompleted,
+          true);
     }
 
     createPostTserverPhase(universe, ctx, nodesToApply);
@@ -877,15 +874,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   /**
    * Creates tserver upgrade tasks by cluster/AZ. Skips AZs in completedPrimaryAZs and
    * completedRrAZs (used on resume). When {@code injectCanaryPause} is true, may add
-   * SaveSoftwareUpgradeProgress and return true so the caller does not add POST_TSERVER steps.
+   * SaveSoftwareUpgradeProgress with {@code setPausedAfter} for configured AZs; the caller still
+   * enqueues remaining AZs and POST_TSERVER. Preview tail child rows (after the last successful
+   * subtask) are removed when resuming in {@link
+   * com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler#resumeCanarySoftwareUpgrade}.
    *
    * <p>Persisted software-upgrade progress for the target release is written when {@code version}
    * equals {@code taskParams().ybSoftwareVersion} (not when using intermediate versions). {@code
    * injectCanaryPause} only affects canary pause-after-AZ configuration, not that version gate.
-   *
-   * @return true if a canary pause was injected (caller should not add further tasks this run)
    */
-  private boolean createTserverUpgradeTasksByAz(
+  private void createTserverUpgradeTasksByAz(
       Universe universe,
       List<NodeDetails> tserverNodes,
       String version,
@@ -942,7 +940,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             buildAZUpgradeStatesList(universe, ServerType.TSERVER, universe.getTServers(), tDone),
             false);
       }
-      return false;
+      return;
     }
     List<UUID> primaryAZsCompleted =
         new ArrayList<>(
@@ -1032,7 +1030,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               buildAZUpgradeStatesList(
                   universe, ServerType.TSERVER, universe.getTServers(), tserverDoneSoFar),
               true);
-          return true;
+          continue;
         }
         createSaveSoftwareUpgradeProgressTask(
             true,
@@ -1055,7 +1053,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         }
       }
     }
-    return false;
   }
 
   private List<NodeDetails> getNodesInAZ(List<NodeDetails> nodes, UUID az) {

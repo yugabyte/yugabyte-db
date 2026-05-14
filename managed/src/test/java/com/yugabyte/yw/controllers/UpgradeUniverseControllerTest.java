@@ -604,6 +604,14 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     taskInfo.setTaskParams(Json.toJson(storedParams));
     taskInfo.save();
 
+    TaskInfo subTask = new TaskInfo(TaskType.WaitForDuration, UUID.randomUUID());
+    subTask.setParentUuid(taskUUID);
+    subTask.setPosition(0);
+    subTask.setTaskState(TaskInfo.State.Success);
+    subTask.setTaskParams(Json.newObject());
+    subTask.setOwner("test");
+    subTask.save();
+
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
