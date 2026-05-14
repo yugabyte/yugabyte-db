@@ -218,64 +218,61 @@ TEST_F(DocumentDBTest, DropCollectionAndDatabase) {
 }
 
 // _id is the collection's primary key, which DocDB stores ordered by raw-byte memcmp on
-// the BSON encoding of _id. Non-key field values pass through documentdb_api's BSON-aware
-// comparison logic, but PK ordering is decided by DocDB and therefore follows binary
-// ordering. BSON canonical order is: MinKey, Null, Number, String, Object, Array, BinData,
-// ObjectId, Boolean, Date, Timestamp, RegEx, MaxKey — which is not the order of the BSON
-// type tag bytes (double=0x01, string=0x02, boolean=0x08, int32=0x10, MinKey=0xFF,
-// MaxKey=0x7F). This test inserts _id values across BSON types and within int32 (negative
-// and across byte boundaries) and asserts the BSON-canonical order; it is expected to
-// fail where DocDB's binary PK comparison diverges from BSON ordering.
-TEST_F(DocumentDBTest, BsonPrimaryKeyBinarySortOrder) {
+// the BSON encoding. BSON canonical order is: MinKey < Number < String < Boolean < ... <
+// MaxKey, but the underlying type tags do not follow this order (double=0x01, string=0x02,
+// boolean=0x08, int32=0x10, MaxKey=0x7F, MinKey=0xFF). This test uses documentdb_api
+// $lt / $gt range filters on _id and asserts the BSON-spec match counts; it is expected
+// to fail wherever DocDB's binary PK comparator returns a different set of rows.
+TEST_F(DocumentDBTest, BsonPrimaryKeyBinaryComparator) {
   const auto db_name = "documentdb";
-  const auto collection_name = "pk_sort";
+  const auto collection_name = "pk_cmp";
 
-  // The "v" field is irrelevant — only _id matters for PK ordering.
+  // Insert 8 docs whose _id values span BSON types and the int32 sign/byte-boundary
+  // boundaries. $$ escapes to $ through yb::Format's $N substitution.
   ASSERT_OK(conn_->FetchFormat(
       R"(
   SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
-    { "_id": { "$$minKey":      1     }, "label": "minkey"      },
-    { "_id": { "$$numberInt":   "-1"  }, "label": "int_neg"     },
-    { "_id": { "$$numberInt":   "0"   }, "label": "int_zero"    },
-    { "_id": { "$$numberInt":   "1"   }, "label": "int_one"     },
-    { "_id": { "$$numberInt":   "256" }, "label": "int_256"     },
-    { "_id": "z_string",                  "label": "string"     },
-    { "_id": true,                        "label": "bool_true"  },
-    { "_id": { "$$maxKey":      1     }, "label": "maxkey"      }]}');
+    { "_id": { "$$minKey": 1 } },
+    { "_id": -1 },
+    { "_id": 0 },
+    { "_id": 1 },
+    { "_id": 256 },
+    { "_id": "z_string" },
+    { "_id": true },
+    { "_id": { "$$maxKey": 1 } }]}');
   )",
       db_name, collection_name));
 
-  // Read in natural/storage order (no sort clause), which surfaces DocDB's PK order.
-  auto get_label_at_position = [&](int idx) {
-    return CHECK_RESULT(conn_->FetchRow<std::string>(Format(
+  auto match_count = [&](const std::string& filter) {
+    return CHECK_RESULT(conn_->FetchRow<int32_t>(Format(
         R"(
-      SELECT (((cursorpage->>'cursor')::bson->>'firstBatch')::bson->>'$2')::bson->>'label'
-        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1" }');
+      SELECT jsonb_array_length(((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb)
+        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1",
+          "filter" : $2}');
       )",
-        db_name, collection_name, idx)));
+        db_name, collection_name, filter)));
   };
 
-  // Log the full natural-order list to make the divergence (if any) easy to read.
-  {
-    auto all_labels = CHECK_RESULT(conn_->FetchRow<std::string>(Format(
-        R"(
-      SELECT ((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb::text
-        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1" }');
-      )",
-        db_name, collection_name)));
-    LOG(INFO) << "natural-order labels: " << all_labels;
-  }
+  // Sanity: all 8 docs are present.
+  ASSERT_EQ(match_count("{}"), 8);
 
-  // BSON canonical ascending:
-  //   MinKey < int(-1) < int(0) < int(1) < int(256) < "z_string" < true < MaxKey
-  ASSERT_EQ(get_label_at_position(0), "minkey");
-  ASSERT_EQ(get_label_at_position(1), "int_neg");
-  ASSERT_EQ(get_label_at_position(2), "int_zero");
-  ASSERT_EQ(get_label_at_position(3), "int_one");
-  ASSERT_EQ(get_label_at_position(4), "int_256");
-  ASSERT_EQ(get_label_at_position(5), "string");
-  ASSERT_EQ(get_label_at_position(6), "bool_true");
-  ASSERT_EQ(get_label_at_position(7), "maxkey");
+  // BSON: _id > -1 matches { 0, 1, 256, "z_string", true, MaxKey } = 6 docs.
+  ASSERT_EQ(match_count(R"({"_id": {"$gt": -1}})"), 6);
+
+  // BSON: _id < 0 matches { MinKey, -1 } = 2 docs.
+  ASSERT_EQ(match_count(R"({"_id": {"$lt": 0}})"), 2);
+
+  // BSON: _id > MinKey matches every doc except MinKey itself = 7 docs.
+  ASSERT_EQ(match_count(R"({"_id": {"$gt": {"$minKey": 1}}})"), 7);
+
+  // BSON: _id < MaxKey matches every doc except MaxKey itself = 7 docs.
+  ASSERT_EQ(match_count(R"({"_id": {"$lt": {"$maxKey": 1}}})"), 7);
+
+  // BSON: numbers < strings, so _id < "" matches all 5 numeric docs + MinKey = 6.
+  ASSERT_EQ(match_count(R"({"_id": {"$lt": ""}})"), 6);
+
+  // BSON: numbers < booleans, so _id < true matches all numerics + MinKey + strings = 7.
+  ASSERT_EQ(match_count(R"({"_id": {"$lt": true}})"), 7);
 }
 
 }  // namespace yb
