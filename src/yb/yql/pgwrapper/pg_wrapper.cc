@@ -719,6 +719,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
   metricsLibs.push_back("yb_xcluster_ddl_replication");
+  metricsLibs.push_back("vector");
 
   if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
