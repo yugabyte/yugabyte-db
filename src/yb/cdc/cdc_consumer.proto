@@ -50,8 +50,11 @@ message SchemaVersionsPB {
 
   // This is a map of previous producer schema versions to their matching consumer schema versions.
   // This is ordered by increasing producer schema version.
-  repeated uint32 old_producer_schema_versions = 3;
-  repeated uint32 old_consumer_schema_versions = 4;
+  //
+  // [packed = false] is intentional and required for cross-version wire-compatibility, since these
+  // fields were changed from implicit optional singular fields in 11482d6 (see #31533).
+  repeated uint32 old_producer_schema_versions = 3 [ packed = false ];
+  repeated uint32 old_consumer_schema_versions = 4 [ packed = false ];
 }
 
 message StreamEntryPB {

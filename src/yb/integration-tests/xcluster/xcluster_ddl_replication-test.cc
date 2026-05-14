@@ -3025,6 +3025,82 @@ TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
       final_stream_entry.schema_versions().old_producer_schema_versions().end());
 }
 
+// Regression test for #31533. Old SchemaVersionsPB records where old_consumer_schema_version was 0
+// (proto3 default so not serialized) and post-upgrade the lockstep iteration over
+// old_producer/consumer arrays read past the empty consumer side. The fix repairs the in-memory
+// cluster_config during XClusterTargetManager::SysCatalogLoaded; the next CMOP persists it.
+TEST_F(XClusterDDLReplicationTest, RepairOldSchemaVersionsOnLoad) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(key int primary key)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN a int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i FROM generate_series(1, 10) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "tbl1"));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table.table_id()));
+
+  auto get_schema_versions = [&]() -> Result<cdc::SchemaVersionsPB> {
+    auto producer_map =
+        VERIFY_RESULT(GetClusterConfig(consumer_cluster_)).consumer_registry().producer_map();
+    auto stream_map = producer_map.at(kReplicationGroupId.ToString()).stream_map();
+    return stream_map.at(stream_id.ToString()).schema_versions();
+  };
+
+  // Initial state: the ALTER produced one old schema-version pair.
+  auto initial = ASSERT_RESULT(get_schema_versions());
+  ASSERT_GT(initial.old_producer_schema_versions_size(), 0);
+  ASSERT_EQ(
+      initial.old_producer_schema_versions_size(), initial.old_consumer_schema_versions_size());
+
+  // Pause replication while we modify the syscatalog.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+
+  // Clear old_consumer_schema_versions and persist. This simulates the upgrade behaviour that
+  // results in old_producer_schema_versions_size != old_consumer_schema_versions_size.
+  {
+    auto* leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto& catalog_mgr = leader_master->catalog_manager_impl();
+    const auto epoch = catalog_mgr.GetLeaderEpochInternal();
+    auto cluster_config = catalog_mgr.ClusterConfig();
+    auto l = cluster_config->LockForWrite();
+    auto& stream_entry = (*(*l.mutable_data()
+                                 ->pb.mutable_consumer_registry()
+                                 ->mutable_producer_map())[kReplicationGroupId.ToString()]
+                               .mutable_stream_map())[stream_id.ToString()];
+    stream_entry.mutable_schema_versions()->clear_old_consumer_schema_versions();
+    ASSERT_EQ(stream_entry.schema_versions().old_producer_schema_versions_size(), 1);
+    ASSERT_EQ(stream_entry.schema_versions().old_consumer_schema_versions_size(), 0);
+    ASSERT_OK(catalog_mgr.sys_catalog()->Upsert(epoch, cluster_config.get()));
+    l.Commit();
+  }
+
+  // Restart the consumer master; SysCatalogLoaded should repair in-memory.
+  ASSERT_OK(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->Restart());
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+
+  auto repaired = ASSERT_RESULT(get_schema_versions());
+  ASSERT_EQ(
+      repaired.old_producer_schema_versions_size(), repaired.old_consumer_schema_versions_size());
+  ASSERT_GT(repaired.old_producer_schema_versions_size(), 0);
+
+  // Trigger another DDL; the natural CMOP path will Upsert the repaired cluster_config to
+  // syscatalog. After this, sizes still match and we keep making progress on replication.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN b int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i,i FROM generate_series(11, 20) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"tbl1"}));
+
+  auto final = ASSERT_RESULT(get_schema_versions());
+  ASSERT_EQ(final.old_producer_schema_versions_size(), final.old_consumer_schema_versions_size());
+  ASSERT_GT(final.old_producer_schema_versions_size(), 0);
+}
+
 TEST_F(XClusterDDLReplicationTest, DocdbNextColumnAboveLastUsedColumn) {
   // This test checks the hard case of whether or not backup and
   // restore preserves the next DocDB column ID correctly: when the
