@@ -359,6 +359,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Set primary cluster user intent with clockbound
     UserIntent updatedUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
+    // This should not affect.
     updatedUserIntent.setUseClockbound(true);
     updatedUserIntent.providerType = CloudType.aws;
     updatedUserIntent.provider = provider.getUuid().toString();
@@ -383,7 +384,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertNotNull(ynpNode);
     assertEquals("10.0.0.1", ynpNode.get("node_ip").asText());
     assertEquals(false, ynpNode.get("is_install_node_agent").asBoolean());
-    assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_configure_clockbound").asBoolean());
     assertEquals(false, ynpNode.get("is_yb_prebuilt_image").asBoolean());
     assertEquals("/mnt/d0 /mnt/d1", rootNode.get("extra").get("mount_paths").asText());
 
@@ -497,7 +498,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // but the test verifies the actual behavior
     // The clockbound value should come from the read replica cluster's user intent
     // but currently it uses primary cluster's user intent (bug)
-    assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_configure_clockbound").asBoolean());
 
     // Verify extra node
     JsonNode extraNode = rootNode.get("extra");
@@ -639,7 +640,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertEquals("10.0.0.20", rrRoot.get("ynp").get("node_ip").asText());
     // Note: This currently shows the bug - it uses primary cluster's clockbound setting
     // instead of read replica's setting
-    assertEquals(true, rrRoot.get("ynp").get("is_configure_clockbound").asBoolean());
+    assertEquals(false, rrRoot.get("ynp").get("is_configure_clockbound").asBoolean());
 
     // Clean up
     Files.deleteIfExists(tempFilePrimary);

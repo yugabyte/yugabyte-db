@@ -526,14 +526,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.runOnlyPrechecks = nodeActionFormData.isRunOnlyPrechecks();
 
     // Check deleting/removing a node will not go below the RF
-    // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
-    if ((nodeAction == NodeActionType.STOP
-            || nodeAction == NodeActionType.REMOVE
-            || nodeAction == NodeActionType.DELETE
-            || nodeAction == NodeActionType.REBOOT
-            || nodeAction == NodeActionType.HARD_REBOOT
-            || nodeAction == NodeActionType.DECOMMISSION)
-        && !force) {
+    if (!force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
