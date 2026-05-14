@@ -150,21 +150,19 @@ DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set 
     "from the memory, otherwise tablet metadata will be kept in memory with state "
     "TOMBSTONED.");
 
-DEFINE_NON_RUNTIME_bool(
-    flag_validate, true,
+DEFINE_NON_RUNTIME_bool(flag_validate, true,
     "set_flag: If true (default), validates the flag value "
     "before setting it. Use --novalidate to skip validation and force the change.");
 
-DEFINE_NON_RUNTIME_bool(
-    remove_corrupt_data_blocks_unsafe, false,
+DEFINE_NON_RUNTIME_bool(remove_corrupt_data_blocks_unsafe, false,
     "UNSAFE: If true, allows command to remove corrupt data blocks if found. This will result in "
     "data loss. Use with extra care only when/while no other options are available.");
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
 
-DEFINE_NON_RUNTIME_bool(include_vector_indexes, false,
-    "If true, compacts vector indexes when indexable table is compacted.");
+DEFINE_NON_RUNTIME_bool(exclude_vector_indexes, false,
+    "If true, vector indexes are excluded from compaction operations.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -197,8 +195,8 @@ PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 namespace yb {
 namespace tools {
 
-typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
-typedef ListMasterServersResponsePB::MasterServerAndTypePB MasterServerAndTypePB;
+using StatusAndSchemaPB = ListTabletsResponsePB::StatusAndSchemaPB;
+using MasterServerAndTypePB = ListMasterServersResponsePB::MasterServerAndTypePB;
 
 class TsAdminClient {
  public:
@@ -307,8 +305,8 @@ class TsAdminClient {
   Status FlushOrCompactsTabletsImpl(
       bool is_compaction,
       const TabletId& tablet_id,
-      const TableIds& vector_index_ids = {},
-      tablet::FlushCompactFlags flags = tablet::FLUSH_COMPACT_DEFAULT);
+      const TableIds& vector_index_ids,
+      tablet::FlushCompactFlags flags);
 
   std::string addr_;
   MonoDelta timeout_;
@@ -663,19 +661,17 @@ Status TsAdminClient::FlushOrCompactsTabletsImpl(
 }
 
 Status TsAdminClient::FlushOrCompactTablets(bool is_compaction, const TabletId& tablet_id) {
-  auto flags = tablet::FLUSH_COMPACT_DEFAULT;
-  if (is_compaction && FLAGS_include_vector_indexes) {
-    // No need to set for flush operation as vector indexes are always flushed when
-    // indexable table is flushed.
-    flags = tablet::FLUSH_COMPACT_ALL;
-  }
+  SCHECK(is_compaction || !FLAGS_exclude_vector_indexes, InvalidArgument,
+         "Flag '--exclude-vector-indexes' is not applicable for flush operations.");
+  const auto flags = is_compaction && FLAGS_exclude_vector_indexes ?
+      tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED : tablet::FLUSH_COMPACT_DEFAULT;
   return FlushOrCompactsTabletsImpl(is_compaction, tablet_id, /* vector_index_ids */ {}, flags);
 }
 
 Status TsAdminClient::FlushOrCompactVectorIndex(
     bool is_compaction, const TabletId& tablet_id, const TableIds& vector_index_ids) {
   return FlushOrCompactsTabletsImpl(
-      is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX);
+      is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY);
 }
 
 Status TsAdminClient::ReloadCertificates() {
@@ -898,8 +894,8 @@ void SetUsage(const char* argv0) {
       << "  " << kFlushTabletOp << " <tablet_id>\n"
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kFlushVectorIndexOp << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
-      << "  " << kCompactTabletOp << " <tablet_id>\n"
-      << "  " << kCompactAllTabletsOp << "\n"
+      << "  " << kCompactTabletOp << " <tablet_id> [-exclude-vector-indexes]\n"
+      << "  " << kCompactAllTabletsOp << " [-exclude-vector-indexes]\n"
       << "  " << kCompactVectorIndexOp
       << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kVerifyTabletOp

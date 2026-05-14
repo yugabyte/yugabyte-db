@@ -60,9 +60,6 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Whether the Customer task can be rolled back")
   public boolean canRollback;
 
-  @ApiModelProperty(value = "Software upgrade progress (canary / per-AZ) when applicable")
-  public SoftwareUpgradeProgress softwareUpgradeProgress;
-
   @ApiModelProperty(value = "Correlation id")
   public String correlationId;
 

@@ -37,21 +37,20 @@
 \set query ':P :Q SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;'
 \i :iter_P2
 
-/* TODO(#29079): uncomment when fixing this issue.
--- yb_hash_code equality
-\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) = 28655 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
-\i :iter_P2
-
 -- yb_hash_code inequality
 \set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) < 12283 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
 \i :iter_P2
-*/; -- semicolon to avoid bleeding hints
+
+-- yb_hash_code equality
+-- Third hint is to use merge scan as the second hint ends up using sort.
+\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) = 28655 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Pnext :iter_Q3
+\i :iter_P2
 
 -- yb_hash_code IN
 -- Third hint is to use merge scan as the second hint ends up using sort.
 \set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
-\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
-\set Pnext :iter_Q3
 \i :iter_P2
 
 -- #30096: Merge scan shouldn't be used in a parallel scan.

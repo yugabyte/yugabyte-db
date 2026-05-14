@@ -91,6 +91,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
+          TaskType.UpdateUniverseFields,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
           TaskType.InstallNodeAgent,

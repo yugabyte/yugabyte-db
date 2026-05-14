@@ -141,6 +141,7 @@ export const colors = {
     labelBackground: '#151730',
     tipBackgroundLightGray: '#F7F9FB',
     primary4: '#44518B',
+    purple050: "#F2F3FE",
     purple300: '#7879F1',
     pillDangerBackground: '#FDE2E2',
     pillDangerIcon: '#DA1515',

@@ -1096,13 +1096,13 @@ YbcStatus YBCQueryAutoAnalyze(
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
-void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+    YbcPgGlobalViewRead handle, const char *database_name, const char *query,
+    const char *tserver_uuid);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
-bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus
 }  // extern "C"

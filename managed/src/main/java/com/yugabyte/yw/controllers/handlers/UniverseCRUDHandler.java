@@ -1842,6 +1842,18 @@ public class UniverseCRUDHandler {
       readOnlyCluster.userIntent.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     }
 
+    // Update device info in userIntent for Kubernetes.
+    // For operator-controlled universes, userIntentOverrides (and the universe-overrides
+    // merge into base deviceInfo) are managed entirely by operator.
+    if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)
+        && !taskParams.isKubernetesOperatorControlled) {
+      KubernetesUtil.applyVolumeChanges(
+          readOnlyCluster.userIntent,
+          readOnlyCluster.placementInfo,
+          primaryCluster.userIntent.universeOverrides,
+          primaryCluster.userIntent.azOverrides);
+    }
+
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       try {

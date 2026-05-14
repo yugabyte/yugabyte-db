@@ -185,7 +185,6 @@ public class YNPConfigGenerator {
     if (node.cloudInfo.private_ip != null) {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
-    ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
     ynpNode.put("configure_cgroup", Util.configureCgroup(userIntent, provider, true, confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
@@ -249,6 +248,9 @@ public class YNPConfigGenerator {
     ObjectNode ynpNode = (ObjectNode) rootNode.get("ynp");
     setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
     ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
+    ynpNode.put(
+        "is_configure_clockbound",
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
     Customer customer = Customer.getOrBadRequest(params.getProvider().getCustomerUUID());
     boolean enableEarlyoomFeature =
         confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);

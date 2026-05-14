@@ -96,6 +96,7 @@
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
@@ -105,10 +106,12 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/pathnodes.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
 #include "parser/parse_utilcmd.h"
+#include "parser/parser.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
@@ -2319,6 +2322,28 @@ bool		yb_enable_pg_stat_statements_rpc_stats = true;
 bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
 bool		yb_enable_global_views = false;
+
+bool
+yb_is_federated_yb_foreign_table(Oid relid)
+{
+	ForeignTable *table;
+	ForeignServer *server;
+	ListCell   *lc;
+
+	table = GetForeignTable(relid);
+	server = GetForeignServer(table->serverid);
+
+	foreach(lc, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "server_type") == 0)
+			return pg_strcasecmp(defGetString(def),
+								 "federatedYugabyteDB") == 0;
+	}
+
+	return false;
+}
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -7403,6 +7428,447 @@ YbIsColumnPartOfKey(Relation rel, const char *column_name)
 }
 
 /*
+ * Helper function to convert an A_Const node to its string representation.
+ * Returns true on success, false if the value type is not one we know how to
+ * serialize.
+ */
+static bool
+YbAppendAConstToString(StringInfo str, A_Const *aconst)
+{
+	if (aconst->isnull)
+	{
+		appendStringInfoString(str, "NULL");
+		return true;
+	}
+
+	switch (nodeTag(&aconst->val))
+	{
+		case T_Integer:
+			appendStringInfo(str, "%ld", (long) aconst->val.ival.ival);
+			return true;
+		case T_Float:
+			appendStringInfoString(str, aconst->val.fval.fval);
+			return true;
+		case T_Boolean:
+			appendStringInfoString(str, aconst->val.boolval.boolval ? "true" : "false");
+			return true;
+		case T_String:
+			{
+				/*
+				 * String values need to be properly quoted and escaped.
+				 * Use single quotes and escape any internal single quotes.
+				 * If the string contains backslashes, use E-string syntax
+				 * to ensure correct parsing regardless of
+				 * standard_conforming_strings setting.
+				 */
+				const char *s = aconst->val.sval.sval;
+				bool		has_backslash = (strchr(s, '\\') != NULL);
+
+				if (has_backslash)
+					appendStringInfoChar(str, 'E');
+				appendStringInfoChar(str, '\'');
+				for (; *s; s++)
+				{
+					if (*s == '\'')
+						appendStringInfoString(str, "''");
+					else if (*s == '\\')
+						appendStringInfoString(str, "\\\\");
+					else
+						appendStringInfoChar(str, *s);
+				}
+				appendStringInfoChar(str, '\'');
+				return true;
+			}
+		case T_BitString:
+			{
+				/*
+				 * The scanner stores bit-string literals with a leading 'b'
+				 * (binary) or 'x' (hex) marker so that bit_in() can dispatch
+				 * on it (see scan.l).  Strip the marker and emit the matching
+				 * SQL literal form so the value round-trips correctly.
+				 */
+				const char *bsval = aconst->val.bsval.bsval;
+
+				if (bsval[0] == 'x' || bsval[0] == 'X')
+					appendStringInfo(str, "X'%s'", bsval + 1);
+				else
+					appendStringInfo(str, "B'%s'", bsval + 1);
+				return true;
+			}
+		default:
+			return false;
+	}
+}
+
+/*
+ * Helper function to convert a single expression node to string.
+ * Handles A_Const, ColumnRef (for MINVALUE/MAXVALUE), TypeCast, and A_Expr
+ * (unary minus only).  Returns true on success, or false if the expression
+ * is of a kind we don't know how to serialize (e.g. a function call).  The
+ * grammar for SPLIT AT VALUES accepts an arbitrary expr_list, so any
+ * expression type is reachable here even though only constant-valued
+ * expressions actually make sense as split points.
+ */
+static bool
+YbAppendExprToString(StringInfo str, Node *expr)
+{
+	if (expr == NULL)
+	{
+		appendStringInfoString(str, "NULL");
+		return true;
+	}
+
+	switch (nodeTag(expr))
+	{
+		case T_A_Const:
+			return YbAppendAConstToString(str, (A_Const *) expr);
+
+		case T_ColumnRef:
+			{
+				/*
+				 * ColumnRef is used for MINVALUE and MAXVALUE keywords.
+				 */
+				ColumnRef  *cref = (ColumnRef *) expr;
+
+				if (list_length(cref->fields) == 1)
+				{
+					Node	   *field = linitial(cref->fields);
+
+					if (IsA(field, String))
+					{
+						const char *name = strVal(field);
+
+						if (pg_strcasecmp(name, "MINVALUE") == 0 ||
+							pg_strcasecmp(name, "MAXVALUE") == 0)
+						{
+							appendStringInfoString(str, name);
+							return true;
+						}
+					}
+				}
+				return false;
+			}
+
+		case T_TypeCast:
+			{
+				/*
+				 * TypeCast wraps a value with a type cast.  We just emit the
+				 * inner value; the surrounding CREATE TABLE statement (and
+				 * the column type) determine the resulting type.
+				 */
+				TypeCast   *tc = (TypeCast *) expr;
+
+				return YbAppendExprToString(str, tc->arg);
+			}
+
+		case T_A_Expr:
+			{
+				/*
+				 * Handle unary minus for negative numbers.  Anything else
+				 * (arbitrary arithmetic, etc.) is not serializable here.
+				 */
+				A_Expr	   *aexpr = (A_Expr *) expr;
+
+				if (aexpr->kind == AEXPR_OP &&
+					aexpr->lexpr == NULL &&
+					list_length(aexpr->name) == 1 &&
+					strcmp(strVal(linitial(aexpr->name)), "-") == 0)
+				{
+					appendStringInfoChar(str, '-');
+					return YbAppendExprToString(str, aexpr->rexpr);
+				}
+				return false;
+			}
+
+		default:
+			return false;
+	}
+}
+
+char *
+YbSplitPointsToString(List *split_points)
+{
+	StringInfoData str;
+	ListCell   *lc_point;
+	bool		first_point = true;
+
+	if (split_points == NIL)
+		return NULL;
+
+	initStringInfo(&str);
+	appendStringInfoChar(&str, '(');
+
+	foreach(lc_point, split_points)
+	{
+		List	   *point = (List *) lfirst(lc_point);
+		ListCell   *lc_val;
+		bool		first_val = true;
+
+		if (!first_point)
+			appendStringInfoString(&str, ", ");
+		first_point = false;
+
+		appendStringInfoChar(&str, '(');
+
+		foreach(lc_val, point)
+		{
+			Node	   *val = (Node *) lfirst(lc_val);
+
+			if (!first_val)
+				appendStringInfoString(&str, ", ");
+			first_val = false;
+
+			if (!YbAppendExprToString(&str, val))
+			{
+				pfree(str.data);
+				return NULL;
+			}
+		}
+
+		appendStringInfoChar(&str, ')');
+	}
+
+	appendStringInfoChar(&str, ')');
+
+	return str.data;
+}
+
+/*
+ * Reloption validate_cb for yb_presplit.  Invoked by the relopt machinery
+ * when an explicit value is supplied (e.g. WITH (yb_presplit=...) or
+ * SET (yb_presplit=...)).  Runs the value through the parser; syntactic
+ * problems are reported via ereport from raw_parser/grammar actions.
+ * Also rejects out-of-range tablet counts (the grammar accepts any Iconst,
+ * but a tablet count must be at least 1).  Relation-aware checks (hash vs
+ * range compatibility) live in YbValidatePresplitForRelation and run at
+ * CREATE/ALTER time.
+ */
+void
+YbValidatePresplitReloption(const char *value)
+{
+	YbOptSplit *split;
+
+	if (value == NULL || value[0] == '\0')
+		return;
+
+	split = YbParsePresplitString(value);
+	if (split && split->split_type == NUM_TABLETS && split->num_tablets <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("yb_presplit tablet count must be positive")));
+}
+
+/*
+ * Returns true if the relation is hash-partitioned at the storage level.
+ *
+ * For tables/matviews/partitioned tables the partitioning kind is determined
+ * by the primary key index's first column (ASC/DESC vs HASH); a heap with no
+ * primary key uses an implicit ybrowid hash column, so it is hash.
+ *
+ * For (partitioned) indexes the first column's INDOPTION_HASH bit on the
+ * relation itself answers directly.
+ */
+static bool
+YbRelationIsHashPartitioned(Relation rel)
+{
+	switch (rel->rd_rel->relkind)
+	{
+		case RELKIND_RELATION:
+		case RELKIND_MATVIEW:
+		case RELKIND_PARTITIONED_TABLE:
+		{
+			Oid			pkidx = RelationGetPrimaryKeyIndex(rel);
+			bool		hash;
+
+			if (!OidIsValid(pkidx))
+				return true;	/* no PK ⇒ implicit ybrowid hash */
+
+			Relation	pkrel = index_open(pkidx, AccessShareLock);
+
+			hash = (pkrel->rd_indoption != NULL &&
+					(pkrel->rd_indoption[0] & INDOPTION_HASH) != 0);
+			index_close(pkrel, AccessShareLock);
+			return hash;
+		}
+		case RELKIND_INDEX:
+		case RELKIND_PARTITIONED_INDEX:
+			return (rel->rd_indoption != NULL &&
+					(rel->rd_indoption[0] & INDOPTION_HASH) != 0);
+		default:
+			return false;
+	}
+}
+
+/*
+ * Validate that a yb_presplit string is compatible with `rel`'s partitioning
+ * kind.  Syntax is expected to have been validated already (e.g. via the
+ * reloption validate_cb); we ereport here only on hash/range mismatches.
+ *
+ * - SPLIT INTO N TABLETS  requires a hash-partitioned relation
+ * - SPLIT AT VALUES (...) requires a range-partitioned relation
+ */
+void
+YbValidatePresplitForRelation(Relation rel, const char *presplit_str)
+{
+	YbOptSplit *split = YbParsePresplitString(presplit_str);
+
+	if (split == NULL)
+		return;
+
+	bool		is_hash = YbRelationIsHashPartitioned(rel);
+
+	if (split->split_type == NUM_TABLETS && !is_hash)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("HASH columns must be present to use yb_presplit with tablet count")));
+
+	if (split->split_type == SPLIT_POINTS && is_hash)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("yb_presplit with split points is not yet supported for hash partitioned tables")));
+}
+
+/*
+ * Parse a yb_presplit reloption value into a YbOptSplit node.
+ *
+ * The persisted value comes in three flavors, all of which are accepted:
+ *   - A bare positive integer: "5"               (SPLIT INTO N TABLETS)
+ *   - A bare split-point list: "((100),(200))"   (SPLIT AT VALUES (...))
+ *   - A full clause:           "SPLIT INTO 5 TABLETS" or
+ *                              "SPLIT AT VALUES ((100),(200))"
+ *
+ * Bare forms are normalized by prepending "INTO ... TABLETS" or
+ * "AT VALUES ..." so that a single grammar production
+ * (yb_presplit_value, see gram.y) handles all flavors via
+ * RAW_PARSE_YB_SPLIT_CLAUSE.  This keeps gram.y as the single source of
+ * truth for SPLIT syntax and avoids a round-trip through a synthesized
+ * CREATE TABLE statement.
+ *
+ * Returns NULL for an empty input.  Syntax errors are reported via
+ * ereport by the parser, which is the desired behavior for the
+ * CREATE/ALTER call sites (validate_cb and YbSyncSplitOptionsAndPresplit).
+ */
+YbOptSplit *
+YbParsePresplitString(const char *presplit_str)
+{
+	const char *query;
+	char	   *prefixed = NULL;
+	List	   *parsetree;
+
+	if (presplit_str == NULL || presplit_str[0] == '\0')
+		return NULL;
+
+	if (presplit_str[0] == '(')
+		query = prefixed = psprintf("AT VALUES %s", presplit_str);
+	else if (pg_strncasecmp(presplit_str, "SPLIT", 5) == 0 ||
+			 pg_strncasecmp(presplit_str, "INTO", 4) == 0 ||
+			 pg_strncasecmp(presplit_str, "AT", 2) == 0)
+		query = presplit_str;
+	else
+		/* Treat anything else as the operand of SPLIT INTO N TABLETS. */
+		query = prefixed = psprintf("INTO %s TABLETS", presplit_str);
+
+	parsetree = raw_parser(query, RAW_PARSE_YB_SPLIT_CLAUSE);
+
+	if (prefixed)
+		pfree(prefixed);
+
+	if (list_length(parsetree) != 1)
+		return NULL;
+	return castNode(YbOptSplit, linitial(parsetree));
+}
+
+char *
+YbSplitOptionsToPresplitString(YbOptSplit *split_options)
+{
+	if (split_options == NULL)
+		return NULL;
+
+	if (split_options->split_type == NUM_TABLETS)
+	{
+		/* Format: just the number */
+		return psprintf("%d", split_options->num_tablets);
+	}
+	else if (split_options->split_type == SPLIT_POINTS &&
+			 split_options->split_points != NIL)
+	{
+		/* Format: ((val1), (val2), ...) */
+		return YbSplitPointsToString(split_options->split_points);
+	}
+
+	return NULL;
+}
+
+/*
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
+ * both representations are kept in sync prior to relation creation.
+ *
+ *   - If *split_options is set, attempt to serialize it into a yb_presplit
+ *     entry appended to *options. If the SPLIT clause contains expressions
+ *     that cannot be serialized, *split_options is left intact (so the
+ *     relation is still created with the original clause) and no yb_presplit
+ *     entry is added. It is an error if yb_presplit is already present in
+ *     *options, since that would conflict with the SPLIT clause.
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
+ *     into *split_options so the relation is created with the persisted
+ *     pre-split values (e.g., on pg_dump restore).
+ *
+ * Used by both CREATE TABLE and CREATE INDEX paths.
+ */
+void
+YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
+{
+	ListCell   *lc;
+
+	if (*split_options)
+	{
+		char	   *presplit_str;
+
+		/*
+		 * Error if yb_presplit already exists in options (e.g., from
+		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
+		 */
+		foreach(lc, *options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+		}
+
+		/*
+		 * If the split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
+		 * skip storing yb_presplit.  *split_options is left intact so the
+		 * relation is still created with the original SPLIT clause; those
+		 * expressions are evaluated at creation time by
+		 * YBTransformPartitionSplitValue.
+		 */
+		presplit_str = YbSplitOptionsToPresplitString(*split_options);
+		if (presplit_str != NULL)
+			*options = lappend(*options,
+							   makeDefElem("yb_presplit",
+										   (Node *) makeString(presplit_str),
+										   -1));
+		return;
+	}
+
+	/* Derive split_options from yb_presplit if not already set. */
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "yb_presplit") == 0)
+		{
+			*split_options = YbParsePresplitString(defGetString(def));
+			break;
+		}
+	}
+}
+
+/*
  * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
  * that requires the sticky connection
  * These objects are
@@ -7735,6 +8201,14 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 		indclass = (oidvector *) DatumGetPointer(indclassDatum);
 	ReleaseSysCache(indexTuple);
 
+	/*
+	 * If yb_copy_split_options is true, preserve the current table's split
+	 * state (including any automatic tablet splitting). Otherwise, use
+	 * default split options.
+	 *
+	 * Future work: When yb_copy_split_options is false, we could read from
+	 * the yb_presplit reloption to restore the original split configuration.
+	 */
 	if (yb_copy_split_options)
 	{
 		splitOpt = indexRel->yb_table_properties
@@ -7857,11 +8331,11 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 
 	YbATCopyPrimaryKeyToCreateStmt(rel, pg_constraint, dummyStmt);
 	table_close(pg_constraint, RowExclusiveLock);
-	if (yb_copy_split_options)
-	{
-		YbGetTableProperties(rel);
-		dummyStmt->split_options = YbGetSplitOptions(rel);
-	}
+
+	/*
+	 * Read reloptions from pg_class into dummyStmt->options.
+	 * This includes yb_presplit if it was set at table creation time.
+	 */
 	bool		is_null;
 	HeapTuple	tuple = SearchSysCache1(RELOID,
 										ObjectIdGetDatum(RelationGetRelid(rel)));
@@ -7871,6 +8345,20 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	if (!is_null)
 		dummyStmt->options = untransformRelOptions(datum);
 	ReleaseSysCache(tuple);
+
+	/*
+	 * If yb_copy_split_options is true, we want to preserve the current
+	 * table's split state (including any automatic tablet splitting that
+	 * may have occurred). Otherwise, use default split options.
+	 *
+	 * Future work: When yb_copy_split_options is false, we could read from
+	 * the yb_presplit reloption to restore the original split configuration.
+	 */
+	if (yb_copy_split_options)
+	{
+		YbGetTableProperties(rel);
+		dummyStmt->split_options = YbGetSplitOptions(rel);
+	}
 	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
 				   rel->rd_rel->relkind, RelationGetDescr(rel),
 				   RelationGetRelid(rel),
@@ -8896,4 +9384,44 @@ YbGetTraceparentFromTraceContext(const char *trace_context, size_t trace_context
 	traceparent_out[YB_TRACEPARENT_VALUE_LEN] = '\0';
 
 	return YB_TRACEPARENT_OK;
+}
+
+/*
+ * YbAddFederatedPartitionTserverUuid
+ *		Record that the per-tserver child at 'rti' targets the tablet server
+ *		identified by 'tserver_uuid'.
+ *
+ * The 'tserver_uuid' string is borrowed; the caller should ensure that it is
+ * allocated in a memory context that lives at least as long as the planner state.
+ *
+ * The backing yb_tserver_uuids array on PlannerInfo is lazily allocated here,
+ * so non-federated queries do not pay for it.  expand_planner_arrays() takes
+ * care of growing it in lockstep with simple_rte_array.
+ */
+void
+YbAddFederatedPartitionTserverUuid(PlannerInfo *root, Index rti,
+								   const char *tserver_uuid)
+{
+	Assert(rti < root->simple_rel_array_size);
+
+	if (root->yb_tserver_uuids == NULL)
+		root->yb_tserver_uuids = (const char **)
+			palloc0(sizeof(const char *) * root->simple_rel_array_size);
+
+	root->yb_tserver_uuids[rti] = tserver_uuid;
+}
+
+/*
+ * YbGetFederatedPartitionTserverUuid
+ *		Look up the tablet server UUID previously recorded for 'rti', or
+ *		return NULL if 'rti' is not a per-tserver federated child.
+ */
+const char *
+YbGetFederatedPartitionTserverUuid(const PlannerInfo *root, Index rti)
+{
+	if (root->yb_tserver_uuids == NULL)
+		return NULL;
+
+	Assert(rti < root->simple_rel_array_size);
+	return root->yb_tserver_uuids[rti];
 }

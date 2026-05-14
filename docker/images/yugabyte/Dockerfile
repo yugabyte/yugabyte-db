@@ -18,7 +18,6 @@ set -ex
 dnf install -y file
 tar -xvf /tmp/yugabyte*$(uname -m)*.tar.gz --strip 1
 rm -rf /tmp/yuabyte*
-./bin/post_install.sh
 for a in $(find . -exec file {} \; | grep -i elf | cut -f1 -d:); do
   strip --strip-unneeded $a || true
 done

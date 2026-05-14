@@ -877,7 +877,7 @@ YbCreateClientId(void)
 
 	YbCheckMyDatabase(MyProcPort->database_name, is_superuser, false, database);
 
-	if (MyProcPort->yb_has_auth_passthrough_failed)
+	if (MyProcPort->yb_has_auth_passthrough_finished)
 		return -1;
 
 	return YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);

@@ -140,6 +140,7 @@
 #include "executor/ybModifyTable.h"
 #include "nodes/bitmapset.h"
 #include "parser/analyze.h"
+#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
@@ -1051,6 +1052,14 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					IsCatalogNamespace(namespaceId))
 				   ? BOOTSTRAP_SUPERUSERID :
 				   GetUserId());
+
+	/*
+	 * YB: Keep the SPLIT clause and the yb_presplit reloption in sync so that
+	 * the table is created with the right pre-split values and yb_presplit is
+	 * persisted for TRUNCATE, REFRESH, and dump/restore.
+	 */
+	if (IsYugaByteEnabled())
+		YbSyncSplitOptionsAndPresplit(&stmt->split_options, &stmt->options);
 
 	/*
 	 * Parse and validate reloptions, if any.
@@ -16086,6 +16095,27 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 	}
 
 	/*
+	 * YB: ensure the new yb_presplit value (if any) is compatible with the
+	 * relation's hash/range partitioning.  Syntactic validation already ran
+	 * via the reloption validate_cb.
+	 */
+	if (IsYBRelation(rel) && newOptions != (Datum) 0)
+	{
+		ListCell   *lc;
+
+		foreach(lc, untransformRelOptions(newOptions))
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") == 0)
+			{
+				YbValidatePresplitForRelation(rel, defGetString(def));
+				break;
+			}
+		}
+	}
+
+	/*
 	 * All we need do here is update the pg_class row; the new options will be
 	 * propagated into relcaches during post-commit cache inval.
 	 */
@@ -22093,7 +22123,30 @@ YbATGetCloneTableStmt(const char *namespace_name, const char *table_name,
 	}
 
 	if (clone_split_options)
+	{
 		create_stmt->split_options = YbGetSplitOptions(rel);
+
+		/*
+		 * Filter out yb_presplit from cloned reloptions since we are
+		 * also setting split_options.  DefineRelation will re-derive
+		 * yb_presplit from split_options.  Without this, DefineRelation
+		 * would see both and raise a duplicate parameter error.
+		 */
+		if (create_stmt->options)
+		{
+			ListCell   *lc;
+			List	   *filtered_options = NIL;
+
+			foreach(lc, create_stmt->options)
+			{
+				DefElem    *def = (DefElem *) lfirst(lc);
+
+				if (strcmp(def->defname, "yb_presplit") != 0)
+					filtered_options = lappend(filtered_options, def);
+			}
+			create_stmt->options = filtered_options;
+		}
+	}
 
 	/*
 	 * Set attributes and their defaults.

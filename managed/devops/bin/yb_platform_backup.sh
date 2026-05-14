@@ -27,8 +27,13 @@ find_python_executable() {
 SCRIPT_NAME=$(basename "$0")
 USER=$(whoami)
 PLATFORM_DUMP_FNAME="platform_dump.sql"
-PLATFORM_DUMP_SKIP_DELETE_FNAME="restore_platform_dump_yba.sql"
+PLATFORM_DUMP_K8S_DEFERRED_PATH="/opt/yugabyte/yugaware/data/restore_platform_dump_yba.sql"
+# This will be needed for PA Collector support on K8S. Not used right now.
+PA_DUMP_K8S_DEFERRED_PATH="/opt/yugabyte/perf-advisor/data/restore_pa_dump.sql"
 PLATFORM_DB_NAME="yugaware"
+PA_DUMP_FNAME="pa_ts_dump.sql"
+PA_DATA_DIR="perf-advisor"
+PA_DB_NAME="ts"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
 MIGRATION_BACKUP_DIR="migration_backup"
 VERSION_METADATA="version_metadata.json"
@@ -177,7 +182,9 @@ modify_service() {
   fi
 }
 
-# Creates a Yugabyte Platform DB backup.
+# Creates a Postgres DB backup of the given database.
+# When ensure_db_exists is true, no special platform-specific behavior is applied;
+# the database name and target file are the only data points that vary across callers.
 create_postgres_backup() {
   backup_path="$1"
   db_username="$2"
@@ -186,8 +193,9 @@ create_postgres_backup() {
   verbose="$5"
   yba_installer="$6"
   pgdump_path="$7"
-  pg_dump="pg_dump"
   plain_sql="$8"
+  db_name="$9"
+  pg_dump="pg_dump"
 
   format="c"
   if [[ "${plain_sql}" = true ]]; then
@@ -203,13 +211,12 @@ create_postgres_backup() {
 
   if [[ "${verbose}" = true ]]; then
     backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -F${format} -v --clean \
-      ${PLATFORM_DB_NAME}"
+      ${db_name}"
   else
     backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -F${format} --clean \
-      ${PLATFORM_DB_NAME}"
+      ${db_name}"
   fi
-  # Run pg_dump.
-  echo "Creating Yugabyte Platform DB backup ${backup_path}..."
+  echo "Creating Postgres DB ${db_name} backup ${backup_path}..."
   if [[ "${yba_installer}" = true ]]; then
     # -f flag does not work for docker based installs. Tries to dump inside postgres container but
     # we need output on the host itself.
@@ -221,7 +228,12 @@ create_postgres_backup() {
   echo "Done"
 }
 
-# Restores a Yugabyte Platform DB backup.
+# Restores a Postgres DB backup of the given database. The target database is created if
+# missing prior to restore (no-op if it already exists).
+# When dump_check_table is non-empty, the dump file is sanity-checked for a COPY entry
+# of the given table (e.g. "customer" for the platform DB, "customer_metadata" for PA).
+# When copy_dump_file_path is non-empty and we're inside a K8s pod, the dump is copied
+# to that path for deferred restore on restart instead of being restored in-place.
 restore_postgres_backup() {
   backup_path="$1"
   db_username="$2"
@@ -230,11 +242,13 @@ restore_postgres_backup() {
   verbose="$5"
   yba_installer="$6"
   pgrestore_path="$7"
-  skip_dump_check="$8"
-  skip_dump_file_delete="$9"
+  dump_check_table="$8"
+  copy_dump_file_path="$9"
   single_transaction="${10}"
+  db_name="${11}"
   pg_restore="pg_restore"
   psql="psql"
+  createdb="createdb"
 
   # Determine pg_restore path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]] && \
@@ -246,41 +260,51 @@ restore_postgres_backup() {
 
   if [[ "${pg_restore}" == "${pgrestore_path}" ]]; then
     psql=$(dirname "${pgrestore_path}")/psql
+    createdb=$(dirname "${pgrestore_path}")/createdb
   fi
 
-  if grep -iq "COPY.*customer" "${backup_path}" || [[ "${skip_dump_check}" = true ]]; then
-    if ([[ "${INSIDE_K8S_POD}" = true ]] && [[ "${skip_dump_file_delete}" = true ]]); then
-      # Copy sql file to new location( data dir is hardcoded for K8S )
-      echo "Will restore Platform DB backup on restart"
-      new_dump_path="/opt/yugabyte/yugaware/data/${PLATFORM_DUMP_SKIP_DELETE_FNAME}"
-      echo "Copying SQL dump file to ${new_dump_path}"
-      run_sudo_cmd "cp ${backup_path} ${new_dump_path}"
-    else
+  echo "Ensuring database ${db_name} exists..."
+  set +e
+  create_db_cmd="${createdb} -h ${db_host} -p ${db_port} -U ${db_username} ${db_name}"
+  docker_aware_cmd "postgres" "${create_db_cmd}" 2>/dev/null
+  set -e
 
-      # Drop public schema so it is guaranteed to be a clean restore
-      drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
-        -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
-      docker_aware_cmd "postgres" "${drop_cmd}"
-      restore_cmd=("${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
-          -d ${PLATFORM_DB_NAME}")
-      if [[ "${verbose}" = true ]]; then
-        restore_cmd+=( -v )
-      fi
-      if [[ "$single_transaction" = true ]]; then
-        restore_cmd+=( --single_transaction )
-      fi
-      # Run pg_restore.
-      echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-      docker_aware_cmd "postgres" "${restore_cmd[@]}" < "${backup_path}"
-      echo "Done"
+  # Optional sanity check that the dump actually contains data for the expected table.
+  if [[ -n "${dump_check_table}" ]]; then
+    if ! grep -iq "COPY.*${dump_check_table}" "${backup_path}"; then
+      echo "${backup_path} potentially might be empty (no COPY for ${dump_check_table}), \
+skipping restore"
+      return
     fi
-  else
-    echo "${backup_path} potentially might be empty, skipping restore. Use --skip_dump_check to \
-      proceed"
   fi
+
+  # Optional K8s deferred-restore-on-restart path. The dump is staged to a known location
+  # and consumed by yugaware on next start.
+  if [[ -n "${copy_dump_file_path}" ]] && [[ "${INSIDE_K8S_POD}" = true ]]; then
+    echo "Will restore ${db_name} DB backup on restart"
+    echo "Copying SQL dump file to ${copy_dump_file_path}"
+    run_sudo_cmd "cp ${backup_path} ${copy_dump_file_path}"
+    return
+  fi
+
+  # Drop public schema so it is guaranteed to be a clean restore
+  drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${db_name} \
+    -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
+  docker_aware_cmd "postgres" "${drop_cmd}"
+  restore_cmd=("${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
+      -d ${db_name}")
+  if [[ "${verbose}" = true ]]; then
+    restore_cmd+=( -v )
+  fi
+  if [[ "$single_transaction" = true ]]; then
+    restore_cmd+=( --single_transaction )
+  fi
+  echo "Restoring Postgres DB ${db_name} backup ${backup_path}..."
+  docker_aware_cmd "postgres" "${restore_cmd[@]}" < "${backup_path}"
+  echo "Done"
 }
 
-# Creates a DB backup of YB Platform running on YBDB.
+# Creates a YBDB backup of the given database (yba-installer only).
 create_ybdb_backup() {
   backup_path="$1"
   db_username="$2"
@@ -289,74 +313,74 @@ create_ybdb_backup() {
   verbose="$5"
   yba_installer="$6"
   ysql_dump_path="$7"
+  db_name="$8"
   ysql_dump="ysql_dump"
 
-  # ybdb backup is only supported in yba-installer.
   if [[ "$yba_installer" != true ]]; then
-      echo "YBA YBDB backup is only supported for yba-installer"
-      return
+    echo "YBDB backup is only supported for yba-installer"
+    return 1
   fi
 
-  # If a ysql_dump path is given, use it explicitly
-  if [[ "${yba_installer}" = true ]] && \
-       [[ "${ysql_dump_path}" != "" ]] && \
-       [[ -f "${ysql_dump_path}" ]]; then
-      ysql_dump="${ysql_dump_path}"
+  if [[ "${ysql_dump_path}" != "" ]] && [[ -f "${ysql_dump_path}" ]]; then
+    ysql_dump="${ysql_dump_path}"
   fi
 
   if [[ "${verbose}" = true ]]; then
     backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} -v \
-     --clean ${PLATFORM_DB_NAME}"
+     --clean ${db_name}"
   else
     backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} \
-     --clean ${PLATFORM_DB_NAME}"
+     --clean ${db_name}"
   fi
-  # Run ysql_dump.
-  echo "Creating YBDB Platform DB backup ${backup_path}..."
-
+  echo "Creating YBDB DB ${db_name} backup ${backup_path}..."
   ${backup_cmd}
-
   echo "Done"
 }
 
-# Restores a DB backup of YB Platform running on YBDB.
+# Restores a YBDB backup of the given database (yba-installer only). The target database
+# is created if missing prior to restore (no-op if it already exists).
 restore_ybdb_backup() {
-    backup_path="$1"
-    db_username="$2"
-    db_host="$3"
-    db_port="$4"
-    verbose="$5"
-    yba_installer="$6"
-    ysqlsh_path="$7"
-    ysqlsh="ysqlsh"
+  backup_path="$1"
+  db_username="$2"
+  db_host="$3"
+  db_port="$4"
+  verbose="$5"
+  yba_installer="$6"
+  ysqlsh_path="$7"
+  db_name="$8"
+  single_transaction="$9"
+  ysqlsh="ysqlsh"
 
-    # ybdb restore is only supported in yba-installer workflow.
-      if [[ "$yba_installer" != true ]]; then
-          echo "YBA YBDB restore is only supported for yba-installer"
-          return
-      fi
+  if [[ "$yba_installer" != true ]]; then
+    echo "YBDB restore is only supported for yba-installer"
+    return 1
+  fi
 
-    if [[ "${yba_installer}" = true ]] && \
-         [[ "${ysqlsh_path}" != "" ]] && \
-         [[ -f "${ysqlsh_path}" ]]; then
-        ysqlsh="${ysqlsh_path}"
-    fi
+  if [[ "${ysqlsh_path}" != "" ]] && [[ -f "${ysqlsh_path}" ]]; then
+    ysqlsh="${ysqlsh_path}"
+  fi
 
-    # Note that we use ysqlsh and not pg_restore to perform the restore,
-    # as ysql reads plain-text SQL file to support restore from both ybdb and postgres,
-    # which is necessary for postgres->ybdb migration in the future.
-    if [[ "${verbose}" = true ]]; then
-      restore_cmd="${ysqlsh} -h ${db_host} -p ${db_port} -U ${db_username} -d \
-        ${PLATFORM_DB_NAME} -f ${backup_path}"
-    else
-      restore_cmd="${ysqlsh} -h ${db_host} -p ${db_port} -U ${db_username} -q -d \
-        ${PLATFORM_DB_NAME} -f ${backup_path}"
-    fi
+  echo "Ensuring YBDB database ${db_name} exists..."
+  set +e
+  create_db_cmd="${ysqlsh} -h ${db_host} -p ${db_port} -U ${db_username} -c \
+    \"CREATE DATABASE ${db_name};\""
+  eval "${create_db_cmd}" 2>/dev/null
+  set -e
 
-    # Run restore.
-    echo "Restoring Yugabyte Platform YBDB backup ${backup_path}..."
-    ${restore_cmd}
-    echo "Done"
+  # Note that we use ysqlsh and not pg_restore to perform the restore,
+  # as ysql reads plain-text SQL file to support restore from both ybdb and postgres,
+  # which is necessary for postgres->ybdb migration in the future.
+  restore_cmd=("${ysqlsh}" -h "${db_host}" -p "${db_port}" -U "${db_username}" \
+    -d "${db_name}" -f "${backup_path}")
+  if [[ "${verbose}" != true ]]; then
+    restore_cmd+=( -q )
+  fi
+  if [[ "$single_transaction" = true ]]; then
+    restore_cmd+=( --single-transaction )
+  fi
+  echo "Restoring YBDB DB ${db_name} backup ${backup_path}..."
+  "${restore_cmd[@]}"
+  echo "Done"
 }
 
 # Deletes a Yugabyte Platform DB backup.
@@ -390,6 +414,8 @@ create_backup() {
   ybdb="${15}"
   ysql_dump_path="${16}"
   prometheus_protocol="${17}"
+  exclude_pa_database="${18}"
+  exclude_pa_files="${19}"
   include_releases_flag="**/releases/**"
   include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
@@ -412,6 +438,12 @@ create_backup() {
     fi
     if [[ "$exclude_prometheus" = true ]]; then
       exclude_flags+=" --exclude_prometheus"
+    fi
+    if [[ "$exclude_pa_database" = true ]]; then
+      exclude_flags+=" --exclude_pa_database"
+    fi
+    if [[ "$exclude_pa_files" = true ]]; then
+      exclude_flags+=" --exclude_pa_files"
     fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
       "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
@@ -473,10 +505,25 @@ create_backup() {
   trap 'delete_db_backup ${db_backup_path}' RETURN
   if [[ "$ybdb" = true ]]; then
     create_ybdb_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-                             "${verbose}" "${yba_installer}" "${ysql_dump_path}"
+                             "${verbose}" "${yba_installer}" "${ysql_dump_path}" \
+                             "${PLATFORM_DB_NAME}"
   else
     create_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-                         "${verbose}" "${yba_installer}" "${pgdump_path}" "${plain_sql}"
+                         "${verbose}" "${yba_installer}" "${pgdump_path}" "${plain_sql}" \
+                         "${PLATFORM_DB_NAME}"
+  fi
+
+  # Backup PA (ts) database unless excluded
+  pa_db_backup_path="${data_dir}/${PA_DUMP_FNAME}"
+  if [[ "$exclude_pa_database" = false ]]; then
+    if [[ "$ybdb" = true ]]; then
+      create_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+                         "${verbose}" "${yba_installer}" "${ysql_dump_path}" "${PA_DB_NAME}"
+    else
+      create_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+                             "${verbose}" "${yba_installer}" "${pgdump_path}" \
+                             "${plain_sql}" "${PA_DB_NAME}"
+    fi
   fi
 
   TAR_OPTIONS="-r"
@@ -492,6 +539,18 @@ create_backup() {
               "**/data/node-agent/certs/**" "**/provision/**/provision_instance.py" \
               "**/${PLATFORM_DUMP_FNAME}" "**/${VERSION_METADATA_BACKUP}" \
               "${include_releases_flag}" "${include_uploaded_releases_flag}") )
+
+  # Include PA database dump in backup unless excluded.
+  # Use the same printf trick as the main FIND_OPTIONS block above to embed literal single
+  # quotes around the glob, so that the pattern survives the `eval find ...` invocation
+  # and is not subject to shell pathname expansion before being passed to find.
+  if [[ "$exclude_pa_database" = false ]]; then
+    FIND_OPTIONS+=( $(printf " -o -path '%s'" "**/${PA_DUMP_FNAME}") )
+  fi
+  # Include PA collected data files in backup unless excluded.
+  if [[ "$exclude_pa_files" = false ]]; then
+    FIND_OPTIONS+=( $(printf " -o -path '%s'" "**/${PA_DATA_DIR}/collected/**") )
+  fi
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -522,6 +581,9 @@ create_backup() {
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
   delete_db_backup "${db_backup_path}"
+  if [[ "$exclude_pa_database" = false ]] && [[ -f "${pa_db_backup_path}" ]]; then
+    delete_db_backup "${pa_db_backup_path}"
+  fi
 
   # Delete the version metadata backup if we had created it earlier
   docker_aware_cmd "yugaware" "rm -f ${data_dir}/${VERSION_METADATA_BACKUP}"
@@ -552,6 +614,8 @@ restore_backup() {
   prometheus_protocol="${19}"
   skip_dump_file_delete="${20}"
   single_transaction="${21}"
+  exclude_pa_database="${22}"
+  exclude_pa_files="${23}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -581,6 +645,12 @@ restore_backup() {
     fi
     if [[ "$single_transaction" = true ]]; then
       restore_args+=( --single_transaction )
+    fi
+    if [[ "$exclude_pa_database" = true ]]; then
+      restore_args+=( --exclude_pa_database )
+    fi
+    if [[ "$exclude_pa_files" = true ]]; then
+      restore_args+=( --exclude_pa_files )
     fi
     cmd=("$backup_script" restore "${restore_args[@]}")
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
@@ -711,14 +781,52 @@ restore_backup() {
 
   db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
   trap 'delete_db_backup ${db_backup_path}' RETURN
+  # When --skip_dump_check is set, bypass the COPY sanity check by passing an empty table name.
+  # When --skip_dump_file_delete is set, stage the platform dump for deferred restore on restart.
+  platform_dump_check_table="customer"
+  if [[ "$skip_dump_check" = true ]]; then
+    platform_dump_check_table=""
+  fi
+  platform_copy_dump_path=""
+  if [[ "$skip_dump_file_delete" = true ]]; then
+    platform_copy_dump_path="${PLATFORM_DUMP_K8S_DEFERRED_PATH}"
+  fi
   if [[ "${ybdb}" = true ]]; then
     restore_ybdb_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-      "${verbose}" "${yba_installer}" "${ysqlsh_path}"
+      "${verbose}" "${yba_installer}" "${ysqlsh_path}" "${PLATFORM_DB_NAME}" \
+      "${single_transaction}"
   else
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}" \
-      "${skip_dump_file_delete}" "${single_transaction}"
+      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${platform_dump_check_table}" \
+      "${platform_copy_dump_path}" "${single_transaction}" "${PLATFORM_DB_NAME}"
+  fi
+
+  # Restore PA (ts) database unless excluded
+  if [[ "$exclude_pa_database" = false ]]; then
+    pa_db_backup_path="${untar_dir}"/"${PA_DUMP_FNAME}"
+    if [[ -f "${pa_db_backup_path}" ]]; then
+      pa_dump_check_table="customer_metadata"
+      if [[ "$skip_dump_check" = true ]]; then
+        pa_dump_check_table=""
+      fi
+      pa_copy_dump_path=""
+      if [[ "$skip_dump_file_delete" = true ]]; then
+        pa_copy_dump_path="${PA_DUMP_K8S_DEFERRED_PATH}"
+      fi
+      if [[ "${ybdb}" = true ]]; then
+        restore_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+          "${verbose}" "${yba_installer}" "${ysqlsh_path}" "${PA_DB_NAME}" \
+          "${single_transaction}"
+      else
+        restore_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+          "${verbose}" "${yba_installer}" "${pgrestore_path}" "${pa_dump_check_table}" \
+          "${pa_copy_dump_path}" "${single_transaction}" "${PA_DB_NAME}"
+      fi
+      delete_db_backup "${pa_db_backup_path}"
+    else
+      echo "No ${PA_DUMP_FNAME} found in archive, skipping PA DB restore"
+    fi
   fi
 
   # Restore prometheus swamper targets on migration always
@@ -859,6 +967,8 @@ print_backup_usage() {
   echo "  --plain_sql                    output a plain-text SQL script from pg_dump"
   echo "  --ybdb                         ybdb backup (default: false)"
   echo "  --ysql_dump_path               path to ysql_sump to dump ybdb"
+  echo "  --exclude_pa_database          exclude Performance Advisor database from backup (default: false)"
+  echo "  --exclude_pa_files             exclude Performance Advisor collected data files from backup (default: false)"
   echo "  --disable_version_check        disable the backup version check (default: false)"
   echo "  -?, --help                     show create help, then exit"
   echo
@@ -894,6 +1004,8 @@ print_restore_usage() {
   echo "  --skip_old_files                   skip old files when untarring backup"
   echo "  --skip_dump_check                  skip pg dump empty check before restore (default: false)"
   echo "  --skip_dump_file_delete            skip deleting dump file extracted from backup archive (default: false)"
+  echo "  --exclude_pa_database              exclude Performance Advisor database from restore (default: false)"
+  echo "  --exclude_pa_files                 exclude Performance Advisor collected data files from restore (default: false)"
   echo "  -?, --help                         show restore help, then exit"
   echo
   echo "NOTE: If prometheus authentication is enabled, PROMETHEUS_USERNAME and PROMETHEUS_PASSWORD environment variables must be set"
@@ -962,6 +1074,8 @@ case $command in
     # Default create options.
     exclude_prometheus=false
     exclude_releases=false
+    exclude_pa_database=false
+    exclude_pa_files=false
     output_path="${HOME}"
     RESTART_PROCESSES=false
 
@@ -1061,6 +1175,14 @@ case $command in
           ysql_dump_path=$(realpath $2)
           shift 2
           ;;
+        --exclude_pa_database)
+          exclude_pa_database=true
+          shift
+          ;;
+        --exclude_pa_files)
+          exclude_pa_files=true
+          shift
+          ;;
         --disable_version_check)
           disable_version_check=true
           set -x
@@ -1087,7 +1209,7 @@ case $command in
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
     "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path" \
-    "$prometheus_protocol"
+    "$prometheus_protocol" "$exclude_pa_database" "$exclude_pa_files"
     exit 0
     ;;
   restore)
@@ -1096,6 +1218,8 @@ case $command in
     input_path=""
     skip_dump_file_delete=false
     single_transaction=false
+    exclude_pa_database=false
+    exclude_pa_files=false
 
     if [[ $# -eq 0 ]]; then
       print_restore_usage
@@ -1229,6 +1353,14 @@ case $command in
           single_transaction=true
           shift
           ;;
+        --exclude_pa_database)
+          exclude_pa_database=true
+          shift
+          ;;
+        --exclude_pa_files)
+          exclude_pa_files=true
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1259,7 +1391,7 @@ case $command in
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
     "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
     "$skip_old_files" "$skip_dump_check" "$prometheus_protocol" "$skip_dump_file_delete" \
-    "$single_transaction"
+    "$single_transaction" "$exclude_pa_database" "$exclude_pa_files"
     exit 0
     ;;
   *)

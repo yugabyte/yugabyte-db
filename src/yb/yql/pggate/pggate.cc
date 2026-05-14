@@ -2768,20 +2768,14 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
     return result;
 }
 
-Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle) {
-  auto ts_info = VERIFY_RESULT(ListTabletServers());
-  auto& t_servers = ts_info.tablet_servers;
-  std::vector<std::string> uuids;
-  uuids.reserve(t_servers.size());
-  for (auto& ts : t_servers) {
-    uuids.emplace_back(std::move(ts.server.uuid));
-  }
-  return AddToCurrentPgMemctx(
-      std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids)), handle);
+Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
+  return AddToCurrentPgMemctx(std::make_unique<PgGlobalViewRead>(), handle);
 }
 
-YbcRemotePgExecResult PgApiImpl::Exec(PgGlobalViewRead* handle, std::string_view query) {
-  return handle->ExecScan(pg_client_, query);
+YbcRemotePgExecResult PgApiImpl::ExecGlobalViewScan(
+    PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
+    std::string_view tserver_uuid) {
+  return handle->ExecScan(pg_client_, database_name, query, tserver_uuid);
 }
 
 ExplicitRowLockBuffer& PgApiImpl::explicit_row_lock_buffer() {

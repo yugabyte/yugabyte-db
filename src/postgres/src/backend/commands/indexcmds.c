@@ -76,6 +76,7 @@
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
@@ -1348,6 +1349,14 @@ DefineIndex(Oid relationId,
 		CheckPredicate((Expr *) stmt->whereClause);
 
 	/*
+	 * YB: Keep the SPLIT clause and the yb_presplit reloption in sync so that
+	 * the index is created with the right pre-split values and yb_presplit is
+	 * persisted for REINDEX and dump/restore.
+	 */
+	if (IsYugaByteEnabled())
+		YbSyncSplitOptionsAndPresplit(&stmt->split_options, &stmt->options);
+
+	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
 	reloptions = transformRelOptions((Datum) 0, stmt->options,
@@ -1884,6 +1893,13 @@ DefineIndex(Oid relationId,
 					childStmt->oldNode = InvalidOid;
 					childStmt->oldCreateSubid = InvalidSubTransactionId;
 					childStmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+
+					/*
+					 * YB: Clear split_options so the child's DefineIndex
+					 * derives them from the yb_presplit reloption already
+					 * present in the copied options list.
+					 */
+					childStmt->split_options = NULL;
 
 					/*
 					 * Adjust any Vars (both in expressions and in the index's

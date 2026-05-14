@@ -199,6 +199,11 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500;
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500 LIMIT 10;
 
+-- yb_hash_code with partial hash key should not error.
+-- TODO(#30756): recheck should not be needed.
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;'
+\i :iter_P2
+
 DROP TABLE test_table_multi_col_key;
 
 -- test recheck of index only scan with yb_hash_code

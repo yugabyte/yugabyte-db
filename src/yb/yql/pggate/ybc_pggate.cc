@@ -3385,32 +3385,24 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle) {
-  return ToYBCStatus(pgapi->NewGlobalViewRead(database_name, handle));
-}
-
-void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
-  handle->ResetScan();
+YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(handle));
 }
 
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
   DCHECK(param_values);
-  handle->SetParams(std::span{param_values, param_values + num_params});
+  DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query) {
-  return pgapi->Exec(handle, query);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+    YbcPgGlobalViewRead handle, const char *database_name, const char *query,
+    const char *tserver_uuid) {
+  return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
 }
 
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {
-  if (handle) {
-    PgMemctx::Destroy(handle);
-  }
-}
-
-bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle) {
-  return handle->is_eof();
+  PgMemctx::Destroy(DCHECK_NOTNULL(handle));
 }
 
 } // extern "C"

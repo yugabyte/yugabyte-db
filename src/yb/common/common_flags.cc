@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/size_literals.h"
@@ -233,6 +234,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
 
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
+                    "Use shared memory for executing read and write pg client queries");
+
+DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
+    "Whether to use shared memory fastpath for shared object locks.");
+
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
     "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
     "support.] Use this flag to toggle support for concurrent DDLs.");
@@ -242,7 +249,23 @@ DEFINE_validator(ysql_enable_concurrent_ddl,
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl));
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_DELAYED_COND_VALIDATOR(
+      !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+      "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
+
+DEFINE_validator(pg_client_use_shared_memory,
+    FLAG_DELAYED_COND_VALIDATOR(
+      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
+      "enable_object_lock_fastpath on"));
+
+DEFINE_validator(enable_object_lock_fastpath,
+    FLAG_DELAYED_COND_VALIDATOR(
+      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
+      "enable_object_locking_for_table_locks is on"));
+
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
         (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),

@@ -1817,5 +1817,72 @@ TEST_F(PgCloneTest, DisallowCloneIntoForwardRestoreGap) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Cannot perform a forward restore");
 }
 
+TEST_F(PgCloneTest, CloneAfterPitrRemovedTableFromSnapshot) {
+  // When PITR rolls back the catalog to a time before some non-colocated table existed, PITR's
+  // PrepareTabletCleanup writes that table's tablets straight to DELETED. Once the tablets are
+  // DELETED, AreAllTabletsDeleted() is true and the CleanupHiddenTables / CleanUpDeletedTables bg
+  // tasks fully erase the table from the live catalog (tables_).
+  //
+  // The snapshot used to perform the PITR still references that table in its sys_row entries, and
+  // could be used for a subsequent clone operation. This test verifies the clone flow can still use
+  // that snapshot, despite the missing table it references.
+  const std::string kExtraTableName = "extra_table";
+
+  auto t_clone = ASSERT_RESULT(GetCurrentTime());
+  auto t_pitr = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_LT(t_clone.ToInt64(), t_pitr.ToInt64());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kExtraTableName));
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kExtraTableName));
+
+  // PITR back to t_pitr (before extra_table existed). The master creates a schedule snapshot
+  // on demand whose range covers both t_pitr and t_clone, and which references extra_table.
+  LOG(INFO) << "Restoring to t_pitr: " << t_pitr;
+  auto restoration_id = ASSERT_RESULT(RestoreSnapshotSchedule(
+      master_backup_proxy_.get(), schedule_id_,
+      HybridTime::FromMicros(static_cast<uint64>(t_pitr.ToInt64())), kTimeout));
+  ASSERT_OK(WaitForRestoration(master_backup_proxy_.get(), restoration_id, kTimeout));
+  LOG(INFO) << "Restoration complete.";
+
+  // Reconnect since PITR may invalidate the PG connection.
+  source_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(ConnectToDB(kSourceNamespaceName)));
+
+  // Wait until extra_table has been fully removed from tables_. Sequence after PITR is:
+  // PITR sets hide_state=HIDING and tablets directly to DELETED -> bg task transitions
+  // HIDING -> HIDDEN -> CleanupHiddenTables sees AreAllTabletsDeleted() and marks state=DELETED
+  // -> CleanUpDeletedTables erases the table from tables_.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto table = GetTable(kExtraTableName, kSourceNamespaceName);
+        if (table.ok()) {
+          return false;
+        }
+        if (table.status().IsNotFound()) {
+          return true;
+        }
+        return table.status();
+      },
+      MonoDelta::FromSeconds(60),
+      "Wait for extra_table to be removed from tables_"));
+
+  // Clone source DB as of t_clone. The clone logic should handle the missing extra_table referenced
+  // by the snapshot.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      t_clone.ToInt64()));
+
+  // Sanity checks: t1 (created during SetUp before t_clone was captured) should exist in the
+  // clone; extra_table (created after t_clone) should not.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto extra_count = ASSERT_RESULT(target_conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM pg_class WHERE relname = '$0'", kExtraTableName)));
+  ASSERT_EQ(extra_count, 0);
+  auto t1_count = ASSERT_RESULT(
+      target_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(t1_count, 0);
+}
+
 }  // namespace master
 }  // namespace yb

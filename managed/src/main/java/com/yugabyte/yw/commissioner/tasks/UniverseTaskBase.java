@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -985,16 +986,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (updaterConfig.getCallback() != null) {
             updaterConfig.getCallback().accept(universe);
           }
+          boolean clearUpdatingTask =
+              universeDetails.updateSucceeded && updaterConfig.isCheckSuccess();
+
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
-          boolean clearUpdatingTask =
-              (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess());
-
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
-              universeDetails.placementModificationTaskUuid = null;
-              // Do not save the transient state in the universe.
-              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+              boolean pausedTask =
+                  getTaskExecutor()
+                      .maybeGetRunnableTask(getUserTaskUUID())
+                      .map(RunnableTask::isPaused)
+                      .orElse(false);
+              // Keep placementModificationTaskUuid set while paused so resume can match this
+              // upgrade.
+              if (!pausedTask) {
+                universeDetails.placementModificationTaskUuid = null;
+                // Do not save the transient state in the universe.
+                universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+              }
             }
           }
           if (clearUpdatingTask) {

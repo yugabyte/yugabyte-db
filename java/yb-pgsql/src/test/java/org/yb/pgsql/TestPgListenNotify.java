@@ -936,6 +936,58 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * Verifies that LISTEN/NOTIFY works even after a non-INSERT/DELETE record (i.e., an UPDATE)
+   * appears in the pg_yb_notifications CDC stream. The notifications poller consumes the CDC
+   * stream for pg_yb_notifications; an UPDATE record is unexpected (users never UPDATE this
+   * table) and must not break the poller.
+   *
+   * Scenario:
+   *   1. Session starts LISTEN.
+   *   2. NOTIFY is sent and received by the listener.
+   *   3. A dummy row is INSERTed into pg_yb_notifications and then UPDATEd (producing a
+   *      non-INSERT/DELETE CDC record).
+   *   4. Another NOTIFY is sent and received by the listener, proving the poller survived.
+   */
+  @Test
+  public void testNotifyWorksAfterUpdateOnNotificationsTable() throws Exception {
+    final String channel = "update_test";
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+      }
+
+      // First NOTIFY: baseline check.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'before_update'");
+      }
+      waitForNotification(listenerConn, channel, "before_update");
+      LOG.info("Received notification before UPDATE on pg_yb_notifications");
+
+      // INSERT a dummy row into pg_yb_notifications and UPDATE it.
+      try (Connection ybSystemConn =
+               getConnectionBuilder().withDatabase("yb_system").connect();
+           Statement stmt = ybSystemConn.createStatement()) {
+        stmt.execute("INSERT INTO pg_yb_notifications"
+            + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data)"
+            + " VALUES ('00000000-0000-0000-0000-000000000001',"
+            + " '00000000-0000-0000-0000-000000000002', 0, 0, false, '\\x00')");
+        stmt.execute("UPDATE pg_yb_notifications SET sender_pid = 1"
+            + " WHERE notif_uuid = '00000000-0000-0000-0000-000000000001'");
+        LOG.info("Inserted and updated dummy row in pg_yb_notifications");
+      }
+
+      // Second NOTIFY: must still work after the UPDATE record hit the CDC stream.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'after_update'");
+      }
+      waitForNotification(listenerConn, channel, "after_update");
+      LOG.info("Received notification after UPDATE on pg_yb_notifications");
+    }
+  }
+
   private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {

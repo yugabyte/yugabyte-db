@@ -1187,6 +1187,45 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   }
 }
 
+// Flush / Compact CLI tests
+
+TEST_F_EX(YBTsCliTest, FlushTablet, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("flush_tablet", tablet_id_));
+}
+
+TEST_F_EX(YBTsCliTest, CompactTablet, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("compact_tablet", tablet_id_));
+}
+
+TEST_F_EX(YBTsCliTest, FlushAllTablets, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("flush_all_tablets"));
+}
+
+TEST_F_EX(YBTsCliTest, CompactAllTablets, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("compact_all_tablets"));
+}
+
+TEST_F_EX(YBTsCliTest, CompactTabletExcludeVectorIndexes, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("--exclude_vector_indexes", "compact_tablet", tablet_id_));
+}
+
+TEST_F_EX(YBTsCliTest, CompactAllTabletsExcludeVectorIndexes, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(CallTSCli("--exclude_vector_indexes", "compact_all_tablets"));
+}
+
+TEST_F_EX(YBTsCliTest, FlushTabletExcludeVectorIndexesRejected, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  auto result = CallTSCli("--exclude_vector_indexes", "flush_tablet", tablet_id_);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "exclude-vector-indexes");
+}
+
 TEST_F_EX(YBTsCliTest, TestDumpTabletData, YBTsCliIntegrationTest) {
   ASSERT_NO_FATALS(BuildAndStart());
 

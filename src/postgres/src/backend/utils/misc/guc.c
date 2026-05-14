@@ -9167,7 +9167,7 @@ yb_should_report_guc(struct config_generic *record)
 		/*
 		 * A special case has been added here for auth passthrough mode where we do
 		 * not want to report GUC variables to connection manager in case auth
-		 * passthrough has failed.
+		 * passthrough has failed or during post auth GUC rollback.
 		 * Specifically, we do not want to send back ParameterStatus packets for
 		 * GUCs like session_authorization, client_encoding that are set during the
 		 * authentication phase of Auth Passthrough as this causes certain
@@ -9175,7 +9175,7 @@ yb_should_report_guc(struct config_generic *record)
 		 */
 		shouldReportGUC =
 			shouldReportGUC &&
-			(MyProcPort == NULL || !MyProcPort->yb_has_auth_passthrough_failed);
+			(MyProcPort == NULL || !MyProcPort->yb_has_auth_passthrough_finished);
 	}
 	return shouldReportGUC;
 }
@@ -11268,7 +11268,8 @@ set_config_option_ext(const char *name, const char *value,
 	/*
 	 * YB: When in Auth Passthrough mode of conn mgr, avoid setting defaults on
 	 * the control backend (auth_passthrough_req == true) when parsing startup
-	 * packet GUC opts (source == PGC_S_CLIENT).
+	 * packet GUC opts (source >= PGC_S_CLIENT) and when applying settings from
+	 * pg_db_role_setting (source >= PGC_S_GLOBAL).
 	 * We do not wish to set defaults in this case as GUCs on the control
 	 * backend need to be reverted to their original defaults in preparation for
 	 * the next authentication attempt. Changes made via makeDefault are
@@ -11276,12 +11277,15 @@ set_config_option_ext(const char *name, const char *value,
 	 * of defaults serves no purpose during authentication either as conn mgr is
 	 * responsible for tracking client session defaults during the deploy phase
 	 * on txn backends.
+	 *
+	 * We use PGC_S_GLOBAL as the threshold because sources below it (e.g.
+	 * PGC_S_DYNAMIC_DEFAULT, PGC_S_FILE) are used in assign hooks and related
+	 * automatic GUC mutations triggered by changing session_authorization and
+	 * we do not want to change their behaviour during auth passthrough.
 	 */
 	if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req &&
-		source >= PGC_S_CLIENT)
-	{
+		source >= PGC_S_GLOBAL)
 		makeDefault = false;
-	}
 
 	/*
 	 * Ignore attempted set if overridden by previously processed setting.

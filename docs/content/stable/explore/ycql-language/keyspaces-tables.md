@@ -171,11 +171,14 @@ ycqlsh> quit;
 
 ## Unsupported cqlsh commands
 
-|   Command         |                      Alternative                          |
-| :---------------- | :-------------------------------------------------------- |
-| LIST ROLES        | select * from system_auth.roles                           |
-| SHOW SESSION      | Tracing from ycqlsh is not supported.                   |
-| TRACING           | Tracing from ycqlsh is not supported.                   |
+Some Apache Cassandra cqlsh commands differ or are not applicable on YugabyteDB. This includes the following:
+
+| Command | Alternative / notes |
+| :------ | :------------------- |
+| LIST ROLES | Query roles with `SELECT * FROM system_auth.roles;` |
+| SHOW SESSION | Not supported. |
+
+Shell features such as [`TRACING`](../../../api/ycqlsh/#tracing) and [`SERIAL CONSISTENCY`](../../../api/ycqlsh/#serial-consistency) are documented on the [ycqlsh](../../../api/ycqlsh/) page.
 
 ## Learn more
 

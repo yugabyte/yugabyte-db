@@ -368,11 +368,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       // Persist updated node SSH fields to DB before provisioning subtasks, as subtasks
       // like SetupYNP and YNPProvisioning reload the node from DB and need the target
       // image bundle's SSH port/user to connect to the node after root volume replacement.
+      // Note: machineImage is intentionally NOT persisted here -- doing so would cause
+      // getImageSettingsForNodes to skip this node on retry (image already matches target).
       createUpdateUniverseFieldsTask(
               u -> {
                 NodeDetails nodeDetails = u.getNode(node.nodeName);
                 if (nodeDetails != null) {
-                  nodeDetails.machineImage = node.machineImage;
                   nodeDetails.sshUserOverride = node.sshUserOverride;
                   nodeDetails.sshPortOverride = node.sshPortOverride;
                   nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;

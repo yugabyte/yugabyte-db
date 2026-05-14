@@ -16,7 +16,7 @@ import { AssessPerformancePrompt } from './AssessPerformancePrompt';
 import { UpgradeStageCategory } from './constants';
 import { PreCheckStageBanner } from './PreCheckStageBanner';
 import { UpgradeStageBanner } from './UpgradeStageBanner';
-import { classifyDbUpgradeStages, getTserverAzClusterUpgradeStageKey } from './utils';
+import { classifyDbUpgradeStages, getTaskSoftwareUpgradeProgress, getTserverAzClusterUpgradeStageKey } from './utils';
 import { TemporaryRestrictionsNotice } from './TemporaryRestrictionsNotice';
 import { DbUpgradeRollBackModal } from '../DbUpgradeRollBackModal';
 import { DbUpgradeFinalizeModal } from '../DbUpgradeFinalizeModal';
@@ -138,9 +138,9 @@ export const DbUpgradeProgressPanel = ({
   };
 
   const targetDbVersion = dbUpgradeTask?.details?.versionNumbers?.ybSoftwareVersion;
-  const dbUpgradeTaskPauseState = dbUpgradeTask?.softwareUpgradeProgress?.canaryPauseState;
+  const dbUpgradeTaskPauseState = getTaskSoftwareUpgradeProgress(dbUpgradeTask)?.canaryPauseState;
   const tserverAZUpgradeStatesList =
-    dbUpgradeTask?.softwareUpgradeProgress?.tserverAZUpgradeStatesList;
+    getTaskSoftwareUpgradeProgress(dbUpgradeTask)?.tserverAZUpgradeStatesList;
 
   const clusters = universe?.spec?.clusters ?? [];
   const upgradedAzMetadataList = getPlacementAzMetadataList(getPrimaryCluster(clusters)) ?? [];

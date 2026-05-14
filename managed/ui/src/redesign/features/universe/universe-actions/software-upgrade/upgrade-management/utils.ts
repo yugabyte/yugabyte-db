@@ -3,11 +3,16 @@ import {
   AZUpgradeStatus,
   CanaryPauseState,
   DbUpgradePrecheckStatus,
+  type SoftwareUpgradeProgress,
   Task
 } from '@app/redesign/features/tasks/dtos';
 import { AccordionCardState } from './AccordionCard';
 
-/** Returns a unique key for a t-server AZ upgrade stage. 
+export const getTaskSoftwareUpgradeProgress = (
+  task: Task | null | undefined
+): SoftwareUpgradeProgress | null | undefined => task?.details?.softwareUpgradeProgress;
+
+/** Returns a unique key for a t-server AZ upgrade stage.
  * Just using azUuid is not enough because the same AZ UUID can appear on multiple clusters.
  */
 export const getTserverAzClusterUpgradeStageKey = (azUUID: string, clusterUUID: string): string =>
@@ -117,7 +122,8 @@ export type DbUpgradeStages = DbUpgradeStagesMetadata;
  * - tserverAZUpgradeStatesList returned by the backend is ordered by upgrade order (may repeat the same AZ UUID across clusters).
  */
 export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStagesMetadata => {
-  if (!dbUpgradeTask.softwareUpgradeProgress) {
+  const softwareUpgradeProgress = getTaskSoftwareUpgradeProgress(dbUpgradeTask);
+  if (!softwareUpgradeProgress) {
     return {
       preCheckStage: AccordionCardState.NEUTRAL,
       upgradeMasterServersStage: AccordionCardState.NEUTRAL,
@@ -126,7 +132,6 @@ export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStagesMet
     };
   }
 
-  const softwareUpgradeProgress = dbUpgradeTask.softwareUpgradeProgress;
   const preCheckStage = mapDbUpgradePrecheckStatusToAccordionCardState(
     softwareUpgradeProgress.precheckStatus
   );

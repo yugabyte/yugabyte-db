@@ -5,10 +5,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -34,6 +33,9 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     mockCommonForEditUniverseBasedTasks(defaultUniverse);
     doAnswer(
             invocation -> {
@@ -91,8 +93,6 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.ReplaceNodeInUniverse,
         taskParams);
-    verify(mockNodeManager, atLeast(1))
-        .nodeCommand(eq(NodeCommandType.List), any(CheckDuplicateInstance.Params.class));
     checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

@@ -8,6 +8,7 @@ import {
   tserverAzUpgradeStatesListWithSecondLastInProgress
 } from '@app/mocks/mock-data/taskMocks';
 import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import { withStorybookTasksReduxProvider } from '@app/mocks/storybook/storybookTasksRedux';
 import {
   AZUpgradeStatus,
   CanaryPauseState,
@@ -38,7 +39,7 @@ const meta = {
   parameters: {
     layout: 'centered'
   },
-  decorators: [withCustomerId],
+  decorators: [withCustomerId, withStorybookTasksReduxProvider],
   args: {
     universeUuid: UNIVERSE_UUID,
     modalProps: {

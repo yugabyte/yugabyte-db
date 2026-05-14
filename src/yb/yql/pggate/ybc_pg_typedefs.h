@@ -1085,6 +1085,10 @@ typedef struct {
   // So the response PB is stored in this uint8_t* and later converted to PGresult.
   uint8_t* pgresult;
   size_t pgresult_size;
+  // Human-readable error description when the remote query failed.
+  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
+  // until the next ExecScan call on the same handle.
+  const char* error_message;
 } YbcRemotePgExecResult;
 
 typedef struct YbcCloudInfo {

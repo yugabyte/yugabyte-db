@@ -1,5 +1,5 @@
 ---
-name: backport-review
+name: review-backport
 description: >-
   Review YugabyteDB backport diffs by comparing them against their original
   commits/diffs. Use when the user provides a Phorge backport diff ID
@@ -7,9 +7,11 @@ description: >-
   reviewing backport revisions.
 ---
 
-# Backport Review
+# Review Backport
 
 Review a YugabyteDB backport diff by comparing it to the original commit/diff and identifying any differences.
+
+For the review *policy* (what counts as a backport, what to flag vs. ignore, byte-identical-hunk handling, and the `## Merge conflicts` convention), see the **Backport PRs** section of `@../../../.gemini/styleguide.md`. This skill covers the *mechanics* of fetching and comparing Phorge diffs and tracing unexplained code back to its origin on master.
 
 ## Prerequisites
 

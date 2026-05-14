@@ -270,18 +270,23 @@
         "forceApply": "Force Apply"
       },
       "dbUpgrade": {
-        "upgradeModal": {
-          "modalTitle": "Upgrade Database",
-          "fields": {
+        "sharedComponents": {
+          "rollingUpdateBatchSettings": {
             "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "maxNodesPerBatchTooltipRollback": "Applies to T-Servers.\nMasters are rolled back one at a time.",
             "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers).",
             "seconds": "seconds",
             "validationError": {
               "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
               "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}.",
               "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
             }
-          },
+          }
+        },
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
           "stepper": {
             "dbVersion": "DATABASE VERSION",
             "upgradeMethod": "UPGRADE METHOD",
@@ -345,6 +350,7 @@
               "rolling": "Rolling upgrade",
               "concurrent": "Concurrent upgrade of all nodes."
             },
+            "concurrentUpgradeDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the upgrade is in progress.",
             "recommendationLabel": "Recommendation",
             "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
           },
@@ -391,19 +397,8 @@
           "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
           "upgradedAzsLabel": "Upgraded AZs:",
           "submitLabel": "Proceed to Roll Back",
-          "rollingOptions": {
-            "maxNodesPerBatch": "Max nodes per batch:",
-            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
-            "waitBetweenBatches": "Wait between batches:",
-            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers)."
-          },
           "toast": {
             "rollbackFailedLabel": "Rollback request failed"
-          },
-          "validation": {
-            "maxNodesPerBatchMinimum": "Must be at least 1.",
-            "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
-            "waitBetweenBatchesMin": "Must be 0 or greater."
           }
         },
         "finalizeModal": {
@@ -654,6 +649,18 @@
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
       },
+      "multiTenancy": {
+        "modalTitle": "Edit multi-tenancy (QoS)",
+        "toggleLabel": "Enable QoS multi-tenancy",
+        "subText": "Configure QoS-based multi-tenancy for YSQL. Requires cgroup support, compatible DB version, and YSQL-only access (YCQL disabled).",
+        "cpuPercentLabel": "Max DB CPU % (qosMaxDbCpuPercent)",
+        "cpuPercentHelper": "0–100",
+        "dbCountLabel": "Max DB count (qosMaxDbCount)",
+        "dbCountHelper": "Integer ≥ 1",
+        "changeWarningRf3": "<strong>Note!</strong> Changing multi-tenancy may require a rolling restart of <strong>{{universeName}}</strong>.",
+        "changeWarningRf1": "<strong>Note!</strong> Changing multi-tenancy may require a restart of <strong>{{universeName}}</strong>.",
+        "requestFailedLabel": "Request to update YSQL settings failed"
+      },
       "supportBundle": {
         "editCustomPrometheusQueriesModal": {
           "title": "Custom Queries",
@@ -823,6 +830,7 @@
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
+        "requiresRestart": "RESTART REQUIRED",
         "addRow": "Add Row",
         "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
@@ -2809,6 +2817,7 @@
       "actions": {
         "retry": "Retry",
         "abort": "Abort",
+        "rollback": "Rollback",
         "diffs": {
           "Update": "View Universe Changes",
           "SoftwareUpgrade": "View Software Upgrade Changes",
@@ -2820,10 +2829,14 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
+          "rollbackConfirmTitle": "Rollback Task ?",
+          "rollbackConfirmMsg": "Do you really want to rollback this task?",
           "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
-          "taskRetryFailed": "Task retry failed"
+          "taskRetryFailed": "Task retry failed",
+          "taskRollbackSuccess": "Task rollback started",
+          "taskRollbackFailed": "Task rollback failed"
         }
       },
       "info": {

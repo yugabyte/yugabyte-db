@@ -456,6 +456,13 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						 errmsg("only system tables may have row_type_oid set")));
 			specifies_type_oid = true;
 		}
+		else if (strcmp(def->defname, "yb_presplit") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption for SPLIT options.
+			 * reloptions parsing will handle the value.
+			 */
+		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2273,11 +2280,29 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 
 		index->indexIncludingParams = lappend(index->indexIncludingParams, iparam);
 	}
-	/* Copy reloptions if any */
+	/* Copy reloptions if any, but filter out yb_presplit */
 	datum = SysCacheGetAttr(RELOID, ht_idxrel,
 							Anum_pg_class_reloptions, &isnull);
 	if (!isnull)
-		index->options = untransformRelOptions(datum);
+	{
+		List	   *options = untransformRelOptions(datum);
+		ListCell   *lc;
+		List	   *filtered_options = NIL;
+
+		/*
+		 * YB: Filter out yb_presplit from copied options. Split options
+		 * should not be copied via LIKE INCLUDING ALL - the new index
+		 * should use default split behavior.
+		 */
+		foreach(lc, options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") != 0)
+				filtered_options = lappend(filtered_options, def);
+		}
+		index->options = filtered_options;
+	}
 
 	/* If it's a partial index, decompile and append the predicate */
 	datum = SysCacheGetAttr(INDEXRELID, ht_idx,

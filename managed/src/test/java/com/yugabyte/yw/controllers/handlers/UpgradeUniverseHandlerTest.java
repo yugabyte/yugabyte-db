@@ -1464,7 +1464,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
 
@@ -1613,7 +1613,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = otherTaskUUID;
+              details.placementModificationTaskUuid = otherTaskUUID;
               universe.setUniverseDetails(details);
             });
 
@@ -1688,7 +1688,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
 

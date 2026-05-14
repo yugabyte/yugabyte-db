@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -870,6 +871,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRetries() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     UniverseDefinitionTaskParams taskParams = getTaskParams(true);
     UniverseDefinitionTaskParams.UserIntent intent =
         taskParams.getPrimaryCluster().userIntent.clone();

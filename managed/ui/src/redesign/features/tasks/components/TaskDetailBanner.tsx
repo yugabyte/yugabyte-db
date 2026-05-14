@@ -21,15 +21,16 @@ import { TaskInProgressBanner } from './bannerComp/TaskInProgressBanner';
 import { TaskSuccessBanner } from './bannerComp/TaskSuccessBanner';
 import { TaskFailedBanner } from './bannerComp/TaskFailedBanner';
 import { TaskFailedSoftwareUpgradeBanner } from './bannerComp/TaskFailedSoftwareUpgradeBanner';
-import { isSoftwareUpgradeFailed, useIsTaskNewUIEnabled } from '../TaskUtils';
-import { hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
-import { Task, TaskState } from '../dtos';
 import {
   getIsDbUpgradeFinalizeTask,
   getIsDbUpgradePrecheckTask,
   getIsDbUpgradeRollbackTask,
-  getIsDbUpgradeTask
-} from '../utils/dbUpgradeTaskUtils';
+  getIsDbUpgradeTask,
+  isSoftwareUpgradeFailed,
+  useIsTaskNewUIEnabled
+} from '../TaskUtils';
+import { hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
+import { Task, TaskState } from '../dtos';
 import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTaskBanner';
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
@@ -154,6 +155,10 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   if (universeUUID && task?.targetUUID !== universeUUID) return null;
 
   if (!task) return null;
+
+  if (universeRuntimeConfigsQuery.isLoading) {
+    return null;
+  }
 
   if (isCanaryUpgradeEnabled) {
     if (getIsDbUpgradePrecheckTask(task)) {

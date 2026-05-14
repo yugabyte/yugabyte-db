@@ -150,9 +150,12 @@ class PgGlobalViewsTest : public LibPqTestBase {
 
   void VerifyQueryPushdowns(
       TestThreadHolder* thread_holder, const std::string& wait_string) {
+    // Append "\n" so the substring match only succeeds when wait_string is the
+    // exact suffix of the log line, i.e. the complete pushed-down query.
+    auto exact_wait_string = Format("$0\n", wait_string);
     for (int i = 0; i < GetNumTabletServers(); ++i) {
-      thread_holder->AddThreadFunctor([this, wait_string, i]() {
-        ASSERT_OK(LogWaiter(cluster_->tablet_server(i), wait_string).WaitFor(30s));
+      thread_holder->AddThreadFunctor([this, exact_wait_string, i]() {
+        ASSERT_OK(LogWaiter(cluster_->tablet_server(i), exact_wait_string).WaitFor(30s));
       });
     }
   }
@@ -197,7 +200,7 @@ TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query, calls "
     "FROM public.partial_pgss_with_tserver_uuid "
-    "WHERE ((query ~~ 'INSERT INTO tbl %'))");
+    "WHERE ((query ~~ 'INSERT INTO tbl %')) ORDER BY calls DESC NULLS FIRST");
 
   auto res = ASSERT_RESULT((conn_->FetchRow<std::string, int64_t>(R"(
       SELECT query, calls FROM gv$partial_pg_stat_statements
@@ -360,6 +363,45 @@ TEST_F(PgGlobalViewsTest, TestPermissions) {
   result = user_conn.Fetch(kQuery);
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "permission denied");
+}
+
+TEST_F(PgGlobalViewsTest, TestTserverDownBetweenPrepareAndExecute) {
+  ASSERT_OK(conn_->Execute(R"(
+      PREPARE gv_stmt AS
+      SELECT tserver_uuid, query, calls FROM gv$partial_pg_stat_statements
+      WHERE query LIKE 'INSERT INTO tbl %'
+      ORDER BY calls ASC)"));
+
+  constexpr auto kTserverIdxDown = 1;
+  cluster_->tablet_server(kTserverIdxDown)->Shutdown();
+
+  std::vector<std::string> warnings;
+  conn_->SetNoticeProcessor(
+      [](void* arg, const char* message) {
+        static_cast<std::vector<std::string>*>(arg)->emplace_back(message);
+      },
+      &warnings);
+
+  auto res = ASSERT_RESULT(
+      (conn_->FetchRows<Uuid, std::string, int64_t>("EXECUTE gv_stmt")));
+
+  // Verify partial results: only surviving tservers return rows.
+  std::vector<std::tuple<Uuid, std::string, int64_t>> expected;
+  for (int i = 0; i < GetNumTabletServers(); ++i) {
+    if (i == kTserverIdxDown) {
+      continue;
+    }
+    expected.emplace_back(
+        ASSERT_RESULT(Uuid::FromHexStringBigEndian(cluster_->tablet_server(i)->uuid())),
+        Format(kInsertQuery, "$1"),
+        i + 1);
+  }
+  ASSERT_EQ(expected, res);
+
+  // Verify exactly one warning was emitted for the downed tserver.
+  ASSERT_EQ(warnings.size(), 1);
+  auto down_uuid = cluster_->tablet_server(kTserverIdxDown)->uuid();
+  ASSERT_STR_CONTAINS(warnings[0], Format("global view: skipping tserver $0", down_uuid));
 }
 
 TEST_F(PgGlobalViewsExceedRpcMaxSizeTest, YB_DISABLE_TEST_IN_SANITIZERS(TestDataExceedsRpcSize)) {
