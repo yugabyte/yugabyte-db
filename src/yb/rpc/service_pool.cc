@@ -136,7 +136,8 @@ METRIC_DEFINE_counter(server, rpcs_started_processing,
 METRIC_DEFINE_gauge_int64(server, rpc_queue_max_size,
                            "RPC Queue Max Size",
                            yb::MetricUnit::kRequests,
-                           "Maximum number of RPCs that can be queued before the service queue is considered full.");
+                           "Maximum number of RPCs that can be queued before the service "
+                           "queue is considered full.");
 
 METRIC_DEFINE_gauge_int64(server, rpcs_queue_high_water_mark,
                            "RPC Queue High Water Mark",
