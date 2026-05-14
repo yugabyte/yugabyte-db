@@ -736,6 +736,15 @@ extern bool yb_force_catalog_update_on_next_ddl;
 extern bool yb_test_fail_all_drops;
 
 /*
+ * If set to true, force invalidation of every base relation's index relcache
+ * entries between add_base_rels_to_query() and make_one_rel() in
+ * query_planner().  Used by tests to deterministically expose lazy-loading
+ * bugs where planner code reads relcache fields (e.g. rd_indexprs) that get
+ * reset by a mid-planning invalidation.
+ */
+extern bool yb_test_invalidate_relcache_in_planner;
+
+/*
  * If set to true, next increment catalog version operation will fail and
  * reset this back to false.
  */
@@ -1656,4 +1665,5 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 															size_t trace_context_len,
 															char *traceparent_out);
 
+extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
 #endif							/* PG_YB_UTILS_H */
