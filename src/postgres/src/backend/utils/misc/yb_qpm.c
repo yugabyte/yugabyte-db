@@ -200,8 +200,7 @@ static void qpmCleanUpAfterInsert(bool freePlanText, char *planText,
 								  bool freeParamText, char *paramText,
 								  bool freeHintText, char *hintText);
 static bool qpmInsert(uint32 databaseId, uint32 userid, uint64 queryId, uint64 planId,
-					  char *hintText,
-					  char *planText, QueryDesc *queryDesc,
+					  char *hintText, char *planText, char *paramText, QueryDesc *queryDesc,
 					  TimestampTz *firstsedTime, TimestampTz *lastUsedTime,
 					  double totalTime, double estTotalCost);
 static long qpmNumEntries();
@@ -797,7 +796,7 @@ qpmProcess(QueryDesc *queryDesc)
 		 * Insert or update an entry.
 		 */
 		qpmInsert(0, 0, queryDesc->plannedstmt->queryId, 0,
-				  NULL, NULL,
+				  NULL, NULL, NULL,
 				  queryDesc, NULL, NULL, 0.0, 0.0);
 	}
 }
@@ -931,6 +930,8 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 
 		if (queryDesc->totaltime != NULL)
 		{
+			Assert(queryDesc->totaltime->total > 0.0);
+
 			/*
 			 * Get the total elapsed time from the query descriptor.
 			 */
@@ -941,11 +942,32 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 }
 
 /*
+ * Copy src into dest if destSize is large enough. Otherwise, compress
+ * src and store the compressed string. Both src and dest are assumed
+ * to be null-terminated.
+ */
+static size_t
+qpmCopyOrCompress(char *src, char *dest, size_t destSize, size_t originalSize)
+{
+	size_t compressedSize;
+
+	if (originalSize + 1 < destSize)
+	{
+		strcpy(dest, src);
+		compressedSize = 0;
+	}
+	else
+		compressedSize = qpmCompress(src, (Bytef *) dest, destSize);
+
+	return compressedSize;
+}
+
+/*
  * Insert or update an entry.
  */
 static bool
 qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
-		  char *hintText, char *planText,
+		  char *hintText, char *planText, char *paramText,
 		  QueryDesc *queryDesc, TimestampTz *firstUsedTime,
 		  TimestampTz *lastUsedTime, double totalTime,
 		  double estTotalCost)
@@ -965,7 +987,6 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 	YbQpmLruEntry *lruEntry = NULL;
 	bool		found;
 	TimestampTz currentTs;
-	char	   *paramText = NULL;
 	bool		freeHintText = false;
 	bool		freePlanText = false;
 	bool		freeParamText = false;
@@ -1015,14 +1036,51 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 		else
 			hashEntry->lastUsedTime = *lastUsedTime;
 
+		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->totaltime != NULL)
+			/*
+			 * Get the total elapsed time from the query descriptor.
+			 */
+			totalTime = queryDesc->totaltime->total;
+
 		if (totalTime > 0.0)
 		{
 			hashEntry->timing.totalTime += totalTime;
 			hashEntry->timing.estTotalCost += estTotalCost;
-			if (totalTime > hashEntry->timing.worstTotalTime)
-				hashEntry->timing.worstTotalTime = totalTime;
 
 			++(hashEntry->timing.cnt);
+
+			if (totalTime > hashEntry->timing.worstTotalTime)
+			{
+				if (queryDesc != NULL && queryDesc->params != NULL)
+				{
+					/*
+					 * If we have parameters, and the time is worse than that seen so far, update
+					 * the worst params text.
+					 *
+					 * We are holding an X lock. We could call BuildParamLogString()
+					 * and qpmCopyOrCompress() before acquiring the lock but may do unnecessary
+					 * work in that case so leaving both calls inside the X lock scope.
+					 * We have to hold the lock while hashEntry is updated.
+					 */
+					char *paramTextLocal = BuildParamLogString(queryDesc->params, NULL, -1);
+
+					if (paramTextLocal != NULL)
+					{
+						hashEntry->originalWorstParamTextSize = strlen(paramTextLocal);
+						hashEntry->compressedWorstParamTextSize =
+							qpmCopyOrCompress(paramTextLocal,
+											  hashEntry->worstParamText,
+											  QPM_PARAM_TEXT_SIZE,
+											  hashEntry->originalWorstParamTextSize);
+						pfree(paramTextLocal);
+					}
+				}
+
+				/*
+				 * Update worst time.
+				 */
+				hashEntry->timing.worstTotalTime = totalTime;
+			}
 		}
 	}
 	else
@@ -1061,7 +1119,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 			 */
 			if (hintText != NULL)
 				inserted = qpmInsert(databaseId, userId, queryId, planId, hintText, planText,
-									 (QueryDesc *) NULL, (TimestampTz *) NULL,
+									 paramText, (QueryDesc *) NULL, (TimestampTz *) NULL,
 									 (TimestampTz *) NULL, totalTime, estTotalCost);
 
 			qpmCleanUpAfterInsert(freePlanText, planText, freeParamText, paramText,
@@ -1115,22 +1173,11 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			/* Remember the original size of the hint text. */
 			hashEntry->originalHintTextSize = strlen(hintText);
-
-			/*
-			 * Insert hint text, compressing if necessary,
-			 */
-			if (hashEntry->originalHintTextSize + 1 < QPM_HINT_TEXT_SIZE)
-			{
-				/* Hint text fits in the slot so copy it. */
-				strcpy(hashEntry->hintText, hintText);
-				hashEntry->compressedHintTextSize = 0;
-			}
-			else
-				/* Compress the text. */
-				hashEntry->compressedHintTextSize \
-					= qpmCompress(hintText,
-								  (Bytef *) (hashEntry->hintText),
-								  QPM_HINT_TEXT_SIZE);
+			hashEntry->compressedHintTextSize =
+				qpmCopyOrCompress(hintText,
+								  hashEntry->hintText,
+								  QPM_HINT_TEXT_SIZE,
+								  hashEntry->originalHintTextSize);
 
 			Assert(planText != NULL);
 
@@ -1138,41 +1185,20 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 			 * Insert plan text, compressing (or truncating) if necessary,
 			 */
 			hashEntry->originalPlanTextSize = strlen(planText);
+			hashEntry->compressedPlanTextSize =
+				qpmCopyOrCompress(planText,
+								  hashEntry->planText,
+								  QPM_PLAN_TEXT_SIZE,
+								  hashEntry->originalPlanTextSize);
 
-			if (hashEntry->originalPlanTextSize + 1 <
-				QPM_PLAN_TEXT_SIZE)
-			{
-				strcpy(hashEntry->planText, planText);
-				hashEntry->compressedPlanTextSize = 0;
-			}
-			else
-				hashEntry->compressedPlanTextSize
-					= qpmCompress(planText,
-								  (Bytef *) (hashEntry->planText),
-								  QPM_PLAN_TEXT_SIZE);
-
-			/*
-			 * Check for param text.
-			 */
 			if (paramText != NULL)
 			{
-				/*
-				 * Insert hint text, compressing (or truncating) if necessary,
-				 */
-				hashEntry->originalWorstParamTextSize
-					= strlen(paramText);
-
-				if (hashEntry->originalWorstParamTextSize + 1 <
-					QPM_PARAM_TEXT_SIZE)
-				{
-					strcpy(hashEntry->worstParamText, paramText);
-					hashEntry->compressedWorstParamTextSize = 0;
-				}
-				else
-					hashEntry->compressedWorstParamTextSize
-						= qpmCompress(paramText,
-									  (Bytef *) (hashEntry->worstParamText),
-									  QPM_PARAM_TEXT_SIZE);
+				hashEntry->originalWorstParamTextSize = strlen(paramText);
+				hashEntry->compressedWorstParamTextSize =
+					qpmCopyOrCompress(paramText,
+									  hashEntry->worstParamText,
+									  QPM_PARAM_TEXT_SIZE,
+									  hashEntry->originalWorstParamTextSize);
 			}
 
 			lruEntry->referenced = true;
@@ -1711,7 +1737,7 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 
 	/* Insert or update the entry. */
 	bool		inserted = qpmInsert(databaseid, userid, (uint64) queryId, (uint64) planId,
-									 hintBuffer, planBuffer, NULL,
+									 hintBuffer, planBuffer, NULL, NULL,
 									 &firstUsedTime, &lastUsedTime, totalTime,
 									 estTotalCost);
 
