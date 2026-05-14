@@ -1,5 +1,4 @@
 # This file determines the jobs that we run in this branch on Jenkins.
-# TESTING pipeline with jj change
 # Default architecture is x86_64
 jobs:
   - os: alma9
