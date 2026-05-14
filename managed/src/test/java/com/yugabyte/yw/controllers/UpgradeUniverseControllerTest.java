@@ -611,7 +611,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
               details.softwareUpgradeState = SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               u.setUniverseDetails(details);
             });
 

@@ -604,8 +604,14 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   return Status::OK();
 }
 
-Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
-                                     ListSnapshotsResponsePB* resp) {
+Status CatalogManager::ListSnapshots(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp) {
+  return ListSnapshotsInternal(req, resp);
+}
+
+Status CatalogManager::ListSnapshotsInternal(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
+    bool skip_missing_tables) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (req->prepare_for_backup() && !txn_snapshot_id) {
     return STATUS(
@@ -617,14 +623,15 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   bool include_ddl_in_progress_tables =
       req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
+    RETURN_NOT_OK(
+        RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables, skip_missing_tables));
   }
 
   return Status::OK();
 }
 
 Status CatalogManager::RepackSnapshotsForBackup(
-    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables, bool skip_missing_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
   // Repack & extend the backup row entries.
@@ -657,6 +664,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
         TRACE("Looking up table");
         scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
         if (table_info == nullptr) {
+          if (skip_missing_tables) {
+            LOG(INFO) << Format(
+                "While repacking a snapshot couldn't find snapshotted table $0 in memory, skipping",
+                entry.id());
+            tables_to_skip.insert(entry.id());
+            continue;
+          }
           return STATUS(
               InvalidArgument, "Table not found by ID", entry.id(),
               MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
@@ -1318,13 +1332,14 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
-Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id) {
+Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForClone(const TxnSnapshotId& snapshot_id) {
   ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   req.set_prepare_for_backup(true);
   RETURN_NOT_OK_PREPEND(
-      ListSnapshots(&req, &resp), Format("Failed to list snapshot: $0", snapshot_id));
+      ListSnapshotsInternal(&req, &resp, /* skip_missing_tables */ true),
+      Format("Failed to list snapshot: $0", snapshot_id));
   if (resp.snapshots().size() < 1) {
     return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
   }
@@ -1366,7 +1381,7 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
   // Get the SnapshotInfoPB, save the set of tablets it contained, and clear backup_entries.
   // backup_entries will be repopulated with the set of tablets that were running at read_time
   // later when reading from DocDB as of read_time.
-  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForBackup(snapshot_id));
+  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForClone(snapshot_id));
   std::unordered_set<TabletId> snapshotted_tablets;
   for (auto& backup_entry : snapshot_info.backup_entries()) {
     if (backup_entry.entry().type() == SysRowEntryType::TABLET) {

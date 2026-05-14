@@ -34,7 +34,13 @@ describe('classifyDbUpgradeStages', () => {
 
   const createDbUpgradeTask = (
     softwareUpgradeProgress: SoftwareUpgradeProgress | null | undefined
-  ): Task => ({ softwareUpgradeProgress }) as Task;
+  ): Task =>
+    ({
+      details: {
+        taskDetails: [],
+        ...(softwareUpgradeProgress != null ? { softwareUpgradeProgress } : {})
+      }
+    }) as Task;
 
   it('return type matches DbUpgradeStages', () => {
     expectTypeOf(

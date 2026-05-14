@@ -4,10 +4,6 @@
 -- by the test framework, simulating per-node data like pg_stat_statements.
 --
 
--- The global views RPC handler connects to template1 on remote tservers,
--- so all objects must be created in template1.
-\c template1
-
 -- Install required extensions
 CREATE EXTENSION file_fdw;
 CREATE EXTENSION postgres_fdw;
@@ -504,8 +500,317 @@ WHERE is_high_value(metric_value)
 ORDER BY node_id, metric_name;
 
 --
+-- Global views for yb_active_session_history and pg_stat_statements.
+-- These tests only verify EXPLAIN plans (no data verification).
+--
+
+-- TODO(#30591): Remove the setup phase once the default views are created.
+CREATE VIEW yb_active_session_history_with_tserver_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS tserver_uuid, *
+    FROM yb_active_session_history;
+
+CREATE VIEW pg_stat_statements_with_tserver_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS tserver_uuid, *
+    FROM pg_stat_statements(true);
+
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
+    tserver_uuid UUID,
+    sample_time TIMESTAMPTZ,
+    root_request_id UUID,
+    rpc_request_id BIGINT,
+    wait_event_component TEXT,
+    wait_event_class TEXT,
+    wait_event TEXT,
+    top_level_node_id UUID,
+    query_id BIGINT,
+    pid INT,
+    client_node_ip TEXT,
+    wait_event_aux TEXT,
+    sample_weight REAL,
+    wait_event_type TEXT,
+    ysql_dbid OID,
+    wait_event_code BIGINT,
+    pss_mem_bytes BIGINT,
+    ysql_userid OID
+)
+SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'yb_active_session_history_with_tserver_uuid');
+
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
+    tserver_uuid UUID,
+    userid OID,
+    dbid OID,
+    toplevel BOOL,
+    queryid BIGINT,
+    query TEXT,
+    plans INT8,
+    total_plan_time FLOAT8,
+    min_plan_time FLOAT8,
+    max_plan_time FLOAT8,
+    mean_plan_time FLOAT8,
+    stddev_plan_time FLOAT8,
+    calls INT8,
+    total_exec_time FLOAT8,
+    min_exec_time FLOAT8,
+    max_exec_time FLOAT8,
+    mean_exec_time FLOAT8,
+    stddev_exec_time FLOAT8,
+    rows INT8,
+    shared_blks_hit INT8,
+    shared_blks_read INT8,
+    shared_blks_dirtied INT8,
+    shared_blks_written INT8,
+    local_blks_hit INT8,
+    local_blks_read INT8,
+    local_blks_dirtied INT8,
+    local_blks_written INT8,
+    temp_blks_read INT8,
+    temp_blks_written INT8,
+    blk_read_time FLOAT8,
+    blk_write_time FLOAT8,
+    temp_blk_read_time FLOAT8,
+    temp_blk_write_time FLOAT8,
+    wal_records INT8,
+    wal_fpi INT8,
+    wal_bytes NUMERIC,
+    jit_functions INT8,
+    jit_generation_time FLOAT8,
+    jit_inlining_count INT8,
+    jit_inlining_time FLOAT8,
+    jit_optimization_count INT8,
+    jit_optimization_time FLOAT8,
+    jit_emission_count INT8,
+    jit_emission_time FLOAT8,
+    yb_latency_histogram JSONB,
+    docdb_read_rpcs INT8,
+    docdb_write_rpcs INT8,
+    catalog_wait_time FLOAT8,
+    docdb_read_operations INT8,
+    docdb_write_operations INT8,
+    docdb_rows_scanned INT8,
+    docdb_rows_returned INT8,
+    docdb_wait_time FLOAT8,
+    conflict_retries INT8,
+    read_restart_retries INT8,
+    total_retries INT8,
+    docdb_obsolete_rows_scanned INT8,
+    docdb_seeks INT8,
+    docdb_nexts INT8,
+    docdb_prevs INT8,
+    docdb_read_time FLOAT8,
+    docdb_write_time FLOAT8
+)
+SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_tserver_uuid');
+
+-- ASH with current_timestamp (stable, not pushed down)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query_id,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+
+-- ASH with literal timestamp (immutable, pushed down)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query_id,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+
+-- ASH JOIN pg_stat_statements with current_timestamp
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+
+-- ASH JOIN pg_stat_statements with literal timestamp
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+
+-- ASH JOIN pg_stat_statements with ORDER BY only on ASH
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+
+-- ASH JOIN pg_stat_statements with ORDER BY only on pg_stat_statements
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query
+LIMIT 10;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT query_id, queryid
+FROM "gv$yb_active_session_history"
+JOIN "gv$pg_stat_statements" ON query_id = queryid;
+
+--
+-- Rescan correctness: Nested Loop is forced by disabling competing
+-- join strategies, so postgresReScanForeignScan is exercised.
+--
+CREATE TABLE gv_driver_nodes (node_id int, label text);
+INSERT INTO gv_driver_nodes VALUES (1, 'first'), (3, 'third');
+
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT d.label, gv.metric_name, gv.event_count
+FROM gv_driver_nodes d, "gv$node_metrics" gv
+WHERE gv.node_id = d.node_id
+ORDER BY d.label, gv.metric_name;
+
+SELECT d.label, gv.metric_name, gv.event_count
+FROM gv_driver_nodes d, "gv$node_metrics" gv
+WHERE gv.node_id = d.node_id
+ORDER BY d.label, gv.metric_name;
+
+RESET enable_material;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+DROP TABLE gv_driver_nodes;
+
+--
+-- Non-decomposable aggregates must NOT be pushed down as partial
+-- aggregates to individual tservers. Verify the aggregate runs locally.
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT string_agg(metric_name, ', ' ORDER BY metric_name)
+FROM "gv$node_metrics"
+WHERE node_id = 1;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT array_agg(DISTINCT metric_name ORDER BY metric_name)
+FROM "gv$node_metrics"
+WHERE node_id = 1;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT COUNT(DISTINCT metric_name)
+FROM "gv$node_metrics";
+
+--
 -- Cleanup
 --
+DROP FOREIGN TABLE "gv$pg_stat_statements";
+DROP FOREIGN TABLE "gv$yb_active_session_history";
+DROP VIEW pg_stat_statements_with_tserver_uuid;
+DROP VIEW yb_active_session_history_with_tserver_uuid;
 DROP FOREIGN TABLE "gv$node_metrics";
 DROP FOREIGN TABLE local_node_metrics;
 DROP SERVER gv_server CASCADE;

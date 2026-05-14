@@ -1,0 +1,8 @@
+# src/test/regress/yb_split_options_schedule
+#
+####################################################################################################
+# This testsuite tests the yb_presplit reloption and SPLIT INTO/SPLIT AT syntax preservation.
+# Tests verify that tablet split settings are correctly stored in reloptions.
+####################################################################################################
+
+test: yb.orig.split_options

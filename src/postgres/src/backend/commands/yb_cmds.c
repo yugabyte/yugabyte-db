@@ -854,6 +854,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	}
 
 	YbOptSplit *split_options = stmt->split_options;
+
 	bool		is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																		 namespaceId,
 																		 schema_name);
@@ -1793,6 +1794,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 					if (strncmp(def->defname, "yb_auto_analyze_",
 								strlen("yb_auto_analyze_")) == 0)
+						continue;
+
+					if (strcmp(def->defname, "yb_presplit") == 0)
 						continue;
 
 					ereport(NOTICE,

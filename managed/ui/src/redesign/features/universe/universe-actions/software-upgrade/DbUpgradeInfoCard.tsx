@@ -1,6 +1,5 @@
 import { makeStyles, Typography } from '@material-ui/core';
-import { YBTooltip } from '@yugabyte-ui-library/core';
-import clsx from 'clsx';
+import { YBTag, YBTooltip } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 
@@ -219,10 +218,9 @@ export const DbUpgradeInfoCard = ({
       </div>
 
       <div className={classes.upgradeRestrictionsBox}>
-        <div className={clsx(pillClasses.pill, pillClasses.metadataWhite)}>
-          <UnavailableIcon width={16} height={16} />
-          <Typography variant="subtitle1">{t('temporaryRestrictions')}</Typography>
-        </div>
+        <YBTag size="medium" variant="light" startIcon={<UnavailableIcon width={16} height={16} />}>
+          {t('temporaryRestrictions')}
+        </YBTag>
         <ul>
           <li>
             <Trans

@@ -26,7 +26,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_validators.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -47,16 +46,9 @@ DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
-                    "Use shared memory for executing read and write pg client queries");
-
-DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
-    "Whether to use shared memory fastpath for shared object locks.");
-
-DEFINE_validator(pg_client_use_shared_memory,
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_lock_fastpath));
-DEFINE_validator(enable_object_lock_fastpath,
-    FLAG_REQUIRES_FLAG_VALIDATOR(pg_client_use_shared_memory));
+DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_lock_fastpath);
 
 using namespace std::literals;
 
@@ -260,7 +252,7 @@ TServerSharedData::TServerSharedData() {
 TServerSharedData::~TServerSharedData() = default;
 
 Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
-  if (FLAGS_enable_object_lock_fastpath) {
+  if (FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks) {
     object_lock_state_ =
         VERIFY_RESULT(allocator.MakeUnique<docdb::ObjectLockSharedState>(allocator));
   }

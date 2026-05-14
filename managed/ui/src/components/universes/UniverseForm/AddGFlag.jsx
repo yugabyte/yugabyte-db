@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { get } from 'lodash';
 import { Field } from 'formik';
 import clsx from 'clsx';
+import { Box } from '@material-ui/core';
 import { ListGroupItem, ListGroup, Row, Col, Badge } from 'react-bootstrap';
 import { YBButton, YBFormInput, YBInputField } from '../../common/forms/fields';
 import { YBLabel } from '../../common/descriptors';
@@ -15,20 +16,16 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import Bulb from '../images/bulb.svg?img';
 import BookOpen from '../images/book_open.svg?img';
 import WarningIcon from '../../../redesign/assets/warning-triangle.svg';
+import AlertIcon from '../../../redesign/assets/alert-solid.svg';
 // Styles
 import './UniverseForm.scss';
+import { YBAlert, YBTag, YBTooltip } from '@yugabyte-ui-library/core';
 
 const AUDIT_LOG_FLAG = 'ysql_pg_conf_csv';
 
 const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags = {} }) => {
-  const {
-    mode,
-    server,
-    dbVersion,
-    existingFlags,
-    isGFlagMultilineConfEnabled,
-    editMode
-  } = gFlagProps;
+  const { mode, server, dbVersion, existingFlags, isGFlagMultilineConfEnabled, editMode } =
+    gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -63,7 +60,8 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
       ...gFlagProps,
       flagname: flag?.name,
       flagvalue: isDefinedNotNull(existingFlagValue) ? existingFlagValue : flagvalue,
-      tags: flag?.tags
+      tags: flag?.tags,
+      requiresRestart: flag?.requiresRestart
     });
   };
 
@@ -99,9 +97,15 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
         formProps.setValues({
           ...gFlagProps,
           flagvalue: flag?.data[defaultKey],
-          tags: flag?.data?.tags
+          tags: flag?.data?.tags,
+          requiresRestart: flag?.data?.requiresRestart
         });
-      } else formProps.setValues({ ...gFlagProps, tags: flag?.data?.tags });
+      } else
+        formProps.setValues({
+          ...gFlagProps,
+          tags: flag?.data?.tags,
+          requiresRestart: flag?.data?.requiresRestart
+        });
       setLoader(false);
     } catch (e) {
       setAPIError(e?.error);
@@ -216,8 +220,8 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
     const defaultKey = Object.hasOwn(selectedFlag ?? {}, 'current')
       ? 'current'
       : Object.hasOwn(selectedFlag ?? {}, 'default')
-      ? 'default'
-      : 'target';
+        ? 'default'
+        : 'target';
 
     const disableInputs = get(disabledFlags, selectedFlag?.name, false);
     switch (flag?.type) {
@@ -358,7 +362,30 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
           {get(disabledFlags, selectedFlag?.name, false) && pgBanner}
           {editMode && selectedFlag?.name === AUDIT_LOG_FLAG && auditLogBanner}
           <div className="gflag-detail-container">
-            <span className="flag-detail-header">Flag Details</span>
+            <Box display={'flex'} flexDirection={'row'} justifyContent={'space-between'}>
+              <Box>
+                <span className="flag-detail-header">Flag Details</span>
+              </Box>
+              {selectedFlag?.requiresRestart && (
+                <YBTooltip
+                  title={
+                    <>
+                      {'Changes to this flag take effect'}
+                      <br />
+                      {'only after a cluster restart.'}
+                    </>
+                  }
+                  PopperProps={{ style: { zIndex: 4000, pointerEvents: 'auto' } }}
+                >
+                  <span>
+                    <YBTag endIcon={<AlertIcon />} color="warning" size="medium" variant="light">
+                      {'Requires restart'}
+                    </YBTag>
+                  </span>
+                </YBTooltip>
+              )}
+            </Box>
+
             {renderFieldInfo('Name', selectedFlag?.name)}
             {renderFieldInfo('Description', selectedFlag?.meaning)}
             <div className="gflag-detail-value">
@@ -369,6 +396,12 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
                     <Badge className="gflag-badge">{selectedFlag[defaultKey]}</Badge>
                   </>
                 )}
+                {/* <Box mt={1}>
+                  <span className="gflag-description-title">{'Requires Restart'}</span>
+                  <Badge className="gflag-badge">
+                    {selectedFlag?.requiresRestart ? 'Yes' : 'No'}
+                  </Badge>
+                </Box> */}
                 {showDocLink && documentationLink}
               </FlexContainer>
               {/* <FlexContainer direction="column">placeholder to show min and max values</FlexContainer> */}

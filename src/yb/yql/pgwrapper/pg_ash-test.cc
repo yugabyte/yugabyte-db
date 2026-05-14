@@ -469,7 +469,7 @@ class PgAshNestedQueryTracking : public PgAshSingleNode {
   }
 
   static constexpr auto kOuterQuery = "INSERT INTO trig_outer SELECT k, v FROM trig_data";
-  static constexpr int kNumRows = 1000;
+  static constexpr int kNumRows = 10000;
 
   int64_t outer_query_id_;
   int64_t inner_query_id_;

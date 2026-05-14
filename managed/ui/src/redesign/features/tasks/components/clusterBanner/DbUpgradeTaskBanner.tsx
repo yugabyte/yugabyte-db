@@ -13,7 +13,7 @@ import { getUniverse, precheckSoftwareUpgrade } from '@app/v2/api/universe/unive
 import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
-import { getIsDbUpgradeTask } from '../../utils/dbUpgradeTaskUtils';
+import { getIsDbUpgradeTask } from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
 
@@ -37,7 +37,9 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUuid),
     () => getUniverse(universeUuid),
-    { enabled: !!universeUuid }
+    {
+      enabled: !!universeUuid && task.status === TaskState.SUCCESS
+    }
   );
 
   const dbUpgradeMetadataQuery = useQuery(
@@ -146,7 +148,10 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
             description={t('finalizeOrRollBack.description')}
           />
         );
-      } else {
+      } else if (
+        universeDetailsQuery.data?.info?.software_upgrade_state ===
+        UniverseInfoSoftwareUpgradeState.Ready
+      ) {
         bannerComponent = (
           <ClusterOperationBanner
             type={ClusterOperationBannerType.SUCCESS}

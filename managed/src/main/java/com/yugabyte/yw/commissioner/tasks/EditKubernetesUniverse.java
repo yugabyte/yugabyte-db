@@ -250,18 +250,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 primaryCluster.clusterType);
       }
       // read cluster edit.
-      for (Cluster cluster : taskParams().clusters) {
-        if (cluster.clusterType == ClusterType.ASYNC) {
-          // Use new master addresses for editing read cluster.
-          editCluster(
-              universe,
-              cluster,
-              universeDetails.getClusterByUuid(cluster.uuid),
-              masterAddresses,
-              masterAddresses /* existingMasterAddresses */,
-              mastersAddrChanged);
+      Cluster taskParamsAsyncCluster =
+          CollectionUtils.isNotEmpty(taskParams().getReadOnlyClusters())
+              ? taskParams().getReadOnlyClusters().get(0)
+              : null;
+      Cluster asyncCluster =
+          taskParamsAsyncCluster != null
+              ? taskParamsAsyncCluster
+              : (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+                  ? universe.getUniverseDetails().getReadOnlyClusters().get(0)
+                  : null);
+      if (taskParamsAsyncCluster != null || (asyncCluster != null && mastersAddrChanged)) {
+        // Use new master addresses for editing read cluster.
+        editCluster(
+            universe,
+            asyncCluster,
+            universeDetails.getClusterByUuid(asyncCluster.uuid),
+            masterAddresses,
+            masterAddresses /* existingMasterAddresses */,
+            mastersAddrChanged);
+        if (taskParamsAsyncCluster != null) {
           // Updating cluster in DB
-          createUpdateUniverseIntentTask(cluster);
+          createUpdateUniverseIntentTask(asyncCluster);
         }
       }
 
@@ -475,7 +485,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, fullMoveTserverAZs);
 
     masterAddressesChanged =
-        CollectionUtils.isNotEmpty(mastersToAdd) || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
+        masterAddressesChanged
+            || CollectionUtils.isNotEmpty(mastersToAdd)
+            || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.

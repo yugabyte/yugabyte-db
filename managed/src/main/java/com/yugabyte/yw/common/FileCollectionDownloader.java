@@ -427,6 +427,16 @@ public class FileCollectionDownloader {
         return false;
       }
 
+      // Fail fast on unreachable nodes; otherwise rm-over-SSH will burn the full cleanup timeout
+      // and surface as a generic "failed to clean up" instead of "node unreachable".
+      if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+        log.warn(
+            "Node {} is unreachable, skipping remote tar cleanup at {}",
+            node.nodeName,
+            remoteTarPath);
+        return false;
+      }
+
       nodeUniverseManager.runCommand(
           node, universe, List.of("rm", "-f", remoteTarPath), ShellProcessContext.DEFAULT);
       log.info("Cleaned up remote tar file {} on node {}", remoteTarPath, node.nodeName);
@@ -501,6 +511,18 @@ public class FileCollectionDownloader {
             .nodeAddress(node.cloudInfo.private_ip)
             .success(false)
             .errorMessage("No tar file path available for this node")
+            .downloadTimeMs(System.currentTimeMillis() - startTime)
+            .build();
+      }
+
+      // Fail fast on unreachable nodes; otherwise the per-node probes below swallow the
+      // connection error and surface as a misleading "Remote tar file not found".
+      if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+        return NodeDownloadResult.builder()
+            .nodeName(node.nodeName)
+            .nodeAddress(node.cloudInfo.private_ip)
+            .success(false)
+            .errorMessage("Node is unreachable")
             .downloadTimeMs(System.currentTimeMillis() - startTime)
             .build();
       }

@@ -363,20 +363,157 @@
   2 |  0 |  3 | 30952 |  5 |  9
 (5 rows)
 
-/* TODO(#29079): uncomment when fixing this issue.
--- yb_hash_code equality
-\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) = 28655 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
-\i :iter_P2
-
 -- yb_hash_code inequality
 \set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) < 12283 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
 \i :iter_P2
-*/; -- semicolon to avoid bleeding hints
+\set _echo_P :ECHO
+\set ECHO none
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=23 loops=1)
+               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
+               Index Cond: ((yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) < 12283) AND (h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 23
+(12 rows)
+
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
+         Presorted Key: h3r2n.r1, h3r2n.r2
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=6 loops=1)
+               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
+               Index Cond: ((yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) < 12283) AND (h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Merge Sort Key: h3r2n.r1, h3r2n.r2
+               Merge Stream Key: h3r2n.h1, h3r2n.h2, h3r2n.h3
+               Merge Streams: 18
+               Merge Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 16
+(17 rows)
+
+ r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
+----+----+-------+--------------+----+----+----
+  0 |  4 | 40735 |         4833 |  5 |  3 |  7
+  0 |  5 | 50737 |           80 |  7 |  3 |  7
+  1 |  0 |  1315 |        11597 |  5 |  1 |  3
+  1 |  0 |  1737 |           80 |  7 |  3 |  7
+  1 |  5 | 51737 |           80 |  7 |  3 |  7
+(5 rows)
+
+ r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
+----+----+-------+--------------+----+----+----
+  0 |  4 | 40735 |         4833 |  5 |  3 |  7
+  0 |  5 | 50737 |           80 |  7 |  3 |  7
+  1 |  0 |  1315 |        11597 |  5 |  1 |  3
+  1 |  0 |  1737 |           80 |  7 |  3 |  7
+  1 |  5 | 51737 |           80 |  7 |  3 |  7
+(5 rows)
+
+-- yb_hash_code equality
+-- Third hint is to use merge scan as the second hint ends up using sort.
+\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) = 28655 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Pnext :iter_Q3
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
+         Sort Method: quicksort
+         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=8 loops=1)
+               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
+               Index Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) = 28655) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 8
+(12 rows)
+
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
+         Sort Method: quicksort
+         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=8 loops=1)
+               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
+               Index Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) = 28655) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 8
+(12 rows)
+
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
+         Presorted Key: h3r2n.r1, h3r2n.r2
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=6 loops=1)
+               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
+               Index Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) = 28655) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Merge Sort Key: h3r2n.r1, h3r2n.r2
+               Merge Stream Key: h3r2n.h1, h3r2n.h2, h3r2n.h3
+               Merge Streams: 18
+               Merge Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 8
+(17 rows)
+
+ r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
+----+----+-------+--------------+----+----+----
+  0 |  7 | 70615 |        28655 |  5 |  1 |  6
+  3 |  2 | 23615 |        28655 |  5 |  1 |  6
+  3 |  8 | 83615 |        28655 |  5 |  1 |  6
+  4 |  4 | 44615 |        28655 |  5 |  1 |  6
+  4 |  6 | 64615 |        28655 |  5 |  1 |  6
+(5 rows)
+
+ r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
+----+----+-------+--------------+----+----+----
+  0 |  7 | 70615 |        28655 |  5 |  1 |  6
+  3 |  2 | 23615 |        28655 |  5 |  1 |  6
+  3 |  8 | 83615 |        28655 |  5 |  1 |  6
+  4 |  4 | 44615 |        28655 |  5 |  1 |  6
+  4 |  6 | 64615 |        28655 |  5 |  1 |  6
+(5 rows)
+
+ r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
+----+----+-------+--------------+----+----+----
+  0 |  7 | 70615 |        28655 |  5 |  1 |  6
+  3 |  2 | 23615 |        28655 |  5 |  1 |  6
+  3 |  8 | 83615 |        28655 |  5 |  1 |  6
+  4 |  4 | 44615 |        28655 |  5 |  1 |  6
+  4 |  6 | 64615 |        28655 |  5 |  1 |  6
+(5 rows)
+
 -- yb_hash_code IN
 -- Third hint is to use merge scan as the second hint ends up using sort.
 \set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
-\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
-\set Pnext :iter_Q3
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none

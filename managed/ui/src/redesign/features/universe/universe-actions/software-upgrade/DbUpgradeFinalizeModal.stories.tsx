@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import { withStorybookTasksReduxProvider } from '@app/mocks/storybook/storybookTasksRedux';
 import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { DbUpgradeFinalizeModal } from './DbUpgradeFinalizeModal';
@@ -20,7 +21,7 @@ const meta = {
   parameters: {
     layout: 'centered'
   },
-  decorators: [withCustomerId],
+  decorators: [withCustomerId, withStorybookTasksReduxProvider],
   args: {
     modalProps: {
       open: true,

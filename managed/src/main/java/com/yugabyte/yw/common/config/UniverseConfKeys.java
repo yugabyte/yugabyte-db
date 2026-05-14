@@ -1259,6 +1259,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Duration> comprehensivePrecheckCheckServiceLivenessTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.check_service_liveness_timeout",
+          ScopeType.UNIVERSE,
+          "CheckServiceLiveness timeout for comprehensive prechecks",
+          "Timeout for CheckServiceLiveness subtasks during comprehensive prechecks "
+              + "(universe create/edit and rolling upgrades).",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
       new ConfKeyInfo<>(
           "yb.checks.nodes_safe_to_take_down.parallelism",
@@ -1888,4 +1898,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancyTestUi =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy_test_ui",
+          ScopeType.UNIVERSE,
+          "Show multi-tenancy controls in the UI for testing",
+          "When true, YugabyteDB Anywhere shows a test UI for multi-tenancy (QoS). API enablement"
+              + " still requires yb.universe.allow_multi_tenancy.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

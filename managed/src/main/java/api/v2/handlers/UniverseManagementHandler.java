@@ -1368,6 +1368,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     if (nodeSelection == null) {
       return null;
     }
+    if (Boolean.TRUE.equals(nodeSelection.getMastersOnly())
+        && Boolean.TRUE.equals(nodeSelection.getTserversOnly())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "masters_only and tservers_only both cannot be true");
+    }
     int maxParallelNodes =
         nodeSelection.getMaxParallelNodes() != null
             ? nodeSelection.getMaxParallelNodes()

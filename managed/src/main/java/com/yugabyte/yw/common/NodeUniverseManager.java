@@ -802,6 +802,17 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
+   * Reachability pre-check for per-node platform APIs (run-script, file-collections, ...) that uses
+   * the shared {@code yb.node_script.reachability_check_timeout_sec} runtime flag so a single knob
+   * controls the timeout across all callers.
+   */
+  public boolean isNodeReachable(NodeDetails node, Universe universe) {
+    long timeoutSecs =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeScriptReachabilityCheckTimeoutSec);
+    return isNodeReachable(node, universe, timeoutSecs);
+  }
+
+  /**
    * Gets a map of all the absolute file paths to sizes at a given remote directory
    *
    * @param node

@@ -1,8 +1,6 @@
 import { useMemo, type ComponentType } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Provider } from 'react-redux';
-import { applyMiddleware, combineReducers, createStore, type Store } from 'redux';
-import promise from 'redux-promise';
 
 import { dbUpgradeManagementPanelMswHandlers } from '@app/mocks/mock-data/dbUpgradeManagementPanelMswHandlers';
 import {
@@ -13,9 +11,10 @@ import {
   DB_UPGRADE_TASK_MOCK_UNIVERSE_UUID
 } from '@app/mocks/mock-data/taskMocks';
 import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import { createStorybookTasksRootStore } from '@app/mocks/storybook/storybookTasksRedux';
 import { TaskState, type Task } from '@app/redesign/features/tasks/dtos';
 import type { UniverseSoftwareUpgradePrecheckResp } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import tasksReducer from '../../../../../reducers/reducer_tasks';
+
 import { TaskDetailDrawer } from '../TaskDetailDrawer';
 import { DbUpgradePrecheckTaskBanner } from './DbUpgradePrecheckTaskBanner';
 
@@ -49,26 +48,6 @@ const withCustomerId = (Story: ComponentType) => {
   return <Story />;
 };
 
-const tasksRootReducer = combineReducers({
-  tasks: tasksReducer
-});
-
-type TasksRootState = ReturnType<typeof tasksRootReducer>;
-
-const STORYBOOK_NOOP_ACTION = { type: '__STORYBOOK_NOOP__' } as const;
-
-const createStorybookTasksStore = (task?: Task): Store<TasksRootState> => {
-  const baseTasksState = tasksReducer(undefined, STORYBOOK_NOOP_ACTION as never);
-  const preloadedState: TasksRootState = {
-    tasks: {
-      ...baseTasksState,
-      customerTaskList: task ? [task] : [],
-      showTaskInDrawer: ''
-    }
-  };
-  return createStore(tasksRootReducer, preloadedState, applyMiddleware(promise));
-};
-
 const taskStoreSeedKey = (task: Task | undefined): string => {
   if (!task) {
     return '';
@@ -84,7 +63,10 @@ const DbUpgradePrecheckTasksStoryShell = ({
   task?: Task;
 }) => {
   const taskSeedKey = taskStoreSeedKey(task);
-  const store = useMemo(() => createStorybookTasksStore(task), [taskSeedKey]);
+  const store = useMemo(
+    () => createStorybookTasksRootStore(task ? [task] : undefined),
+    [taskSeedKey]
+  );
 
   return (
     <Provider store={store}>

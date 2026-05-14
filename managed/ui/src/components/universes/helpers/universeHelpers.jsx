@@ -1,7 +1,13 @@
-import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { YBLoadingCircleIcon } from '../../common/indicators';
+import { isEqual } from 'lodash';
 
-import _ from 'lodash';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
+
+import SuccessIcon from '@app/redesign/assets/approved/success.svg';
+import PausedIcon from '@app/redesign/assets/approved/paused.svg';
+import AlertIcon from '@app/redesign/assets/approved/alert.svg';
+import ErrorIcon from '@app/redesign/assets/approved/error.svg';
+import LoadingIcon from '@app/redesign/assets/default-loading-circles.svg';
 
 /**
  * A mapping from universe state to display text and className.
@@ -16,7 +22,7 @@ export const UniverseState = {
     className: 'paused'
   },
   PENDING: {
-    text: 'Pending',
+    text: 'Operation in progress',
     className: 'pending'
   },
   WARNING: {
@@ -24,7 +30,7 @@ export const UniverseState = {
     className: 'warning'
   },
   BAD: {
-    text: 'Error',
+    text: 'Operation failed',
     className: 'bad'
   },
   UNKNOWN: {
@@ -41,7 +47,8 @@ export const SoftwareUpgradeState = {
   FINALIZING: 'Finalizing',
   FINALIZE_FAILED: 'FinalizeFailed',
   ROLLING_BACK: 'RollingBack',
-  ROLLBACK_FAILED: 'RollbackFailed'
+  ROLLBACK_FAILED: 'RollbackFailed',
+  PAUSED: 'Paused'
 };
 
 export const SoftwareUpgradeTaskType = {
@@ -87,27 +94,6 @@ export const getUniverseStatus = (universe) => {
       : { state: UniverseState.BAD, error: errorString };
   }
   return { state: UniverseState.UNKNOWN, error: errorString };
-};
-
-export const getUniverseStatusIcon = (curStatus) => {
-  if (_.isEqual(curStatus, UniverseState.GOOD)) {
-    return <i className="fa fa-check-circle" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.PAUSED)) {
-    return <i className="fa fa-pause-circle-o" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.PENDING)) {
-    return <i className="fa fa-hourglass-half" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.WARNING)) {
-    return <i className="fa fa-warning" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.BAD)) {
-    return <i className="fa fa-warning" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.UNKNOWN)) {
-    return <YBLoadingCircleIcon size="small" />;
-  }
 };
 
 export const isPendingUniverseTask = (universeUUID, taskItem) => {

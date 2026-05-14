@@ -137,6 +137,12 @@ typedef struct PgFdwRelationInfo
 	/* The underlying server that is hosting the relation. */
 	YbPgFdwServerType yb_server_type;
 	AttrNumber	yb_min_attr;
+
+	/*
+	 * For per-tserver children of a federated YugabyteDB foreign table
+	 * (global views), the target tserver's UUID. NULL for all other rels
+	 */
+	char	   *yb_tserver_uuid;
 } PgFdwRelationInfo;
 
 /*

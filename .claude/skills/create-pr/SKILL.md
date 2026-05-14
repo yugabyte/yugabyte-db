@@ -13,6 +13,26 @@ Push the current branch to the user's **fork** of `yugabyte/yugabyte-db` and cre
 
 **Contributors do not have push access to `yugabyte/yugabyte-db`.** The branch must be pushed to a personal fork, and the PR is opened cross-repo from that fork into the upstream repo.
 
+## Confidentiality — read before you write anything public
+
+**The upstream repo, every GitHub issue, every PR title/description/comment, and every commit message are PUBLIC on the internet.** Anything you (the agent) write into them is permanent and indexed by search engines. A leak cannot be unsent.
+
+**Never put any of the following into the GitHub issue (title/body/labels), the PR title, PR description, PR comments, commit messages, code comments, test code, test fixtures, golden output, or filenames:**
+
+- **Customer-identifying data** — company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names tied to a customer deployment. Substitute with `customer-1`, `acme-corp`, or a generic description.
+- **PII** — real names, real email addresses, real phone numbers, real postal addresses, real IP addresses (public or private). In tests use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phone numbers `555-0100`–`555-0199`.
+- **Unanonymized customer schema or queries** — table names, column names, SQL text, query plans, or sample rows pulled from a real customer report. Reconstruct a synthetic minimal reproducer using generic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect.
+- **Secrets / credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 buckets, internal Slack/JIRA/Linear URLs, internal hostnames, vault paths. Use placeholders like `AKIAIOSFODNN7EXAMPLE` in mocks.
+- **YugabyteDB-internal information not yet public** — unreleased roadmap, internal SLAs, embargoed security findings, internal infra hostnames.
+
+**This applies to the test code and test data you write too** — `.cc`, `.py`, `.java`, `.sql`, golden `.out` files, YAML fixtures, mock responses, anything. If a customer's reproducer uses `acme_orders` with a `customer_email` column populated with real addresses, you must rewrite it as `t1`/`email` with `user@example.com` before the test goes anywhere near a PR.
+
+**When the source is a customer report:** read the original from the internal source (JIRA / support ticket / Slack) — never paste or link it from a public artifact. Reproduce locally with synthetic inputs. Land only the synthetic reproducer. Reference the issue by internal ticket ID (`PLAT-20518`) only; don't quote customer-facing text.
+
+**If you're unsure whether a string is sensitive, don't write it down — ask the user.** A clarifying question costs nothing; a leaked customer name in a public PR cannot be retracted.
+
+This rule applies at every step below — when you draft the commit message in Step 1, when you draft the issue body in Step 3, when you write the title in Step 4, and when you compose the description / test plan / upgrade notes in Step 5. See `src/AGENTS.md` § Confidentiality for the canonical list.
+
 ## Prerequisites
 
 This skill requires the `gh` CLI installed and authenticated:
@@ -92,6 +112,8 @@ If the user supplies a title that already includes `[<issue>] ` or doesn't match
 
 ### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
 
+> **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
+
 Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
 
 ```
@@ -101,6 +123,7 @@ Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if use
   -d /tmp/claude/pr-desc-<issue>.md \
   -T /tmp/claude/pr-testplan-<issue>.md \
   [-U /tmp/claude/pr-upgrade-<issue>.md] \
+  [-D] \
   -r <reviewers>
 ```
 
@@ -113,6 +136,7 @@ Inputs:
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
 - **`-r`**: comma-separated handles and/or team slugs (`alice,bob,yugabyte/db-approvers`). Optional.
+- **`-D` (optional)**: open the PR as a GitHub draft (`gh pr create --draft`). Use when the user wants to read the rendered PR before notifications fire and before reviewers are auto-pinged. After the user reviews, convert with `gh pr ready <num>`. **Use whenever the user asks for "draft PR(s)" or says they want to inspect the PR on GitHub before sending it out.** When `-D` is set, the script still requests reviewers via the REST endpoint as usual — GitHub silences review-requested notifications until the PR is marked ready, so the two settings combine cleanly.
 
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.

@@ -52,6 +52,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_types.pb.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
@@ -1034,5 +1035,102 @@ TEST_F(TabletServerTest, TestUntrackedMemory) {
       METRIC_untracked_memory)->value());
 }
 #endif
+
+// FlushTablets RPC validation tests, parameterized by operation (FLUSH / COMPACT).
+class FlushTabletsTest
+    : public TabletServerTest,
+      public ::testing::WithParamInterface<FlushTabletsRequestPB::Operation> {
+ protected:
+  FlushTabletsRequestPB::Operation Op() const { return GetParam(); }
+
+  struct FlushResult {
+    FlushTabletsResponsePB resp;
+    Status rpc_status;
+  };
+
+  FlushResult CallFlushTablets(
+      tablet::FlushCompactFlags flags,
+      const std::vector<string>& vector_index_ids = {}) {
+    FlushTabletsRequestPB req;
+    req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
+    req.add_tablet_ids(kTabletId);
+    req.set_operation(Op());
+    req.set_flags(flags);
+    for (const auto& id : vector_index_ids) {
+      req.add_vector_index_ids(id);
+    }
+    FlushResult result;
+    RpcController rpc;
+    result.rpc_status = admin_proxy_->FlushTablets(req, &result.resp, &rpc);
+    return result;
+  }
+
+  void AssertSuccess(
+      tablet::FlushCompactFlags flags,
+      const std::vector<string>& vector_index_ids = {}) {
+    auto result = CallFlushTablets(flags, vector_index_ids);
+    ASSERT_OK(result.rpc_status);
+    ASSERT_FALSE(result.resp.has_error()) << result.resp.error().DebugString();
+  }
+
+  void AssertInvalidArgument(
+      tablet::FlushCompactFlags flags,
+      const std::vector<string>& vector_index_ids = {}) {
+    auto result = CallFlushTablets(flags, vector_index_ids);
+    ASSERT_OK(result.rpc_status);
+    ASSERT_TRUE(result.resp.has_error()) << "Expected error but got success";
+    auto status = StatusFromPB(result.resp.error().status());
+    ASSERT_TRUE(status.IsInvalidArgument()) << "Expected InvalidArgument, got: " << status;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    FlushAndCompact,
+    FlushTabletsTest,
+    ::testing::Values(FlushTabletsRequestPB::FLUSH, FlushTabletsRequestPB::COMPACT),
+    [](const auto& info) {
+      return info.param == FlushTabletsRequestPB::FLUSH ? "Flush" : "Compact";
+    });
+
+// Tests common to both FLUSH and COMPACT.
+
+TEST_P(FlushTabletsTest, Default) {
+  AssertSuccess(tablet::FLUSH_COMPACT_DEFAULT);
+}
+
+TEST_P(FlushTabletsTest, All) {
+  AssertSuccess(tablet::FLUSH_COMPACT_ALL);
+}
+
+TEST_P(FlushTabletsTest, VectorIndexOnly) {
+  AssertSuccess(tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY);
+}
+
+TEST_P(FlushTabletsTest, VectorIndexExcludedWithIdsRejected) {
+  AssertInvalidArgument(
+      tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED, {"fake-vector-index-id"});
+}
+
+TEST_P(FlushTabletsTest, DefaultWithVectorIds) {
+  AssertSuccess(tablet::FLUSH_COMPACT_DEFAULT, {"nonexistent-vector-index"});
+}
+
+// FLUSH accepts REGULAR_FOR_TEST_ONLY; COMPACT rejects it.
+TEST_P(FlushTabletsTest, RegularForTestOnly) {
+  if (Op() == FlushTabletsRequestPB::FLUSH) {
+    AssertSuccess(tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY);
+  } else {
+    AssertInvalidArgument(tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY);
+  }
+}
+
+// COMPACT accepts VECTOR_INDEX_EXCLUDED; FLUSH rejects it.
+TEST_P(FlushTabletsTest, VectorIndexExcluded) {
+  if (Op() == FlushTabletsRequestPB::COMPACT) {
+    AssertSuccess(tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED);
+  } else {
+    AssertInvalidArgument(tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED);
+  }
+}
 
 } // namespace yb::tserver

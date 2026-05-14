@@ -191,4 +191,5 @@ In cases where the deletion affected many tables in the database, you can use ti
 
 ## Limitations
 
+- Time travel queries are not supported for temporary tables.
 - Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}

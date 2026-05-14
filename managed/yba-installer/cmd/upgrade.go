@@ -41,7 +41,8 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 				common.GetActiveSymlink(), state.Version),
 			common.GetBaseInstall()+"/data/yb-platform",
 			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
-			common.GetActiveSymlink()+"/pgsql/bin/pg_restore")
+			common.GetActiveSymlink()+"/pgsql/bin/pg_restore",
+			!common.IsPerfAdvisorEnabled(), true)
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
@@ -161,7 +162,8 @@ func upgradeCmd() *cobra.Command {
 					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
 					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
 					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
-					true, true, false, true, false, usePromProtocol); errB != nil {
+					true, true, false, true, false, usePromProtocol,
+					!common.IsPerfAdvisorEnabled(), true); errB != nil {
 					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}

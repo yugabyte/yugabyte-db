@@ -61,10 +61,12 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
   @Test
   public void testLogicalConnectionLimit() throws Exception {
     // Create the test table.
-    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
-                          .connect()
-                          .createStatement()
-                          .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
+            .connect()) {
+      conn.createStatement()
+          .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
+    }
 
     // Try making '2 * MAX_PHYSICAL_CONNECTION' connections to the Ysql Connection Manager.
     final int numThreads = 2 * MAX_PHYSICAL_CONNECTION;

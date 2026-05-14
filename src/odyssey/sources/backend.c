@@ -65,6 +65,16 @@ cleanup:
 		machine_tls_free(server->tls);
 		server->tls = NULL;
 	}
+
+	/*
+	 * YB: Release the backend slot after the connection is closed, but only
+	 * if this server actually claimed one. Servers created for cancel
+	 * requests, logical replication, etc. never claim slots.
+	 */
+	if (server->yb_slot_claimed) {
+		yb_release_backend_slot((od_router_t *)server->global->router);
+		server->yb_slot_claimed = false;
+	}
 }
 
 /* YB: Max bytes of key data to hex-dump per log line (300 * 3 chars = 900, fits in OD_LOGLINE_MAXLEN). */

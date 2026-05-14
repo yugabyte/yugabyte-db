@@ -1258,29 +1258,26 @@ int_compar_cb(const void *v1, const void *v2)
 static void
 ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	bool		qualified_scan_key_cols_has_ybctid = false;
-
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
 
+		/*
+		 * The subkey for yb_hash_code inside row compare will have
+		 * InvalidAttrNumber.
+		 * TODO(#30859): this logic doesn't make sense.  The for loop above
+		 * should skip over subkeys, and this if condition can be deleted.
+		 */
 		if (attnum == InvalidAttrNumber)
 			break;
 
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
-
-		if (attnum == YBTupleIdAttributeNumber)
-		{
-			qualified_scan_key_cols_has_ybctid = true;
-			scan_plan->qualified_scan_key_cols =
-				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
-		}
-
 		/* SeqScan may give scan keys that are not key columns. */
 		bool		is_key_column = bms_is_member(idx, scan_plan->key_cols);
 
-		if (is_key_column &&
-			YbShouldPushdownScanKey(scan_plan, attnum, ybScan->keys[i]))
+		if (attnum == YBTupleIdAttributeNumber ||
+			(is_key_column &&
+			 YbShouldPushdownScanKey(scan_plan, attnum, ybScan->keys[i])))
 		{
 			scan_plan->qualified_scan_key_cols =
 				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
@@ -1288,19 +1285,14 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * If hash key is not fully set and ybctid is not set either, we must do a
-	 * full-table scan so clear all the scan keys if the hash code was
-	 * explicitly specified as a scan key then we also shouldn't be clearing the
-	 * scan keys.
+	 * TODO(#30756): currently, conditions on hash keys are all or nothing:
+	 * either all hash keys have a condition bound or none of them.
 	 */
-	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key_cols,
-					   scan_plan->qualified_scan_key_cols) &&
-		!qualified_scan_key_cols_has_ybctid)
-	{
-		bms_free(scan_plan->qualified_scan_key_cols);
-		scan_plan->qualified_scan_key_cols = NULL;
-	}
+	if (!bms_is_subset(scan_plan->hash_key_cols,
+					   scan_plan->qualified_scan_key_cols))
+		scan_plan->qualified_scan_key_cols =
+			bms_del_members(scan_plan->qualified_scan_key_cols,
+							scan_plan->hash_key_cols);
 }
 
 /* Return true if typid is one of the Object Identifier Types */

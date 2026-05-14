@@ -15,7 +15,7 @@ import { useRefreshUniverseDetailsCache } from '@app/redesign/helpers/cacheUtils
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 import { Task, TaskState } from '../../dtos';
-import { getIsDbUpgradeFinalizeTask } from '../../utils/dbUpgradeTaskUtils';
+import { getIsDbUpgradeFinalizeTask } from '../../TaskUtils';
 import { retryTasks } from '../drawerComp/api';
 import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';

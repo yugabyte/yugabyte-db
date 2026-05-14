@@ -1906,14 +1906,14 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& database_name,
-      const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params) {
+      std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
+      const std::vector<std::optional<std::string>>& params) {
     tserver::PgRemoteExecRequestPB req;
     tserver::PgRemoteExecResponsePB resp;
 
-    req.set_query(std::string(query));
-    req.set_tserver_uuid(tserver_uuid);
-    req.set_database_name(database_name);
+    req.set_query(query.data(), query.size());
+    req.set_tserver_uuid(tserver_uuid.data(), tserver_uuid.size());
+    req.set_database_name(database_name.data(), database_name.size());
 
     for (const auto& p : params) {
       auto* param = req.add_params();
@@ -2435,8 +2435,8 @@ Status PgClient::GetYbSystemTableInfo(
 }
 
 Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
-    std::string_view query, const std::string& database_name,
-    const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params) {
+    std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
+    const std::vector<std::optional<std::string>>& params) {
   return impl_->RemoteExec(query, database_name, tserver_uuid, params);
 }
 

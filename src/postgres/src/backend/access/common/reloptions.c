@@ -41,6 +41,7 @@
 #include "access/transam.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 
 /*
  * Contents of pg_class.reloptions
@@ -716,6 +717,18 @@ static relopt_string stringRelOpts[] =
 		true,					/* default_isnull */
 		NULL,					/* validate_cb */
 		NULL,					/* fill_cb */
+		NULL					/* default_val */
+	},
+	{
+		{
+			"yb_presplit",
+			"Pre-split configuration: number of tablets (e.g., '5') or split points (e.g., '((100),(200))').",
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX | RELOPT_KIND_PARTITIONED,
+			AccessExclusiveLock
+		},
+		0,						/* default_len */
+		true,					/* default_isnull */
+		YbValidatePresplitReloption,	/* validate_cb */
 		NULL					/* default_val */
 	},
 	/* list terminator */
@@ -2189,6 +2202,7 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"colocation_id", RELOPT_TYPE_OID, offsetof(StdRdOptions, colocation_id)},
 		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
 		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},
+		{"yb_presplit", RELOPT_TYPE_STRING, offsetof(StdRdOptions, yb_presplit_offset)},
 		{"yb_auto_analyze_enabled", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, enabled)},
 		{"yb_auto_analyze_threshold", RELOPT_TYPE_INT,
@@ -2312,6 +2326,8 @@ partitioned_table_reloptions(Datum reloptions, bool validate)
 			offsetof(YbParitionedTableOptions, colocation_id)},
 			{"colocation", RELOPT_TYPE_BOOL,
 			offsetof(YbParitionedTableOptions, colocation)},
+			{"yb_presplit", RELOPT_TYPE_STRING,
+			offsetof(YbParitionedTableOptions, yb_presplit_offset)},
 		};
 
 		return (bytea *) build_reloptions(reloptions, validate,

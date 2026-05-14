@@ -999,6 +999,24 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND
  6291 | 6291 | 6291 | Tue Dec 18 04:59:54 2018 PST | 6291 | 6291 | 06-02-2016 | t
 (10 rows)
 
+-- yb_hash_code with partial hash key should not error.
+-- TODO(#30756): recheck should not be needed.
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(h1, h2, h3) < 6000) AND (h1 = 48))
+   Rows Removed by Index Recheck: 953
+(3 rows)
+
+ h1 | h2 | h3 |              r1              | r2 | v1 |     v2     | v3 
+----+----+----+------------------------------+----+----+------------+----
+ 48 | 48 | 48 | Tue Dec 18 04:59:54 2018 PST | 48 | 48 | 06-02-2016 | f
+(1 row)
+
 DROP TABLE test_table_multi_col_key;
 -- test recheck of index only scan with yb_hash_code
 CREATE TABLE test_index_only_scan_recheck(k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);

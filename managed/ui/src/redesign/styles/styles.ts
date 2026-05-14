@@ -56,6 +56,11 @@ export const usePillStyles = makeStyles((theme) => ({
       color: theme.palette.common.white,
       backgroundColor: theme.palette.orange[500]
     },
+    '&$purple': {
+      fontWeight: 500,
+      color: theme.palette.ybacolors.ybPurple,
+      backgroundColor: theme.palette.ybacolors.purple050
+    },
     '&$small': {
       height: 20
     }
@@ -69,7 +74,8 @@ export const usePillStyles = makeStyles((theme) => ({
   danger: {},
   metadataGrey: {},
   metadataWhite: {},
-  productOrange: {}
+  productOrange: {},
+  purple: {}
 }));
 
 export const useIconStyles = makeStyles(() => ({

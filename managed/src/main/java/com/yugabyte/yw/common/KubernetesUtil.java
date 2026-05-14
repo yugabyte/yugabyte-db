@@ -1801,4 +1801,14 @@ public class KubernetesUtil {
     }
     return false;
   }
+
+  public static boolean isUbiImage(String imageRegistry) {
+    return imageRegistry.contains("ubi");
+  }
+
+  public static Map<String, Object> getSecurityContextForUbiImage() {
+    Map<String, Object> podSecurityContext = new HashMap<>();
+    podSecurityContext.put("enabled", true);
+    return podSecurityContext;
+  }
 }

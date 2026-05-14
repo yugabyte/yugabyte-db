@@ -6,6 +6,53 @@ arc and phorge are used to review, run lab tests, and merge changes. This should
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
 
+## Confidentiality — never leak customer data, YugabyteDB secrets, or PII
+
+The `yugabyte/yugabyte-db` repo is public. Every GitHub issue, PR, comment, commit message, code comment, **test file, test fixture, golden output**, and file name landed on it is read by anyone on the internet, and indexed by search engines. **Phorge is also treated as public** — diff titles, summaries, test plans, inline comments, and the code/tests attached to a diff must follow the same rules as the public repo (the title, summary, test plan, and test code land on the public repo verbatim when upstreamed anyway). **Treat anything you (the agent) write that lands in a public destination — the public repo, public GitHub issues/PRs/comments, Phorge diffs, public mailing lists, public Slack channels, public gists — as permanent and unretractable.** Confidential material must never appear in those destinations. This rule is non-negotiable and overrides convenience — if following it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
+
+**Internal destinations are different.** Direct chat with the user, internal JIRA tickets, internal Slack threads, and internal support cases are appropriate places to discuss customer specifics with the user — quote the customer name, paste the real schema, attach the real log if needed. The rule below is about what crosses into a public artifact, not about what you tell the human you're working with.
+
+**Never write any of the following into a GitHub issue title/body/comment, PR title/description/comment, Phorge diff title/summary/test plan/comment, commit subject or body, code or test comment, test code, test fixture, test data file, golden output file, log example, fixture YAML, mock response, or file name:**
+
+- **Customer-identifying information** — company names, account IDs, universe/cluster UUIDs or names, environment names, region/zone names tied to a customer deployment, or any string that ties a behavior back to a specific customer. Substitute with `customer-1`, `acme-corp`, a generic description, or omit. This includes filenames: do **not** name a test `test_repro_acme_orders.cc`.
+- **PII** — real emails, names, phone numbers, postal addresses, real IP addresses (public **or** private — a customer's `10.x` address is still theirs). In tests, use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phone numbers `555-0100`–`555-0199`.
+- **Unanonymized customer schemas, queries, plans, or data** — table names, column names, query text, query plans (including `EXPLAIN` output), sample rows, JSON payloads, or any byte taken from a real customer. Reconstruct a minimal reproducer with synthetic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect. Renaming a single column is **not** anonymization if the rest of the schema is intact and recognizable.
+- **Secrets and credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 bucket names, internal-only Slack/JIRA/Linear URLs, internal hostnames, vault paths. This includes test fixtures: don't bake a real-looking access key into a mock — use obvious placeholders like `AKIAIOSFODNN7EXAMPLE` (AWS docs example) or `dummy_token`.
+- **YugabyteDB-internal information not yet public** — unreleased roadmap details, internal SLAs, embargoed security findings, internal infra hostnames.
+
+### Tests are not exempt
+
+It is a common mistake to think "the test file isn't the PR description, so the customer's data is fine here." It is not fine. The test file is checked into the public repo, indexed, and stays there forever. **Every example value in a test must either be obviously synthetic or pulled from a documented public range (RFC 5737/3849/2606, AWS `EXAMPLE` keys, etc.).** Specifically:
+
+- **Schema in tests** — rename every table and column. If the customer hit the bug on `orders_2024_q3` with column `pii_email_addr`, the test should use `t` with column `email` (or `c1` if the name is incidental to the bug).
+- **Data in tests** — replace real emails with `user@example.com`, real names with `Alice`/`Bob`, real IPs with `192.0.2.1`, real phone numbers with `555-0100`–`555-0199` (the documentation range), real UUIDs with `10000000-2000-3000-4000-000000000005`.
+- **File and test names** — don't embed a customer identifier in the filename, test name, or test fixture path. `test_acme_replication_lag.cc` leaks the customer's name in `git log` even if every byte of the body is sanitized.
+- **Code comments** — `// repro for ACME's outage on 2026-04-12` leaks the customer. Write `// repro for replication-lag regression (see PLAT-20518)` instead.
+- **Golden output and log fixtures** — output captured from a customer system almost certainly contains a hostname, IP, UUID, or schema name that identifies them. Regenerate the golden file by running the synthetic reproducer locally; don't paste the customer's log.
+- **Stack traces and crash dumps** — paths like `/home/yugabyte/acme-prod-1/...` or hostnames in frames leak the source. Re-run locally and capture a clean trace.
+
+### When the source material is a customer report
+
+1. Read the original report from the internal source (JIRA, support ticket, Slack thread) — never paste or link it from a public artifact (issue, PR, diff, commit, code comment).
+2. Reproduce the defect locally with synthetic inputs (synthetic schema, synthetic data, synthetic cluster names).
+3. Land only the synthetic reproducer in the test, the PR description, and the commit message.
+4. Reference the issue by internal ticket ID only (e.g., `PLAT-20518`); don't quote customer-facing text from the ticket.
+5. If the bug is impossible to reproduce without customer-specific state, **stop and ask the user** — don't paste the state into a public artifact as a workaround.
+
+### Scrub checklist before any public publish
+
+Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
+
+- [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
+- [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
+- [ ] No customer-derived table names, column names, SQL text, query plans, JSON payloads, or sample rows.
+- [ ] No tokens, API keys, passwords, certificates, private keys, license keys, kubeconfigs, or production S3 bucket names.
+- [ ] No internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths.
+- [ ] No unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames).
+- [ ] Test filenames, test function names, and golden-output files reviewed too — not just the prose.
+
+**If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
+
 ## Git workflow on branches with an open PR
 
 This repo **squash-merges** every PR, so the per-commit history of a branch is purely a review aid — reviewers read each commit independently to follow the change. Optimize for that:

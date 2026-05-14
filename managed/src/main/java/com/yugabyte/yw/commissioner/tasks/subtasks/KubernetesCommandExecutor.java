@@ -1057,10 +1057,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             : taskParams().ybSoftwareVersion;
     imageInfo.put("tag", imageTag);
 
+    boolean isOpenShift =
+        config.containsKey("KUBECONFIG_PROVIDER")
+            && config.get("KUBECONFIG_PROVIDER").equals("openshift");
     // Since the image registry will remain the same across differnet clusters,
     // it will always be at the provider level.
     if (config.containsKey("KUBECONFIG_IMAGE_REGISTRY")) {
-      imageInfo.put("repository", config.get("KUBECONFIG_IMAGE_REGISTRY"));
+      String imageRegistry = config.get("KUBECONFIG_IMAGE_REGISTRY");
+      imageInfo.put("repository", imageRegistry);
+      // If the image is a UBI image and we are not on OpenShift, we need to set the security
+      // context.
+      if (KubernetesUtil.isUbiImage(imageRegistry) && !isOpenShift) {
+        overrides.put("podSecurityContext", KubernetesUtil.getSecurityContextForUbiImage());
+      }
     }
     if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
       imageInfo.put("pullSecretName", config.get("KUBECONFIG_IMAGE_PULL_SECRET_NAME"));
@@ -1068,8 +1077,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     overrides.put("Image", imageInfo);
 
     // Override for openshift
-    if (config.containsKey("KUBECONFIG_PROVIDER")
-        && config.get("KUBECONFIG_PROVIDER").equals("openshift")) {
+    if (isOpenShift) {
       Map<String, Object> ocpCompatibility = new HashMap<>();
       ocpCompatibility.put("enabled", true);
       overrides.put("ocpCompatibility", ocpCompatibility);
