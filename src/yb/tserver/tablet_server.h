@@ -354,9 +354,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
 
-  Status TriggerRelcacheInitConnection(
+  void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-      tserver::TriggerRelcacheInitConnectionResponsePB* resp) EXCLUDES(lock_) override;
+      StdStatusCallback callback) EXCLUDES(lock_) override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -667,9 +667,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       InvalidationMessagesQueue *db_message_lists,
       uint64_t debug_id) REQUIRES(lock_);
 
-  void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
-  void RelcacheInitConnectionDone(std::promise<Status>* p, const std::string& dbname,
-                                  const Status& status);
+  void MakeRelcacheInitConnection(const std::string& dbname);
+  void RelcacheInitConnectionDone(const std::string& dbname, const Status& status)
+      EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
   std::string log_prefix_;
@@ -713,7 +713,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;
 
-  std::map<std::string, std::shared_future<Status>> in_flight_superuser_connections_;
+  // Per-database list of pending relcache-init callbacks. The first caller for a database creates
+  // the entry and schedules MakeRelcacheInitConnection; subsequent callers append their callback
+  // and return without blocking. RelcacheInitConnectionDone drains the list when the operation
+  // finishes.
+  std::map<std::string, std::vector<StdStatusCallback>> in_flight_superuser_connections_
+      GUARDED_BY(lock_);
 
 #ifdef __linux__
   std::unique_ptr<TServerCgroupManager> cgroup_manager_;
