@@ -124,6 +124,9 @@ def parse_args(argv):
                    help="Backport to all stable branches >= this branch.")
     p.add_argument("-x", "--accept-branch", action="append", default=[],
                    help="Skip cherry-pick on the given branch (already resolved).")
+    p.add_argument("--keep-workspace", action="store_true",
+                   help="On success, don't delete local task branches or remove "
+                        "the worktree (default cleans up after PRs are created).")
     p.add_argument("commit", help="Commit SHA (>=7 hex chars).")
     p.add_argument("branches", nargs="*", help="Destination branches.")
     args = p.parse_args(argv)
@@ -149,7 +152,7 @@ def normalize_reviewers(s: Optional[str]) -> Optional[str]:
 
 # --- Workspace + remote detection -------------------------------------------
 
-def setup_workspace(workspace: Path, use_local: bool) -> None:
+def setup_workspace(workspace: Path, use_local: bool) -> bool:
     """Set up workspace and cd into it.
 
     For a fresh path, creates a git worktree off SCRIPT_REPO_ROOT (the
@@ -158,7 +161,11 @@ def setup_workspace(workspace: Path, use_local: bool) -> None:
     refs are visible across worktrees. An existing path is reused
     as-is, whether it's a worktree, a clone, or a plain checkout --
     we trust it as long as it's a valid git working directory.
+
+    Returns True iff this call created the worktree (so post-run cleanup
+    can safely remove it without clobbering a pre-existing checkout).
     """
+    created = False
     if use_local:
         info(f"Using current workspace: {workspace}")
     elif workspace.exists():
@@ -172,8 +179,10 @@ def setup_workspace(workspace: Path, use_local: bool) -> None:
         workspace.parent.mkdir(parents=True, exist_ok=True)
         run(["git", "-C", str(SCRIPT_REPO_ROOT), "worktree", "add",
              "--detach", str(workspace)])
+        created = True
 
     os.chdir(workspace)
+    return created
 
 
 def detect_upstream_remote(gh_repo: str) -> str:
@@ -500,6 +509,50 @@ def request_reviewers(gh_repo: str, pr_num: int, reviewers: str) -> None:
         warn(f"failed to add reviewers to PR #{pr_num} (continuing): {reviewers}")
 
 
+# --- Post-run cleanup -------------------------------------------------------
+
+def cleanup_after_success(workspace: Path, source_repo: Path,
+                          task_branches: list[str],
+                          try_remove_worktree: bool) -> None:
+    """Delete local task branches and (optionally) remove the worktree.
+
+    Called only on the success path (return 0 from main). Task branches
+    are no longer needed locally once their PRs are open -- the fork
+    holds the canonical copies. The worktree is only removed if we
+    created it this run AND it's still a linked worktree of source_repo;
+    that protects a plain checkout someone aimed YB_BACKPORT at.
+    """
+    if task_branches:
+        info(f"Deleting local task branches: {', '.join(task_branches)}")
+        # If HEAD points at one of the branches we're about to delete,
+        # detach so `git branch -D` doesn't refuse on "checked out here".
+        current = git("symbolic-ref", "--short", "HEAD", check=False)
+        if current in task_branches:
+            run(["git", "checkout", "--detach"], check=False)
+        for task in task_branches:
+            proc = run(["git", "branch", "-D", task], check=False)
+            if proc.returncode != 0:
+                warn(f"failed to delete local branch {task}: "
+                     f"{(proc.stderr or proc.stdout).strip()}")
+
+    if not try_remove_worktree:
+        return
+    # A linked worktree has `.git` as a file pointing at the source repo's
+    # .git/worktrees/<name> dir; a plain clone has `.git` as a directory.
+    # Refuse to remove the latter -- the user pointed YB_BACKPORT at it.
+    if not (workspace / ".git").is_file():
+        info(f"Workspace is not a linked worktree; leaving in place: {workspace}")
+        return
+    info(f"Removing worktree: {workspace}")
+    # cd out of the worktree before asking git to remove it.
+    os.chdir(source_repo)
+    proc = run(["git", "-C", str(source_repo), "worktree", "remove",
+                "--force", str(workspace)], check=False)
+    if proc.returncode != 0:
+        warn(f"failed to remove worktree {workspace}: "
+             f"{(proc.stderr or proc.stdout).strip()}")
+
+
 # --- Main -------------------------------------------------------------------
 
 def detect_stable_branches(upstream_remote: str, stable_limit: Optional[str]) -> list[str]:
@@ -573,7 +626,7 @@ def main(argv: list[str]) -> int:
              "Pass branches explicitly to skip auto-discovery entirely.")
 
     # Workspace + clean check.
-    setup_workspace(workspace, args.local)
+    worktree_created = setup_workspace(workspace, args.local)
     upstream_remote = detect_upstream_remote(gh_repo)
     info(f"Fetching latest code from {upstream_remote}")
     run(["git", "fetch", upstream_remote])
@@ -634,6 +687,9 @@ def main(argv: list[str]) -> int:
     # one cherry-picks from the previous task branch's tip (so any conflict
     # resolution carries forward).
     port_cmd = base_port_cmd
+    # Task branches that have a published (or pre-existing) backport PR --
+    # candidates for local cleanup on success.
+    published_tasks: list[str] = []
     rerun_args = []
     if args.preview:    rerun_args.append("-n")
     if args.local:      rerun_args.append("-l")
@@ -675,6 +731,7 @@ def main(argv: list[str]) -> int:
             existing = None
         if existing:
             info(f"Existing backport PR found: {existing} -- skipping")
+            published_tasks.append(task)
             # The chain logic below cherry-picks from $task onto the next
             # branch; ensure $task is present locally and current with the
             # fork. Force-fetch (`+task:task`) so a stale local task ref
@@ -765,9 +822,18 @@ def main(argv: list[str]) -> int:
             new_pr_num_match = re.search(r"/pull/(\d+)$", new_url)
             if new_pr_num_match and final_reviewers:
                 request_reviewers(gh_repo, int(new_pr_num_match.group(1)), final_reviewers)
+            published_tasks.append(task)
 
         # Chain: next branch cherry-picks from this task branch's tip.
         port_cmd = ["git", "cherry-pick", "--allow-empty", task]
+
+    if not args.preview and not args.keep_workspace:
+        cleanup_after_success(
+            workspace=workspace,
+            source_repo=SCRIPT_REPO_ROOT,
+            task_branches=published_tasks,
+            try_remove_worktree=worktree_created and not args.local,
+        )
 
     return 0
 
