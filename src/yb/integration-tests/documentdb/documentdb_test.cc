@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(ysql_enable_documentdb);
@@ -458,6 +459,157 @@ TEST_F(DocumentDBTest, BsonPrimaryKeyBinaryComparator) {
   // Type-bracketed: _id < true matches booleans < true — false is the only such value
   // and is not present in the data = 0 docs.
   ASSERT_EQ(match_count(R"({"_id": {"$lt": true}})"), 0);
+}
+
+// ObjectId is the default _id type in MongoDB collections. ObjectIds compare
+// byte-wise via bson_oid_compare, the only built-in comparator libbson exposes.
+// This test inserts five ObjectId _id values in non-sorted order, then exercises
+// exact-match lookup, range filters, and total count to confirm the byte-wise
+// ObjectId codepath in CompareBsonValues is reached and returns correct results.
+TEST_F(DocumentDBTest, BsonObjectIdPrimaryKey) {
+  const auto db_name = "documentdb";
+  const auto collection_name = "oid_pk";
+
+  // Inserted out of order; expected sort order is by lexicographic OID hex.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "_id": { "$$oid": "5fffffffffffffffffffffff" } },
+    { "_id": { "$$oid": "100000000000000000000000" } },
+    { "_id": { "$$oid": "000000000000000000000001" } },
+    { "_id": { "$$oid": "ffffffffffffffffffffffff" } },
+    { "_id": { "$$oid": "7f7f7f7f7f7f7f7f7f7f7f7f" } }]}');
+  )",
+      db_name, collection_name));
+
+  auto match_count = [&](const std::string& filter) {
+    return CHECK_RESULT(conn_->FetchRow<int32_t>(Format(
+        R"(
+      SELECT jsonb_array_length(((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb)
+        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1",
+          "filter" : $2}');
+      )",
+        db_name, collection_name, filter)));
+  };
+
+  // Total docs.
+  ASSERT_EQ(match_count("{}"), 5);
+
+  // Exact match on each OID.
+  EXPECT_EQ(match_count(R"({"_id": {"$oid": "5fffffffffffffffffffffff"}})"), 1);
+  EXPECT_EQ(match_count(R"({"_id": {"$oid": "000000000000000000000001"}})"), 1);
+  EXPECT_EQ(match_count(R"({"_id": {"$oid": "ffffffffffffffffffffffff"}})"), 1);
+
+  // Exact match against a value that is not present.
+  EXPECT_EQ(match_count(R"({"_id": {"$oid": "000000000000000000000002"}})"), 0);
+
+  // $gt: > "5fffffffffffffffffffffff" matches {"7f...", "ff...", "10..." -> no, "10..." < "5f..."}.
+  // Lexicographically greater: "7f7f7f...", "ffff...". = 2 docs.
+  EXPECT_EQ(match_count(R"({"_id": {"$gt": {"$oid": "5fffffffffffffffffffffff"}}})"), 2);
+
+  // $lt: < "5fffffffffffffffffffffff" matches {"00...01", "10...", and not "5f..."}. = 2 docs.
+  EXPECT_EQ(match_count(R"({"_id": {"$lt": {"$oid": "5fffffffffffffffffffffff"}}})"), 2);
+
+  // $gte at the lower extreme: matches every doc.
+  EXPECT_EQ(match_count(R"({"_id": {"$gte": {"$oid": "000000000000000000000000"}}})"), 5);
+
+  // $lte at the upper extreme: matches every doc.
+  EXPECT_EQ(match_count(R"({"_id": {"$lte": {"$oid": "ffffffffffffffffffffffff"}}})"), 5);
+}
+
+// Match counts alone don't prove ordering — the comparator could return the
+// right set of rows in the wrong order. This test inserts negative and positive
+// int32 _id values out of order, queries with sort: {_id: 1} (and -1), and
+// asserts the returned documents come back in BSON canonical order.
+TEST_F(DocumentDBTest, PrimaryKeySortOrder) {
+  const auto db_name = "sorttest";
+  const auto collection_name = "sortcoll";
+
+  // Inserted unsorted; expected ascending order by _id: -100, -2, 0, 7, 42, 999.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "_id": 42,   "label": "fortytwo" },
+    { "_id": -2,   "label": "negtwo"   },
+    { "_id": 999,  "label": "ninehundred" },
+    { "_id": 0,    "label": "zero" },
+    { "_id": -100, "label": "negonehundred" },
+    { "_id": 7,    "label": "seven" }]}');
+  )",
+      db_name, collection_name));
+
+  // Returns the `label` field of the document at the given index in the sorted
+  // firstBatch. Index 0 is the smallest under ascending sort, the largest under
+  // descending.
+  auto label_at = [&](int sort_direction, int index) {
+    return CHECK_RESULT(conn_->FetchRow<std::string>(Format(
+        R"(
+      SELECT (((cursorpage->>'cursor')::bson->>'firstBatch')::bson->>'$2')::bson->>'label'
+        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1",
+          "sort" : { "_id" : $3 } }');
+      )",
+        db_name, collection_name, index, sort_direction)));
+  };
+
+  // Ascending: -100, -2, 0, 7, 42, 999.
+  EXPECT_EQ(label_at(1, 0), "negonehundred");
+  EXPECT_EQ(label_at(1, 1), "negtwo");
+  EXPECT_EQ(label_at(1, 2), "zero");
+  EXPECT_EQ(label_at(1, 3), "seven");
+  EXPECT_EQ(label_at(1, 4), "fortytwo");
+  EXPECT_EQ(label_at(1, 5), "ninehundred");
+
+  // Descending: 999, 42, 7, 0, -2, -100.
+  EXPECT_EQ(label_at(-1, 0), "ninehundred");
+  EXPECT_EQ(label_at(-1, 1), "fortytwo");
+  EXPECT_EQ(label_at(-1, 2), "seven");
+  EXPECT_EQ(label_at(-1, 3), "zero");
+  EXPECT_EQ(label_at(-1, 4), "negtwo");
+  EXPECT_EQ(label_at(-1, 5), "negonehundred");
+}
+
+// The comparator must produce correct results after a memtable flush and SST
+// compaction, not just for in-memory data. Compaction merges sorted runs using
+// the comparator, so a bug there can pass memtable-only tests and fail once
+// the data hits disk. This test inserts negative int32 _ids, forces a flush
+// plus compaction, then re-queries to confirm range filters still return the
+// same set of rows.
+TEST_F(DocumentDBTest, PrimaryKeyCompactionRoundTrip) {
+  const auto db_name = "compacttest";
+  const auto collection_name = "compactcoll";
+
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "_id": -10 }, { "_id": -1 }, { "_id": 0 }, { "_id": 5 },
+    { "_id": 42 }, { "_id": 100 }]}');
+  )",
+      db_name, collection_name));
+
+  auto match_count = [&](const std::string& filter) {
+    auto n_str = CHECK_RESULT(conn_->FetchRow<std::string>(Format(
+        R"(
+      SELECT document->>'n'
+        FROM documentdb_api.count_query('$0',
+          '{ "count": "$1", "query": $2 }');
+      )",
+        db_name, collection_name, filter)));
+    return std::stol(n_str);
+  };
+
+  // Baseline (memtable only).
+  ASSERT_EQ(match_count(R"({"_id": {"$lt": 0}})"), 2);
+  ASSERT_EQ(match_count(R"({"_id": {"$gt": 0}})"), 3);
+  ASSERT_EQ(match_count(R"({"_id": {"$gte": -1, "$lte": 42}})"), 4);
+
+  // Force flush + compaction so the comparator is exercised on SSTs.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Post-compaction: same counts.
+  EXPECT_EQ(match_count(R"({"_id": {"$lt": 0}})"), 2);
+  EXPECT_EQ(match_count(R"({"_id": {"$gt": 0}})"), 3);
+  EXPECT_EQ(match_count(R"({"_id": {"$gte": -1, "$lte": 42}})"), 4);
 }
 
 }  // namespace yb
