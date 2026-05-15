@@ -3483,12 +3483,16 @@ void TabletServiceImpl::TriggerRelcacheInitConnection(
     const TriggerRelcacheInitConnectionRequestPB* req,
     TriggerRelcacheInitConnectionResponsePB* resp,
     rpc::RpcContext context) {
-  auto status = server_->TriggerRelcacheInitConnection(*req, resp);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, &context);
-    return;
-  }
-  context.RespondSuccess();
+  auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  server_->TriggerRelcacheInitConnection(
+      *req,
+      [resp, shared_context](const Status& status) {
+        if (!status.ok()) {
+          SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+          return;
+        }
+        shared_context->RespondSuccess();
+      });
 }
 
 void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,

@@ -1239,67 +1239,60 @@ Status TabletServer::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
-Status TabletServer::TriggerRelcacheInitConnection(
+void TabletServer::TriggerRelcacheInitConnection(
     const TriggerRelcacheInitConnectionRequestPB& req,
-    TriggerRelcacheInitConnectionResponsePB *resp) {
+    StdStatusCallback callback) {
   const std::string dbname = req.database_name();
-  std::shared_future<Status> future_for_this_request;
 
   bool started_superuser_connection = false;
   {
     std::lock_guard l(lock_);
-    auto it = in_flight_superuser_connections_.find(dbname);
-
-    if (it != in_flight_superuser_connections_.end()) {
-      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
-      future_for_this_request = it->second;
-    } else {
-      // In case there are multiple concurrent racing threads, this thread is the winner.
+    auto& callbacks = in_flight_superuser_connections_[dbname];
+    if (callbacks.empty()) {
       started_superuser_connection = true;
       LOG(INFO) << "Relcache init connection request to database " << dbname
                 << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
-
-      auto p = std::make_shared<std::promise<Status>>();
-      future_for_this_request = p->get_future().share();
-      in_flight_superuser_connections_[dbname] = future_for_this_request;
-
-      messenger()->scheduler().Schedule(
-        [this, p, dbname](const Status& status) {
-          if (!status.ok()) {
-            LOG(INFO) << status;
-            RelcacheInitConnectionDone(p.get(), dbname, status);
-            return;
-          }
-          MakeRelcacheInitConnection(p.get(), dbname);
-        }, std::chrono::steady_clock::duration(0));
+    } else {
+      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
     }
+    callbacks.push_back(std::move(callback));
   }
-  auto timeout = default_client_timeout();
-  std::future_status status = future_for_this_request.wait_for(timeout.ToSteadyDuration());
 
-  if (started_superuser_connection) {
-    std::lock_guard l(lock_);
-    in_flight_superuser_connections_.erase(dbname);
+  if (!started_superuser_connection) {
+    return;
   }
-  if (status == std::future_status::ready) {
-    return future_for_this_request.get();
-  }
-  return STATUS_FORMAT(TimedOut, "Relcache init connection request to database $0 timed out",
-                       dbname);
+
+  messenger()->scheduler().Schedule(
+      [this, dbname](const Status& status) {
+        if (!status.ok()) {
+          LOG(INFO) << status;
+          RelcacheInitConnectionDone(dbname, status);
+          return;
+        }
+        MakeRelcacheInitConnection(dbname);
+      },
+      std::chrono::steady_clock::duration(0));
 }
 
 void TabletServer::RelcacheInitConnectionDone(
-    std::promise<Status>* p, const std::string& dbname, const Status& status) {
-  // Do set_value and erase atomically.
-  std::lock_guard l(lock_);
-
-  // Fulfill the promise, unblocking all waiting threads for this task.
-  p->set_value(status);
-  // Clean up dbname from the map so that next winner can create superuser connection.
-  in_flight_superuser_connections_.erase(dbname);
+    const std::string& dbname, const Status& status) {
+  std::vector<StdStatusCallback> callbacks;
+  {
+    std::lock_guard l(lock_);
+    auto it = in_flight_superuser_connections_.find(dbname);
+    if (it == in_flight_superuser_connections_.end()) {
+      LOG(DFATAL) << "Cannot find in-flight superuser connection for database " << dbname;
+      return;
+    }
+    callbacks = std::move(it->second);
+    in_flight_superuser_connections_.erase(it);
+  }
+  for (auto& cb : callbacks) {
+    cb(status);
+  }
 }
 
-void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
+void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
   auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
   if (status.ok()) {
@@ -1307,7 +1300,7 @@ void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std
   } else {
     LOG(INFO) << "Relcache init connection to database " << dbname << " failed: " << status;
   }
-  RelcacheInitConnectionDone(p, dbname, status);
+  RelcacheInitConnectionDone(dbname, status);
 }
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {

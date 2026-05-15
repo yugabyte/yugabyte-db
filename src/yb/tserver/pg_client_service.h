@@ -71,7 +71,6 @@ class TserverXClusterContextIf;
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
     (SetTserverCatalogMessageList) \
-    (TriggerRelcacheInitConnection) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \
@@ -115,6 +114,7 @@ class TserverXClusterContextIf;
 #define YB_PG_CLIENT_ASYNC_METHODS \
     (AcquireObjectLock) \
     (OpenTable) \
+    (TriggerRelcacheInitConnection) \
     (GetTableKeyRanges) \
     /**/
 
