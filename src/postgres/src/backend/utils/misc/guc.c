@@ -3126,6 +3126,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_parallel_query_in_ddl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Disables parallel query for the SELECT planned by DDLs "
+						 "such as CREATE TABLE AS, SELECT INTO, CREATE/REFRESH "
+						 "MATERIALIZED VIEW, COPY (query) TO, and EXPLAIN "
+						 "[ANALYZE] CREATE TABLE AS."),
+			gettext_noop("Enabled by default because parallel query in these "
+						 "DDLs has not been QA tested in YugabyteDB. Set to off "
+						 "as an escape hatch to restore upstream PostgreSQL "
+						 "behavior for workloads that rely on it.")
+		},
+		&yb_disable_parallel_query_in_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_skip_binding_scan_keys", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("For YB scans, skip binding scan keys to pggate. "
 						 "ybgin and internal scans are not affected."),
