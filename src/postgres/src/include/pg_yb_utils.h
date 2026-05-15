@@ -629,6 +629,15 @@ extern int	yb_catcache_list_from_preloaded_limit;
 extern int	yb_parallel_range_size;
 
 /*
+ * Disables parallel query for the SELECT planned by DDLs (CREATE TABLE AS,
+ * SELECT INTO, CREATE/REFRESH MATERIALIZED VIEW, COPY (query) TO, and
+ * EXPLAIN [ANALYZE] CREATE TABLE AS). Enabled by default because parallel
+ * query in these DDLs has not been QA tested in YugabyteDB; set to off as an
+ * escape hatch to restore upstream PostgreSQL behavior.
+ */
+extern bool yb_disable_parallel_query_in_ddl;
+
+/*
  * INSERT ON CONFLICT batching read batch size.
  */
 extern int	yb_insert_on_conflict_read_batch_size;

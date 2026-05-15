@@ -330,9 +330,11 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		query = linitial_node(Query, rewritten);
 		Assert(query->commandType == CMD_SELECT);
 
-		/* plan the query */
+		/* plan the query. YB: parallel query is disabled for DDLs by default. */
 		plan = pg_plan_query(query, pstate->p_sourcetext,
-							 CURSOR_OPT_PARALLEL_OK, params);
+							 (IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+							 0 : CURSOR_OPT_PARALLEL_OK,
+							 params);
 
 		/*
 		 * Use a snapshot with an updated command ID to ensure this query sees
