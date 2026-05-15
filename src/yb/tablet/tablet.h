@@ -860,6 +860,13 @@ class Tablet : public AbstractTablet,
 
   void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
 
+  // Install the BSON-aware DocDB key comparator iff the runtime flag is set
+  // and this tablet's schema has at least one BSON-typed primary key column.
+  // Called from InitRocksDBBaseOptions / InitRocksDBOptions so non-BSON
+  // tablets (sys.catalog, all existing user tables) continue to use the
+  // default BytewiseComparator.
+  void MaybeUseDocDBKeyComparator(rocksdb::Options* options);
+
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
   }

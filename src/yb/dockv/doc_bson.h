@@ -18,6 +18,14 @@
 
 namespace yb::dockv {
 
+// Compares two raw BSON documents according to BSON comparison rules.
+// BSON comparison follows MongoDB's canonical type ordering and compares
+// documents element by element. Returns < 0 if a < b, 0 if a == b, > 0 if a > b.
+//
+// This is needed because BSON's binary representation is NOT byte-order compatible
+// with its logical sort order (e.g., little-endian integers, signed number comparison).
+int CompareBson(Slice a, Slice b);
+
 void BsonKeyToComparableBinary(Slice slice, KeyBuffer& dest);
 
 void BsonKeyToComparableBinaryDescending(Slice slice, KeyBuffer& dest);

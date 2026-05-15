@@ -73,6 +73,7 @@
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/docdb_key_comparator.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -4799,12 +4800,26 @@ void Tablet::InitRocksDBBaseOptions(rocksdb::Options* options) {
   docdb::InitRocksDBBaseOptions(
       options, LogPrefix(), tablet_id(), tablet_options_,
       hash_for_data_root_dir(metadata_->data_root_dir()));
+  MaybeUseDocDBKeyComparator(options);
 }
 
 void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
   docdb::InitRocksDBOptions(
       options, log_prefix, tablet_id(), /* statistics = */ nullptr, tablet_options_,
       rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
+  MaybeUseDocDBKeyComparator(options);
+}
+
+void Tablet::MaybeUseDocDBKeyComparator(rocksdb::Options* options) {
+  // The BSON-aware comparator is only installed for tablets that actually have
+  // a BSON-typed primary key column. RocksDB checks the comparator name on open
+  // against the MANIFEST, so we cannot switch the comparator on an existing
+  // tablet. Gating on the schema lets DocumentDB tablets get correct BSON
+  // ordering at creation time without affecting sys.catalog or any non-BSON
+  // tablet, whose MANIFESTs already record the default BytewiseComparator.
+  if (metadata_->schema()->HasBsonKeyColumn()) {
+    options->comparator = dockv::DocDBKeyComparatorInstance();
+  }
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
