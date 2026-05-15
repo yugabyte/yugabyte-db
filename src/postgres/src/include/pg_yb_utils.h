@@ -1664,6 +1664,7 @@ typedef struct YbQpmConfiguration
 	int plan_format;
 	bool verbose_plans;
 	bool compress_text;
+	bool show_max_exec_params;
 } YbQpmConfiguration;
 
 extern YbQpmConfiguration yb_qpm_configuration;

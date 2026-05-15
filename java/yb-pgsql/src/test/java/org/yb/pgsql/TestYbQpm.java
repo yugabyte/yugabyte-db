@@ -997,19 +997,21 @@ public class TestYbQpm extends BasePgSQLTest {
       stmt.execute("DEALLOCATE ALL");
 
       // Create parameterized statement.
-      stmt.execute("PREPARE s1(int) AS /*+ IndexScan(t1) */ SELECT * FROM t1 WHERE a1<$1");
+      stmt.execute("PREPARE s1(int, char) AS /*+ IndexScan(t1) */ " +
+                   "SELECT * FROM t1 WHERE a1<$1 AND str_col LIKE $2");
 
       // Clear the QPM table.
       stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
 
       int a1ParamValues[] = {0, 5000, 10000};
+      String charPattern = new String("\'x%\'");
       long queryId = 0;
       long planId = 0;
 
       // Execute the parameterized statement with 3 values to constrain a1. Since the predicate
       // is 'a1 < <value>', increasing the value will lead to longer execution times.
       for (int a1Param : a1ParamValues) {
-        String queryText = String.format("EXECUTE s1(%d)", a1Param);
+        String queryText = String.format("EXECUTE s1(%d, %s)", a1Param, charPattern);
         stmt.executeQuery(queryText);
 
         long currentQueryId = getExplainQueryId(stmt, queryText);
@@ -1029,6 +1031,9 @@ public class TestYbQpm extends BasePgSQLTest {
         planId = currentPlanId;
       }
 
+      // Turn masking of max_exec_time_params off.
+      stmt.execute("SET yb_pg_stat_plans_show_max_exec_params to TRUE");
+
       // Get the QPM entry for the query, keeping 'max_exec_time_params' and 'calls'.
       try (ResultSet rs = stmt.executeQuery(
           String.format(
@@ -1042,9 +1047,84 @@ public class TestYbQpm extends BasePgSQLTest {
 
           // There should be 1 entry with the worst param as '10000' and
           // as many calls as there are statement executions.
-          assertEquals("$1 = '10000'", maxParams);
+          assertEquals("$1 = '10000', $2 = 'x%'", maxParams);
           assertEquals(a1ParamValues.length, calls);
           assertFalse(rs.next());
+      }
+
+      // Turn masking of max_exec_time_params on.
+      stmt.execute("SET yb_pg_stat_plans_show_max_exec_params to FALSE");
+
+      // Get the QPM entry for the query, keeping 'max_exec_time_params'.
+      try (ResultSet rs = stmt.executeQuery(
+          String.format(
+              "SELECT max_exec_time_params " +
+              "FROM yb_pg_stat_plans " +
+              "WHERE queryid = %d",
+              queryId))) {
+          assertTrue(rs.next());
+          String maxParams = rs.getString("max_exec_time_params");
+
+          assertEquals("$1 = '?', $2 = '?'", maxParams);
+          assertFalse(rs.next());
+      }
+    }
+
+    // Create parameterized statement.
+    stmt.execute("PREPARE s2(int, char, char) AS " +
+                  "SELECT CASE WHEN $2 IS NOT NULL THEN $2 || $3 ELSE $3 END FROM t1 WHERE a1<$1");
+
+    // strings to try redaction on
+    List<String> constsToTest = Arrays.asList("''",
+                                              "null",
+                                              "'? % $'",
+                                              "'$1'",
+                                              "'''$1'' $999''9999'",
+                                              "'$1 '''' \\$2 '''");
+
+    for (String constString : constsToTest)
+    {
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+      String queryText = String.format("EXECUTE s2(10, %s, %s)", constString, constString);
+      LOG.info("queryText = " + queryText);
+      stmt.executeQuery(queryText);
+
+      long queryId2 = getExplainQueryId(stmt, queryText);
+
+      // parameterized query
+      try (ResultSet rs = stmt.executeQuery(
+        String.format(
+            "SELECT max_exec_time_params " +
+            "FROM yb_pg_stat_plans " +
+            "WHERE queryid = %d",
+            queryId2))) {
+        assertTrue(rs.next());
+        String maxParams = rs.getString("max_exec_time_params");
+
+        assertEquals("$1 = '?', $2 = '?', $3 = '?'", maxParams);
+        assertFalse(rs.next());
+      }
+
+      // non-parameterized query
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+      queryText = String.format(
+        "SELECT CASE WHEN %s IS NOT NULL THEN %s || %s ELSE %s END FROM t1 WHERE a1<10",
+        constString, constString, constString, constString);
+
+      queryId2 = getExplainQueryId(stmt, queryText);
+      stmt.executeQuery(queryText);
+
+      try (ResultSet rs = stmt.executeQuery(
+        String.format(
+            "SELECT max_exec_time_params " +
+            "FROM yb_pg_stat_plans " +
+            "WHERE queryid = %d",
+            queryId2))) {
+        assertTrue(rs.next());
+        String maxParams = rs.getString("max_exec_time_params");
+
+        assertNull(maxParams);
+        assertFalse(rs.next());
       }
     }
   }
