@@ -14,6 +14,7 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
@@ -24,6 +25,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -648,4 +654,98 @@ public class TestAlterStatements extends BaseYsqlConnMgr {
     public void testTtl5SecondsConnectionStatic() throws Exception {
         runAllAlterTypesInPrecedenceOrder(STRATEGY_CONNECTION_STATIC, TTL_5_SECONDS);
     }
+
+    //====================Tests for edge cases=============================
+
+    @Test
+    public void testOldVersionConnectionWaitsForFreeServer() throws Exception {
+        restartClusterWithAlterGucFlags(STRATEGY_CONNECTION_STATIC, TTL_NO_LIMIT);
+        createTestDbsAndRoles();
+
+        ExecutorService exec = Executors.newFixedThreadPool(2);
+        Connection conn1 = null;
+        Connection conn2 = null;
+        Statement stmt1 = null;
+        Statement stmt2 = null;
+        try {
+            conn1 = getRouteConnection(TEST_DB1, TEST_ROLE1);
+            conn2 = getRouteConnection(TEST_DB1, TEST_ROLE1);
+            stmt1 = conn1.createStatement();
+            stmt2 = conn2.createStatement();
+            final Statement threadStmt1 = stmt1;
+            final Statement threadStmt2 = stmt2;
+
+            threadStmt1.execute("SELECT 1");
+            threadStmt2.execute("SELECT 1");
+
+            try (Connection adminConn = getConnectionBuilder()
+                    .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+                    Statement adminStmt = adminConn.createStatement()) {
+                String alterSql = String.format("ALTER ROLE %s IN DATABASE %s SET %s = %s",
+                        TEST_ROLE1, TEST_DB1, TEST_GUC, GUC_VALUES_RAW[0]);
+                adminStmt.execute(alterSql);
+            }
+
+            CountDownLatch beginDone = new CountDownLatch(1);
+            CountDownLatch selectIssued = new CountDownLatch(1);
+            CountDownLatch proceed = new CountDownLatch(1);
+            CountDownLatch rollbackDone = new CountDownLatch(1);
+            CountDownLatch selectDone = new CountDownLatch(1);
+
+            Future<String> thread1Future = exec.submit(() -> {
+                boolean beginSignaled = false;
+                try {
+                    threadStmt1.execute("BEGIN");
+                    beginSignaled = true;
+                    beginDone.countDown();
+                    assertTrue("Proceed signal not received", proceed.await(10, TimeUnit.SECONDS));
+                    String showValue = getGucValue(threadStmt1);
+                    threadStmt1.execute("ROLLBACK");
+                    return showValue;
+                } finally {
+                    if (!beginSignaled) {
+                        beginDone.countDown();
+                    }
+                    rollbackDone.countDown();
+                }
+            });
+
+            Future<?> thread2Future = exec.submit(() -> {
+                try {
+                    assertTrue("BEGIN not executed on first connection",
+                            beginDone.await(10, TimeUnit.SECONDS));
+                    selectIssued.countDown();
+                    threadStmt2.execute("SELECT 1");
+                    return null;
+                } finally {
+                    selectDone.countDown();
+                }
+            });
+
+            assertTrue("BEGIN did not complete in time", beginDone.await(10, TimeUnit.SECONDS));
+            assertTrue("SELECT was not issued in time", selectIssued.await(10, TimeUnit.SECONDS));
+            assertFalse("SELECT on conn2 unexpectedly returned while conn1 was holding backend",
+                    selectDone.await(500, TimeUnit.MILLISECONDS));
+
+            proceed.countDown();
+
+            assertTrue("ROLLBACK did not complete in time",
+                    rollbackDone.await(10, TimeUnit.SECONDS));
+            assertTrue("SELECT did not complete after rollback",
+                    selectDone.await(10, TimeUnit.SECONDS));
+
+            String thread1Guc = thread1Future.get(10, TimeUnit.SECONDS);
+            thread2Future.get(10, TimeUnit.SECONDS);
+
+            assertEquals("Thread1 GUC should retain old value after ALTER", DEFAULT_GUC_VALUE,
+                    thread1Guc);
+            String thread2Guc = getGucValue(threadStmt2);
+            assertEquals("Thread2 GUC should retain old value after unblocking", DEFAULT_GUC_VALUE,
+                    thread2Guc);
+        } finally {
+            exec.shutdownNow();
+            cleanupTestDbsAndRoles();
+        }
+    }
+
 }

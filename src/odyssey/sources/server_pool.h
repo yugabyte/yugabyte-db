@@ -201,6 +201,25 @@ static inline od_server_t *yb_od_server_pool_idle_version_matching(
 	return NULL;
 }
 
+static inline bool
+yb_od_server_pool_active_has_matching_version(od_server_pool_t *pool,
+					      int64_t logical_client_version)
+{
+	od_list_t *target = &pool->active;
+	od_server_t *server;
+	od_list_t *i;
+	od_list_foreach(target, i)
+	{
+		server = od_container_of(i, od_server_t, link);
+		if (server->yb_marked_for_close)
+			continue;
+		if (server->yb_logical_client_version == logical_client_version)
+			return true;
+	}
+
+	return false;
+}
+
 static inline od_server_t *od_server_pool_foreach(od_server_pool_t *pool,
 						  od_server_state_t state,
 						  od_server_pool_cb_t callback,

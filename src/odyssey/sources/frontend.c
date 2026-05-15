@@ -337,10 +337,6 @@ od_frontend_attach(od_client_t *client, char *context,
 		 * ALTER DATABASE set command has been executed that bumped up the
 		 * current_version in pg_yb_logical_client_version.
 		*/
-		/* 
-		 * FIXME: What if there was a backend available at same version but was
-		 * active and we tried to create a new server
-		 */
 		if (instance->config.yb_alter_guc_adoption_strategy ==
 			    YB_GUC_ADOPTION_CONNECTION_STATIC &&
 		    client->yb_logical_client_version <
