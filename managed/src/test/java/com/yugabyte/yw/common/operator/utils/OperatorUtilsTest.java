@@ -508,6 +508,39 @@ public class OperatorUtilsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateReleaseCrLocalFileSkipped() throws Exception {
+    Release release = Release.create("2025.2.0.0", "LTS");
+    com.yugabyte.yw.models.ReleaseLocalFile k8sLocalFile =
+        com.yugabyte.yw.models.ReleaseLocalFile.create("/tmp/k8s-artifact.tgz");
+    com.yugabyte.yw.models.ReleaseLocalFile x86_64LocalFile =
+        com.yugabyte.yw.models.ReleaseLocalFile.create("/tmp/x86_64-artifact.tgz");
+    ReleaseArtifact k8sArtifact =
+        ReleaseArtifact.create(
+            "sha2561234", ReleaseArtifact.Platform.KUBERNETES, null, k8sLocalFile.getFileUUID());
+    ReleaseArtifact x86_64Artifact =
+        ReleaseArtifact.create(
+            "sha256123456",
+            ReleaseArtifact.Platform.LINUX,
+            PublicCloudConstants.Architecture.x86_64,
+            x86_64LocalFile.getFileUUID());
+    release.addArtifact(k8sArtifact);
+    release.addArtifact(x86_64Artifact);
+
+    boolean imported =
+        operatorUtils.createReleaseCr(
+            release, k8sArtifact, x86_64Artifact, "namespace", "awsSecret");
+
+    assertFalse(imported);
+    resetMockKubernetesClientForChecking();
+    KubernetesResourceList<io.yugabyte.operator.v1alpha1.Release> releases =
+        kubernetesClient
+            .resources(io.yugabyte.operator.v1alpha1.Release.class)
+            .inNamespace("namespace")
+            .list();
+    assertEquals(0, releases.getItems().size());
+  }
+
+  @Test
   public void testCreateSecretCr() throws Exception {
     operatorUtils.createSecretCr("secret", "namespace", "key", "value");
     resetMockKubernetesClientForChecking();
