@@ -577,11 +577,14 @@ extern bool yb_enable_base_scans_cost_model;
 extern bool yb_enable_update_reltuples_after_create_index;
 
 /*
- * Enables index backfill column projection optimization.
- * If true, index build/backfill only reads columns needed for the index,
- * rather than all columns from the base table.
+ * Enables the following index backfill scan optimizations:
+ * - column projection (reads only the columns needed for the index)
+ * - predicate pushdown for partial indexes (pushes the predicate to DocDB)
+ * If true, index build/backfill reads only the columns needed for the index
+ * (column projection) and pushes partial index predicates down to the base table
+ * scan (predicate pushdown), reducing read RPCs.
  */
-extern bool yb_enable_index_backfill_column_projection;
+extern bool yb_enable_index_backfill_scan_optimization;
 
 /*
  * Total timeout for waiting for backends to have up-to-date catalog version.

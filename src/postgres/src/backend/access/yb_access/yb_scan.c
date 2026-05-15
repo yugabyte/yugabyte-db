@@ -4524,7 +4524,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 TableScanDesc
 ybc_heap_beginscan_for_index_build(Relation relation,
 								   Snapshot snapshot,
-								   IndexInfo *indexInfo)
+								   IndexInfo *indexInfo,
+								   YbPushdownExprs *yb_pushdown)
 {
 	TableScanDesc tsdesc = palloc(sizeof(TableScanDescData));
 	Scan	   *pg_scan_plan;
@@ -4543,7 +4544,7 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 								 tsdesc->rs_nkeys,
 								 tsdesc->rs_key,
 								 pg_scan_plan,
-								 NULL,	/* rel_pushdown */
+								 yb_pushdown,
 								 NULL,	/* idx_pushdown */
 								 NIL,	/* aggrefs */
 								 0,		/* distinct_prefixlen */

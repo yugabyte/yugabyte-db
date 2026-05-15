@@ -305,6 +305,9 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
  *    - relid is the OID of the relation being scanned.
+ *
+ * Note - If you are modifying this function, consider changing
+ * function yb_extract_pushdown_clauses_from_index_predicate as well.
  */
 void
 yb_extract_pushdown_clauses(List *restrictinfo_list,
@@ -373,6 +376,40 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		{
 			*idx_colrefs = list_concat(*idx_colrefs, colrefs);
 			*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
+		}
+	}
+}
+
+/*
+ * yb_extract_pushdown_clauses_from_index_predicate
+ *	  This functions extracts pushdown clauses from an index's predicate or
+ *	  expression list. This function is intended to be used in the context of
+ *	  index backfills where the pushable quals are pushed down to the main table
+ *	  (and not the index). Therefore this function does not populate index
+ *	  quals.
+ *
+ * Note - If you are modifying this function, consider changing
+ * function yb_extract_pushdown_clauses as well.
+ */
+void
+yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,
+												 List **rel_remote_quals, List **rel_colrefs,
+												 Oid relid)
+{
+	ListCell   *lc;
+
+	foreach(lc, expr_list)
+	{
+		Expr	   *expr = (Expr *) lfirst(lc);
+		List	   *colrefs = NIL;
+		bool		pushable = YbCanPushdownExpr(expr, &colrefs, relid);
+
+		if (!pushable)
+			*local_quals = lappend(*local_quals, expr);
+		else
+		{
+			*rel_colrefs = list_concat(*rel_colrefs, colrefs);
+			*rel_remote_quals = lappend(*rel_remote_quals, expr);
 		}
 	}
 }
