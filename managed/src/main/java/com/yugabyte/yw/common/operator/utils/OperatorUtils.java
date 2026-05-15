@@ -1376,7 +1376,7 @@ public class OperatorUtils {
     }
   }
 
-  public void createReleaseCr(
+  public boolean createReleaseCr(
       com.yugabyte.yw.models.Release ybRelease,
       ReleaseArtifact k8sArtifact,
       ReleaseArtifact x86_64Artifact,
@@ -1392,7 +1392,7 @@ public class OperatorUtils {
               .get()
           != null) {
         log.info("Release {} already exists, skipping creation", ybRelease.getVersion());
-        return;
+        return true;
       }
       Release release = new Release();
       release.setMetadata(
@@ -1451,6 +1451,7 @@ public class OperatorUtils {
         downloadConfig.setHttp(http);
       } else {
         log.info("Release {} uses a local file", ybRelease.getVersion());
+        return false;
       }
       config.setDownloadConfig(downloadConfig);
 
@@ -1458,6 +1459,7 @@ public class OperatorUtils {
       release.setSpec(releaseSpec);
 
       kubernetesClient.resources(Release.class).inNamespace(namespace).resource(release).create();
+      return true;
     }
   }
 
