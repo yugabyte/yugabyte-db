@@ -2295,6 +2295,45 @@ TEST_F(AutomaticTabletSplitAddServerITest, SplitTabletWithReadReplica) {
                                          /* num_replicas_online = */ 4));
 }
 
+// Regression test for the race between ApplyTabletSplit and TSTabletManager::StartShutdown.
+TEST_F_EX(
+    TabletSplitITest, YB_DISABLE_TEST_IN_TSAN(SplitApplyAfterTabletManagerStartShutdownBegins),
+    TabletSplitExternalMiniClusterITest) {
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush());
+
+  const auto tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
+  const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto* leader_ts = cluster_->tablet_server(leader_idx);
+
+  LogWaiter updates_paused_waiter(
+    leader_ts, "Pausing due to flag TEST_pause_update_majority_replicated");
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_pause_update_majority_replicated", "true"));
+  ASSERT_OK(SplitTablet(tablet_id));
+  // Wait for the split op to reach the pause point in UpdateMajorityReplicated.
+  ASSERT_OK(updates_paused_waiter.WaitFor(3s * kTimeMultiplier));
+
+  ASSERT_OK(cluster_->SetFlag(
+      leader_ts, "TEST_pause_after_ts_manager_started_quiescing", "true"));
+  LogWaiter shutdown_paused_waiter(
+      leader_ts, "Pausing due to flag TEST_pause_after_ts_manager_started_quiescing");
+
+  ASSERT_OK(leader_ts->Kill(SIGTERM));
+  ASSERT_OK(shutdown_paused_waiter.WaitFor(3s * kTimeMultiplier));
+
+  // Resume the apply path and ensure that the tserver doesn't crash.
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_pause_update_majority_replicated", "false"));
+
+  ASSERT_NOK(cluster_->WaitForTSToCrash(leader_ts, MonoDelta::FromSeconds(5) * kTimeMultiplier));
+  ASSERT_OK(cluster_->SetFlag(
+    leader_ts, "TEST_pause_after_ts_manager_started_quiescing", "false"));
+  leader_ts->Shutdown();
+  ASSERT_OK(leader_ts->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(leader_ts, 10s * kTimeMultiplier));
+
+  ASSERT_OK(WaitForTabletsExcept(/* num_tablets */ 2, leader_idx, tablet_id));
+}
+
 class TabletSplitSingleServerITest : public TabletSplitITest {
  protected:
   int64_t GetRF() override { return 1; }

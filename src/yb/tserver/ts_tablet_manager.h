@@ -590,6 +590,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
 
+  bool IsOperational() const EXCLUDES(mutex_);
+
   // Initializes the RaftPeerPB for the local peer.
   // Guaranteed to include both uuid and last_seen_addr fields.
   // Crashes with an invariant check if the RPC server is not currently in a

@@ -232,6 +232,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, pause_apply_tablet_split, false,
                  "Pause TSTabletManager::ApplyTabletSplit.");
 
+DEFINE_test_flag(bool, pause_after_ts_manager_started_quiescing, false,
+    "Pause TSTabletManager::StartShutdown after the tablet manager state is set.");
+
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
@@ -777,6 +780,18 @@ Status TSTabletManager::Init() {
   // Validator should be created before tablets are open.
   tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
 
+  // Switch state to MANAGER_RUNNING before opening tablets as apply of few ops might need the
+  // manager to be in running state.
+  {
+    std::lock_guard lock(mutex_);
+    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
+    if (!allow_compaction_failures_for_tablet_ids_.empty()) {
+      LOG_WITH_PREFIX(INFO) << "Flag allow_compaction_failures_for_tablet_ids is set to: "
+                            << allow_compaction_failures_for_tablet_ids_;
+    }
+    state_ = MANAGER_RUNNING;
+  }
+
   // Now submit the "Open" task for each.
   {
     std::lock_guard lock(metas.ready_metas_mutex);
@@ -815,16 +830,6 @@ Status TSTabletManager::Init() {
         "bg superblock flush",
         MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
     RETURN_NOT_OK(superblock_flush_bg_task_->Init());
-  }
-
-  {
-    std::lock_guard lock(mutex_);
-    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
-    if (!allow_compaction_failures_for_tablet_ids_.empty()) {
-      LOG_WITH_PREFIX(INFO) << "Flag allow_compaction_failures_for_tablet_ids is set to: "
-                            << allow_compaction_failures_for_tablet_ids_;
-    }
-    state_ = MANAGER_RUNNING;
   }
 
   RETURN_NOT_OK(mem_manager_->Init());
@@ -1196,7 +1201,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
 
-  if (state() != MANAGER_RUNNING) {
+  if (!IsOperational()) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
@@ -1533,7 +1538,7 @@ Status TSTabletManager::ApplyCloneTablet(
   // replicas A' and B' is maintained. Since the only way the clone op modifies the source tablet
   // is to set last_attempted_clone_seq_no_, this assumption is met.
 
-  if (state() != MANAGER_RUNNING) {
+  if (!IsOperational()) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
@@ -2378,6 +2383,7 @@ void TSTabletManager::StartShutdown() {
   {
     std::lock_guard lock(mutex_);
     switch (state_) {
+      case MANAGER_STARTED_QUIESCING: [[fallthrough]];
       case MANAGER_QUIESCING: {
         VLOG(1) << "Tablet manager shut down already in progress..";
         return;
@@ -2388,8 +2394,8 @@ void TSTabletManager::StartShutdown() {
       }
       case MANAGER_INITIALIZING:
       case MANAGER_RUNNING: {
-        LOG_WITH_PREFIX(INFO) << "Shutting down tablet manager...";
-        state_ = MANAGER_QUIESCING;
+        LOG_WITH_PREFIX(INFO) << "Starting to shut down tablet manager...";
+        state_ = MANAGER_STARTED_QUIESCING;
         break;
       }
       default: {
@@ -2397,6 +2403,8 @@ void TSTabletManager::StartShutdown() {
       }
     }
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_after_ts_manager_started_quiescing);
 
   for (auto& callback : flag_callbacks_) {
     callback.Deregister();
@@ -2454,6 +2462,11 @@ void TSTabletManager::StartShutdown() {
   }
   if (metadata_cache_holder_) {
     metadata_cache_holder_->Shutdown();
+  }
+  {
+    std::lock_guard lock(mutex_);
+    LOG_WITH_PREFIX(INFO) << "Shutting down tablet manager...";
+    state_ = MANAGER_QUIESCING;
   }
 }
 
@@ -2547,7 +2560,15 @@ std::string TSTabletManager::TabletLogPrefix(const TabletId& tablet_id) const {
 }
 
 bool TSTabletManager::ClosingUnlocked() const {
+  // Don't check for MANAGER_STARTED_QUIESCING so as to allow apply of operations like SPLIT_OP &
+  // CLONE_OP that could race with the shutdown process, and could fatal if TSTabletManager is
+  // unable to apply them.
   return state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN;
+}
+
+bool TSTabletManager::IsOperational() const {
+  SharedLock<RWMutex> shared_lock(mutex_);
+  return state_ == MANAGER_STARTED_QUIESCING || state_ == MANAGER_RUNNING;
 }
 
 Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
