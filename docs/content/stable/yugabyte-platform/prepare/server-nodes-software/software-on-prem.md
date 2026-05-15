@@ -186,19 +186,19 @@ Examples:
 Override the FQDN (string type) under ynp:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\”my-new-fqdn\”
+./node-agent-provision.sh --config_override ynp.node_external_fqdn="my-new-fqdn"
 ```
 
 Override chrony servers (list of strings) under ynp:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.chrony_servers=[\”s1\”,\”s2”\]
+./node-agent-provision.sh --config_override ynp.chrony_servers=["s1","s2"]
 ```
 
 Override FQDN and YBA URL at the same time:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\”my-new-fqdn\” --config_override yba.url=\”https://new-yba-url.com\”
+./node-agent-provision.sh --config_override ynp.node_external_fqdn="my-new-fqdn" --config_override yba.url="https://new-yba-url.com"
 ```
 
 Note this only overrides fields like yba.url that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
@@ -209,7 +209,7 @@ Use the `--generate_config` flag to generate a new yaml config by pulling inform
 
 The generated file is named `node-agent-provision-generated.yaml`.
 
-Use the `-–generate_and_run` flag to generate the new configuration file _and_ run the provisioning script.
+Use the `--generate_and_run` flag to generate the new configuration file _and_ run the provisioning script.
 
 For example, to run provision with the generated configuration file:
 
