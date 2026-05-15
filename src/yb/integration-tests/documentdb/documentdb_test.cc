@@ -16,7 +16,6 @@
 
 DECLARE_bool(ysql_enable_documentdb);
 DECLARE_bool(enable_pg_cron);
-DECLARE_bool(enable_bson_pk_comparator);
 
 namespace yb {
 class DocumentDBTest : public pgwrapper::PgMiniTestBase {
@@ -28,7 +27,6 @@ class DocumentDBTest : public pgwrapper::PgMiniTestBase {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_documentdb) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_cron) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_bson_pk_comparator) = true;
 
     TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
 

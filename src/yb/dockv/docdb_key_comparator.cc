@@ -218,9 +218,16 @@ std::optional<BsonRegionInfo> FindBsonRegionContaining(
   return std::nullopt;
 }
 
+// Forward declaration so CompareBsonRegion can recurse on the suffix when the
+// BSON region compares equal.
+int CompareKeyBsonAware(Slice a, Slice b);
+
 // Compares two keys that have a BSON region at the given position.
 // Decodes the BSON values from both keys and compares them using BSON comparison logic.
-// If the BSON values are equal, continues byte-wise comparison from after the BSON region.
+// If the BSON values are equal, recurses on the suffix using CompareKeyBsonAware
+// so that any subsequent BSON columns are also compared with canonical ordering
+// (a plain byte-wise compare on the suffix would miss type-equal-but-binary-
+// different cases like int32 vs int64).
 int CompareBsonRegion(Slice a, Slice b, const BsonRegionInfo& region) {
   // Decode BSON value from key a.
   Slice a_slice(a.data() + region.value_start, a.size() - region.value_start);
@@ -247,28 +254,23 @@ int CompareBsonRegion(Slice a, Slice b, const BsonRegionInfo& region) {
     cmp = -cmp;
   }
 
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
 
-  // BSON values are equal. Compare the remaining bytes after the BSON region.
-  // Note: The remaining key portions might also contain BSON entries, but since
-  // the BSON values are equal, their zero-encoded representations are also equal,
-  // meaning the next differing byte (if any) will be after this BSON region.
-  // We recursively apply the same logic by comparing the suffixes.
+  // BSON values are equal. The suffix after the BSON region may itself contain
+  // more BSON columns or other typed values; recurse so any further BSON
+  // regions are compared with canonical ordering rather than byte-wise.
   Slice a_suffix(a_slice.data(), a.end() - a_slice.data());
   Slice b_suffix(b_slice.data(), b.end() - b_slice.data());
-
-  // For the suffix, we can use byte-wise comparison because:
-  // - If the decoded BSON values are equal, their zero-encoded forms are byte-wise equal
-  //   (same input -> same zero-encoding). So any difference in the suffix is in a different
-  //   component, which for equal BSON values would be past the BSON region.
-  return a_suffix.compare(b_suffix);
+  return CompareKeyBsonAware(a_suffix, b_suffix);
 }
 
-}  // namespace
-
-int DocDBKeyComparator::Compare(Slice a, Slice b) const {
+int CompareKeyBsonAware(Slice a, Slice b) {
   // Fast path: byte-wise equality.
-  if (a == b) return 0;
+  if (a == b) {
+    return 0;
+  }
 
   const auto* a_data = reinterpret_cast<const uint8_t*>(a.data());
   const auto* b_data = reinterpret_cast<const uint8_t*>(b.data());
@@ -291,6 +293,9 @@ int DocDBKeyComparator::Compare(Slice a, Slice b) const {
   // kBson = 'o' = 111, kBsonDescending = 'p' = 112.
   // If neither byte appears in the prefix up to diff_pos, the difference
   // cannot be inside a BSON region and byte-wise comparison is correct.
+  // This is faster than the structural FindBsonRegionContaining walk for
+  // tablets where the diff lands inside a fixed-width column ahead of the
+  // BSON region (e.g. shard_key_value bigint preceding object_id bson).
   bool may_have_bson = false;
   for (size_t i = 0; i < diff_pos; i++) {
     if (a_data[i] == static_cast<uint8_t>(KeyEntryType::kBson) ||
@@ -310,6 +315,12 @@ int DocDBKeyComparator::Compare(Slice a, Slice b) const {
 
   // Not in a BSON region; byte-wise comparison is correct.
   return (a_data[diff_pos] < b_data[diff_pos]) ? -1 : 1;
+}
+
+}  // namespace
+
+int DocDBKeyComparator::Compare(Slice a, Slice b) const {
+  return CompareKeyBsonAware(a, b);
 }
 
 bool DocDBKeyComparator::Equal(Slice a, Slice b) const {

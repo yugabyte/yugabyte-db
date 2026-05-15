@@ -336,7 +336,6 @@ DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
-DECLARE_bool(enable_bson_pk_comparator);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
@@ -4812,13 +4811,14 @@ void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& lo
 }
 
 void Tablet::MaybeUseDocDBKeyComparator(rocksdb::Options* options) {
-  // The BSON-aware comparator is only installed when both the AutoFlag is
-  // promoted and the tablet's schema has a BSON-typed primary key column.
-  // The AutoFlag handles upgrade safety -- the comparator name is recorded in
-  // the RocksDB MANIFEST, so it cannot change for a tablet's lifetime. The
-  // schema gate restricts the change to tablets that actually need it (sys.
-  // catalog and every non-BSON tablet keep BytewiseComparator).
-  if (FLAGS_enable_bson_pk_comparator && metadata_->schema()->HasBsonKeyColumn()) {
+  // The BSON-aware comparator is installed on tablets whose primary key has
+  // a BSON-typed column. The BSON DocDB type is new and not yet used by any
+  // shipped feature outside of preview DocumentDB collections, so there are
+  // no existing tablets with this schema to migrate; the comparator name
+  // recorded in a new tablet's MANIFEST matches the comparator we install on
+  // reopen. sys.catalog and every non-BSON tablet's HasBsonKeyColumn()
+  // returns false and they keep the default BytewiseComparator.
+  if (metadata_->schema()->HasBsonKeyColumn()) {
     options->comparator = dockv::DocDBKeyComparatorInstance();
   }
 }

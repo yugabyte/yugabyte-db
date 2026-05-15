@@ -14,8 +14,10 @@
 #include "yb/dockv/doc_bson.h"
 
 #include <bson/bson.h>
+#include <locale.h>
 
 #include <cmath>
+#include <cstdlib>
 
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/util/result.h"
@@ -23,6 +25,16 @@
 namespace yb::dockv {
 
 namespace {
+
+// Process-wide C locale used to parse the canonical Decimal128 string emitted
+// by bson_decimal128_to_string. strtold honors LC_NUMERIC for the decimal
+// separator, so we explicitly use the C locale to ensure '.' is the radix
+// regardless of the process locale setting. Allocated once on first use; not
+// freed -- the locale is needed for the lifetime of the process.
+locale_t CLocale() {
+  static locale_t locale = newlocale(LC_NUMERIC_MASK, "C", static_cast<locale_t>(0));
+  return locale;
+}
 
 // Returns the canonical sort order for a BSON type, following ordering:
 // MinKey < Null/Undefined < Number < String/Symbol < Document < Array < Binary <
@@ -98,7 +110,9 @@ long double BsonNumberAsLongDouble(const bson_value_t& value) {
       char buf[BSON_DECIMAL128_STRING];
       bson_decimal128_to_string(&value.value.v_decimal128, buf);
       char* end = nullptr;
-      return strtold(buf, &end);
+      // strtold_l with the C locale avoids LC_NUMERIC-dependent decimal-
+      // separator parsing; bson_decimal128_to_string always uses '.'.
+      return strtold_l(buf, &end, CLocale());
     }
     default:
       // Callers (CompareNumbers) only invoke this for numeric types in the
@@ -186,23 +200,17 @@ int CompareBsonValues(const bson_value_t& left, const bson_value_t& right) {
       return 0;
 
     case BSON_TYPE_DECIMAL128:
-      // Same-type DECIMAL128 vs DECIMAL128 keeps full precision via binary
-      // comparison of (high, low) limbs. Cross-type with other numerics
-      // routes through CompareNumbers / BsonNumberAsLongDouble below.
-      if (right.value_type == BSON_TYPE_DECIMAL128) {
-        if (left.value.v_decimal128.high != right.value.v_decimal128.high) {
-          return left.value.v_decimal128.high < right.value.v_decimal128.high ? -1 : 1;
-        }
-        if (left.value.v_decimal128.low != right.value.v_decimal128.low) {
-          return left.value.v_decimal128.low < right.value.v_decimal128.low ? -1 : 1;
-        }
-        return 0;
-      }
-      [[fallthrough]];
     case BSON_TYPE_DOUBLE:
     case BSON_TYPE_INT32:
     case BSON_TYPE_INT64:
     case BSON_TYPE_BOOL:
+      // All numerics including DECIMAL128 are compared via long-double
+      // promotion. Binary comparison of (high, low) limbs is not valid for
+      // Decimal128 because the most significant bit of `high` is the sign
+      // bit, so an unsigned compare would sort negative values above
+      // positive ones. The string-via-strtold_l path handles signs and
+      // exponents correctly (at the cost of ~19-digit precision, which is
+      // acceptable for primary-key uses).
       return CompareNumbers(left, right);
 
     case BSON_TYPE_UTF8:

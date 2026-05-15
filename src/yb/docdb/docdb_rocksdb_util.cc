@@ -153,20 +153,6 @@ DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
     "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 
-// The BSON-aware DocDB key comparator changes the comparator name written to a
-// RocksDB MANIFEST, which is an on-disk format change. Gating its installation
-// behind an AutoFlag keeps mixed-version and rolling-restart clusters on the
-// default BytewiseComparator until every node has been upgraded; tablets
-// created after the flag promotes will record yb.DocDBKeyComparator.v1 in their
-// MANIFEST and use the BSON-aware comparator. The schema gate in Tablet still
-// restricts the comparator to tablets whose primary key has a BSON column.
-DEFINE_RUNTIME_AUTO_bool(
-    enable_bson_pk_comparator, kExternal, false, true,
-    "Whether to install the BSON-aware DocDB key comparator for tablets whose "
-    "primary key contains a BSON column. Promotes after all nodes have upgraded; "
-    "the schema check in Tablet::MaybeUseDocDBKeyComparator gates installation "
-    "to the affected tablets so existing non-BSON tablets are unaffected.");
-
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_RUNTIME_AUTO_bool(
