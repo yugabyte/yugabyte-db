@@ -5425,9 +5425,11 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(namespace_name));
   const auto table_name = "tbl1";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", table_name));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT, salary NUMERIC(12,2)) SPLIT INTO 1 TABLETS",
+      table_name));
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", table_name));
+      "INSERT INTO $0 (id, name, salary) SELECT i, 'test' || i, i + 0.50 "
+      "FROM generate_series(1, 10) i", table_name));
 
   std::vector<TabletId> tablet_ids;
   auto table_names = ASSERT_RESULT(client_->ListTables(table_name));
@@ -5439,6 +5441,21 @@ TEST_F(PgLibPqTest, DumpTabletData) {
 
   // Wait for rows to get replicated to followers.
   SleepFor(1s * kTimeMultiplier);
+
+  // Dump tablet data with a destination path to exercise the binary -> string conversion path,
+  // which is required to reproduce decoding bugs for types like NUMERIC.
+  const auto dest_path = GetTestPath("dump_tablet_data.out");
+  ASSERT_OK(DumpTabletData(/* tserver_idx */ 0, tablet_id, HybridTime(), dest_path));
+
+  faststring dumped;
+  ASSERT_OK(ReadFileToString(Env::Default(), dest_path, &dumped));
+  const auto dumped_str = dumped.ToString();
+  LOG(INFO) << "Dumped tablet data:\n" << dumped_str;
+  ASSERT_STR_CONTAINS(dumped_str, Format("Tablet ID: $0", tablet_id));
+  ASSERT_STR_CONTAINS(dumped_str, "Row count: 10");
+  for (int i = 1; i <= 10; ++i) {
+    ASSERT_STR_CONTAINS(dumped_str, Format("$0, test$0, $0.5", i));
+  }
 
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
