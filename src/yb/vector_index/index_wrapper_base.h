@@ -74,6 +74,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::unique_lock lock(TEST_search_exact_mutex_);
+      return impl().DoInsert(vector_id, v);
+    }
     // Take the write side: concurrent inserts run together (the backend coordinates them via its
     // own per-node locks) but exclude searches, whose lock-free traversal must not observe a
     // half-applied insert.
@@ -100,6 +104,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       const Vector& query_vector, const SearchOptions& options)
       const override {
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::shared_lock lock(TEST_search_exact_mutex_);
       return SearchExact(query_vector, options);
     }
     // Take the read side while the index is still mutable, so searches never overlap an insert.
@@ -161,6 +166,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
+  mutable std::shared_mutex TEST_search_exact_mutex_;
 
   // Block cache space reserved for this index's footprint (#32357). Held for the index's lifetime
   // and released on destruction. Empty when no block cache is set or the feature is disabled.
