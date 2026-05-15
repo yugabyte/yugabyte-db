@@ -147,6 +147,8 @@ class Cgroup {
 
   Status WriteConfig(std::string_view config, std::string_view value) const;
 
+  Result<bool> CheckReady() const;
+
   mutable std::mutex mutex_;
 
   Cgroup* const parent_;

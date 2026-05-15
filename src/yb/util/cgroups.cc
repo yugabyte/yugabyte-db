@@ -16,6 +16,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/os-util.h"
 
@@ -23,6 +24,8 @@ DEFINE_NON_RUNTIME_bool(use_cgroups_cpu, false,
     "Use the cgroup CPU quota to determine the effective number of CPUs instead of the host CPU "
     "count. Useful for containerized deployments (e.g. Kubernetes) where the process is limited "
     "to a fraction of the host's CPUs via cgroup CPU quotas.");
+
+DEFINE_test_flag(uint64, cgroups_delay_init_ms, 0, "Milliseconds to delay cgroup initialization.");
 
 DECLARE_int32(num_cpus);
 
@@ -59,6 +62,10 @@ namespace {
 constexpr auto kRootPath = "/sys/fs/cgroup";
 constexpr auto kCpuRootPathV1 = "/sys/fs/cgroup/cpu";
 constexpr auto kDefaultThreadCgroupName = "@default";
+
+// Maximum time to wait for the process/thread that created a cgroup to set it up. This should
+// normally be on the order of microseconds (just a couple of syscalls).
+constexpr auto kCgroupSetupWaitTime = 5s;
 
 YB_DEFINE_ENUM(CgroupVersion, (kVersion1)(kVersion2));
 
@@ -267,6 +274,11 @@ Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_lengt
 }
 
 Status Cgroup::Init(bool is_root) {
+  auto init_delay = FLAGS_TEST_cgroups_delay_init_ms;
+  if (init_delay > 0) {
+    SleepFor(init_delay * 1ms);
+  }
+
   if (!is_root) {
     RETURN_NOT_OK(UpdateCpuLimits(/*max_cpu_fraction=*/1.0));
     RETURN_NOT_OK(UpdateCpuWeight(kDefaultCpuWeight));
@@ -276,8 +288,23 @@ Status Cgroup::Init(bool is_root) {
   }
   if (cgroup_manager.version() == CgroupVersion::kVersion2) {
     RETURN_NOT_OK(WriteConfig("cgroup.subtree_control", "+cpu"));
+  } else {
+    // This setting only affects the cpuset controller, which we do not use. So this effectively
+    // does nothing, and we just use it as a way to signal that initialization is complete.
+    RETURN_NOT_OK(WriteConfig("cgroup.clone_children", "1"));
   }
   return Status::OK();
+}
+
+Result<bool> Cgroup::CheckReady() const {
+  if (cgroup_manager.version() == CgroupVersion::kVersion2) {
+    // Need to check both since reading from cgroup.subtree_control will fail if cgroup.type hasn't
+    // been set.
+    return VERIFY_RESULT(ReadConfig("cgroup.type")) == "threaded" &&
+        VERIFY_RESULT(ReadConfig("cgroup.subtree_control")) == "cpu";
+  } else {
+    return VERIFY_RESULT(ReadConfig("cgroup.clone_children")) == "1";
+  }
 }
 
 Status Cgroup::CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us) {
@@ -347,6 +374,10 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
 
   // Cgroup already exists: it may have been created by another process (child/parent).
   auto& cg = children_.try_emplace(std::string(name), this, name).first->second;
+  RETURN_NOT_OK(WaitFor(
+      [&cg] { return cg.CheckReady(); },
+      kCgroupSetupWaitTime,
+      Format("Wait for creator of cgroup $0 to set it up", name)));
 
   int cfs_period_us;
   int cfs_quota_us;
