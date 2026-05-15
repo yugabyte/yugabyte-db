@@ -35,6 +35,7 @@
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/concurrent_value.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 
@@ -89,9 +90,14 @@ class TabletServerIf : public LocalTabletServer {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
 
-  virtual Status TriggerRelcacheInitConnection(
+  // Asynchronously triggers an internal superuser PG connection that rebuilds the relcache init
+  // file for `req.database_name()`. The callback is invoked once the operation finishes (or fails)
+  // with the final Status. Implementations must not block the caller's thread waiting for the
+  // result; multiple concurrent callers for the same database share a single underlying
+  // operation and each receives its own callback invocation.
+  virtual void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-      tserver::TriggerRelcacheInitConnectionResponsePB *resp) = 0;
+      StdStatusCallback callback) = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 

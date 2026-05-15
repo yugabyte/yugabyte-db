@@ -49,6 +49,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     static const tableint MAX_LABEL_OPERATION_LOCKS = 65536;
     static const unsigned char DELETE_MARK = 0x01;
 
+    // Approximate memory cost for the per-element bookkeeping inside the HierarchicalNSW
+    // structure, excluding the graph links and vector data which are tracked separately.
+    // Includes linkLists_ pointer, element_levels_, and link_list_locks_.
+    static const size_t PER_ELEMENT_BOOKKEEPING_BYTES = sizeof(char*) + sizeof(int) + sizeof(std::mutex);
+
+    // Approximate memory cost for an entry in label_lookup_.
+    static const size_t PER_INSERTED_LABEL_LOOKUP_BYTES = sizeof(label_t) + sizeof(tableint) + 2 * sizeof(void*);
+
     size_t max_elements_{0};
     mutable std::atomic<size_t> cur_element_count{0};  // current number of elements
     size_t size_data_per_element_{0};
@@ -1441,6 +1449,47 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         params.size_links_level0 = size_links_level0_;
         params.bytes_per_vector = data_size_;
         return params;
+    }
+
+    // Estimation of vectors that can fit within a given byte limit.
+    // Calculates based on the configured index parameters.
+    static size_t estimateNumVectorsForBytes(size_t bytes_limit, size_t M, size_t maxM0, size_t data_size) {
+        if (bytes_limit == 0) {
+            return 0;
+        }
+
+        size_t size_links_level0 = maxM0 * sizeof(tableint) + sizeof(linklistsizeint);
+        size_t size_data_per_element = size_links_level0 + data_size + sizeof(label_t);
+        size_t size_links_per_element = M * sizeof(tableint) + sizeof(linklistsizeint);
+
+        // Search context cost per max_element: one vl_type entry in the visited_list_pool_
+        size_t per_element_search_context_bytes = sizeof(vl_type); 
+
+        double expected_extra_levels = M > 1 ? 1.0 / std::log(static_cast<double>(M)) : 0.0;
+
+        size_t bytes_per_vector =
+            PER_ELEMENT_BOOKKEEPING_BYTES +
+            per_element_search_context_bytes +
+            PER_INSERTED_LABEL_LOOKUP_BYTES +
+            size_data_per_element +
+            static_cast<size_t>(expected_extra_levels * size_links_per_element);
+
+        return bytes_limit / bytes_per_vector;
+    }
+
+    size_t indexDataBytes() const {
+        const size_t max_elements = max_elements_;
+        const size_t cur_count = cur_element_count.load();
+
+        size_t bytes = max_elements * (size_data_per_element_ + PER_ELEMENT_BOOKKEEPING_BYTES);
+        double expected_extra_levels = M_ > 1 ? 1.0 / std::log(static_cast<double>(M_)) : 0.0;
+        bytes += static_cast<size_t>(static_cast<double>(cur_count) * expected_extra_levels) * size_links_per_element_;
+        bytes += cur_count * PER_INSERTED_LABEL_LOOKUP_BYTES;
+        return bytes;
+    }
+
+    size_t searchContextBytes() const {
+        return max_elements_ * sizeof(vl_type);
     }
 
     void checkIntegrity() {

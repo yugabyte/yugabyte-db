@@ -175,8 +175,16 @@ typedef struct TokenizedAuthLine
 /* kluge to avoid including libpq/libpq-be.h here */
 typedef struct Port hbaPort;
 
-extern bool load_hba(void);
-extern bool load_ident(MemoryContext yb_ident_context);
+/*
+ * YB: When yb_validate_conf_file is non-NULL, load_hba/load_ident operate in
+ * validation-only mode: they parse the specified file, report errors at ERROR
+ * level. No changes are applied on success.
+ * When NULL, normal mode: use the default file path, report at LOG level,
+ * and apply the configuration on success.
+ */
+extern bool load_hba(const char *yb_validate_conf_file);
+extern bool load_ident(MemoryContext yb_ident_context,
+					   const char *yb_validate_conf_file);
 extern const char *hba_authname(UserAuth auth_method);
 extern void hba_getauthmethod(hbaPort *port);
 extern int	check_usermap(const char *usermap_name,

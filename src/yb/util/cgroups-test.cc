@@ -24,6 +24,7 @@
 
 DECLARE_bool(use_cgroups_cpu);
 DECLARE_int32(num_cpus);
+DECLARE_uint64(TEST_cgroups_delay_init_ms);
 
 using namespace std::literals;
 
@@ -154,6 +155,23 @@ TEST_F(CgroupsTest, TestCpuLimit) {
   auto throttled_group_time = TimeIncrementWorkload();
   LOG(INFO) << "Throttled group time: " << throttled_group_time;
   ASSERT_NEAR(base_time / static_cast<double>(throttled_group_time), 0.5, 0.25);
+}
+
+TEST_F(CgroupsTest, TestConcurrentCreation) {
+  ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+
+  constexpr auto move_to_child = [] -> Status {
+    auto& child = VERIFY_RESULT_REF(RootCgroup()->CreateOrLoadChild("child"));
+    return child.MoveCurrentThreadToGroup();
+  };
+
+  ASSERT_OK(ForkAndRunToCompletion(/*child=*/[&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cgroups_delay_init_ms) = 5000;
+    ASSERT_OK(move_to_child());
+  }, /*parent=*/[&] {
+    SleepFor(2s);
+    ASSERT_OK(move_to_child());
+  }));
 }
 
 // Standalone tests for NumEffectiveCPUs that don't require running inside a dedicated

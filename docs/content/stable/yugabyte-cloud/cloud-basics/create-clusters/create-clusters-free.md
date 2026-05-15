@@ -64,7 +64,7 @@ Save your database credentials. If you lose them, you won't be able to use the d
 
 After you complete the wizard, YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes.
 
-When the cluster is ready, the cluster [Overview](../../../cloud-monitor/overview/) tab is displayed.
+When the cluster is ready, the cluster **Overview** tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon with the database admin credentials you specified.
 

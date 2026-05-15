@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -985,16 +986,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (updaterConfig.getCallback() != null) {
             updaterConfig.getCallback().accept(universe);
           }
+          boolean clearUpdatingTask =
+              universeDetails.updateSucceeded && updaterConfig.isCheckSuccess();
+
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
-          boolean clearUpdatingTask =
-              (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess());
-
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
-              universeDetails.placementModificationTaskUuid = null;
-              // Do not save the transient state in the universe.
-              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+              boolean pausedTask =
+                  getTaskExecutor()
+                      .maybeGetRunnableTask(getUserTaskUUID())
+                      .map(RunnableTask::isPaused)
+                      .orElse(false);
+              // Keep placementModificationTaskUuid set while paused so resume can match this
+              // upgrade.
+              if (!pausedTask) {
+                universeDetails.placementModificationTaskUuid = null;
+                // Do not save the transient state in the universe.
+                universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+              }
             }
           }
           if (clearUpdatingTask) {
@@ -2101,18 +2111,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         nodeDetailsSet, false /* ignoreErrors */, 20 /* numRetries */);
   }
 
-  /** Create a task to ping yb-controller servers on each node */
+  /**
+   * Create a task to ping yb-controller servers on each node. Master-only nodes (K8s master pods or
+   * dedicated-master VMs) are filtered out because YBC is only co-located with tservers.
+   */
   public SubTaskGroup createWaitForYbcServerTask(
       Collection<NodeDetails> nodeDetailsSet, boolean ignoreErrors, int numRetries) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForYbcServer", ignoreErrors);
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
-    params.nodeNameList =
+    Set<NodeDetails> ybcNodes =
         nodeDetailsSet == null
             ? null
-            : nodeDetailsSet.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+            : nodeDetailsSet.stream().filter(n -> n.isTserver).collect(Collectors.toSet());
+    params.nodeDetailsSet = ybcNodes; // ybcNodes == null ? null : new HashSet<>(ybcNodes);
+    params.nodeNameList =
+        ybcNodes == null
+            ? null
+            : ybcNodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     params.numRetries = numRetries;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -3613,6 +3630,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
    * queue.
    *
+   * <p>This will also attempt to stop YBC on master-only nodes, just in case it is running.
+   * createStopServerTasks should handle the service not running/not existing.
+   *
    * @param nodes set of nodes on which yb-controller has to be stopped
    */
   public SubTaskGroup createStopYbControllerTasks(
@@ -5032,10 +5052,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Set<ServerType> processes,
       boolean removeMasterFromQuorum,
       boolean deconfigure,
+      boolean flushTablets,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
       addLeaderBlackListIfAvailable(nodes, subTaskGroupType);
-
       if (deconfigure) {
         UUID placementUuid = nodes.get(0).placementUuid;
         // Remove node from load balancer.
@@ -5050,7 +5070,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     for (ServerType processType : processes) {
       createServerControlTasks(
-              nodes, processType, "stop", params -> params.deconfigure = deconfigure)
+              nodes,
+              processType,
+              "stop",
+              params -> {
+                params.deconfigure = deconfigure;
+                params.flushTabletsOnStopTserver = flushTablets;
+              })
           .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
         createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);

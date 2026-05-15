@@ -146,6 +146,18 @@ class YsqlManager : public YsqlManagerIf {
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
 
+  void StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
+
+  // Helper function to schedule the next iteration of the ddl post processing failed verification
+  // task.
+  void ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now = false);
+
+  // Background task that re-triggers DDL verification for YSQL DDL transactions in
+  // kDdlPostProcessingFailed state.
+  // Note: This function should only ever be called by
+  // StartDdlPostProcessingFailedVerificationRetriggerIfStopped().
+  void RetriggerDdlPostProcessingFailedVerificationPeriodically();
+
   void StartTablespaceBgTaskIfStopped();
 
   // Helper function to schedule the next iteration of the tablespace info task.
@@ -188,6 +200,12 @@ class YsqlManager : public YsqlManagerIf {
   std::atomic<bool> tablespace_bg_task_running_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  // Whether the periodic job to re-trigger DDL verification for kDdlPostProcessingFailed txns
+  // is running.
+  std::atomic<bool> ddl_post_processing_failed_verification_retrigger_running_{false};
+
+  rpc::ScheduledTaskTracker refresh_ysql_ddl_post_processing_failed_verification_task_;
 
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;

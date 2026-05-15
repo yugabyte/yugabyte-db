@@ -20,6 +20,7 @@ export type ExtendedBackupScheduleProps = {
   incrementalBackupFrequencyTimeUnit: string;
   enablePointInTimeRestore: boolean;
   keyspaceTableList: any[];
+  cronExpression?: string;
 } & IBackupSchedule['backupInfo'];
 
 export enum SubmitLabels {

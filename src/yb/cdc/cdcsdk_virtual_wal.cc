@@ -264,7 +264,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (!s.ok()) {
       s = s.CloneAndPrepend(Format(
           "Error fetching tablet list & checkpoints for table_id $0: $1", table_id));
-      LOG_WITH_PREFIX(DFATAL) << s;
+      LOG_WITH_PREFIX(WARNING) << s;
       return s;
     }
     publication_table_list_.insert(table_id);
@@ -1226,7 +1226,7 @@ Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
 
   last_restart_lsn_read_time_ = current_time;
 
-  if (last_received_restart_lsn == last_seen_lsn_) {
+  if (last_received_restart_lsn >= last_seen_lsn_) {
     RETURN_NOT_OK(UpdateAndPersistLSNInternal(
         last_received_confirmed_flush_lsn_, last_received_restart_lsn,
         true /* use_vwal_safe_time */));

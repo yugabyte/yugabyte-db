@@ -88,7 +88,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   instanceSettings: {
     arch: ArchitectureType.X86_64,
     imageBundleUUID: '',
-    useSpotInstance: true,
+    useSpotInstance: false,
     instanceType: null,
     masterInstanceType: null,
     deviceInfo: null,

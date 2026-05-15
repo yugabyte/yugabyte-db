@@ -72,12 +72,14 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
 using yb::consensus::GetConsensusRole;
@@ -497,6 +499,11 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleObjectLocksPage, this, _1, _2),
       true /* styled */,
       false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/cgroups", "",
+      std::bind(&TabletServerPathHandlers::HandleCgroupsPage, this, _1, _2),
+      true /* styled */,
+      false /* is_on_nav_bar */);
   RegisterTabletPathHandler(
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
@@ -653,6 +660,38 @@ void TabletServerPathHandlers::HandleObjectLocksPage(
   ts_local_lock_manager->DumpLocksToHtml(*output);
 }
 
+void TabletServerPathHandlers::HandleCgroupsPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h2>Cgroups</h2>\n";
+#ifdef __linux__
+  auto cgroup_manager = tserver_->cgroup_manager();
+  if (!cgroup_manager) {
+    *output << "Cgroup management is not enabled.\n";
+    return;
+  }
+
+  auto it = req.parsed_args.find("sample_interval_ms");
+  // 1000ms is the maximum value for cfs_period_us, so we are guaranteed to sample at least one
+  // full period for all cgroups.
+  uint64_t sample_interval_ms = 1'000;
+  if (it != req.parsed_args.end()) {
+    auto result = CheckedStoull(it->second);
+    if (!result.ok()) {
+      *output << "Bad value for sample_interval_ms: ";
+      EscapeForHtml(AsString(result.status()), output);
+      *output << ".\n";
+      return;
+    }
+    sample_interval_ms = *result;
+  }
+
+  cgroup_manager->DumpCgroupsToHtml(*output, sample_interval_ms);
+#else
+  *output << "Only available on Linux builds\n";
+#endif
+}
+
 namespace {
 string TabletLink(const string& id) {
   return Substitute("<a href=\"/tablet?id=$0\">$1</a>",
@@ -794,9 +833,9 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Namespace</th><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
              "<th>Partition</th>"
-             "<th>State</th><th>Hidden</th><th>Num SST Files</th><th>On-disk "
-             "size</th><th>RaftConfig</th>"
-             "<th>Last status</th></tr>\n";
+             "<th>State</th><th>Hidden</th><th>RaftConfig</th>"
+             "<th>Last status</th><th>Num SST Files</th><th>On-disk "
+             "size</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
@@ -827,7 +866,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        // State, Hidden, num SST files, on-disk size, consensus configuration, last status
+        // State, Hidden, consensus configuration, last status, num SST files, on-disk size
         "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td><td>$10</td></tr>\n",
         EscapeForHtmlToString(namespace_name),              // $0
         EscapeForHtmlToString(table_name),                  // $1
@@ -836,12 +875,12 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(partition),                   // $4
         EscapeForHtmlToString(peer->HumanReadableState()),  // $5
         status.is_hidden(),                                 // $6
-        num_sst_files,                                      // $7
-        tablets_disk_size_html,                             // $8
         consensus_result ? ConsensusStatePBToHtml(
                                consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                         : "",                         // $9
-        EscapeForHtmlToString(status.last_status()));  // $10
+                         : "",                              // $7
+        EscapeForHtmlToString(status.last_status()),        // $8
+        num_sst_files,                                      // $9
+        tablets_disk_size_html);                            // $10
   }
   *output << "</table>\n";
 }

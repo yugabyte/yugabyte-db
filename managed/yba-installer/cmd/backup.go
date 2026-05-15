@@ -20,18 +20,20 @@ import (
 )
 
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
-	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
+	excludeReleases bool, restart bool, disableVersion bool, verbose bool,
+	excludePADatabase bool, excludePAFiles bool, plat Platform) {
 
 	if err := CreateBackupScriptHelper(outputPath, dataDir, plat.backupScript(), plat.YsqlDump,
 		plat.PgBin+"/pg_dump", excludePrometheus, excludeReleases, restart, disableVersion, verbose,
-		true); err != nil {
+		true, excludePADatabase, excludePAFiles); err != nil {
 		log.Fatal(err.Error())
 	}
 }
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump string,
-	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol bool) error {
+	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol,
+	excludePADatabase, excludePAFiles bool) error {
 
 	err := os.Chmod(script, 0777)
 	if err != nil {
@@ -59,6 +61,12 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 	}
 	if excludeReleases {
 		args = append(args, "--exclude_releases")
+	}
+	if excludePADatabase {
+		args = append(args, "--exclude_pa_database")
+	}
+	if excludePAFiles {
+		args = append(args, "--exclude_pa_files")
 	}
 	if restart {
 		args = append(args, "--restart")
@@ -121,11 +129,12 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 
 }
 func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
-	verbose bool, plat Platform, migration bool, useSystemPostgres bool, disableVersion bool) {
+	verbose bool, plat Platform, migration bool, useSystemPostgres bool, disableVersion bool,
+	excludePADatabase bool, excludePAFiles bool) {
 
 	err := RestoreBackupScriptHelper(inputPath, destination, skipRestart, verbose, migration,
 		useSystemPostgres, disableVersion, plat.backupScript(), plat.DataDir, plat.YsqlBin,
-		plat.PgBin+"/pg_restore")
+		plat.PgBin+"/pg_restore", excludePADatabase, excludePAFiles)
 	if err != nil {
 		log.Fatal("Restore script failed.")
 	}
@@ -151,7 +160,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 // TODO: Version check is still disabled because of issues finding the path across all installs.
 func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart bool,
 	verbose bool, migration bool, useSystemPostgres bool, disableVersion bool,
-	script, dataDir, ysqlBin, pgRestore string) error {
+	script, dataDir, ysqlBin, pgRestore string, excludePADatabase, excludePAFiles bool) error {
 	userName := viper.GetString("service_username")
 	err := os.Chmod(script, 0777)
 	if err != nil {
@@ -180,6 +189,12 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 	}
 	if verbose {
 		args = append(args, "--verbose")
+	}
+	if excludePADatabase {
+		args = append(args, "--exclude_pa_database")
+	}
+	if excludePAFiles {
+		args = append(args, "--exclude_pa_files")
 	}
 	// Add prometheus user
 	if common.HasSudoAccess() {
@@ -284,6 +299,8 @@ func createBackupCmd() *cobra.Command {
 	var verbose bool
 	var disableVersion bool
 	var restart bool
+	var excludePADatabase bool
+	var excludePAFiles bool
 
 	createBackup := &cobra.Command{
 		Use:   "createBackup outputPath",
@@ -311,7 +328,7 @@ func createBackupCmd() *cobra.Command {
 			}
 			if plat, ok := s.(Platform); ok {
 				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
-					disableVersion, verbose, plat)
+					disableVersion, verbose, excludePADatabase, excludePAFiles, plat)
 			} else {
 				log.Fatal("Could not cast service to Platform struct.")
 			}
@@ -333,6 +350,10 @@ func createBackupCmd() *cobra.Command {
 		"exclude version metadata when creating backup, (default: false)")
 	createBackup.Flags().BoolVar(&verbose, "verbose", false,
 		"verbose output of script (default: false)")
+	createBackup.Flags().BoolVar(&excludePADatabase, "exclude_pa_database", false,
+		"exclude Performance Advisor database from backup (default: false)")
+	createBackup.Flags().BoolVar(&excludePAFiles, "exclude_pa_files", false,
+		"exclude Performance Advisor collected data files from backup (default: false)")
 	return createBackup
 }
 
@@ -344,6 +365,8 @@ func restoreBackupCmd() *cobra.Command {
 	var useSystemPostgres bool
 	var skipYugawareDrop bool
 	var disableVersion bool
+	var excludePADatabase bool
+	var excludePAFiles bool
 
 	restoreBackup := &cobra.Command{
 		Use:   "restoreBackup inputPath",
@@ -405,7 +428,7 @@ func restoreBackupCmd() *cobra.Command {
 					}
 				}
 				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, migration,
-					useSystemPostgres, disableVersion)
+					useSystemPostgres, disableVersion, excludePADatabase, excludePAFiles)
 
 			} else {
 				log.Fatal("Could not cast service to Platform for backup script execution.")
@@ -432,6 +455,10 @@ func restoreBackupCmd() *cobra.Command {
 		"skip dropping the yugaware database before a migration restore (default: false)")
 	restoreBackup.Flags().BoolVar(&disableVersion, "disable_version_check", false,
 		"skip checking version compatibility when restoring backup (default: false)")
+	restoreBackup.Flags().BoolVar(&excludePADatabase, "exclude_pa_database", false,
+		"exclude Performance Advisor database from restore (default: false)")
+	restoreBackup.Flags().BoolVar(&excludePAFiles, "exclude_pa_files", false,
+		"exclude Performance Advisor collected data files from restore (default: false)")
 	return restoreBackup
 }
 

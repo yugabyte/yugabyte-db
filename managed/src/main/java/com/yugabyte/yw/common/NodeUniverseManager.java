@@ -659,20 +659,25 @@ public class NodeUniverseManager extends DevopsBase {
         AccessKey accessKey =
             AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
-        UUID imageBundleUUID =
-            Util.retreiveImageBundleUUID(
-                universe.getUniverseDetails().arch, cluster.userIntent, provider);
-        if (imageBundleUUID != null) {
-          ImageBundle.NodeProperties toOverwriteNodeProperties =
-              imageBundleUtil.getNodePropertiesOrFail(
-                  imageBundleUUID,
-                  node.cloudInfo.region,
-                  cluster.userIntent.providerType.toString());
-          sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        if (node.sshPortOverride != null) {
+          sshPort = node.sshPortOverride.toString();
+        } else {
+          UUID imageBundleUUID =
+              Util.retreiveImageBundleUUID(
+                  universe.getUniverseDetails().arch, cluster.userIntent, provider);
+          if (imageBundleUUID != null) {
+            ImageBundle.NodeProperties toOverwriteNodeProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    imageBundleUUID,
+                    node.cloudInfo.region,
+                    cluster.userIntent.providerType.toString());
+            sshPort = toOverwriteNodeProperties.getSshPort().toString();
+          }
         }
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (StringUtils.isNotBlank(context.getSshUser())
+        if (node.sshPortOverride == null
+            && StringUtils.isNotBlank(context.getSshUser())
             && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           // In case the custom ssh User is specified in the context, that will be
           // prepare node stage, where the custom sshPort might not be configured yet.
@@ -794,6 +799,17 @@ public class NodeUniverseManager extends DevopsBase {
         timeoutSecs,
         response.getMessage());
     return false;
+  }
+
+  /**
+   * Reachability pre-check for per-node platform APIs (run-script, file-collections, ...) that uses
+   * the shared {@code yb.node_script.reachability_check_timeout_sec} runtime flag so a single knob
+   * controls the timeout across all callers.
+   */
+  public boolean isNodeReachable(NodeDetails node, Universe universe) {
+    long timeoutSecs =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeScriptReachabilityCheckTimeoutSec);
+    return isNodeReachable(node, universe, timeoutSecs);
   }
 
   /**

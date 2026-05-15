@@ -1,34 +1,33 @@
+import { makeStyles, Typography } from '@material-ui/core';
 import { AxiosError } from 'axios';
-import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 
-import {
-  YBInputField,
-  YBModal,
-  YBRadio,
-  type YBModalProps,
-  YBTooltip
-} from '@app/redesign/components';
+import { YBModal, YBRadio, type YBModalProps } from '@app/redesign/components';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { hasNecessaryPerm } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validator/ValidatorUtils';
 import { AZUpgradeStatus, TaskState, TaskType } from '@app/redesign/features/tasks/dtos';
+import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
 import { api, taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import { SortDirection } from '@app/redesign/utils/dtos';
-import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { getUniverse, rollbackSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import type { UniverseRollbackUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import type {
+  UniverseRollbackUpgradeReqBody,
+  YBATaskRespResponse
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { RollingUpdateBatchSettings } from './components/RollingUpdateBatchSettings';
 import { UpgradePace } from './constants';
-import { getPlacementAzMetadataList } from './utils/formUtils';
-import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
+import { getPlacementAzDisplayNameForCluster } from './utils/formUtils';
+import { getTaskSoftwareUpgradeProgress } from './upgrade-management/utils';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
-import ClockRewindIcon from '@app/redesign/assets/clock-rewind.svg';
-import InfoIcon from '@app/redesign/assets/info-message.svg';
 import AlertIcon from '@app/redesign/assets/alert.svg';
+import ClockRewindIcon from '@app/redesign/assets/clock-rewind.svg';
 
 const MODAL_NAME = 'DbUpgradeRollBackModal';
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.rollbackModal';
@@ -98,45 +97,6 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 400,
     lineHeight: '16px'
   },
-  rollingSettings: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-
-    width: 550,
-    maxWidth: '100%',
-    padding: theme.spacing(1.5, 2),
-
-    backgroundColor: theme.palette.ybacolors.grey005,
-    border: `1px solid ${theme.palette.grey[200]}`,
-    borderRadius: theme.shape.borderRadius
-  },
-  upgradePaceFormFieldContainer: {
-    display: 'flex',
-    flexDirection: 'column'
-  },
-  upgradePaceFormField: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1)
-  },
-  settingLabel: {
-    flexShrink: 0,
-
-    color: theme.palette.grey[900],
-    fontSize: 13,
-    fontWeight: 400,
-    lineHeight: '16px'
-  },
-  numericInputField: {
-    flexShrink: 0,
-
-    width: 100,
-
-    '& .MuiInputBase-root': {
-      height: 32
-    }
-  },
   upgradedAzsSection: {
     display: 'flex',
     gap: theme.spacing(1),
@@ -178,9 +138,6 @@ const useStyles = makeStyles((theme) => ({
   },
   rollingSettingsWrapper: {
     paddingLeft: theme.spacing(4)
-  },
-  tooltipIconWrapper: {
-    lineHeight: 0
   },
   concurrentRollbackWarningBanner: {
     display: 'flex',
@@ -234,18 +191,19 @@ export const DbUpgradeRollBackModal = ({
   const universe = universeDetailsQuery.data;
   const prevVersion = universe?.info?.previous_yb_software_details?.yb_software_version ?? '';
   const maxNodesPerBatchMaximum = universe?.info?.roll_max_batch_size?.primary_batch_size ?? 1;
-  const upgradedAzMetadataList =
-    getPlacementAzMetadataList(getPrimaryCluster(universe?.spec?.clusters ?? [])) ?? [];
-  const upgradedAzDisplayNameByUuid = Object.fromEntries(
-    upgradedAzMetadataList.map((az) => [az.azUuid, az.displayName])
-  );
+  const clusters = universe?.spec?.clusters ?? [];
 
   const upgradedAzs =
-    latestSoftwareUpgradeTask?.softwareUpgradeProgress?.tserverAZUpgradeStatesList
-      ?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
+    getTaskSoftwareUpgradeProgress(latestSoftwareUpgradeTask)
+      ?.tserverAZUpgradeStatesList?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
       .map((az) => ({
         azUuid: az.azUUID,
-        displayName: upgradedAzDisplayNameByUuid[az.azUUID] ?? az.azName ?? az.azUUID
+        displayName: getPlacementAzDisplayNameForCluster(
+          clusters,
+          az.clusterUUID,
+          az.azUUID,
+          az.azName ?? az.azUUID
+        )
       })) ?? [];
 
   const formMethods = useForm<DbUpgradeRollBackFormFields>({
@@ -260,9 +218,18 @@ export const DbUpgradeRollBackModal = ({
   const rollbackMutation = useMutation(
     (data: UniverseRollbackUpgradeReqBody) => rollbackSoftwareUpgrade(universeUuid, data),
     {
-      onSuccess: () => {
+      onSuccess: (response: YBATaskRespResponse) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(<Typography variant="body2">{t('toast.rollbackSuccess')}</Typography>);
+          }
+        };
+
         refreshUniverseTasksCache();
         modalProps.onClose();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, {
@@ -300,7 +267,7 @@ export const DbUpgradeRollBackModal = ({
     if (pace === UpgradePace.CONCURRENT) {
       formMethods.clearErrors(['maxNodesPerBatch', 'waitBetweenBatchesSeconds']);
     } else {
-      formMethods.trigger(['maxNodesPerBatch', 'waitBetweenBatchesSeconds']);
+      void formMethods.trigger(['maxNodesPerBatch', 'waitBetweenBatchesSeconds']);
     }
   };
 
@@ -350,7 +317,13 @@ export const DbUpgradeRollBackModal = ({
               }
             }}
           >
-            <YBRadio checked={rollbackPace === UpgradePace.ROLLING} disabled={isFormDisabled} />
+            <YBRadio
+              checked={rollbackPace === UpgradePace.ROLLING}
+              disabled={isFormDisabled}
+              inputProps={{
+                'data-testid': `${MODAL_NAME}-RollingRadio`
+              }}
+            />
             <Typography className={classes.paceOptionLabel}>
               {t(
                 `rollbackPaceRolling.${isDbUpgradeTaskCompleted ? 'postUpgrade' : 'upgradeInProgress'}`
@@ -358,127 +331,17 @@ export const DbUpgradeRollBackModal = ({
             </Typography>
           </div>
           <div className={classes.rollingSettingsWrapper}>
-            <div className={classes.rollingSettings}>
-              <div className={classes.upgradePaceFormFieldContainer}>
-                <div className={classes.upgradePaceFormField}>
-                  <Typography className={classes.settingLabel}>
-                    {t('rollingOptions.maxNodesPerBatch')}
-                  </Typography>
-                  <YBInputField
-                    control={formMethods.control}
-                    name="maxNodesPerBatch"
-                    type="number"
-                    className={classes.numericInputField}
-                    disabled={
-                      isFormDisabled || maxNodesPerBatchMaximum <= 1 || isRollingOptionsDisabled
-                    }
-                    hideInlineError
-                    rules={{
-                      validate: (value: unknown) => {
-                        if (formMethods.getValues('rollBackPace') !== UpgradePace.ROLLING) {
-                          return true;
-                        }
-                        if (value === undefined || value === null || value === '') {
-                          return t('formFieldRequired', { keyPrefix: 'common' });
-                        }
-                        const num = Number(value);
-                        if (num < 1) {
-                          return t('validation.maxNodesPerBatchMinimum');
-                        }
-                        if (num > maxNodesPerBatchMaximum) {
-                          return t('validation.maxNodesPerBatchMaximum', {
-                            max: maxNodesPerBatchMaximum
-                          });
-                        }
-                        return true;
-                      }
-                    }}
-                    inputProps={{
-                      min: 1,
-                      max: maxNodesPerBatchMaximum,
-                      'data-testid': `${MODAL_NAME}-MaxBatchInput`
-                    }}
-                  />
-                  <YBTooltip
-                    title={
-                      <Typography
-                        variant="body2"
-                        component="span"
-                        style={{ whiteSpace: 'pre-line' }}
-                      >
-                        {t('rollingOptions.maxNodesPerBatchTooltip')}
-                      </Typography>
-                    }
-                  >
-                    <span className={classes.tooltipIconWrapper}>
-                      <InfoIcon width={18} height={18} />
-                    </span>
-                  </YBTooltip>
-                </div>
-                {formMethods.formState.errors.maxNodesPerBatch && (
-                  <FormHelperText error={true}>
-                    {formMethods.formState.errors.maxNodesPerBatch.message}
-                  </FormHelperText>
-                )}
-              </div>
-              <div className={classes.upgradePaceFormFieldContainer}>
-                <div className={classes.upgradePaceFormField}>
-                  <Typography className={classes.settingLabel}>
-                    {t('rollingOptions.waitBetweenBatches')}
-                  </Typography>
-                  <YBInputField
-                    control={formMethods.control}
-                    name="waitBetweenBatchesSeconds"
-                    type="number"
-                    className={classes.numericInputField}
-                    disabled={isFormDisabled || isRollingOptionsDisabled}
-                    hideInlineError
-                    rules={{
-                      validate: (value: unknown) => {
-                        if (formMethods.getValues('rollBackPace') !== UpgradePace.ROLLING) {
-                          return true;
-                        }
-                        if (value === undefined || value === null || value === '') {
-                          return t('formFieldRequired', { keyPrefix: 'common' });
-                        }
-                        const num = Number(value);
-                        if (num < 0) {
-                          return t('validation.waitBetweenBatchesMin');
-                        }
-                        return true;
-                      }
-                    }}
-                    inputProps={{
-                      min: 0,
-                      'data-testid': `${MODAL_NAME}-WaitInput`
-                    }}
-                  />
-                  <Typography className={classes.settingLabel}>
-                    {t('seconds', { keyPrefix: 'common' })}
-                  </Typography>
-                  <YBTooltip
-                    title={
-                      <Typography
-                        variant="body2"
-                        component="span"
-                        style={{ whiteSpace: 'pre-line' }}
-                      >
-                        {t('rollingOptions.waitBetweenBatchesTooltip')}
-                      </Typography>
-                    }
-                  >
-                    <span className={classes.tooltipIconWrapper}>
-                      <InfoIcon width={18} height={18} />
-                    </span>
-                  </YBTooltip>
-                </div>
-                {formMethods.formState.errors.waitBetweenBatchesSeconds && (
-                  <FormHelperText error={true}>
-                    {formMethods.formState.errors.waitBetweenBatchesSeconds.message}
-                  </FormHelperText>
-                )}
-              </div>
-            </div>
+            <RollingUpdateBatchSettings<DbUpgradeRollBackFormFields>
+              control={formMethods.control}
+              errors={formMethods.formState.errors}
+              maxNodesPerBatchName="maxNodesPerBatch"
+              waitBetweenBatchesName="waitBetweenBatchesSeconds"
+              maxNodesPerBatchMaximum={maxNodesPerBatchMaximum}
+              shouldValidate={(formValues) => formValues.rollBackPace === UpgradePace.ROLLING}
+              isRollbackFlow={true}
+              isDisabled={isFormDisabled || isRollingOptionsDisabled}
+              testIdPrefix={MODAL_NAME}
+            />
           </div>
           <div
             className={classes.paceOption}
@@ -491,7 +354,13 @@ export const DbUpgradeRollBackModal = ({
               }
             }}
           >
-            <YBRadio checked={rollbackPace === UpgradePace.CONCURRENT} disabled={isFormDisabled} />
+            <YBRadio
+              checked={rollbackPace === UpgradePace.CONCURRENT}
+              disabled={isFormDisabled}
+              inputProps={{
+                'data-testid': `${MODAL_NAME}-ConcurrentRadio`
+              }}
+            />
             <Typography className={classes.paceOptionLabel}>
               {t(
                 `rollbackPaceConcurrent.${isDbUpgradeTaskCompleted ? 'postUpgrade' : 'upgradeInProgress'}`
@@ -501,7 +370,6 @@ export const DbUpgradeRollBackModal = ({
           {rollbackPace === UpgradePace.CONCURRENT && (
             <div
               className={classes.concurrentRollbackWarningBanner}
-              role="alert"
               data-testid={`${MODAL_NAME}-ConcurrentDowntimeWarning`}
             >
               <AlertIcon className={classes.concurrentRollbackWarningIcon} width={24} height={24} />

@@ -714,6 +714,15 @@ extern bool yb_force_catalog_update_on_next_ddl;
 extern bool yb_test_fail_all_drops;
 
 /*
+ * If set to true, force invalidation of every base relation's index relcache
+ * entries between add_base_rels_to_query() and make_one_rel() in
+ * query_planner().  Used by tests to deterministically expose lazy-loading
+ * bugs where planner code reads relcache fields (e.g. rd_indexprs) that get
+ * reset by a mid-planning invalidation.
+ */
+extern bool yb_test_invalidate_relcache_in_planner;
+
+/*
  * If set to true, next increment catalog version operation will fail and
  * reset this back to false.
  */
@@ -761,9 +770,6 @@ extern bool yb_test_fail_table_rewrite_after_creation;
  * executing the next top level statement.
  */
 extern bool yb_test_preload_catalog_tables;
-
-/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
-extern bool yb_test_stay_in_global_catalog_version_mode;
 
 /*
  * If set to true, any DDLs that rewrite tables/indexes will not drop the
@@ -837,6 +843,11 @@ extern bool yb_enable_inplace_index_update;
 extern bool yb_enable_advisory_locks;
 
 /*
+ * Toggle support for concurrent DDLs. (DEPRECATED)
+ */
+extern bool yb_enable_concurrent_ddl;
+
+/*
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
@@ -890,8 +901,8 @@ extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
 extern bool yb_enable_docdb_vector_type;
 
 /*
- * GUC to allow user to silence the error saying that advisory locks are not
- * supported.
+ * Deprecated no-op; kept so existing postgresql.conf / init scripts that set this
+ * parameter still load. Advisory locking ignores this variable (see lockfuncs.c).
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
@@ -1300,7 +1311,6 @@ void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
-bool		YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
@@ -1352,6 +1362,53 @@ bool		YbIsColumnPartOfKey(Relation rel, const char *column_name);
 
 /* Get a relation's split options. */
 YbOptSplit *YbGetSplitOptions(Relation rel);
+
+/*
+ * Convert split_points List to a string representation.
+ * The format is "((val1, val2), (val3, val4), ...)" where each inner
+ * parenthesized list is a split point.
+ * Returns NULL if split_points is NIL.
+ */
+char	   *YbSplitPointsToString(List *split_points);
+
+/*
+ * Parse a yb_presplit reloption string back to a YbOptSplit structure.
+ * The format can be:
+ *   - A number (e.g., "5") for SPLIT INTO N TABLETS
+ *   - Split points (e.g., "((100),(200))") for SPLIT AT VALUES
+ *   - A full SPLIT clause (e.g., "SPLIT INTO 5 TABLETS")
+ * Returns NULL if the string is NULL or empty.  Syntax errors are
+ * reported via ereport.
+ */
+YbOptSplit *YbParsePresplitString(const char *presplit_str);
+
+/*
+ * validate_cb for the yb_presplit string reloption.  Validates syntax by
+ * running the value through YbParsePresplitString.
+ */
+extern void YbValidatePresplitReloption(const char *value);
+
+/*
+ * Validate that a yb_presplit string is compatible with `rel`'s partitioning
+ * kind (hash vs range).  Caller is expected to have already validated syntax
+ * (e.g. via the reloption validate_cb).  ereport(ERROR) on mismatch.
+ */
+extern void YbValidatePresplitForRelation(Relation rel, const char *presplit_str);
+
+/*
+ * Convert a YbOptSplit structure to a yb_presplit reloption string.
+ * Returns NULL if split_options is NULL.
+ */
+char	   *YbSplitOptionsToPresplitString(YbOptSplit *split_options);
+
+/*
+ * Reconcile a statement's SPLIT clause and yb_presplit reloption so that both
+ * representations agree before the relation is created.  See the function
+ * comment in pg_yb_utils.c for the detailed contract.  Used by both CREATE
+ * TABLE and CREATE INDEX paths.
+ */
+extern void YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options,
+										  List **options);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
@@ -1657,4 +1714,18 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 															size_t trace_context_len,
 															char *traceparent_out);
 
+/*
+ * Returns true if 'relid' is a foreign table whose foreign server has
+ * server_type = 'federatedYugabyteDB'.
+ */
+extern bool yb_is_federated_yb_foreign_table(Oid relid);
+
+struct PlannerInfo;
+extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
+											  Index rti,
+											  const char *tserver_uuid);
+extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *root,
+													  Index rti);
+
+extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
 #endif							/* PG_YB_UTILS_H */

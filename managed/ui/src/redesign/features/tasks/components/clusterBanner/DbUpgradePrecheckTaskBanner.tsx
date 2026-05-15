@@ -15,7 +15,7 @@ import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 
 import { Task, TaskState } from '../../dtos';
-import { getIsDbUpgradePrecheckTask } from '../../utils/dbUpgradeTaskUtils';
+import { getIsDbUpgradePrecheckTask } from '../../TaskUtils';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
 
 interface DbUpgradePrecheckTaskBannerProps {

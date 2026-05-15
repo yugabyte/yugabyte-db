@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
@@ -50,14 +51,17 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -868,5 +872,53 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals("2.29.0.0-b369", task.get("task_params").get("ybSoftwareVersion").asText());
     assertEquals("2025.2.0.1-b1", task.get("task_params").get("ybPrevSoftwareVersion").asText());
     assertEquals("REDACTED", task.get("task_params").get("ysqlPassword").asText());
+  }
+
+  @Test
+  public void testScheduledBackupPoliciesAndCpuMemoryDiag() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    CustomerConfig storageConfig =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "test-storage");
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), storageConfig.getConfigUUID());
+
+    UUID providerUUID =
+        UUID.fromString(u.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    InstanceType it =
+        InstanceType.upsert(
+            providerUUID, "m3.medium", 4.0, 8.0, new InstanceType.InstanceTypeDetails());
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent intent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = it.getInstanceTypeCode();
+          intent.numNodes = 3;
+        });
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    JsonNode universeNode = payload.get("universes").get(0);
+    JsonNode backupPolicies = universeNode.get("scheduled_backup_policies");
+    assertNotNull(backupPolicies);
+    assertTrue(backupPolicies.isArray());
+    assertEquals(1, backupPolicies.size());
+    assertEquals(
+        schedule.getScheduleUUID().toString(), backupPolicies.get(0).get("scheduleUUID").asText());
+
+    JsonNode diag = payload.get("universe_diagnostics").get(0);
+    assertEquals(u.getUniverseUUID().toString(), diag.get("universe_uuid").asText());
+    assertEquals(12, diag.get("total_cpu_cores").asInt());
+    assertEquals(24.0, diag.get("total_mem_gb").asDouble(), 0.01);
   }
 }

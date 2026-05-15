@@ -49,6 +49,11 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
+    "Frequency in seconds at which the master leader will re-trigger DDL verification for "
+    "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
+    "background task.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
@@ -99,11 +104,13 @@ YsqlManager::YsqlManager(
 void YsqlManager::StartShutdown() {
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
   refresh_ysql_tablespace_info_task_.StartShutdown();
+  refresh_ysql_ddl_post_processing_failed_verification_task_.StartShutdown();
 }
 
 void YsqlManager::CompleteShutdown() {
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
+  refresh_ysql_ddl_post_processing_failed_verification_task_.CompleteShutdown();
 }
 
 void YsqlManager::Clear() { ysql_catalog_config_.Reset(); }
@@ -385,6 +392,7 @@ void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
     }
   }
 
+  StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
   StartTablespaceBgTaskIfStopped();
   StartPgCatalogVersionsBgTaskIfStopped();
 }
@@ -486,11 +494,9 @@ void YsqlManager::RefreshTablespaceInfoPeriodically() {
 }
 
 void YsqlManager::StartPgCatalogVersionsBgTaskIfStopped() {
-  // In per-database catalog version mode, if heartbeat PG catalog versions
-  // cache is enabled, start a background task to periodically read the
-  // pg_yb_catalog_version table and cache the result.
-  if (FLAGS_ysql_enable_db_catalog_version_mode &&
-      FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+  // If heartbeat PG catalog versions cache is enabled, start a background task to periodically
+  // read the pg_yb_catalog_version table and cache the result.
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
     const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
     if (is_task_running) {
       // Task already running, nothing to do.
@@ -520,7 +526,6 @@ void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(bool schedule_now) {
 }
 
 void YsqlManager::RefreshPgCatalogVersionInfoPeriodically() {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
 
@@ -619,6 +624,70 @@ Status YsqlManager::CreateListenNotifyObjects() {
   return ExecuteStatementsAsync(
       kYbSystemDbName, statements, catalog_manager_, failure_warn_prefix,
       &creating_listen_notify_objects_, &created_listen_notify_objects_);
+}
+
+void YsqlManager::StartDdlPostProcessingFailedVerificationRetriggerIfStopped() {
+  if (FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs <= 0 ||
+      FLAGS_create_initial_sys_catalog_snapshot) {
+    return;
+  }
+
+  const bool is_task_running =
+      ddl_post_processing_failed_verification_retrigger_running_.exchange(true);
+  if (is_task_running) {
+    return;
+  }
+
+  ScheduleDdlPostProcessingFailedVerificationRetriggerTask(true /* schedule_now */);
+}
+
+void YsqlManager::ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now) {
+  int wait_time = 0;
+
+  if (!schedule_now) {
+    wait_time = FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs;
+    if (wait_time <= 0) {
+      ddl_post_processing_failed_verification_retrigger_running_ = false;
+      return;
+    }
+  }
+
+  refresh_ysql_ddl_post_processing_failed_verification_task_.Bind(
+      &master_.messenger()->scheduler());
+  refresh_ysql_ddl_post_processing_failed_verification_task_.Schedule(
+      [this](const Status& status) {
+        Status s = catalog_manager_.SubmitBackgroundTask(
+            [this] { RetriggerDdlPostProcessingFailedVerificationPeriodically(); });
+        if (!s.ok()) {
+          LOG(WARNING)
+              << "Failed to schedule: RetriggerDdlPostProcessingFailedVerificationPeriodically";
+          ddl_post_processing_failed_verification_retrigger_running_ = false;
+        }
+      },
+      wait_time * 1s);
+}
+
+void YsqlManager::RetriggerDdlPostProcessingFailedVerificationPeriodically() {
+  if (FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs <= 0) {
+    ddl_post_processing_failed_verification_retrigger_running_ = false;
+    return;
+  }
+
+  LeaderEpoch epoch;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(INFO) << "No longer the leader, cancelling DDL post-processing failed verification "
+                << "retrigger task";
+      ddl_post_processing_failed_verification_retrigger_running_ = false;
+      return;
+    }
+    epoch = l.epoch();
+  }
+
+  catalog_manager_.TriggerDdlVerificationForPostProcessingFailedTxns(epoch);
+
+  ScheduleDdlPostProcessingFailedVerificationRetriggerTask();
 }
 
 }  // namespace yb::master

@@ -85,10 +85,6 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
     If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
 
-- After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
-
-    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished and before you allow end users into the application. If you allow end users into the application before analyze is finished, initial execution plans won't be correctly optimized.
-
 ## Learn more
 
 - [Exploring the Cost Based Optimizer](https://www.yugabyte.com/blog/yugabytedb-cost-based-optimizer/)

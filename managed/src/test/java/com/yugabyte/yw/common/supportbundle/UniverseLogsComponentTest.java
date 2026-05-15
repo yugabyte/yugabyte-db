@@ -30,7 +30,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,7 +43,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -182,5 +188,63 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Check if the logs directory is created
     Boolean isDestDirCreated = new File(fakeTargetComponentPath).exists();
     assertTrue(isDestDirCreated);
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesFiltersPgAuditAndKeepsGzipFormat() throws Exception {
+    Date startDate = new Date(Long.MIN_VALUE);
+    Date endDate = new Date(Long.MAX_VALUE);
+
+    Path tserverLogsPath = Paths.get(fakeBundlePath, "tserver", "logs");
+    Files.createDirectories(tserverLogsPath);
+    File sourcePgLogGzip = tserverLogsPath.resolve("postgresql-2026-05-03_000000.log.gz").toFile();
+    writeGzipString(
+        sourcePgLogGzip,
+        "2026-05-03 10:00:00 LOG:  statement: select 1;\n"
+            + "2026-05-03 10:00:01 AUDIT:  SESSION,1,1,READ,SELECT,,,select 1;\n");
+
+    // Keep test focused on pg filtering path.
+    doCallRealMethod()
+        .when(mockSupportBundleUtil)
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
+
+    SupportBundleFormData bundleData = new SupportBundleFormData();
+    bundleData.filterPgAuditLogs = true;
+    SupportBundleTaskParams params =
+        new SupportBundleTaskParams(new SupportBundle(), bundleData, customer, universe);
+
+    UniverseLogsComponent universeLogsComponent =
+        new UniverseLogsComponent(
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
+    universeLogsComponent.downloadComponentBetweenDates(
+        params, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+
+    File filteredPgLogGzip =
+        tserverLogsPath.resolve("filtered_postgresql-2026-05-03_000000.log.gz").toFile();
+    assertTrue(filteredPgLogGzip.exists());
+    assertTrue(!sourcePgLogGzip.exists());
+
+    String filteredContent = readGzipString(filteredPgLogGzip);
+    assertTrue(filteredContent.contains("LOG:  statement: select 1;"));
+    assertTrue(!filteredContent.contains("AUDIT:"));
+  }
+
+  private void writeGzipString(File outputFile, String content) throws IOException {
+    try (FileOutputStream fos = new FileOutputStream(outputFile);
+        GZIPOutputStream gzipOutputStream = new GZIPOutputStream(fos)) {
+      IOUtils.write(content, gzipOutputStream, StandardCharsets.UTF_8);
+    }
+  }
+
+  private String readGzipString(File inputFile) throws IOException {
+    try (FileInputStream fis = new FileInputStream(inputFile);
+        GZIPInputStream gzipInputStream = new GZIPInputStream(fis)) {
+      return IOUtils.toString(gzipInputStream, StandardCharsets.UTF_8);
+    }
   }
 }

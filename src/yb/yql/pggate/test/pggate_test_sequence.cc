@@ -34,7 +34,6 @@ class PggateTestSequence : public PggateTest {
   // Create sequence with specified initial value and "called" status
   static YbcStatus CreateSequence(int64_t init_val, bool is_called) {
     return YBCInsertSequenceTuple(db_oid_, seq_oid_, catalog_version_,
-                                  false /*is_db_catalog_version_mode*/,
                                   init_val, is_called);
   }
 
@@ -48,7 +47,6 @@ class PggateTestSequence : public PggateTest {
   // Read the value and "called" status from sequence
   static YbcStatus ReadSequence(int64_t *last_val, bool *is_called) {
     return YBCReadSequenceTuple(db_oid_, seq_oid_, catalog_version_,
-                                false /*is_db_catalog_version_mode*/,
                                 last_val, is_called);
   }
 
@@ -56,7 +54,6 @@ class PggateTestSequence : public PggateTest {
   static YbcStatus UpdateSequence(int64_t last_val, bool is_called) {
     bool dummy;
     return YBCUpdateSequenceTuple(db_oid_, seq_oid_, catalog_version_,
-                                  false /*is_db_catalog_version_mode*/,
                                   last_val, is_called, &dummy);
   }
 
@@ -66,7 +63,6 @@ class PggateTestSequence : public PggateTest {
                                    int64_t expected_last_val, bool expected_is_called) {
     bool skipped;
     CHECK_YBC_STATUS(YBCUpdateSequenceTupleConditionally(db_oid_, seq_oid_, catalog_version_,
-                                                         false /*is_db_catalog_version_mode*/,
                                                          new_last_val, new_is_called,
                                                          expected_last_val, expected_is_called,
                                                          &skipped));
@@ -80,7 +76,6 @@ class PggateTestSequence : public PggateTest {
                           int64_t min_value, int64_t max_value, bool cycle,
                           int64_t *first_value, int64_t *last_value) {
     return YBCFetchSequenceTuple(db_oid_, seq_oid_, catalog_version_,
-                                 false /*is_db_catalog_version_mode*/,
                                  fetch_count, increment, min_value, max_value, cycle,
                                  first_value, last_value);
   }

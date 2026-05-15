@@ -735,7 +735,7 @@ public class NodeAgentClient {
    */
   public static boolean isCloudTypeSupported(CloudType cloudType) {
     if (cloudType == CloudType.kubernetes || cloudType == CloudType.local) {
-      log.debug("Node agent is not supported for kubernetes provider");
+      log.trace("Node agent is not supported for kubernetes provider");
       return false;
     }
     return true;

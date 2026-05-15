@@ -30,6 +30,8 @@
 #include "optimizer/placeholder.h"
 #include "optimizer/planmain.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
 
 /*
  * query_planner
@@ -164,6 +166,9 @@ query_planner(PlannerInfo *root,
 	 * want to make RelOptInfos for them.
 	 */
 	add_base_rels_to_query(root, (Node *) parse->jointree);
+
+	if (yb_test_invalidate_relcache_in_planner)
+		YbInvalidatePlannerRelcache(root);
 
 	/*
 	 * Examine the targetlist and join tree, adding entries to baserel

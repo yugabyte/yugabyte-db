@@ -3,17 +3,18 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -101,21 +102,13 @@ public class UpdateOOMServiceState extends UniverseDefinitionTaskBase {
     }
   }
 
-  private TaskExecutor.SubTaskGroup createConfigureOOMServiceSubtasks(
-      AdditionalServicesStateData additionalServicesStateData, Collection<NodeDetails> nodes) {
-    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureOOMServiceOnNodes");
-    for (NodeDetails node : nodes) {
-      ConfigureOOMServiceOnNode.Params params = new ConfigureOOMServiceOnNode.Params();
-      params.earlyoomConfig = additionalServicesStateData.getEarlyoomConfig();
-      params.earlyoomEnabled = additionalServicesStateData.isEarlyoomEnabled();
-      params.nodeName = node.nodeName;
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      ConfigureOOMServiceOnNode task = createTask(ConfigureOOMServiceOnNode.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+  public static boolean isEarlyoomInstallationPossible(
+      RuntimeConfGetter confGetter, UniverseDefinitionTaskParams taskParams, Customer customer) {
+    boolean enableEarlyoomFeature =
+        confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+
+    return enableEarlyoomFeature
+        && !Util.isOnPremManualProvisioning(taskParams)
+        && !Util.isKubernetesBasedUniverse(taskParams);
   }
 }

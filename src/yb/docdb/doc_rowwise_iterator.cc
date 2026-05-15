@@ -763,7 +763,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     bool is_static_column = IsFetchedRowStatic();
     if (!is_static_column &&
-        !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, *db_iter_))) {
+        !VERIFY_RESULT(scan_choices_->InterestedInRow(
+            &row_key_, *db_iter_, max_seen_ht_checkpoint_))) {
       continue;
     }
 
@@ -785,6 +786,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     const auto write_time = key_data.write_time;
     const auto doc_found = VERIFY_RESULT(FetchRow(key_data, table_row));
+    max_seen_ht_checkpoint_ = db_iter_->ObtainMaxSeenHtCheckpoint();
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
     IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, write_time);

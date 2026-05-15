@@ -1,0 +1,51 @@
+'/customers/{cUUID}/providers/{providerUUID}/image-bundles/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: providerUUID
+      in: path
+      description: Provider UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListImageBundles
+    summary: List image bundles (paged)
+    description: |
+      Returns image bundles for the specified provider with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Image Bundle
+    requestBody:
+      $ref: "../components/requestBodies/ImageBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/ImageBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview

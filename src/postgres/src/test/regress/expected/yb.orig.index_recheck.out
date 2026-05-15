@@ -201,14 +201,13 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 --------------------------------------------------------------------------------
  Index Scan using t_hash_range on t_incomplete_binds t (actual rows=40 loops=1)
    Index Cond: (r2 < 5)
-   Rows Removed by Index Recheck: 60
    Storage Table Read Requests: 3
    Storage Table Read Ops: 9
-   Storage Table Rows Scanned: 100
+   Storage Table Rows Scanned: 40
    Storage Index Read Requests: 1
    Storage Index Read Ops: 3
-   Storage Index Rows Scanned: 100
-(9 rows)
+   Storage Index Rows Scanned: 40
+(8 rows)
 
 :explain_analyze /*+ IndexScan(t t_range_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
                                    QUERY PLAN                                    

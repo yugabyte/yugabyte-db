@@ -1191,6 +1191,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Timeout for node destroy command before failing.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeScriptReachabilityCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.node_script.reachability_check_timeout_sec",
+          ScopeType.GLOBAL,
+          "Node reachability check timeout",
+          "Timeout in seconds for the pre-check that determines whether a node is reachable for"
+              + " per-node platform APIs such as run-script and file-collections. Unreachable"
+              + " nodes are reported as failed nodes rather than producing per-file/per-command"
+              + " errors.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -1935,6 +1946,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of operations that use capacity reservation in aws",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<List> capacityReservationOperationsGcp =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_gcp",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for gcp",
+          "List of operations that use capacity reservation in gcp",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
       new ConfKeyInfo<>(
           "yb.task.verify_gflags_on_node",
@@ -2037,14 +2056,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " local credentials.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> disableGolangYnpDriver =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_golang_ynp_driver",
-          ScopeType.GLOBAL,
-          "Disable Golang YNP Driver",
-          "Disable golang YNP driver to use python instead",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<Integer> nodeAgentServerRequestLogLevel =
       new ConfKeyInfo<>(
           "yb.node_agent.server.request_log_level",
@@ -2103,6 +2114,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable connectivity metric collection for all universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableNonRestartGFlagUpgradeOption =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option",
+          ScopeType.GLOBAL,
+          "Enable Non-Restart GFlag Upgrade Option",
+          "Enable the option to upgrade GFlags without restarting the nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
       new ConfKeyInfo<>(
           "yb.provider.allow_existing_duplicate_az",
@@ -2117,6 +2136,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Disable YNP Node Preflight Check",
           "Disable preflight check in YNP node agent provision",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYnpVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_ynp_version_check",
+          ScopeType.GLOBAL,
+          "Enable YNP Version Check",
+          "Enable YNP version check when adding nodes to a universe."
+              + " When enabled, the node's YNP major version must match the expected version.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
@@ -2175,5 +2203,29 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Edit Universe V2 UI",
           "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> gcpCapacityReservationGcEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_enabled",
+          ScopeType.GLOBAL,
+          "Whether to enable GCP capacity reservation garbage collection",
+          "Whether to enable GCP capacity reservation garbage collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationGcInterval =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_interval",
+          ScopeType.GLOBAL,
+          "Interval for GCP capacity reservation garbage collection",
+          "Interval for GCP capacity reservation garbage collection",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationTtl =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_ttl",
+          ScopeType.GLOBAL,
+          "Time to live for GCP capacity reservation",
+          "Time to live for GCP capacity reservation",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

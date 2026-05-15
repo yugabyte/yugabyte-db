@@ -30,10 +30,6 @@ export const editPlacementMethods = (context: EditPlacementContextProps) => ({
     ...context,
     nodesAndAvailability
   }),
-  setSelectedPartitionUUID: (selectedPartitionUUID: string) => ({
-    ...context,
-    selectedPartitionUUID
-  }),
   resetContext: () => ({
     activeStep: EditPlacementSteps.RESILIENCE_AND_REGIONS,
     resilience: undefined,
@@ -47,6 +43,7 @@ export type EditPlacementContextMethods = [
   {
     hideModal: () => void;
     selectedPartitionUUID?: string;
-    onSubmit: (ctx: EditPlacementContextProps) => void;
+    isSubmittingPlacementUpdate?: boolean;
+    onSubmit: (ctx: EditPlacementContextProps, onSuccess?: () => void) => void;
   }
 ];

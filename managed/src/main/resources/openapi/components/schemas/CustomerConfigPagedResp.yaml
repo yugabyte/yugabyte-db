@@ -1,0 +1,6 @@
+title: CustomerConfigPagedResp
+description: Paged list response for customer configurations.
+type: object
+x-data-container: PaginationResp
+x-data-item: CustomerConfig
+x-data-entities-description: Customer configurations for this page.

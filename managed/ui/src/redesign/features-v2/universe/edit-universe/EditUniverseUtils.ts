@@ -29,6 +29,9 @@ import {
 } from '../create-universe/steps/resilence-regions/dtos';
 import { GFlag } from '../create-universe/steps/database-settings/dtos';
 import { ProxyAdvancedProps } from '../create-universe/steps/advanced-settings/dtos';
+import { getInferredOutageCount, inferResilience } from '../create-universe/CreateUniverseUtils';
+import { NodeAvailabilityProps } from '../create-universe/steps/nodes-availability/dtos';
+import { REPLICATION_FACTOR } from '../create-universe/fields/FieldNames';
 
 export const getClusterByType = (universeData: Universe, type: ClusterSpecClusterType) => {
   return universeData.spec?.clusters.find((cluster) => cluster.cluster_type === type);
@@ -79,30 +82,181 @@ export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec) => 
   return { totalRegions, totalAzs, totalNodes };
 };
 
+/** Maps API placement to nodes-availability form `availabilityZones` (by region code). */
+export const placementSpecToAvailabilityZones = (
+  placement: ClusterPlacementSpec
+): NodeAvailabilityProps['availabilityZones'] =>
+  placement.cloud_list.reduce<NodeAvailabilityProps['availabilityZones']>((acc, cloud) => {
+    cloud.region_list?.forEach((region) => {
+      const regionKey = region.code ?? region.uuid ?? '';
+      if (!regionKey) return;
+      acc[regionKey] = (region.az_list ?? []).map((az, index) => ({
+        name: az.name ?? '',
+        uuid: az.uuid ?? `${regionKey}-${index}`,
+        nodeCount: az.num_nodes_in_az ?? 0,
+        preffered: (az.leader_preference ?? 0) - 1
+      }));
+    });
+    return acc;
+  }, {});
+
+/** Defaults for master-allocation / nodes step from cluster `node_spec` and a placement slice. */
+export const getNodeAvailabilityDefaultsFromClusterPlacement = (
+  cluster: ClusterSpec,
+  placement: ClusterPlacementSpec,
+  replicationFactorOverride?: number
+): NodeAvailabilityProps => ({
+  availabilityZones: placementSpecToAvailabilityZones(placement),
+  useDedicatedNodes: !!cluster.node_spec?.dedicated_nodes,
+  [REPLICATION_FACTOR]: replicationFactorOverride ?? cluster.replication_factor ?? 1
+});
+
+const noopT: TFunction = ((key: string) => key) as TFunction;
+
+/**
+ * Cluster-level T-Server / master counts. Sums the per-region values so the top-level total
+ * stays consistent with the per-region rows shown in `ClusterInstanceCard`. For geo partitions
+ * that don't host masters, this correctly yields 0 instead of falling back to the cluster RF.
+ */
+export const getDedicatedTserverMasterDisplayCounts = (
+  universeData: Universe,
+  cluster: ClusterSpec,
+  placement: ClusterPlacementSpec
+): { tserver: number; master: number } => {
+  const placementRegions = placement.cloud_list.flatMap((cloud) => cloud.region_list ?? []);
+  return placementRegions.reduce(
+    (acc, region) => {
+      const counts = getDedicatedCountsForPlacementRegion(universeData, region, cluster);
+      return {
+        tserver: acc.tserver + counts.tserver,
+        master: acc.master + counts.master
+      };
+    },
+    { tserver: 0, master: 0 }
+  );
+};
+
+/** Per-region counts; when `dedicated_nodes`, T-Server total uses placement AZ sums if node_details lack T-Servers. */
+export const getDedicatedCountsForPlacementRegion = (
+  universeData: Universe,
+  placementRegion: PlacementRegion,
+  cluster: ClusterSpec
+): { tserver: number; master: number } => {
+  const fromDetails = countMasterAndTServerNodesByPlacementRegion(
+    universeData,
+    placementRegion,
+    false,
+    noopT
+  ) as Partial<Record<NodeDetailsDedicatedTo, number>>;
+  const tFromDetails = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
+  const mFromDetails = fromDetails[NodeDetailsDedicatedTo.MASTER] ?? 0;
+  if (!cluster.node_spec?.dedicated_nodes) {
+    return { tserver: tFromDetails, master: mFromDetails };
+  }
+  const tFromPlacement =
+    placementRegion.az_list?.reduce((s, az) => s + (az.num_nodes_in_az ?? 0), 0) ?? 0;
+  const tserver = tFromDetails > 0 ? tFromDetails : tFromPlacement;
+  return { tserver, master: mFromDetails };
+};
+
+/** Master nodes in a single AZ from universe node details. */
+export const countMasterNodesInAz = (universeData: Universe, azUuid: string | undefined) => {
+  if (!azUuid) return 0;
+  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid }).filter(
+    (node) => node.dedicated_to === NodeDetailsDedicatedTo.MASTER
+  ).length;
+};
+
 export const getResilientType = (
-  primaryRegionStats: ReturnType<typeof countRegionsAzsAndNodes>,
+  placementSpec: ClusterPlacementSpec,
+  replicationFactor: number | undefined,
   t: TFunction
 ) => {
-  if (primaryRegionStats.totalRegions > 1) {
-    return t('regionResilient', {
-      count: primaryRegionStats.totalRegions - 1,
-      keyPrefix: 'editUniverse.general'
-    });
-  } else if (primaryRegionStats.totalAzs > 1) {
-    return t('azResilient', {
-      count: primaryRegionStats.totalAzs - 1,
-      keyPrefix: 'editUniverse.general'
-    });
-  } else if (primaryRegionStats.totalNodes > 1) {
-    return t('nodeResilient', {
-      count: primaryRegionStats.totalNodes - 1,
-      keyPrefix: 'editUniverse.general'
-    });
-  } else {
+  const availabilityZones = placementSpecToAvailabilityZones(placementSpec);
+  const placementRegions = placementSpec.cloud_list.flatMap((cloud) => cloud.region_list ?? []);
+  const resilienceRegions = Array.from({ length: placementRegions.length }, () => ({} as Region));
+  const effectiveReplicationFactor = replicationFactor ?? 1;
+  const inferredResilience = inferResilience(
+    {
+      regions: resilienceRegions,
+      resilienceType: ResilienceType.REGULAR,
+      resilienceFormMode: ResilienceFormMode.GUIDED,
+      faultToleranceType: FaultToleranceType.NONE,
+      resilienceFactor: 1,
+      nodeCount: 0,
+      singleAvailabilityZone: ''
+    },
+    {
+      availabilityZones,
+      useDedicatedNodes: false,
+      replicationFactor: effectiveReplicationFactor
+    }
+  );
+
+  if (!inferredResilience || inferredResilience === FaultToleranceType.NONE) {
     return t('notResilient', {
       keyPrefix: 'editUniverse.general'
     });
   }
+
+  const outageCount = getInferredOutageCount(
+    inferredResilience,
+    effectiveReplicationFactor,
+    availabilityZones
+  );
+
+  if (outageCount <= 0) {
+    return t('notResilient', {
+      keyPrefix: 'editUniverse.general'
+    });
+  }
+
+  const key =
+    inferredResilience === FaultToleranceType.REGION_LEVEL
+      ? 'regionResilient'
+      : inferredResilience === FaultToleranceType.AZ_LEVEL
+      ? 'azResilient'
+      : 'nodeResilient';
+
+  return t(key, {
+    count: outageCount,
+    keyPrefix: 'editUniverse.general'
+  });
+};
+
+const getPlacementSpecForCluster = (
+  cluster: ClusterSpec | ClusterPartitionSpec
+): ClusterPlacementSpec | undefined => {
+  if ('placement_spec' in cluster && cluster.placement_spec) {
+    return cluster.placement_spec;
+  }
+  if ('placement' in cluster && cluster.placement) {
+    return cluster.placement;
+  }
+  return undefined;
+};
+
+const matchProviderRegionForPlacement = (
+  providerRegions: Region[],
+  placementRegion: PlacementRegion
+): Region | undefined => {
+  const byUuid = providerRegions.find((r) => r.uuid === placementRegion.uuid);
+  if (byUuid) return byUuid;
+  const byCode = providerRegions.filter((r) => r.code === placementRegion.code);
+  if (byCode.length === 1) return byCode[0];
+  return undefined;
+};
+
+/** Guided edit defaults: inverts getGuidedNodesStepReplicationFactor for non-NONE FT. */
+const guidedResilienceFactorFromReplication = (
+  replicationFactor: number | undefined,
+  faultToleranceType: FaultToleranceType
+): number => {
+  const rf = replicationFactor ?? 1;
+  if (faultToleranceType === FaultToleranceType.NONE) {
+    return rf;
+  }
+  return Math.max(0, Math.floor((rf - 1) / 2));
 };
 
 export const mapUniversePayloadToResilienceAndRegionsProps = (
@@ -110,30 +264,38 @@ export const mapUniversePayloadToResilienceAndRegionsProps = (
   stats: ReturnType<typeof countRegionsAzsAndNodes>,
   cluster: ClusterSpec | ClusterPartitionSpec
 ): ResilienceAndRegionsProps => {
+  const placement = getPlacementSpecForCluster(cluster);
+  const regionsFromPlacement =
+    placement?.cloud_list?.flatMap((cloud) =>
+      (cloud.region_list ?? [])
+        .map((placementRegion) =>
+          matchProviderRegionForPlacement(providerRegions, placementRegion)
+        )
+        .filter((r): r is Region => r !== undefined)
+    ) ?? [];
+
+  const replicationFactor = cluster.replication_factor ?? 1;
+  const faultToleranceType =
+    replicationFactor <= 1
+      ? FaultToleranceType.NONE
+      : stats.totalRegions === replicationFactor
+      ? FaultToleranceType.REGION_LEVEL
+      : stats.totalRegions < replicationFactor && stats.totalAzs === replicationFactor
+      ? FaultToleranceType.AZ_LEVEL
+      : stats.totalRegions < replicationFactor && stats.totalAzs < replicationFactor
+      ? FaultToleranceType.NODE_LEVEL
+      : FaultToleranceType.NONE;
+
   const regionAndResilience: ResilienceAndRegionsProps = {
     singleAvailabilityZone: '',
-    faultToleranceType:
-      stats.totalRegions > 1
-        ? FaultToleranceType.REGION_LEVEL
-        : stats.totalAzs > 1
-        ? FaultToleranceType.AZ_LEVEL
-        : stats.totalNodes > 1
-        ? FaultToleranceType.NODE_LEVEL
-        : FaultToleranceType.NONE,
+    faultToleranceType,
     resilienceType: ResilienceType.REGULAR,
-    replicationFactor: cluster.replication_factor ?? 1,
+    resilienceFactor: guidedResilienceFactorFromReplication(replicationFactor, faultToleranceType),
     resilienceFormMode: ResilienceFormMode.GUIDED,
     nodeCount: stats.totalNodes,
-    regions: []
+    regions: regionsFromPlacement
   };
-  if ('provider_spec' in cluster && cluster.provider_spec?.region_list) {
-    regionAndResilience['regions'] = cluster.placement_spec?.cloud_list.flatMap((cloud) =>
-      cloud.region_list?.map((region) => {
-        const matchedRegion = providerRegions.find((r) => r.uuid === region.uuid);
-        return matchedRegion!;
-      })
-    ) as Region[];
-  }
+
   return regionAndResilience;
 };
 

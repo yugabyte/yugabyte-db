@@ -152,6 +152,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
+      expectedCommandArgs.add("--exclude_pa_database");
+      expectedCommandArgs.add("--exclude_pa_files");
       expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_dump_path");
@@ -166,6 +168,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("restore");
       expectedCommandArgs.add("--input");
       expectedCommandArgs.add(inputPath);
+      expectedCommandArgs.add("--exclude_pa_database");
+      expectedCommandArgs.add("--exclude_pa_files");
       expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_restore_path");

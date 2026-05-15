@@ -1732,6 +1732,12 @@ CreateExtension(ParseState *pstate, CreateExtensionStmt *stmt)
 	/* Check extension name validity before any filesystem access */
 	check_valid_extension_name(stmt->extname);
 
+	/* YB: mage availability is gated by the ysql_yb_enable_mage gFlag. */
+	if (strcmp(stmt->extname, "mage") == 0 && !yb_enable_mage)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("extension \"mage\" is not available")));
+
 	/*
 	 * Check for duplicate extension name.  The unique index on
 	 * pg_extension.extname would catch this anyway, and serves as a backstop

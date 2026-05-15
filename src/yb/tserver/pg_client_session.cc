@@ -139,7 +139,6 @@ DECLARE_bool(enable_qos);
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -1804,7 +1803,6 @@ class PgClientSession::Impl {
       yb_clone_info = YbcCloneInfo {
         .clone_time = req.clone_time(),
         .src_db_name = req.source_database_name().c_str(),
-        .src_owner = req.source_owner().c_str(),
         .tgt_owner = req.target_owner().c_str(),
       };
     }
@@ -3821,6 +3819,10 @@ class PgClientSession::Impl {
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline, arena)->SetTransaction(txn);
+      auto& read_point = txn->read_point();
+      read_point.SetCurrentReadTime(ClampUncertaintyWindow::kFalse);
+      VLOG(1) << "For autonomous DDL txn, setting current ht as read point "
+          << read_point.GetReadTime();
     }
 
     return &ddl_txn_metadata_;
@@ -4001,7 +4003,6 @@ class PgClientSession::Impl {
            InvalidArgument, "Wrong catalog versions: $0 and $1",
            in_req.ysql_catalog_version(), in_req.ysql_db_catalog_version());
     if (in_req.ysql_db_catalog_version()) {
-      CHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       out_req->set_ysql_db_catalog_version(in_req.ysql_db_catalog_version());
       out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
     } else if (in_req.ysql_catalog_version()) {

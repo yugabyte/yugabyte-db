@@ -5,6 +5,7 @@ import { Controller, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useMutation } from 'react-query';
 import { AxiosError } from 'axios';
+import { toast } from 'react-toastify';
 
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
@@ -16,6 +17,8 @@ import type { DBUpgradeFormFields, ReleaseOption } from '../types';
 import { useDbUpgradeModalContext } from '../DbUpgradeModalContext';
 import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
+import type { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 const useStyles = makeStyles((theme) => ({
   formFieldsContainer: {
@@ -95,13 +98,27 @@ export const DbVersionStep = () => {
         run_only_prechecks: true
       }),
     {
-      onSuccess: () => {
+      onSuccess: (response: YBATaskRespResponse) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(
+              <Typography variant="body2">
+                {t('toast.dbUpgradePrecheckSuccess', {
+                  keyPrefix: 'universeActions.dbUpgrade.upgradeModal'
+                })}
+              </Typography>
+            );
+          }
+        };
         refreshUniverseTasksCache();
         closeModal();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
       },
       onError: (error: Error | AxiosError) => {
         handleServerError(error, {
-          customErrorLabel: t('toast.dbUpgradePrecheckFailed', {
+          customErrorLabel: t('toast.dbUpgradePrecheckFailedLabel', {
             keyPrefix: 'universeActions.dbUpgrade.upgradeModal'
           })
         });

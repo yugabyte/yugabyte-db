@@ -36,6 +36,7 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
@@ -785,11 +786,15 @@ TEST_F(PgTxnTest, RepackWithDelayedApplyBefore) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_rocksdb_universal_compaction_always_include_size_threshold) = 1_KB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_size_ratio) = 5;
+  // Disable automatic compactions: this test must keep the SST file containing the original
+  // packed row + value="2" out of the compacted range. Driving compaction manually ensures the
+  // packed row is processed as an "other range" before the input, exercising the safe-interval
+  // logic deterministically (relying on universal-compaction file selection is too fragile).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  // Pin the tablet leader: leader changes mid-test would cause flushes to land on different
+  // leaders, producing fewer files than expected on the leader we inspect.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
-  int key = 10;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
       "CREATE TABLE test (key INT, value TEXT, temp INT, PRIMARY KEY((key) HASH)) "
@@ -800,10 +805,6 @@ TEST_F(PgTxnTest, RepackWithDelayedApplyBefore) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN temp"));
 
-  for (int i = 0; i < 10; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO test VALUES ($0, '$1')", ++key, RandomHumanReadableString(32_KB)));
-  }
   ASSERT_OK(conn.Execute("UPDATE test SET value = '2' WHERE key = 2"));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
 
@@ -817,21 +818,22 @@ TEST_F(PgTxnTest, RepackWithDelayedApplyBefore) {
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '1')"));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
 
-  for (int i = 0; i < 3; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO test VALUES ($0, '$1')", ++key, RandomHumanReadableString(10)));
-    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-  }
-
+  // Compact every file except the oldest one (the one with the packed row + value="2"). The
+  // remaining file's range becomes a "before" other-range during compaction, which is exactly the
+  // scenario this test is designed to cover.
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
       cluster_.get(), "test", ListPeersFilter::kLeaders));
   ASSERT_EQ(peers.size(), 1);
-  ASSERT_OK(WaitFor([peer = peers.front()]() -> Result<bool> {
-    auto tablet = VERIFY_RESULT(peer->shared_tablet());
-    auto files = tablet->doc_db().regular->GetLiveFilesMetaData();
-    LOG(INFO) << "Files: " << AsString(files);
-    return files.size() <= 3;
-  }, 10s * kTimeMultiplier, "Wait for compaction"));
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* db = tablet->doc_db().regular;
+  auto files = db->GetLiveFilesMetaData();
+  ASSERT_EQ(files.size(), 3);
+  std::ranges::sort(files, {}, [](const auto& file) { return file.smallest.seqno; });
+  std::vector<std::string> input_files;
+  for (size_t i = 1; i < files.size(); ++i) {
+    input_files.push_back(files[i].Name());
+  }
+  ASSERT_OK(db->CompactFiles(rocksdb::CompactionOptions(), input_files, /* output_level= */ 0));
 
   auto res = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT * FROM test WHERE key < 10 ORDER BY key"));

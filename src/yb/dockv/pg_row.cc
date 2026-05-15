@@ -765,7 +765,11 @@ QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
     case DataType::INT64:
       result.set_int64_value(int64_value());
       return result;
-    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: {
+      auto data = string_value();
+      result.set_decimal_value(data.cdata(), data.size());
+      return result;
+    }
     case DataType::STRING: {
       auto data = string_value();
       result.set_string_value(data.cdata(), data.size());

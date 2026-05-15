@@ -37,6 +37,8 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
 
+#include "yb/dockv/doc_key.h"
+
 #include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -296,7 +298,8 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     }
     restart_time->set_deprecated_max_of_read_time_and_local_limit_ht(local_limit->ToUint64());
     restart_time->set_local_limit_ht(local_limit->ToUint64());
-    response()->dup_restart_read_key(read_restart_data_.key);
+    response()->dup_restart_read_key(
+        dockv::SubDocKey::DebugSliceToString(read_restart_data_.key.AsSlice()));
     // Global limit is ignored by caller, so we don't set it.
     Cancel(Status::OK());
     return;

@@ -1919,6 +1919,8 @@ TEST_F(AdminCliTest, TestAdminCommandTimeout) {
 
   // Update flags.
   ASSERT_OK(cluster_->SetFlagOnMasters(
+    "refresh_waiter_timeout_ms", std::to_string(kMasterRpcTimeout)));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
       "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnTServers(
       "TEST_pause_tablet_compact_flush_ms", std::to_string(kCompactionPause)));
@@ -1969,6 +1971,8 @@ TEST_F(AdminCliTest, TestAdminRpcTimeout) {
   constexpr size_t kMasterRpcTimeout = kAdminRpcTimeout / 2;
 
   // Update flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+    "refresh_waiter_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnTServers(

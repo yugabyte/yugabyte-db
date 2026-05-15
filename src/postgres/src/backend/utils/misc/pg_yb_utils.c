@@ -96,6 +96,7 @@
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
@@ -105,10 +106,12 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/pathnodes.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
 #include "parser/parse_utilcmd.h"
+#include "parser/parser.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
@@ -116,6 +119,7 @@
 #ifndef HAVE_GETRUSAGE
 #include "rusagestub.h"
 #endif
+#include "storage/ipc.h"
 #include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -126,6 +130,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/relcache.h"
 #include "utils/snapmgr.h"
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
@@ -348,7 +353,6 @@ int			ybc_disable_pg_locking = -1;
 
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
-static bool YBCanEnableDBCatalogVersionMode();
 
 bool		yb_enable_docdb_tracing = false;
 bool		yb_read_from_followers = false;
@@ -717,108 +721,22 @@ YBIsWaitQueueEnabled()
 }
 
 /*
- * Return true if we are in per-database catalog version mode. In order to
- * use per-database catalog version mode, two conditions must be met:
- *   * --FLAGS_ysql_enable_db_catalog_version_mode=true
- *   * the table pg_yb_catalog_version has one row per database.
- * This function takes care of the YSQL upgrade from global catalog version
- * mode to per-database catalog version mode when the default value of
- * --FLAGS_ysql_enable_db_catalog_version_mode is changed to true. In this
- * upgrade procedure --FLAGS_ysql_enable_db_catalog_version_mode is set to
- * true before the table pg_yb_catalog_version is updated to have one row per
- * database.
- * This function does not consider going from per-database catalog version
- * mode back to global catalog version mode.
+ * Return true if we are in per-database catalog version mode.
+ *
+ * Per-database catalog version mode is now mandatory; this function only
+ * returns false during initdb bootstrap (when the pg_yb_catalog_version
+ * table does not yet exist) and when YugabyteDB is not enabled.
  */
 bool
 YBIsDBCatalogVersionMode()
 {
-	static bool cached_is_db_catalog_version_mode = false;
-
-	if (cached_is_db_catalog_version_mode)
-		return true;
-
 	/*
 	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
-	 * for catalog version type.
+	 * for catalog version type and the pg_yb_catalog_version table is not yet
+	 * available.
 	 */
-	if (!IsYugaByteEnabled() ||
-		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
-		!*YBCGetGFlags()->ysql_enable_db_catalog_version_mode)
-		return false;
-
-	/*
-	 * During second phase of initdb, per-db catalog version mode is supported.
-	 */
-	if (YBCIsInitDbModeEnvVarSet())
-	{
-		cached_is_db_catalog_version_mode = true;
-		return true;
-	}
-
-	/*
-	 * At this point, we know that FLAGS_ysql_enable_db_catalog_version_mode is
-	 * turned on. However in case of YSQL upgrade we may not be ready to enable
-	 * per-db catalog version mode yet. Note that we only provide support where
-	 * we go from global catalog version mode to per-db catalog version mode,
-	 * not for the opposite direction.
-	 */
-	if (YBCanEnableDBCatalogVersionMode())
-	{
-		cached_is_db_catalog_version_mode = true;
-		/*
-		 * If MyDatabaseId is not resolved, the caller is going to set up the
-		 * catalog version in per-database catalog version mode. There is
-		 * no need to set it up here.
-		 */
-		if (OidIsValid(MyDatabaseId))
-		{
-			/*
-			 * MyDatabaseId is already resolved so the caller may have already
-			 * set up the catalog version in global catalog version mode. The
-			 * upgrade of table pg_yb_catalog_version to per-database catalog
-			 * version mode does not change the catalog version of database
-			 * template1 but will set the initial per-database catalog version
-			 * value to 1 for all other databases. Set catalog version to 1
-			 * except for database template1 to avoid unnecessary catalog cache
-			 * refresh.
-			 * Note that we assume there are no DDL statements running during
-			 * YSQL upgrade and in particular we do not support concurrent DDL
-			 * statements when switching from global catalog version mode to
-			 * per-database catalog version mode. As of 2023-08-07, this is not
-			 * enforced and therefore if a concurrent DDL statement is executed:
-			 * (1) if this DDL statement also increments a table schema, we still
-			 * have the table schema version mismatch check as a safety net to
-			 * reject stale read/write RPCs;
-			 * (2) if this DDL statement only increments the catalog version,
-			 * then stale read/write RPCs are possible which can lead to wrong
-			 * results;
-			 */
-			elog(LOG, "change to per-db mode");
-			if (MyDatabaseId != Template1DbOid)
-			{
-				yb_last_known_catalog_cache_version = 1;
-				YbUpdateCatalogCacheVersion(1);
-			}
-		}
-
-		/*
-		 * YB does write operation buffering to reduce the number of RPCs.
-		 * That is, PG backend can buffer several write operations and send
-		 * them out in a single RPC. Here we dynamically switch from global
-		 * catalog version mode to per-database catalog version mode, so
-		 * flush the buffered write operations. Otherwise, we can end up
-		 * having the first write operations in global catalog version mode,
-		 * and the rest write operations in per-database catalog version.
-		 * Mixing global and per-database catalog versions in a single RPC
-		 * triggers a tserver SCHECK failure.
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(MyDatabaseId));
-		return true;
-	}
-
-	/* We cannot enable per-db catalog version mode yet. */
-	return false;
+	return IsYugaByteEnabled() &&
+		YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE;
 }
 
 bool
@@ -860,50 +778,6 @@ YBGetObjectLockMode()
 	return cached_value ? YB_OBJECT_LOCK_ENABLED : YB_OBJECT_LOCK_DISABLED;
 }
 
-static bool
-YBCanEnableDBCatalogVersionMode()
-{
-	/*
-	 * Even when FLAGS_ysql_enable_db_catalog_version_mode is turned on we
-	 * cannot simply enable per-database catalog mode if the table
-	 * pg_yb_catalog_version does not have one row for each database.
-	 * Consider YSQL upgrade, it happens after cluster software upgrade and
-	 * can take time. During YSQL upgrade we need to wait until the
-	 * pg_yb_catalog_version table is updated to have one row per database.
-	 * In addition, we do not want to switch to per-database catalog version
-	 * mode at any moment to prevent the following case:
-	 *
-	 * (1) At time t1, pg_yb_catalog_version is prefetched and there is only
-	 * one row in the table because the table has not been upgraded yet.
-	 * (2) At time t2 > t1, pg_yb_catalog_version is transactionally upgraded
-	 * to have one row per database.
-	 * (3) At time t3 > t2, assume that we already switched to per-database
-	 * catalog version mode, then we will try to find the row of MyDatabaseId
-	 * from the pg_yb_catalog_version data prefetched in step (1). That row
-	 * would not exist because at time t1 pg_yb_catalog_version only had one
-	 * row for template1. This is going to cause a user visible exception.
-	 *
-	 * Therefore after the pg_yb_catalog_version is upgraded, we may continue
-	 * to remain on global catalog version mode until we are not doing
-	 * prefetching.
-	 */
-	if (YBCIsSysTablePrefetchingStarted())
-		return false;
-
-	if (yb_test_stay_in_global_catalog_version_mode)
-		return false;
-
-	/*
-	 * We assume that the table pg_yb_catalog_version has either exactly
-	 * one row in global catalog version mode, or one row per database in
-	 * per-database catalog version mode. It is unexpected if it has more
-	 * than one rows but not exactly one row per database. During YSQL
-	 * upgrade, the pg_yb_catalog_version is transactionally updated
-	 * to have one row per database.
-	 */
-	return YbCatalogVersionTableInPerdbMode();
-}
-
 /*
  * Used to determine whether we should preload certain catalog tables.
  */
@@ -919,10 +793,12 @@ FetchUniqueConstraintName(Oid relation_id)
 {
 	const char *name = NULL;
 	Relation	rel = RelationIdGetRelation(relation_id);
+	Oid			pkindex = OidIsValid(rel->rd_pkindex) ? rel->rd_pkindex :
+		RelationGetPrimaryKeyIndex(rel);
 
-	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	if (!rel->rd_index && OidIsValid(pkindex))
 	{
-		Relation	pkey = RelationIdGetRelation(rel->rd_pkindex);
+		Relation	pkey = RelationIdGetRelation(pkindex);
 
 		name = pstrdup(RelationGetRelationName(pkey));
 
@@ -1338,10 +1214,25 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 	 */
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 
-	/* Wait up to 60 seconds, with a 0.1-second interval. */
+	/*
+	 * Wait with a 0.1-second polling interval. The maximum total wait time is
+	 * the larger of:
+	 *   - kBaseWaitMs (60 seconds), the historical timeout that has proved
+	 *     sufficient under the default heartbeat interval; and
+	 *   - kHeartbeatMultiplier heartbeat intervals, so that we always allow
+	 *     enough time for several TServer->Master heartbeats to deliver the
+	 *     new shared catalog version even when --heartbeat_interval_ms has
+	 *     been increased (for example for multi-region deployments).
+	 */
+	const int	kBaseWaitMs = 60 * 1000;
+	const int	kHeartbeatMultiplier = 10;
+	const int	kPollIntervalUs = 100000;
+	int			max_wait_ms =
+		Max(kBaseWaitMs, kHeartbeatMultiplier * YBGetHeartbeatIntervalMs());
+	int			max_count = max_wait_ms / (kPollIntervalUs / 1000);
 	int			count = 0;
 
-	while (shared_catalog_version < version && count++ < 600)
+	while (shared_catalog_version < version && count++ < max_count)
 	{
 		/*
 		 * This can happen if database MyDatabaseId is dropped by another session.
@@ -1355,8 +1246,7 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 							version),
 					 errhidestmt(true),
 					 errhidecontext(true)));
-		/* wait 0.1 sec */
-		pg_usleep(100000L);
+		pg_usleep(kPollIntervalUs);
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
 	if (shared_catalog_version >= version)
@@ -1538,22 +1428,50 @@ YBCAbortTransaction()
 	YbcStatus	status = YBCPgClearSeparateDdlTxnMode();
 
 	/*
-	 * Aborting a transaction is likely to fail only when there are issues
-	 * communicating with the tserver. Close the backend connection in such
-	 * scenarios to avoid a recursive loop of aborting again and again as part
-	 * of error handling in PostgresMain() because of the error faced during
-	 * abort.
+	 * RPC failures here are most likely caused by a loss of communication with
+	 * the tserver.  The appropriate response depends on whether proc_exit is
+	 * already in progress:
 	 *
-	 * Note - If you are changing the behavior to not terminate the backend,
-	 * please consider its impact on sub-transaction abort failures
-	 * (YBCRollbackToSubTransaction) as well.
+	 * - When proc_exit is in progress (e.g. backend killed via
+	 *   pg_terminate_backend), PostgresMain() is no longer running and the
+	 *   tserver connection may already be tearing down.  Escalating to FATAL
+	 *   would trigger a second proc_exit before AbortTransaction finishes
+	 *   resetting PG transaction state, causing downstream assertions.  Log a
+	 *   message instead so that AbortTransaction can complete normally.
+	 *   Important: use LOG not WARNING.
+	 *   WARNING-level messages (elog.c) travel through shm_mq and confuse
+	 *   the pg_cron's ProcessBgwTaskFeedback into overwriting a prior
+	 *   'failed' job status. Some of the pg-cron tests rely on the 'failed'
+	 *   status to verify that a job failure is correctly reported.
+	 *
+	 * - Otherwise, FATAL to close the backend immediately.  This avoids a
+	 *   recursive loop where PostgresMain()'s error handler calls
+	 *   AbortCurrentTransaction(), which calls back here and fails again.
 	 */
 	if (unlikely(status))
-		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
+	{
+		if (!proc_exit_inprogress)
+			elog(FATAL, "Failed to abort DDL transaction: %s",
+				 YBCMessageAsCString(status));
+		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
+		ereport(LOG,
+				(errmsg("failed to abort DDL transaction during shutdown: %s",
+						YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
+	}
 
 	status = YBCPgAbortPlainTransaction();
 	if (unlikely(status))
-		elog(FATAL, "Failed to abort DML transaction: %s", YBCMessageAsCString(status));
+	{
+		if (!proc_exit_inprogress)
+			elog(FATAL, "Failed to abort DML transaction: %s",
+				 YBCMessageAsCString(status));
+		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
+		ereport(LOG,
+				(errmsg("failed to abort DML transaction during shutdown: %s",
+						YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
+	}
 }
 
 void
@@ -2299,6 +2217,9 @@ bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+
+/* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
+bool		yb_silence_advisory_locks_not_supported_error = false;
 bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
@@ -2313,6 +2234,9 @@ bool		yb_enable_negative_catcache_entries = true;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
+
+/* DEPRECATED */
+bool		yb_enable_concurrent_ddl = false;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
@@ -2358,6 +2282,8 @@ bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
 
+bool		yb_test_invalidate_relcache_in_planner = false;
+
 bool		yb_test_fail_next_inc_catalog_version = false;
 
 double		yb_test_ybgin_disable_cost_factor = 2.0;
@@ -2375,8 +2301,6 @@ YbcOtelSpanContext yb_guc_remote_span_ctx = NULL;
 bool		yb_test_fail_table_rewrite_after_creation = false;
 bool		yb_test_preload_catalog_tables = false;
 
-bool		yb_test_stay_in_global_catalog_version_mode = false;
-
 bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
@@ -2393,8 +2317,6 @@ int			yb_test_reset_retry_counts = -1;
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
 
-bool		yb_silence_advisory_locks_not_supported_error = false;
-
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
@@ -2408,6 +2330,28 @@ bool		yb_enable_pg_stat_statements_rpc_stats = true;
 bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
 bool		yb_enable_global_views = false;
+
+bool
+yb_is_federated_yb_foreign_table(Oid relid)
+{
+	ForeignTable *table;
+	ForeignServer *server;
+	ListCell   *lc;
+
+	table = GetForeignTable(relid);
+	server = GetForeignServer(table->serverid);
+
+	foreach(lc, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "server_type") == 0)
+			return pg_strcasecmp(defGetString(def),
+								 "federatedYugabyteDB") == 0;
+	}
+
+	return false;
+}
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -7417,15 +7361,6 @@ YbGetNumberOfDatabases()
 	return num_databases;
 }
 
-bool
-YbCatalogVersionTableInPerdbMode()
-{
-	bool		perdb_mode = false;
-
-	HandleYBStatus(YBCCatalogVersionTableInPerdbMode(&perdb_mode));
-	return perdb_mode;
-}
-
 static bool yb_is_batched_execution = false;
 
 bool
@@ -7501,6 +7436,447 @@ YbIsColumnPartOfKey(Relation rel, const char *column_name)
 }
 
 /*
+ * Helper function to convert an A_Const node to its string representation.
+ * Returns true on success, false if the value type is not one we know how to
+ * serialize.
+ */
+static bool
+YbAppendAConstToString(StringInfo str, A_Const *aconst)
+{
+	if (aconst->isnull)
+	{
+		appendStringInfoString(str, "NULL");
+		return true;
+	}
+
+	switch (nodeTag(&aconst->val))
+	{
+		case T_Integer:
+			appendStringInfo(str, "%ld", (long) aconst->val.ival.ival);
+			return true;
+		case T_Float:
+			appendStringInfoString(str, aconst->val.fval.fval);
+			return true;
+		case T_Boolean:
+			appendStringInfoString(str, aconst->val.boolval.boolval ? "true" : "false");
+			return true;
+		case T_String:
+			{
+				/*
+				 * String values need to be properly quoted and escaped.
+				 * Use single quotes and escape any internal single quotes.
+				 * If the string contains backslashes, use E-string syntax
+				 * to ensure correct parsing regardless of
+				 * standard_conforming_strings setting.
+				 */
+				const char *s = aconst->val.sval.sval;
+				bool		has_backslash = (strchr(s, '\\') != NULL);
+
+				if (has_backslash)
+					appendStringInfoChar(str, 'E');
+				appendStringInfoChar(str, '\'');
+				for (; *s; s++)
+				{
+					if (*s == '\'')
+						appendStringInfoString(str, "''");
+					else if (*s == '\\')
+						appendStringInfoString(str, "\\\\");
+					else
+						appendStringInfoChar(str, *s);
+				}
+				appendStringInfoChar(str, '\'');
+				return true;
+			}
+		case T_BitString:
+			{
+				/*
+				 * The scanner stores bit-string literals with a leading 'b'
+				 * (binary) or 'x' (hex) marker so that bit_in() can dispatch
+				 * on it (see scan.l).  Strip the marker and emit the matching
+				 * SQL literal form so the value round-trips correctly.
+				 */
+				const char *bsval = aconst->val.bsval.bsval;
+
+				if (bsval[0] == 'x' || bsval[0] == 'X')
+					appendStringInfo(str, "X'%s'", bsval + 1);
+				else
+					appendStringInfo(str, "B'%s'", bsval + 1);
+				return true;
+			}
+		default:
+			return false;
+	}
+}
+
+/*
+ * Helper function to convert a single expression node to string.
+ * Handles A_Const, ColumnRef (for MINVALUE/MAXVALUE), TypeCast, and A_Expr
+ * (unary minus only).  Returns true on success, or false if the expression
+ * is of a kind we don't know how to serialize (e.g. a function call).  The
+ * grammar for SPLIT AT VALUES accepts an arbitrary expr_list, so any
+ * expression type is reachable here even though only constant-valued
+ * expressions actually make sense as split points.
+ */
+static bool
+YbAppendExprToString(StringInfo str, Node *expr)
+{
+	if (expr == NULL)
+	{
+		appendStringInfoString(str, "NULL");
+		return true;
+	}
+
+	switch (nodeTag(expr))
+	{
+		case T_A_Const:
+			return YbAppendAConstToString(str, (A_Const *) expr);
+
+		case T_ColumnRef:
+			{
+				/*
+				 * ColumnRef is used for MINVALUE and MAXVALUE keywords.
+				 */
+				ColumnRef  *cref = (ColumnRef *) expr;
+
+				if (list_length(cref->fields) == 1)
+				{
+					Node	   *field = linitial(cref->fields);
+
+					if (IsA(field, String))
+					{
+						const char *name = strVal(field);
+
+						if (pg_strcasecmp(name, "MINVALUE") == 0 ||
+							pg_strcasecmp(name, "MAXVALUE") == 0)
+						{
+							appendStringInfoString(str, name);
+							return true;
+						}
+					}
+				}
+				return false;
+			}
+
+		case T_TypeCast:
+			{
+				/*
+				 * TypeCast wraps a value with a type cast.  We just emit the
+				 * inner value; the surrounding CREATE TABLE statement (and
+				 * the column type) determine the resulting type.
+				 */
+				TypeCast   *tc = (TypeCast *) expr;
+
+				return YbAppendExprToString(str, tc->arg);
+			}
+
+		case T_A_Expr:
+			{
+				/*
+				 * Handle unary minus for negative numbers.  Anything else
+				 * (arbitrary arithmetic, etc.) is not serializable here.
+				 */
+				A_Expr	   *aexpr = (A_Expr *) expr;
+
+				if (aexpr->kind == AEXPR_OP &&
+					aexpr->lexpr == NULL &&
+					list_length(aexpr->name) == 1 &&
+					strcmp(strVal(linitial(aexpr->name)), "-") == 0)
+				{
+					appendStringInfoChar(str, '-');
+					return YbAppendExprToString(str, aexpr->rexpr);
+				}
+				return false;
+			}
+
+		default:
+			return false;
+	}
+}
+
+char *
+YbSplitPointsToString(List *split_points)
+{
+	StringInfoData str;
+	ListCell   *lc_point;
+	bool		first_point = true;
+
+	if (split_points == NIL)
+		return NULL;
+
+	initStringInfo(&str);
+	appendStringInfoChar(&str, '(');
+
+	foreach(lc_point, split_points)
+	{
+		List	   *point = (List *) lfirst(lc_point);
+		ListCell   *lc_val;
+		bool		first_val = true;
+
+		if (!first_point)
+			appendStringInfoString(&str, ", ");
+		first_point = false;
+
+		appendStringInfoChar(&str, '(');
+
+		foreach(lc_val, point)
+		{
+			Node	   *val = (Node *) lfirst(lc_val);
+
+			if (!first_val)
+				appendStringInfoString(&str, ", ");
+			first_val = false;
+
+			if (!YbAppendExprToString(&str, val))
+			{
+				pfree(str.data);
+				return NULL;
+			}
+		}
+
+		appendStringInfoChar(&str, ')');
+	}
+
+	appendStringInfoChar(&str, ')');
+
+	return str.data;
+}
+
+/*
+ * Reloption validate_cb for yb_presplit.  Invoked by the relopt machinery
+ * when an explicit value is supplied (e.g. WITH (yb_presplit=...) or
+ * SET (yb_presplit=...)).  Runs the value through the parser; syntactic
+ * problems are reported via ereport from raw_parser/grammar actions.
+ * Also rejects out-of-range tablet counts (the grammar accepts any Iconst,
+ * but a tablet count must be at least 1).  Relation-aware checks (hash vs
+ * range compatibility) live in YbValidatePresplitForRelation and run at
+ * CREATE/ALTER time.
+ */
+void
+YbValidatePresplitReloption(const char *value)
+{
+	YbOptSplit *split;
+
+	if (value == NULL || value[0] == '\0')
+		return;
+
+	split = YbParsePresplitString(value);
+	if (split && split->split_type == NUM_TABLETS && split->num_tablets <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("yb_presplit tablet count must be positive")));
+}
+
+/*
+ * Returns true if the relation is hash-partitioned at the storage level.
+ *
+ * For tables/matviews/partitioned tables the partitioning kind is determined
+ * by the primary key index's first column (ASC/DESC vs HASH); a heap with no
+ * primary key uses an implicit ybrowid hash column, so it is hash.
+ *
+ * For (partitioned) indexes the first column's INDOPTION_HASH bit on the
+ * relation itself answers directly.
+ */
+static bool
+YbRelationIsHashPartitioned(Relation rel)
+{
+	switch (rel->rd_rel->relkind)
+	{
+		case RELKIND_RELATION:
+		case RELKIND_MATVIEW:
+		case RELKIND_PARTITIONED_TABLE:
+		{
+			Oid			pkidx = RelationGetPrimaryKeyIndex(rel);
+			bool		hash;
+
+			if (!OidIsValid(pkidx))
+				return true;	/* no PK ⇒ implicit ybrowid hash */
+
+			Relation	pkrel = index_open(pkidx, AccessShareLock);
+
+			hash = (pkrel->rd_indoption != NULL &&
+					(pkrel->rd_indoption[0] & INDOPTION_HASH) != 0);
+			index_close(pkrel, AccessShareLock);
+			return hash;
+		}
+		case RELKIND_INDEX:
+		case RELKIND_PARTITIONED_INDEX:
+			return (rel->rd_indoption != NULL &&
+					(rel->rd_indoption[0] & INDOPTION_HASH) != 0);
+		default:
+			return false;
+	}
+}
+
+/*
+ * Validate that a yb_presplit string is compatible with `rel`'s partitioning
+ * kind.  Syntax is expected to have been validated already (e.g. via the
+ * reloption validate_cb); we ereport here only on hash/range mismatches.
+ *
+ * - SPLIT INTO N TABLETS  requires a hash-partitioned relation
+ * - SPLIT AT VALUES (...) requires a range-partitioned relation
+ */
+void
+YbValidatePresplitForRelation(Relation rel, const char *presplit_str)
+{
+	YbOptSplit *split = YbParsePresplitString(presplit_str);
+
+	if (split == NULL)
+		return;
+
+	bool		is_hash = YbRelationIsHashPartitioned(rel);
+
+	if (split->split_type == NUM_TABLETS && !is_hash)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("HASH columns must be present to use yb_presplit with tablet count")));
+
+	if (split->split_type == SPLIT_POINTS && is_hash)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("yb_presplit with split points is not yet supported for hash partitioned tables")));
+}
+
+/*
+ * Parse a yb_presplit reloption value into a YbOptSplit node.
+ *
+ * The persisted value comes in three flavors, all of which are accepted:
+ *   - A bare positive integer: "5"               (SPLIT INTO N TABLETS)
+ *   - A bare split-point list: "((100),(200))"   (SPLIT AT VALUES (...))
+ *   - A full clause:           "SPLIT INTO 5 TABLETS" or
+ *                              "SPLIT AT VALUES ((100),(200))"
+ *
+ * Bare forms are normalized by prepending "INTO ... TABLETS" or
+ * "AT VALUES ..." so that a single grammar production
+ * (yb_presplit_value, see gram.y) handles all flavors via
+ * RAW_PARSE_YB_SPLIT_CLAUSE.  This keeps gram.y as the single source of
+ * truth for SPLIT syntax and avoids a round-trip through a synthesized
+ * CREATE TABLE statement.
+ *
+ * Returns NULL for an empty input.  Syntax errors are reported via
+ * ereport by the parser, which is the desired behavior for the
+ * CREATE/ALTER call sites (validate_cb and YbSyncSplitOptionsAndPresplit).
+ */
+YbOptSplit *
+YbParsePresplitString(const char *presplit_str)
+{
+	const char *query;
+	char	   *prefixed = NULL;
+	List	   *parsetree;
+
+	if (presplit_str == NULL || presplit_str[0] == '\0')
+		return NULL;
+
+	if (presplit_str[0] == '(')
+		query = prefixed = psprintf("AT VALUES %s", presplit_str);
+	else if (pg_strncasecmp(presplit_str, "SPLIT", 5) == 0 ||
+			 pg_strncasecmp(presplit_str, "INTO", 4) == 0 ||
+			 pg_strncasecmp(presplit_str, "AT", 2) == 0)
+		query = presplit_str;
+	else
+		/* Treat anything else as the operand of SPLIT INTO N TABLETS. */
+		query = prefixed = psprintf("INTO %s TABLETS", presplit_str);
+
+	parsetree = raw_parser(query, RAW_PARSE_YB_SPLIT_CLAUSE);
+
+	if (prefixed)
+		pfree(prefixed);
+
+	if (list_length(parsetree) != 1)
+		return NULL;
+	return castNode(YbOptSplit, linitial(parsetree));
+}
+
+char *
+YbSplitOptionsToPresplitString(YbOptSplit *split_options)
+{
+	if (split_options == NULL)
+		return NULL;
+
+	if (split_options->split_type == NUM_TABLETS)
+	{
+		/* Format: just the number */
+		return psprintf("%d", split_options->num_tablets);
+	}
+	else if (split_options->split_type == SPLIT_POINTS &&
+			 split_options->split_points != NIL)
+	{
+		/* Format: ((val1), (val2), ...) */
+		return YbSplitPointsToString(split_options->split_points);
+	}
+
+	return NULL;
+}
+
+/*
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
+ * both representations are kept in sync prior to relation creation.
+ *
+ *   - If *split_options is set, attempt to serialize it into a yb_presplit
+ *     entry appended to *options. If the SPLIT clause contains expressions
+ *     that cannot be serialized, *split_options is left intact (so the
+ *     relation is still created with the original clause) and no yb_presplit
+ *     entry is added. It is an error if yb_presplit is already present in
+ *     *options, since that would conflict with the SPLIT clause.
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
+ *     into *split_options so the relation is created with the persisted
+ *     pre-split values (e.g., on pg_dump restore).
+ *
+ * Used by both CREATE TABLE and CREATE INDEX paths.
+ */
+void
+YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
+{
+	ListCell   *lc;
+
+	if (*split_options)
+	{
+		char	   *presplit_str;
+
+		/*
+		 * Error if yb_presplit already exists in options (e.g., from
+		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
+		 */
+		foreach(lc, *options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+		}
+
+		/*
+		 * If the split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
+		 * skip storing yb_presplit.  *split_options is left intact so the
+		 * relation is still created with the original SPLIT clause; those
+		 * expressions are evaluated at creation time by
+		 * YBTransformPartitionSplitValue.
+		 */
+		presplit_str = YbSplitOptionsToPresplitString(*split_options);
+		if (presplit_str != NULL)
+			*options = lappend(*options,
+							   makeDefElem("yb_presplit",
+										   (Node *) makeString(presplit_str),
+										   -1));
+		return;
+	}
+
+	/* Derive split_options from yb_presplit if not already set. */
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "yb_presplit") == 0)
+		{
+			*split_options = YbParsePresplitString(defGetString(def));
+			break;
+		}
+	}
+}
+
+/*
  * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
  * that requires the sticky connection
  * These objects are
@@ -7535,6 +7911,8 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  * sharing the same backend. Updated at runtime via GUC (PGC_SIGHUP).
  */
 bool		yb_conn_mgr_selective_deallocate = true;
+
+bool		yb_enable_mage = false;
 
 bool
 YbIsSuperuserConnSticky()
@@ -7831,6 +8209,14 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 		indclass = (oidvector *) DatumGetPointer(indclassDatum);
 	ReleaseSysCache(indexTuple);
 
+	/*
+	 * If yb_copy_split_options is true, preserve the current table's split
+	 * state (including any automatic tablet splitting). Otherwise, use
+	 * default split options.
+	 *
+	 * Future work: When yb_copy_split_options is false, we could read from
+	 * the yb_presplit reloption to restore the original split configuration.
+	 */
 	if (yb_copy_split_options)
 	{
 		splitOpt = indexRel->yb_table_properties
@@ -7953,11 +8339,11 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 
 	YbATCopyPrimaryKeyToCreateStmt(rel, pg_constraint, dummyStmt);
 	table_close(pg_constraint, RowExclusiveLock);
-	if (yb_copy_split_options)
-	{
-		YbGetTableProperties(rel);
-		dummyStmt->split_options = YbGetSplitOptions(rel);
-	}
+
+	/*
+	 * Read reloptions from pg_class into dummyStmt->options.
+	 * This includes yb_presplit if it was set at table creation time.
+	 */
 	bool		is_null;
 	HeapTuple	tuple = SearchSysCache1(RELOID,
 										ObjectIdGetDatum(RelationGetRelid(rel)));
@@ -7967,6 +8353,20 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	if (!is_null)
 		dummyStmt->options = untransformRelOptions(datum);
 	ReleaseSysCache(tuple);
+
+	/*
+	 * If yb_copy_split_options is true, we want to preserve the current
+	 * table's split state (including any automatic tablet splitting that
+	 * may have occurred). Otherwise, use default split options.
+	 *
+	 * Future work: When yb_copy_split_options is false, we could read from
+	 * the yb_presplit reloption to restore the original split configuration.
+	 */
+	if (yb_copy_split_options)
+	{
+		YbGetTableProperties(rel);
+		dummyStmt->split_options = YbGetSplitOptions(rel);
+	}
 	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
 				   rel->rd_rel->relkind, RelationGetDescr(rel),
 				   RelationGetRelid(rel),
@@ -8992,4 +9392,79 @@ YbGetTraceparentFromTraceContext(const char *trace_context, size_t trace_context
 	traceparent_out[YB_TRACEPARENT_VALUE_LEN] = '\0';
 
 	return YB_TRACEPARENT_OK;
+}
+
+/*
+ * YbAddFederatedPartitionTserverUuid
+ *		Record that the per-tserver child at 'rti' targets the tablet server
+ *		identified by 'tserver_uuid'.
+ *
+ * The 'tserver_uuid' string is borrowed; the caller should ensure that it is
+ * allocated in a memory context that lives at least as long as the planner state.
+ *
+ * The backing yb_tserver_uuids array on PlannerInfo is lazily allocated here,
+ * so non-federated queries do not pay for it.  expand_planner_arrays() takes
+ * care of growing it in lockstep with simple_rte_array.
+ */
+void
+YbAddFederatedPartitionTserverUuid(PlannerInfo *root, Index rti,
+								   const char *tserver_uuid)
+{
+	Assert(rti < root->simple_rel_array_size);
+
+	if (root->yb_tserver_uuids == NULL)
+		root->yb_tserver_uuids = (const char **)
+			palloc0(sizeof(const char *) * root->simple_rel_array_size);
+
+	root->yb_tserver_uuids[rti] = tserver_uuid;
+}
+
+/*
+ * YbGetFederatedPartitionTserverUuid
+ *		Look up the tablet server UUID previously recorded for 'rti', or
+ *		return NULL if 'rti' is not a per-tserver federated child.
+ */
+const char *
+YbGetFederatedPartitionTserverUuid(const PlannerInfo *root, Index rti)
+{
+	if (root->yb_tserver_uuids == NULL)
+		return NULL;
+
+	Assert(rti < root->simple_rel_array_size);
+	return root->yb_tserver_uuids[rti];
+}
+
+/*
+ * YbInvalidatePlannerRelcache -- test hook implementation for
+ * yb_test_invalidate_relcache_in_planner.  Invalidates every base relation
+ * and its index relcache entries on the given PlannerInfo so that
+ * subsequent relation_open() calls rebuild fresh entries.
+ */
+void
+YbInvalidatePlannerRelcache(PlannerInfo *root)
+{
+	Index		rti;
+
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
+	{
+		RelOptInfo *brel = root->simple_rel_array[rti];
+		RangeTblEntry *brte = root->simple_rte_array[rti];
+		ListCell   *lc;
+
+		if (brel == NULL)
+			continue;
+
+		/* Invalidate the base relation itself (if it's a real table). */
+		if (brte != NULL && brte->rtekind == RTE_RELATION &&
+			OidIsValid(brte->relid))
+			RelationCacheInvalidateEntry(brte->relid);
+
+		/* Invalidate each of its indexes. */
+		foreach(lc, brel->indexlist)
+		{
+			IndexOptInfo *idx = (IndexOptInfo *) lfirst(lc);
+
+			RelationCacheInvalidateEntry(idx->indexoid);
+		}
+	}
 }

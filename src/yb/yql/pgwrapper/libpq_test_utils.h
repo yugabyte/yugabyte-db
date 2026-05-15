@@ -19,6 +19,6 @@
 
 namespace yb::pgwrapper {
 
-Result<uint64_t> GetCatalogVersion(PGConn* conn, bool db_catalog_version_mode = true);
+Result<uint64_t> GetCatalogVersion(PGConn* conn);
 
 } // namespace yb::pgwrapper

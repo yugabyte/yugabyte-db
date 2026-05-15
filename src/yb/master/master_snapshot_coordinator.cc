@@ -906,6 +906,7 @@ class MasterSnapshotCoordinator::Impl {
       if (time) {
         out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
       }
+      out_schedule->set_retention_duration_sec(schedule->options().retention_duration_sec());
     }
     out->set_last_restorations_update_ht(last_restorations_update_ht_.ToUint64());
     for (const auto& restoration : restorations_) {
@@ -2031,6 +2032,46 @@ class MasterSnapshotCoordinator::Impl {
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
       tablet_split_manager_.ReenableSplittingFor(kPitrFeatureName);
+    }
+
+    // After PITR restore, advance per-DB OID counters past any hidden tables'
+    // OIDs to prevent collisions. Hidden tables are retained by master (e.g. for PITR
+    // retention or tablet splitting) and their OIDs can be above the restored next-OID
+    // counter. Only applies to YSQL namespaces; YCQL does not use PG OIDs.
+    //
+    // Schedule the work outside the coordinator mutex: AdvanceOidCounters issues
+    // synchronous ReservePgsqlOids RPCs that must not run while mutex_ is held, or
+    // concurrent restoration progress stalls. PITR does NOT invalidate tserver OID
+    // caches - see SnapshotCoordinatorContext::AdvanceOidCounters doc for rationale.
+    if (restoration->schedule_id()) {
+      auto schedule = FindSnapshotSchedule(restoration->schedule_id());
+      if (!schedule.ok()) {
+        LOG(WARNING) << "PITR: Skipping OID counter advance for restoration "
+                     << restoration->restoration_id()
+                     << " because snapshot schedule " << restoration->schedule_id()
+                     << " could not be found: " << schedule.status()
+                     << ". Post-restore OID collisions may occur.";
+      } else {
+        std::vector<NamespaceId> namespaces_to_advance;
+        for (const auto& table : schedule->options().filter().tables().tables()) {
+          if (table.has_namespace_() && table.namespace_().has_id() &&
+              table.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+            namespaces_to_advance.push_back(table.namespace_().id());
+          }
+        }
+        if (!namespaces_to_advance.empty()) {
+          context_.Scheduler().io_service().post(
+              [this, namespaces = std::move(namespaces_to_advance)]() mutable {
+                for (const auto& ns_id : namespaces) {
+                  WARN_NOT_OK(
+                      context_.AdvanceOidCounters(ns_id),
+                      Format("Failed to advance OID counters for namespace $0 after "
+                             "restore. Post-restore OID collisions may occur.",
+                             ns_id));
+                }
+              });
+        }
+      }
     }
   }
 

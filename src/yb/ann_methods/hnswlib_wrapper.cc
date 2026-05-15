@@ -13,7 +13,9 @@
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 
+#include <cmath>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -24,7 +26,12 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+
+#include "yb/ann_methods/index_memory_consumption.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
@@ -171,11 +178,13 @@ class HnswlibIndex :
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   HnswlibIndex(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend)
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const MemTrackerPtr& mem_tracker)
       : block_cache_(block_cache),
         options_(options),
         backend_(backend),
         space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
+    consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
     std::call_once(once_flag, [func = space_->get_dist_func()]() {
       LogDistFunction(func);
@@ -198,6 +207,16 @@ class HnswlibIndex :
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
           num_vectors);
     }
+    // Both data and search-context allocations are sized off max_elements at construction.
+    auto se = UpdateAllConsumptionOnExit();
+    // TODO(vector_index): each HierarchicalNSW instance owns its own VisitedListPool sized to
+    // num_vectors (`unsigned short` per slot, plus one fresh VisitedList per concurrent
+    // search). A YB tablet can hold many vector_index chunks of similar size, so the pools are
+    // duplicated per chunk and add up. Investigate sharing a pool across HnswlibIndex
+    // instances of the same num_vectors (or just plumbing a process-wide pool keyed by
+    // capacity). Same opportunity exists for any other purely-search-time scratch buffers
+    // hnswlib introduces in the future.
+    //
     // Please be careful about adding and removing arguments here and make sure they match the
     // actual list of arguments in hnswalg.h.
     hnsw_ = std::make_unique<HNSWImpl>(
@@ -212,8 +231,10 @@ class HnswlibIndex :
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
+    // Only data grows on insert (level1+ linkLists_[i] entries and label_lookup_); the
+    // search-contexts pool is sized at construction.
+    auto se = UpdateDataConsumptionOnExit();
     hnsw_->addPoint(v.data(), vector_id);
-
     return Status::OK();
   }
 
@@ -227,6 +248,16 @@ class HnswlibIndex :
 
   size_t Dimensions() const override {
     return options_.dimensions;
+  }
+
+  // Estimates how many vectors fit into the given byte budget for this index. The per-vector
+  // overhead mirrors the allocation layout in hnswlib::HierarchicalNSW (see hnswalg.h) and uses
+  // the same per-element terms as indexDataBytes() / searchContextBytes() so that memory
+  // tracked via MemTracker for N inserted vectors is approximately the requested budget.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return HNSWImpl::estimateNumVectorsForBytes(
+        bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+        options_.dimensions * sizeof(Scalar));
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
@@ -320,11 +351,34 @@ class HnswlibIndex :
   }
 
  private:
+  // RAII helper that refreshes the index_data tracker on scope exit (e.g. on the way out of
+  // an insert path). Use this when only the per-vector heap allocations changed.
+  auto UpdateDataConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+      }
+    });
+  }
+
+  // RAII helper that refreshes both the index_data and search_contexts trackers. Use this on
+  // operations that rebuild or resize the index (e.g. Reserve) where the pool / per-vector
+  // tables are also (re)allocated.
+  auto UpdateAllConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+        consumption_.UpdateSearch(hnsw_->searchContextBytes());
+      }
+    });
+  }
+
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
   const HnswBackend backend_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+  IndexMemoryConsumption consumption_;
 };
 
 
@@ -372,7 +426,7 @@ VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceRes
     return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
   }
   return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
-      block_cache, options, backend);
+      block_cache, options, backend, mem_tracker);
 }
 
 template class HnswlibIndexFactory<FloatVector, float>;

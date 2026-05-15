@@ -10,6 +10,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenanc
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,20 @@ public class PersistEnableMultiTenancy extends UniverseTaskBase {
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               universeDetails.getPrimaryCluster().userIntent.setMultiTenancy(config);
+              if (config.isEnableQos()) {
+                LOG.debug("Unsetting cgroupSize if set as QoS is enabled in the universe");
+                universeDetails.getPrimaryCluster().userIntent.setCgroupSize(null);
+                if (CollectionUtils.isNotEmpty(universeDetails.getReadOnlyClusters())) {
+                  universeDetails.getReadOnlyClusters().stream()
+                      .forEach(rr -> rr.userIntent.setCgroupSize(null));
+                }
+                universeDetails.clusters.forEach(
+                    c -> {
+                      if (c.userIntent.getUserIntentOverrides() != null) {
+                        c.userIntent.getUserIntentOverrides().unsetCgroupSize();
+                      }
+                    });
+              }
               universe.setUniverseDetails(universeDetails);
             }
           };

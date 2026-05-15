@@ -50,7 +50,7 @@ export const MapGeoPartitionView = () => {
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const preferedIcon = useGetMapIcons({ type: MarkerType.REGION_PREFERRED });
 
-  const regionCout = regions.length;
+  const regionCount = regions.length;
   const azCount = regions.reduce((acc, region) => acc + (region.zones?.length ?? 0), 0);
   const nodeCount = regions.reduce((acc, region) => {
     const regionNodeCount =
@@ -99,7 +99,7 @@ export const MapGeoPartitionView = () => {
           <MapLegendItem
             icon={<>{icon.normal}</>}
             label={t('region')}
-            subText={`${regionCout} ${pluralize(t('region'), regionCout)}, ${azCount} ${pluralize(
+            subText={`${regionCount} ${pluralize(t('region'), regionCount)}, ${azCount} ${pluralize(
               'AZ',
               azCount
             )}, ${nodeCount} ${pluralize('node', nodeCount)}`}

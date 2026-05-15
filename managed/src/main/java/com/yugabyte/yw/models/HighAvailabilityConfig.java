@@ -210,6 +210,12 @@ public class HighAvailabilityConfig extends Model {
         || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.isLeader()).orElse(false);
   }
 
+  // Returns the address of the local instance from the HA config (the address of the YBA serving
+  // this request after any switchover or failover), or empty if HA is not configured.
+  public static Optional<String> getLocalInstanceAddress() {
+    return get().flatMap(HighAvailabilityConfig::getLocal).map(PlatformInstance::getAddress);
+  }
+
   public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {
     HighAvailabilityConfig.isSwitchOverInProgress = isSwitchOverInProgress;
   }

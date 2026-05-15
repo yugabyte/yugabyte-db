@@ -155,7 +155,7 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
 
     auto log = VERIFY_RESULT(tablet_peer->GetRaftConsensus())->log();
     RETURN_NOT_OK(log->WaitUntilAllFlushed());
-    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     return Status::OK();
   }
 
@@ -752,7 +752,8 @@ TEST_F(YSqlAsyncWriteTest, RestartAfterFlushInMiddleOfTransaction) {
   // The SST frontier has a stale op_id because the async writes used skip_opid_update=true.
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
   auto leader_tablet = ASSERT_RESULT(leader_peer->shared_tablet());
-  ASSERT_OK(leader_tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
+  ASSERT_OK(leader_tablet->Flush(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   // Resume followers so Raft entries commit. DoReplicated calls UpdateOpIdForOperation, which
   // sets the correct op_id on the new empty memtable.

@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -135,19 +136,21 @@ public class UniverseResourceDetails {
     // Calculate price
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
-    UserIntent userIntent = params.getPrimaryCluster().userIntent;
+
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params);
     Map<Pair<String, String>, Double> spotPrices = new HashMap<>();
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
-      if (nodeDetails.placementUuid != null) {
-        userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
-      }
-      Provider provider = context.getProvider(UUID.fromString(userIntent.provider));
+      Cluster cluster = params.getClusterByUuid(nodeDetails.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
+
+      Provider provider = providerGetter.apply(nodeDetails);
       Region region = context.getRegion(provider.getUuid(), nodeDetails.cloudInfo.region);
 
       if (region == null) {
         continue;
       }
       String instanceType = userIntent.getInstanceTypeForNode(nodeDetails);
+
       PriceComponent instancePrice =
           context.getPriceComponent(provider.getUuid(), region.getCode(), instanceType);
       if (instancePrice == null) {
@@ -165,7 +168,7 @@ public class UniverseResourceDetails {
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
       // TODO(wesley): gcp options?
-      if (deviceInfo.storageType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
+      if (deviceInfo.storageType != null && provider.getCloudCode().equals(Common.CloudType.aws)) {
         Integer numVolumes = deviceInfo.numVolumes;
         Integer diskIops = deviceInfo.diskIops;
         Integer volumeSize = deviceInfo.volumeSize;
@@ -224,10 +227,9 @@ public class UniverseResourceDetails {
           } else {
             Pair<String, String> spotPair;
             Double spotPrice;
-            switch (userIntent.providerType) {
+            switch (provider.getCloudCode()) {
               case aws:
                 spotPair = new Pair<String, String>(nodeDetails.getZone(), instanceType);
-                String providerUUID = userIntent.provider;
                 spotPrice =
                     spotPrices.computeIfAbsent(
                         spotPair,
@@ -235,7 +237,7 @@ public class UniverseResourceDetails {
                           return AWSUtil.getAwsSpotPrice(
                               pair.getFirst(),
                               pair.getSecond(),
-                              providerUUID,
+                              provider.getUuid().toString(),
                               nodeDetails.getRegion());
                         });
                 break;
@@ -297,36 +299,22 @@ public class UniverseResourceDetails {
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
     }
-    UserIntent userIntent = params.getPrimaryCluster().userIntent;
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params);
     for (NodeDetails node : nodes) {
+      Cluster cluster = params.getClusterByUuid(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
+      Provider provider = providerGetter.apply(node);
       if (node.isActive()) {
-        if (node.placementUuid != null) {
-          userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
-        }
-        if (userIntent.deviceInfo != null
-            && userIntent.deviceInfo.volumeSize != null
-            && userIntent.deviceInfo.numVolumes != null) {
-          details.addVolumeCount(userIntent.deviceInfo.numVolumes);
-          // Check correct volume size based of type of node
-          if (node.isTserver) {
-            details.addVolumeSizeGB(
-                userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
-          } else if (node.isMaster) {
-            // if populated masterDeviceInfo use that, else use deviceInfo.
-            if (userIntent.masterDeviceInfo != null) {
-              details.addVolumeSizeGB(
-                  userIntent.masterDeviceInfo.volumeSize * userIntent.masterDeviceInfo.numVolumes);
-            } else {
-              details.addVolumeSizeGB(
-                  userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
-            }
-          }
+        DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
+        if (deviceInfo != null && deviceInfo.volumeSize != null && deviceInfo.numVolumes != null) {
+          details.addVolumeCount(deviceInfo.numVolumes);
+          details.addVolumeSizeGB(deviceInfo.volumeSize * deviceInfo.numVolumes);
 
-          if (userIntent.deviceInfo.diskIops != null) {
-            details.gp3FreePiops = userIntent.deviceInfo.diskIops;
+          if (deviceInfo.diskIops != null) {
+            details.gp3FreePiops = deviceInfo.diskIops;
           }
-          if (userIntent.deviceInfo.throughput != null) {
-            details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
+          if (deviceInfo.throughput != null) {
+            details.gp3FreeThroughput = deviceInfo.throughput;
           }
         }
         if (node.cloudInfo != null && node.cloudInfo.az != null) {
@@ -347,14 +335,13 @@ public class UniverseResourceDetails {
           } else {
             if (node.cloudInfo.instance_type != null) {
               InstanceType instanceType =
-                  context.getInstanceType(
-                      UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
+                  context.getInstanceType(provider.getUuid(), node.cloudInfo.instance_type);
               if (instanceType == null) {
                 LOG.error(
                     "Couldn't find instance type "
                         + node.cloudInfo.instance_type
                         + " for provider "
-                        + userIntent.providerType);
+                        + provider.getCloudCode());
               } else {
                 details.addMemSizeGB(instanceType.getMemSizeGB());
                 details.addNumCores(instanceType.getNumCores());
@@ -426,7 +413,7 @@ public class UniverseResourceDetails {
                               nodeDetails ->
                                   new InstanceTypeKey()
                                       .setProviderUuid(
-                                          getProviderByPlacementUUID(ud, nodeDetails.placementUuid))
+                                          ud.searchProviderUUIDByAz(nodeDetails.azUuid))
                                       .setInstanceTypeCode(nodeDetails.cloudInfo.instance_type)))
               .collect(Collectors.toSet());
 
@@ -446,7 +433,7 @@ public class UniverseResourceDetails {
                           .map(
                               nodeDetails ->
                                   new ProviderAndRegion(
-                                      getProviderByPlacementUUID(ud, nodeDetails.placementUuid),
+                                      ud.searchProviderUUIDByAz(nodeDetails.azUuid),
                                       nodeDetails.getRegion())))
               .collect(Collectors.toSet());
 
@@ -457,17 +444,6 @@ public class UniverseResourceDetails {
       priceComponentMap =
           PriceComponent.findByProvidersAndRegions(providersAndRegions).stream()
               .collect(Collectors.toMap(PriceComponent::getIdKey, Function.identity()));
-    }
-
-    private UUID getProviderByPlacementUUID(UniverseDefinitionTaskParams ud, UUID placementUuid) {
-      String providerUUIDStr =
-          ud.clusters.stream()
-              .filter(c -> c.uuid.equals(placementUuid))
-              .findFirst()
-              .get()
-              .userIntent
-              .provider;
-      return UUID.fromString(providerUUIDStr);
     }
 
     public Provider getProvider(UUID uuid) {

@@ -160,39 +160,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
          ->  Seq Scan on p2
 (5 rows)
 
-CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
-INSERT INTO t10
-  SELECT DISTINCT
-    i1, i2+5, i3, i4
-  FROM generate_series(1, 5) i1,
-       generate_series(1, 5) i2,
-       generate_series(1, 5) i3,
-       generate_series(1, 10) i4;
-CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
-CREATE TABLE t11 (c1 int, c3 int, x int);
-INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
-CREATE TABLE t12 (c4 int, c2 int, y int);
-INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
-ANALYZE;
-EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
-                                                                                              QUERY PLAN                                                                                              
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: t10.r1, t10.r2, t10.r3, t10.r4
-   ->  YB Batched Nested Loop Join
-         Join Filter: ((t11.c1 = t10.r1) AND (t12.c2 = t10.r2) AND (t11.c3 = t10.r3) AND (t12.c4 = t10.r4))
-         ->  Nested Loop
-               Join Filter: (t12.y = t11.x)
-               ->  Seq Scan on t11
-               ->  Materialize
-                     ->  Seq Scan on t12
-         ->  Index Only Scan using i_t on t10
-               Index Cond: (ROW(r1, r2, r3, r4) = ANY (ARRAY[ROW(t11.c1, t12.c2, t11.c3, t12.c4), ROW($1, $1025, $2049, $3073), ROW($2, $1026, $2050, $3074), ..., ROW($1023, $2047, $3071, $4095)]))
-(11 rows)
-
-DROP TABLE t10;
-DROP TABLE t11;
-DROP TABLE t12;
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
@@ -341,9 +308,14 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
                            Index Cond: (a = ANY (ARRAY[a.a, $1025, $1026, ..., $2047]))
 (16 rows)
 
+-- Test sorted input
 CREATE INDEX p1_a_asc ON p1(a asc);
 CREATE INDEX p2_a_asc ON p2(a asc);
-ANALYZE;
+ANALYZE p1;
+ANALYZE p2;
+-- Lower work_mem to penalize explicit sort but not too smal to trigger
+-- multi-batch HJ.
+SET work_mem TO '2MB';
 -- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
 -- sort operator imposed by nested loop join batching.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
@@ -372,7 +344,8 @@ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
 
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 200000) i WHERE i % 2 = 0;
 INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 500000) i WHERE i % 3 = 0;
-ANALYZE;
+ANALYZE p1;
+ANALYZE p2;
 -- After we have inserted many rows into each table, we expect that other
 -- join methods that preserve the sort order of its input relations to be better.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
@@ -381,20 +354,55 @@ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
  Merge Join
    Merge Cond: (p2.a = p1.a)
    ->  Index Scan using p2_a_asc on p2
-   ->  Sort
-         Sort Key: p1.a
-         ->  Seq Scan on p1
-(6 rows)
+   ->  Materialize
+         ->  Sort
+               Sort Key: p1.a
+               ->  Seq Scan on p1
+(7 rows)
 
 -- However, removing the ordering constraint in this query allows us to prefer
 -- the batched nested loop join option again.
 -- Commenting this test until CBO is updated.
 -- explain (costs off) select * from p1, p2 where p1.a = p2.a;
+RESET work_mem;
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
 DROP TABLE p4;
 DROP TABLE p5;
+CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
+INSERT INTO t10
+  SELECT DISTINCT
+    i1, i2+5, i3, i4
+  FROM generate_series(1, 5) i1,
+       generate_series(1, 5) i2,
+       generate_series(1, 5) i3,
+       generate_series(1, 10) i4;
+CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
+CREATE TABLE t11 (c1 int, c3 int, x int);
+INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
+CREATE TABLE t12 (c4 int, c2 int, y int);
+INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
+ANALYZE;
+EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t10.r1, t10.r2, t10.r3, t10.r4
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((t11.c1 = t10.r1) AND (t12.c2 = t10.r2) AND (t11.c3 = t10.r3) AND (t12.c4 = t10.r4))
+         ->  Nested Loop
+               Join Filter: (t12.y = t11.x)
+               ->  Seq Scan on t11
+               ->  Materialize
+                     ->  Seq Scan on t12
+         ->  Index Only Scan using i_t on t10
+               Index Cond: (ROW(r1, r2, r3, r4) = ANY (ARRAY[ROW(t11.c1, t12.c2, t11.c3, t12.c4), ROW($1, $1025, $2049, $3073), ROW($2, $1026, $2050, $3074), ..., ROW($1023, $2047, $3071, $4095)]))
+(11 rows)
+
+DROP TABLE t10;
+DROP TABLE t11;
+DROP TABLE t12;
 CREATE TABLE s1(r1 int, r2 int, r3 int);
 CREATE TABLE s2(r1 int, r2 int, r3 int);
 CREATE TABLE s3(r1 int, r2 int);

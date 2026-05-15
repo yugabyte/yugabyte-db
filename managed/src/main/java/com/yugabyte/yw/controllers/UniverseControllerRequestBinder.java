@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -80,7 +79,7 @@ public class UniverseControllerRequestBinder {
         // We can get rid of this if when we default to new style resource spec.
         for (Cluster cluster : taskParams.clusters) {
           UserIntent ui = cluster.userIntent;
-          if (ui.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
+          if (Util.isKubernetesBasedUniverse(taskParams)) {
             if (ui.instanceType != null) {
               if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
                 UUID providerUUID = Util.getSingleProviderUUID(ui);

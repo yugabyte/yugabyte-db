@@ -1217,10 +1217,31 @@ public class Util {
     return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
   }
 
+  public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
+    return getProviderGetter(universe.getUniverseDetails());
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams params) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) ->
+        providerMap.computeIfAbsent(
+            n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
+  }
+
   public static Set<UUID> getAllProviderUUIDs(Universe universe) {
     return universe.getUniverseDetails().clusters.stream()
         .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
         .collect(Collectors.toSet());
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
+    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
+    return getSingleProvider(cluster);
   }
 
   public static boolean checkAnyProviderType(

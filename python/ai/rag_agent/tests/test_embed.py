@@ -419,5 +419,80 @@ Third paragraph with more content."""
             os.unlink(temp_file)
 
 
+class TestEmbeddingsGeneratorProviderDispatch:
+    """Tests covering ai_provider dispatch in EmbeddingsGenerator."""
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_aws_bedrock_provider_uses_bedrock_embeddings(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt,
+        monkeypatch
+    ):
+        """AWS_BEDROCK provider should construct BedrockEmbeddings, not OpenAIEmbeddings."""
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
+
+        mock_brk_embedder = Mock()
+        mock_brk_cls.return_value = mock_brk_embedder
+
+        model_params = {
+            "model": "amazon.titan-embed-text-v2:0",
+            "dimensions": 1024,
+        }
+        gen = EmbeddingsGenerator(
+            embedding_model="amazon.titan-embed-text-v2:0",
+            embedding_model_params=model_params,
+            ai_provider="AWS_BEDROCK",
+        )
+
+        mock_brk_cls.assert_called_once_with(
+            model_id="amazon.titan-embed-text-v2:0",
+            region_name="us-east-1",
+        )
+        mock_oai_cls.assert_not_called()
+        assert gen.embedder is mock_brk_embedder
+        assert gen.ai_provider == "AWS_BEDROCK"
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_default_provider_is_openai(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt
+    ):
+        """When ai_provider is omitted, OpenAI should be the default."""
+        mock_oai_embedder = Mock()
+        mock_oai_cls.return_value = mock_oai_embedder
+
+        gen = EmbeddingsGenerator(
+            embedding_model="text-embedding-ada-002",
+            embedding_model_params={"dimensions": 1536},
+        )
+
+        mock_oai_cls.assert_called_once()
+        mock_brk_cls.assert_not_called()
+        assert gen.ai_provider == "OPENAI"
+        assert gen.embedder is mock_oai_embedder
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_unsupported_provider_raises(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt
+    ):
+        """Unknown ai_provider values should raise ValueError."""
+        with pytest.raises(ValueError, match="Unsupported ai_provider"):
+            EmbeddingsGenerator(
+                embedding_model="some-model",
+                embedding_model_params={"dimensions": 1536},
+                ai_provider="GOOGLE_VERTEX",
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

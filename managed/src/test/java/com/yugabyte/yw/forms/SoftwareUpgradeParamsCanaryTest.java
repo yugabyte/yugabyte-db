@@ -140,7 +140,7 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
             u -> {
               u.getUniverseDetails().softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+              u.getUniverseDetails().placementModificationTaskUuid = pausedTaskUuid;
               u.setUniverseDetails(u.getUniverseDetails());
             });
 
@@ -157,7 +157,7 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
 
     Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
     params.verifyParams(universe, true);
-    // no exception - canary config allows Paused state when previousTaskUUID matches resume
+    // no exception - Paused + canary when previousTaskUUID matches placementModificationTaskUuid
   }
 
   @Test
@@ -169,7 +169,7 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
             u -> {
               u.getUniverseDetails().softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+              u.getUniverseDetails().placementModificationTaskUuid = pausedTaskUuid;
               u.setUniverseDetails(u.getUniverseDetails());
             });
 
@@ -199,7 +199,7 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
             u -> {
               u.getUniverseDetails().softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+              u.getUniverseDetails().placementModificationTaskUuid = pausedTaskUuid;
               u.setUniverseDetails(u.getUniverseDetails());
             });
 

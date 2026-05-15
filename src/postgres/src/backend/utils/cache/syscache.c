@@ -1506,6 +1506,15 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
+		/*
+		 * In minimal preload mode the scan above only includes system rows,
+		 * so any cached list built here would be missing user-defined
+		 * entries. Skip the list preloading entirely and let the lists be
+		 * built on demand from a full catalog scan in SearchCatCacheList.
+		 */
+		if (YbUseMinimalCatalogCachesPreload())
+			continue;
+
 		bool		is_add_to_list_required = true;
 
 		switch (cache_id)

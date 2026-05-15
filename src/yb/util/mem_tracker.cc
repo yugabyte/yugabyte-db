@@ -993,6 +993,33 @@ bool CheckMemoryPressureWithLogging(
   return false;
 }
 
+void MonotonicThreadSafeScopedTrackedConsumption::Init(MemTrackerPtr tracker, int64_t to_consume) {
+  DCHECK(!tracker_);
+  DCHECK(tracker);
+  tracker_ = std::move(tracker);
+  consumption_.store(to_consume, std::memory_order_release);
+  tracker_->Consume(to_consume);
+}
+
+void MonotonicThreadSafeScopedTrackedConsumption::UpdateMonotonic(size_t new_bytes) {
+  if (!tracker_) {
+    return;
+  }
+  const auto value = new_bytes;
+  // Optimistic check: avoid taking the lock if there's nothing to do. A racing thread that
+  // sees a smaller current value will retry under the lock.
+  if (value <= consumption()) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  const auto current = consumption();
+  if (value <= current) {
+    return;
+  }
+  tracker_->Consume(value - current);
+  consumption_.store(value, std::memory_order_release);
+}
+
 namespace internal {
 
 bool ValidateMemoryLimitToRamRatio(const char* flag_name, double value) {

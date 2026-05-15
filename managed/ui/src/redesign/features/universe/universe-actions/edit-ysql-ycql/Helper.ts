@@ -34,6 +34,11 @@ export interface YSQLFormPayload {
     ysqlServerRpcPort: number;
     internalYsqlServerRpcPort?: number;
   };
+  multiTenancy?: {
+    enableQos: boolean;
+    qosMaxDbCpuPercent?: number;
+    qosMaxDbCount?: number;
+  };
 }
 
 export interface YCQLFormPayload {

@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -26,6 +28,7 @@ import play.libs.Json;
 public class DeleteCapacityReservation extends ServerSubTaskBase {
   private AZUClientFactory azuClientFactory;
   private CloudAPI.Factory cloudAPIFactory;
+  private GCPProjectApiClientFactory gcpClientFactory;
   private CapacityReservationMetrics reservationMetrics;
 
   @Inject
@@ -33,14 +36,20 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       AZUClientFactory azuClientFactory,
       CloudAPI.Factory cloudAPIFactory,
+      GCPProjectApiClientFactory gcpClientFactory,
       CapacityReservationMetrics reservationMetrics) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
     this.cloudAPIFactory = cloudAPIFactory;
+    this.gcpClientFactory = gcpClientFactory;
     this.reservationMetrics = reservationMetrics;
   }
 
-  public static class Params extends ServerSubTaskParams {}
+  public static class Params extends ServerSubTaskParams {
+    // If true, GCP reservations are deleted only when inUseCount == count.
+    // Set to false on error-path cleanup to force-delete orphaned reservations.
+    public boolean deleteOnlyIfFullyUtilized = true;
+  }
 
   @Override
   protected DeleteCapacityReservation.Params taskParams() {
@@ -169,6 +178,39 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
             awsReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
           }
           capacityReservationState.getAwsReservationInfos().remove(providerUUID);
+        } else if (reservationForProviderType
+            instanceof UniverseDefinitionTaskParams.GcpReservationInfo gcpReservationInfo) {
+          GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
+          for (UniverseDefinitionTaskParams.GcpZoneReservation zoneReservation :
+              new ArrayList<>(gcpReservationInfo.getReservationsByZoneMap().values())) {
+            zoneReservation
+                .getReservationsByType()
+                .forEach(
+                    (instanceType, perInstanceType) -> {
+                      perInstanceType
+                          .getZonedReservation()
+                          .forEach(
+                              (zoneId, reservation) -> {
+                                if (reservation.getReservationName() != null) {
+                                  try {
+                                    apiClient.deleteCapacityReservation(
+                                        reservation.getReservationName(),
+                                        zoneReservation.getZone(),
+                                        taskParams().deleteOnlyIfFullyUtilized);
+                                  } catch (java.io.IOException e) {
+                                    log.error(
+                                        "Failed to delete capacity reservation: "
+                                            + zoneReservation.getReservationName()
+                                            + " in zone: "
+                                            + zoneReservation.getZone(),
+                                        e);
+                                  }
+                                }
+                              });
+                    });
+            gcpReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
+          }
+          capacityReservationState.getGcpReservationInfos().remove(providerUUID);
         }
       }
       succeeded = true;

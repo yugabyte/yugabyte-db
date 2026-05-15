@@ -471,3 +471,19 @@ DROP TABLE orders_no_bucket;
 DROP TABLE orders_gen;
 DROP TABLE orders_expr;
 DROP TABLE t1, t2, t3;
+-- Ensure yb_derive_equal_cond does not crash when an index relcache entry
+-- is invalidated mid-planning (after get_relation_info but before path
+-- generation reads it).  (see GH#31313)
+SET yb_test_invalidate_relcache_in_planner = true;
+CREATE TABLE t_invalidate (a int, b int);
+CREATE INDEX ON t_invalidate ((a + b));
+INSERT INTO t_invalidate VALUES (1, 4), (2, 3);
+SELECT * FROM t_invalidate WHERE a + b = 5 ORDER BY a;
+ a | b 
+---+---
+ 1 | 4
+ 2 | 3
+(2 rows)
+
+RESET yb_test_invalidate_relcache_in_planner;
+DROP TABLE t_invalidate;

@@ -12,12 +12,12 @@ properties:
       - yb-15-universe-n1
       - yb-15-universe-n2
   masters_only:
-    description: Run the script only on master nodes from the specified node_names (or all masters if node_names is not provided).
+    description: Run the script only on master nodes from the specified node_names (or all masters if node_names is not provided). Mutually exclusive with tservers_only.
     type: boolean
     example: false
     default: false
   tservers_only:
-    description: Run the script only on tserver nodes from the specified node_names (or all tservers if node_names is not provided).
+    description: Run the script only on tserver nodes from the specified node_names (or all tservers if node_names is not provided). Mutually exclusive with masters_only.
     type: boolean
     example: false
     default: false

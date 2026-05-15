@@ -62,6 +62,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 
 using namespace std::literals;
 
@@ -321,6 +322,53 @@ TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
 
 TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
   TestAllBlockingPairs(/*test_pg_locks=*/true);
+}
+
+class PgObjectLocksTestRF1Deadlock : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = kRefreshWaiterTimeoutMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = kRefreshWaiterTimeoutMs;
+    PgObjectLocksTestRF1::SetUp();
+  }
+
+ private:
+  uint32_t kRefreshWaiterTimeoutMs = 10000 * kTimeMultiplier;
+};
+
+TEST_F(PgObjectLocksTestRF1Deadlock, YB_DISABLE_TEST_IN_SANITIZERS(TestDeadlockSimple)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = kDefaultLockManagerPollIntervalMs * 10;
+  ASSERT_OK(cluster_->RestartSync());
+  Init();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT)"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+
+  ASSERT_OK(conn2.Execute("BEGIN;"));
+  auto status_future_1 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+    return Status::OK();
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks to be >= 1"));
+  auto status_future_2 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+    return Status::OK();
+  });
+  ASSERT_OK(WaitFor(
+      [&]() {
+        return status_future_1.wait_for(0s) == std::future_status::ready &&
+               status_future_2.wait_for(0s) == std::future_status::ready;
+      },
+      20s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
+  // One of the tweo connections should have been aborted due to deadlock.
+  ASSERT_TRUE(status_future_1.get().ok() ^ status_future_2.get().ok());
+  ASSERT_OK(conn1.RollbackTransaction());
+  ASSERT_OK(conn2.RollbackTransaction());
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
@@ -1298,6 +1346,8 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
     // the Acquire request to simulate out-of-order requests, along with the original blocked
     // request.
     ASSERT_OK(cluster_->SetFlagOnMasters(
+      "refresh_waiter_timeout_ms", yb::Format("$0", (kStatementTimeoutSec * 1000 / 10))));
+    ASSERT_OK(cluster_->SetFlagOnMasters(
         "master_ts_rpc_timeout_ms", yb::Format("$0", (kStatementTimeoutSec * 1000 / 10))));
   }
 
@@ -1729,8 +1779,9 @@ class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 

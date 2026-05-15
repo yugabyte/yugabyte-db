@@ -1084,6 +1084,8 @@ option = 'ANALYZE' [ boolean ]
            | 'COSTS' [ boolean ]
            | 'DEBUG' [boolean]
            | 'DIST' [boolean]
+           | 'QUERYID' ( 'ON' | 'OFF' )
+           | 'PLANID' ( 'ON' | 'OFF' )
            | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' )
            | 'SUMMARY' [ boolean ]
            | 'TIMING' [ boolean ]

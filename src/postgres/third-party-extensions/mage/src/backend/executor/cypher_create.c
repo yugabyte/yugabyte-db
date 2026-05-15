@@ -24,6 +24,7 @@
 #include "executor/cypher_utils.h"
 
 /* YB includes */
+#include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"
 
 static void begin_cypher_create(CustomScanState *node, EState *estate,
@@ -413,6 +414,10 @@ static void create_edge(cypher_create_custom_scan_state *css,
     elemTupleSlot->tts_isnull[edge_tuple_properties] =
         scanTupleSlot->tts_isnull[node->prop_attr_num];
 
+    if (IsYugaByteEnabled())
+        yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(
+                scanTupleSlot->tts_values[node->prop_attr_num],
+                scanTupleSlot->tts_isnull[node->prop_attr_num]), true /* is_edge */);
     /* Insert the new edge */
     insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
@@ -499,6 +504,11 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
             scanTupleSlot->tts_values[node->prop_attr_num];
         elemTupleSlot->tts_isnull[vertex_tuple_properties] =
             scanTupleSlot->tts_isnull[node->prop_attr_num];
+
+        if (IsYugaByteEnabled())
+            yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(
+                    scanTupleSlot->tts_values[node->prop_attr_num],
+                    scanTupleSlot->tts_isnull[node->prop_attr_num]), false /* is_edge */);
 
         /* Insert the new vertex */
         insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);

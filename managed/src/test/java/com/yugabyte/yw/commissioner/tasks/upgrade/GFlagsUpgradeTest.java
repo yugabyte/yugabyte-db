@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -101,6 +102,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     try {
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       setCheckNodesAreSafeToTakeDown(mockClient);
       when(mockGFlagsAuditHandler.constructGFlagAuditPayload(any()))
@@ -109,7 +111,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       // CheckNodeCommandExecution runs echo "command-execution-test"; return that output.
       org.mockito.stubbing.Answer<ShellResponse> runCommandAnswer =
           inv -> {
-            @SuppressWarnings("unchecked")
             List<String> cmd = inv.getArgument(2);
             if (cmd != null && cmd.toString().contains("df")) {
               return ShellResponse.create(0, "104004792");
@@ -266,13 +267,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testGFlagsUpgradeWithTServerGFlags() {
+  public void testGFlagsUpgradeWithTServerGFlags() throws Exception {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(0)).nodeCommand(any(), commandParams.capture());
+    verify(mockClient, times(3)).flushTablets(any(), eq(9100), any());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -1188,7 +1190,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.runOnlyPrechecks = true;
 
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 

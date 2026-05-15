@@ -379,14 +379,7 @@ public class KmsHistory extends Model {
   }
 
   public static boolean configHasHistory(UUID configUUID, KmsHistoryId.TargetType type) {
-    return KmsHistory.find
-            .query()
-            .where()
-            .eq("config_uuid", configUUID)
-            .eq("type", type)
-            .findList()
-            .size()
-        != 0;
+    return KmsHistory.find.query().where().eq("config_uuid", configUUID).eq("type", type).exists();
   }
 
   public static Set<Universe> getUniverses(UUID configUUID, KmsHistoryId.TargetType type) {

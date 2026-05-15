@@ -2038,11 +2038,6 @@ class NodeChecker():
             status_metric = Metric.from_definition(YB_PROCESS_LIMITS_STATUS)
             status_metric.add_value(0 if issues else 1, labels=[process])
             all_metrics = [metric, status_metric]
-            if issues:
-                return e.fill_and_return_entry(
-                    ['Process {} has incorrect limits: {}'.format(
-                        process_name, '; '.join(issues))],
-                    has_error=True, metrics=all_metrics)
 
             return e.fill_and_return_entry([], has_error=False, metrics=all_metrics)
         except Exception as ex:
@@ -3047,7 +3042,8 @@ def main():
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
 
-    coordinator.add_check(checker, "check_ynp_version")
+    if not n.is_k8s:
+        coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
     for e in entries:

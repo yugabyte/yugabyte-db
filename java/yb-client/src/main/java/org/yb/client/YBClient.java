@@ -69,6 +69,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+import org.yb.util.TabletServerInfo;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -2059,6 +2060,20 @@ public class YBClient implements AutoCloseable {
   public FlushTableResponse flushTable(String tableId) throws Exception {
     Deferred<FlushTableResponse> d = asyncClient.flushTable(tableId);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public FlushTabletsResponse flushTablets(String tserverIp, int rpcPort, List<String> tabletIds)
+      throws Exception {
+    HostAndPort hp = HostAndPort.fromParts(tserverIp, rpcPort);
+    // This filters out non-live or blacklisted or tservers without tablets.
+    TabletServerInfo serverInfo = listLiveTabletServers().getTabletServers().stream()
+        .filter(ts -> tserverIp.equals(ts.getPrivateAddress().getHost())).findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("No live tserver with ip " + tserverIp));
+    LOG.debug("Got permanent UUID {} for tserver with ip {}", serverInfo.getPermanentUuid(),
+        tserverIp);
+    Deferred<FlushTabletsResponse> d =
+        asyncClient.flushTablets(hp, serverInfo.getPermanentUuid(), tabletIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   public SetCheckpointResponse commitCheckpoint(

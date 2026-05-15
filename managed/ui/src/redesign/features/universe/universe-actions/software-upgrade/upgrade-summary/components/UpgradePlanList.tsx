@@ -35,6 +35,13 @@ export const UpgradePlanList = ({ canaryUpgradeConfig }: UpgradePlanListProps) =
         index={1}
         listElementContent={t('masterServers')}
       />
+      {!!canaryUpgradeConfig?.pauseAfterMasters && (
+        <ListElement
+          type={ListElementType.BULLET}
+          contentClassName={classes.pauseText}
+          listElementContent={t('pause')}
+        />
+      )}
       {canaryUpgradeConfig &&
         canaryUpgradeConfig.primaryClusterAzOrder.map((azUuid, index) => (
           <Fragment key={azUuid}>

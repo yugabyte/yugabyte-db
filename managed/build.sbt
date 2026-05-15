@@ -284,7 +284,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.0.1" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.0.2" % Test,
 )
 
 // Clear default resolvers.
@@ -379,6 +379,7 @@ externalResolvers := {
   versionGenerate.value
   compileYbaCliBinary.value
   downloadThirdPartyDeps.value
+  releaseModulesLocally.value
 }
 
 clean := (clean dependsOn cleanV2ServerStubs).value
@@ -450,7 +451,7 @@ buildDependentArtifacts / fileInputs += baseDirectory.value.toGlob /
   "node-agent/**"
 buildDependentArtifacts / fileInputExcludeFilter :=
   ((path: java.nio.file.Path, attributes: FileAttributes) => {
-    ".*(generated|target|third-party|pywheels|build|version_metadata).*".r.pattern.matcher(path.toString).matches
+    ".*(generated|target|third-party|build|version_metadata).*".r.pattern.matcher(path.toString).matches
    })
 buildDependentArtifacts := {
   (Compile / openApiProcessServer).value
@@ -712,7 +713,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.0.1",
+    version := "1.0.2",
     target := file("client/java/target/v2"),
   )
 
@@ -1019,7 +1020,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.115-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.116-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 

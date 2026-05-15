@@ -68,7 +68,7 @@ describe('buildVersionOptions', () => {
     // point to the highest version in that series.
     expect(options).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ version: '2.18.3.0-b1', series: 'Latest Stable release' }),
+        expect.objectContaining({ version: '2.18.3.0-b1', series: 'Latest stable release' }),
         expect.objectContaining({
           version: '2.18.3.0-b1',
           series: 'Latest release from the current series'
@@ -89,7 +89,7 @@ describe('buildVersionOptions', () => {
     const options = buildVersionOptions(releases, '2.17.0.0-b123', undefined, true);
 
     expect(versionsOf(options)).toEqual([
-      '2025.2.1.0-b23', // Latest Stable release
+      '2025.2.1.0-b23', // Latest stable release
       '2.17.1.0-b2', // Latest release from the current series
       '2025.2.1.0-b23',
       '2.18.2.0-b4',
@@ -118,9 +118,9 @@ describe('buildVersionOptions', () => {
     // Preview versions >= current should be included
     expect(versions).toEqual(expect.arrayContaining(['2.17.2.0-b3', '2.17.1.0-b5', '2.17.0.0-b1']));
 
-    // No "Latest Stable release" promoted option
+    // No "Latest stable release" promoted option
     const seriesLabels = options.map((o) => o.series);
-    expect(seriesLabels).not.toContain('Latest Stable release');
+    expect(seriesLabels).not.toContain('Latest stable release');
 
     // "Latest release from the current series" should still be present
     expect(options).toEqual(
@@ -264,7 +264,7 @@ describe('buildVersionOptions', () => {
 
       expect(options).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ version: '2.18.3.0-b1', series: 'Latest Stable release' })
+          expect.objectContaining({ version: '2.18.3.0-b1', series: 'Latest stable release' })
         ])
       );
       expect(versionsOf(options)).not.toContain('2.18.5.0-b1');

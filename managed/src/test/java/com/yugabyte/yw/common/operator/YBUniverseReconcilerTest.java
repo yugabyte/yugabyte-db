@@ -38,9 +38,16 @@ import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
+import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.OperatorResource;
@@ -55,6 +62,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -72,6 +80,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
@@ -1139,5 +1148,437 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         az1Overrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
     assertEquals(100, az1MasterDeviceInfo.volumeSize.intValue());
     assertEquals("az1-master-storage", az1MasterDeviceInfo.storageClass);
+  }
+
+  /*--- Tests for create-flow applyKubernetesOperatorVolumeOverrides logic ---*/
+
+  /**
+   * Helper: builds a Kubernetes AZ with the given storage class set on its KubernetesRegionInfo, so
+   * that {@code CloudInfoInterface.fetchEnvVars(zone)} surfaces it as the {@code STORAGE_CLASS} env
+   * var consumed by {@code KubernetesUtil.generateVolumeOverridesForUserIntent}.
+   */
+  private AvailabilityZone createK8sAZ(Region region, String code, String storageClass) {
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, code, code.toUpperCase(), "subnet-" + code);
+    az.setDetails(new AvailabilityZoneDetails());
+    az.getDetails().setCloudInfo(new AZCloudInfo());
+    KubernetesRegionInfo k8sInfo = new KubernetesRegionInfo();
+    if (storageClass != null) {
+      k8sInfo.setKubernetesStorageClass(storageClass);
+    }
+    az.getDetails().getCloudInfo().setKubernetes(k8sInfo);
+    az.save();
+    return az;
+  }
+
+  /**
+   * Helper: builds a minimal {@link UniverseConfigureTaskParams} suitable for invoking {@code
+   * applyKubernetesOperatorVolumeOverrides} - one PRIMARY cluster with the given userIntent and a
+   * placementInfo containing the provided AZs (1 node each).
+   */
+  private UniverseConfigureTaskParams buildPrimaryClusterTaskParams(
+      UserIntent userIntent, AvailabilityZone... zones) {
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    Map<UUID, Integer> azToNodes = new HashMap<>();
+    for (AvailabilityZone z : zones) {
+      azToNodes.put(z.getUuid(), 1);
+    }
+    cluster.placementInfo = ModelFactory.constructPlacementInfoObject(azToNodes);
+    taskParams.clusters.add(cluster);
+    taskParams.isKubernetesOperatorControlled = true;
+    return taskParams;
+  }
+
+  @Test
+  public void testCreateUniverseFallsBackToProviderStorageClassWhenNoPerAZ() throws Exception {
+    String universeName = "test-create-no-peraz-fallbackused";
+
+    // Provider-level (per-AZ) storage class - this is what is reachable through
+    // CloudInfoInterface.fetchEnvVars(zone) and so what the fallback path picks up.
+    String providerStorageClass = "provider-default-sc";
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", providerStorageClass);
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", providerStorageClass);
+
+    // CR with base tserverVolume and NO perAZ overrides.
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(1L);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // Build minimal task params reflecting what CRUDHandler.configure would produce on create -
+    // primary cluster with finalized placementInfo and a userIntent with base deviceInfo.
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = universeName;
+    userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    userIntent.deviceInfo.numVolumes = 1;
+    userIntent.masterDeviceInfo = new DeviceInfo();
+    userIntent.masterDeviceInfo.volumeSize = 50;
+    userIntent.masterDeviceInfo.numVolumes = 1;
+    UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
+
+    // Create-path: existingUniverse is null.
+    ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
+        taskParams, ybUniverse, defaultCustomer.getUuid(), null /* existingUniverse */);
+
+    // Both AZs should get tserver+master overrides whose deviceInfo.storageClass is the
+    // provider-level storage class (no perAZ entry was provided for any server type).
+    assertNotNull(taskParams.getPrimaryCluster().userIntent.getUserIntentOverrides());
+    Map<UUID, AZOverrides> azOverrides =
+        taskParams.getPrimaryCluster().userIntent.getUserIntentOverrides().getAzOverrides();
+    assertNotNull(azOverrides);
+    assertEquals(2, azOverrides.size());
+    for (UUID azUuid : Set.of(az1.getUuid(), az2.getUuid())) {
+      AZOverrides azOv = azOverrides.get(azUuid);
+      assertNotNull("Expected azOverrides for " + azUuid, azOv);
+      assertNotNull(azOv.getPerProcess());
+      // tserver fallback applied
+      assertNotNull(azOv.getPerProcess().get(ServerType.TSERVER));
+      DeviceInfo tserverDi = azOv.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+      assertNotNull(tserverDi);
+      assertEquals(providerStorageClass, tserverDi.storageClass);
+      // master fallback applied
+      assertNotNull(azOv.getPerProcess().get(ServerType.MASTER));
+      DeviceInfo masterDi = azOv.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+      assertNotNull(masterDi);
+      assertEquals(providerStorageClass, masterDi.storageClass);
+    }
+  }
+
+  @Test
+  public void testCreateUniversePerAZOverridesAppliedOnlyToSpecifiedAZs() throws Exception {
+    String universeName = "test-create-peraz-only-specified";
+
+    // Two AZs, no provider-level storage class so we can isolate the perAZ behavior.
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", null /* storageClass */);
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", null /* storageClass */);
+
+    // CR has base tserver volume + perAZ override for az-1 only (master has no perAZ).
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(1L);
+    tserverVolume.setStorageClass("base-tserver-sc");
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> perAZMap =
+        new HashMap<>();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az1PerAZ =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az1PerAZ.setVolumeSize(250L);
+    az1PerAZ.setStorageClass("az1-special-sc");
+    perAZMap.put("az-1", az1PerAZ);
+    tserverVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // Base userIntent reflects the base tserverVolume values - which is what nodes in AZs
+    // without a perAZ entry will end up using (no override is added for them).
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = universeName;
+    userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    userIntent.deviceInfo.numVolumes = 1;
+    userIntent.deviceInfo.storageClass = "base-tserver-sc";
+    userIntent.masterDeviceInfo = new DeviceInfo();
+    userIntent.masterDeviceInfo.volumeSize = 50;
+    userIntent.masterDeviceInfo.numVolumes = 1;
+    UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
+
+    ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
+        taskParams, ybUniverse, defaultCustomer.getUuid(), null /* existingUniverse */);
+
+    // Expectation: tserver has perAZ in spec, so its overrides come exclusively from perAZ -
+    //   * az-1 has TSERVER override with the perAZ-specified deviceInfo,
+    //   * az-2 has NO TSERVER entry (it falls back to userIntent.deviceInfo at runtime).
+    // Master has no perAZ in spec, so it goes through the fallback path - but with no provider
+    // storage class and no helm overrides set, the fallback produces no master entries either.
+    UserIntent resultIntent = taskParams.getPrimaryCluster().userIntent;
+    assertNotNull(resultIntent.getUserIntentOverrides());
+    Map<UUID, AZOverrides> azOverrides = resultIntent.getUserIntentOverrides().getAzOverrides();
+    assertNotNull(azOverrides);
+
+    // az-1 should have a TSERVER override matching the perAZ entry.
+    AZOverrides az1Ov = azOverrides.get(az1.getUuid());
+    assertNotNull(az1Ov);
+    assertNotNull(az1Ov.getPerProcess());
+    assertNotNull(az1Ov.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az1TserverDi = az1Ov.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(250, az1TserverDi.volumeSize.intValue());
+    assertEquals("az1-special-sc", az1TserverDi.storageClass);
+
+    // az-2 should NOT carry a TSERVER override - the perAZ map didn't include it and the
+    // fallback path is skipped for tserver because perAZ is present in the spec.
+    AZOverrides az2Ov = azOverrides.get(az2.getUuid());
+    assertTrue(
+        "az-2 should not have a TSERVER override; base userIntent.deviceInfo is used instead",
+        az2Ov == null
+            || az2Ov.getPerProcess() == null
+            || !az2Ov.getPerProcess().containsKey(ServerType.TSERVER));
+
+    // Base tserver deviceInfo on userIntent must remain untouched - that's what AZs without
+    // a perAZ entry rely on.
+    assertEquals(100, resultIntent.deviceInfo.volumeSize.intValue());
+    assertEquals(1, resultIntent.deviceInfo.numVolumes.intValue());
+    assertEquals("base-tserver-sc", resultIntent.deviceInfo.storageClass);
+  }
+
+  /*--- Tests for edit-flow applyKubernetesOperatorVolumeOverrides logic ---*/
+
+  /**
+   * Helper: builds an "existing" universe with a primary cluster whose placementInfo references the
+   * given AZs (1 node each). The Universe is persisted to the test DB and returned, suitable for
+   * use as the {@code existingUniverse} arg to {@code applyKubernetesOperatorVolumeOverrides}.
+   */
+  private Universe createExistingPrimaryUniverse(
+      String universeName, UserIntent userIntent, AvailabilityZone... zones) {
+    UniverseDefinitionTaskParams details = new UniverseDefinitionTaskParams();
+    details.setUniverseUUID(UUID.randomUUID());
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    Map<UUID, Integer> azToNodes = new HashMap<>();
+    for (AvailabilityZone z : zones) {
+      azToNodes.put(z.getUuid(), 1);
+    }
+    cluster.placementInfo = ModelFactory.constructPlacementInfoObject(azToNodes);
+    details.clusters.add(cluster);
+    details.isKubernetesOperatorControlled = true;
+    return Universe.create(details, defaultCustomer.getId());
+  }
+
+  /** Helper: sets a tserver perAZ deviceInfo entry on userIntent.userIntentOverrides for an AZ. */
+  private void seedTserverAZOverride(
+      UserIntent userIntent, UUID azUuid, int volumeSize, String storageClass) {
+    if (userIntent.getUserIntentOverrides() == null) {
+      userIntent.setUserIntentOverrides(new UserIntentOverrides());
+    }
+    UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+    Map<UUID, AZOverrides> azMap =
+        overrides.getAzOverrides() != null ? overrides.getAzOverrides() : new HashMap<>();
+    AZOverrides azOv = azMap.getOrDefault(azUuid, new AZOverrides());
+    Map<ServerType, PerProcessDetails> perProcess =
+        azOv.getPerProcess() != null ? azOv.getPerProcess() : new HashMap<>();
+    PerProcessDetails ppd = new PerProcessDetails();
+    DeviceInfo di = new DeviceInfo();
+    di.volumeSize = volumeSize;
+    di.numVolumes = 1;
+    di.storageClass = storageClass;
+    ppd.setDeviceInfo(di);
+    perProcess.put(ServerType.TSERVER, ppd);
+    azOv.setPerProcess(perProcess);
+    azMap.put(azUuid, azOv);
+    overrides.setAzOverrides(azMap);
+  }
+
+  @Test
+  public void testEditUniverseExistingAZOverridesUpdatedWhenPerAZModified() throws Exception {
+    String universeName = "test-edit-peraz-modified";
+
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", null /* storageClass */);
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", null /* storageClass */);
+
+    // Existing universe has both AZs and previously stored tserver perAZ overrides.
+    UserIntent existingUserIntent = new UserIntent();
+    existingUserIntent.universeName = universeName;
+    existingUserIntent.provider = defaultProvider.getUuid().toString();
+    existingUserIntent.deviceInfo = new DeviceInfo();
+    existingUserIntent.deviceInfo.volumeSize = 100;
+    existingUserIntent.deviceInfo.numVolumes = 1;
+    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    seedTserverAZOverride(existingUserIntent, az1.getUuid(), 100, "az1-old-sc");
+    seedTserverAZOverride(existingUserIntent, az2.getUuid(), 100, "az2-old-sc");
+    Universe existingUniverse =
+        createExistingPrimaryUniverse(universeName, existingUserIntent, az1, az2);
+
+    // CR spec carries the same AZs but with NEW perAZ values for both az1 and az2.
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(1L);
+    tserverVolume.setStorageClass("base-tserver-sc");
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> perAZMap =
+        new HashMap<>();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az1New =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az1New.setVolumeSize(250L);
+    az1New.setStorageClass("az1-new-sc");
+    perAZMap.put("az-1", az1New);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az2New =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az2New.setVolumeSize(350L);
+    az2New.setStorageClass("az2-new-sc");
+    perAZMap.put("az-2", az2New);
+    tserverVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // The new taskParams cluster userIntent carries over the previously stored overrides
+    // (mirrors what the operator passes in on edit).
+    UserIntent newUserIntent = new UserIntent();
+    newUserIntent.universeName = universeName;
+    newUserIntent.provider = defaultProvider.getUuid().toString();
+    newUserIntent.deviceInfo = new DeviceInfo();
+    newUserIntent.deviceInfo.volumeSize = 100;
+    newUserIntent.deviceInfo.numVolumes = 1;
+    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    seedTserverAZOverride(newUserIntent, az1.getUuid(), 100, "az1-old-sc");
+    seedTserverAZOverride(newUserIntent, az2.getUuid(), 100, "az2-old-sc");
+    UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+
+    ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
+        taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);
+
+    // Expectation: tserver has perAZ in the spec, so existing tserver entries are wiped and
+    // both az1 and az2 - even though they are retained from the saved placement - get the
+    // freshly specified perAZ values.
+    UserIntent resultIntent = taskParams.getPrimaryCluster().userIntent;
+    assertNotNull(resultIntent.getUserIntentOverrides());
+    Map<UUID, AZOverrides> azOverrides = resultIntent.getUserIntentOverrides().getAzOverrides();
+    assertNotNull(azOverrides);
+
+    AZOverrides az1Ov = azOverrides.get(az1.getUuid());
+    assertNotNull(az1Ov);
+    assertNotNull(az1Ov.getPerProcess());
+    assertNotNull(az1Ov.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az1Di = az1Ov.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(250, az1Di.volumeSize.intValue());
+    assertEquals("az1-new-sc", az1Di.storageClass);
+
+    AZOverrides az2Ov = azOverrides.get(az2.getUuid());
+    assertNotNull(az2Ov);
+    assertNotNull(az2Ov.getPerProcess());
+    assertNotNull(az2Ov.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az2Di = az2Ov.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(350, az2Di.volumeSize.intValue());
+    assertEquals("az2-new-sc", az2Di.storageClass);
+  }
+
+  @Test
+  public void testEditUniverseNewAZUsesPerAZIfPresentOtherwiseFallback() throws Exception {
+    String universeName = "test-edit-new-az-peraz-and-fallback";
+
+    // Provider-level storage class is set on both AZs - this is what the master fallback path
+    // picks up for the newly added AZ.
+    String providerStorageClass = "provider-default-sc";
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", providerStorageClass);
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", providerStorageClass);
+
+    // Existing universe has only az1. The previously stored tserver perAZ override for az1 and
+    // a master override for az1 simulate the post-create / post-prior-edit state.
+    UserIntent existingUserIntent = new UserIntent();
+    existingUserIntent.universeName = universeName;
+    existingUserIntent.provider = defaultProvider.getUuid().toString();
+    existingUserIntent.deviceInfo = new DeviceInfo();
+    existingUserIntent.deviceInfo.volumeSize = 100;
+    existingUserIntent.deviceInfo.numVolumes = 1;
+    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    existingUserIntent.masterDeviceInfo = new DeviceInfo();
+    existingUserIntent.masterDeviceInfo.volumeSize = 50;
+    existingUserIntent.masterDeviceInfo.numVolumes = 1;
+    seedTserverAZOverride(existingUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
+    // Stash an existing master override for az1 so we can verify it is preserved (skipAZs).
+    AZOverrides az1Existing =
+        existingUserIntent.getUserIntentOverrides().getAzOverrides().get(az1.getUuid());
+    PerProcessDetails masterPpd = new PerProcessDetails();
+    DeviceInfo masterDi = new DeviceInfo();
+    masterDi.storageClass = "az1-master-existing";
+    masterPpd.setDeviceInfo(masterDi);
+    az1Existing.getPerProcess().put(ServerType.MASTER, masterPpd);
+    Universe existingUniverse =
+        createExistingPrimaryUniverse(universeName, existingUserIntent, az1);
+
+    // CR spec keeps the perAZ entry for az1 and adds one for the newly added az2. Master has
+    // no perAZ block, so master overrides for the new AZ flow through the fallback path.
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(1L);
+    tserverVolume.setStorageClass("base-tserver-sc");
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> perAZMap =
+        new HashMap<>();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az1Spec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az1Spec.setVolumeSize(200L);
+    az1Spec.setStorageClass("az1-tserver-existing");
+    perAZMap.put("az-1", az1Spec);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az2Spec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az2Spec.setVolumeSize(400L);
+    az2Spec.setStorageClass("az2-tserver-new");
+    perAZMap.put("az-2", az2Spec);
+    tserverVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // The new taskParams cluster userIntent carries over the previously stored overrides;
+    // placement now contains both az1 (retained) and az2 (newly added).
+    UserIntent newUserIntent = new UserIntent();
+    newUserIntent.universeName = universeName;
+    newUserIntent.provider = defaultProvider.getUuid().toString();
+    newUserIntent.deviceInfo = new DeviceInfo();
+    newUserIntent.deviceInfo.volumeSize = 100;
+    newUserIntent.deviceInfo.numVolumes = 1;
+    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    newUserIntent.masterDeviceInfo = new DeviceInfo();
+    newUserIntent.masterDeviceInfo.volumeSize = 50;
+    newUserIntent.masterDeviceInfo.numVolumes = 1;
+    seedTserverAZOverride(newUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
+    AZOverrides az1Carried =
+        newUserIntent.getUserIntentOverrides().getAzOverrides().get(az1.getUuid());
+    PerProcessDetails carriedMasterPpd = new PerProcessDetails();
+    DeviceInfo carriedMasterDi = new DeviceInfo();
+    carriedMasterDi.storageClass = "az1-master-existing";
+    carriedMasterPpd.setDeviceInfo(carriedMasterDi);
+    az1Carried.getPerProcess().put(ServerType.MASTER, carriedMasterPpd);
+    UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+
+    ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
+        taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);
+
+    UserIntent resultIntent = taskParams.getPrimaryCluster().userIntent;
+    assertNotNull(resultIntent.getUserIntentOverrides());
+    Map<UUID, AZOverrides> azOverrides = resultIntent.getUserIntentOverrides().getAzOverrides();
+    assertNotNull(azOverrides);
+
+    // Newly added az2: tserver perAZ value from the spec, master from the fallback path
+    // (provider-level storage class) since master has no perAZ block.
+    AZOverrides az2Ov = azOverrides.get(az2.getUuid());
+    assertNotNull("Expected an azOverrides entry for newly added az2", az2Ov);
+    assertNotNull(az2Ov.getPerProcess());
+    assertNotNull(
+        "Newly added az2 should pick up the tserver perAZ value from spec",
+        az2Ov.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az2TserverDi = az2Ov.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(400, az2TserverDi.volumeSize.intValue());
+    assertEquals("az2-tserver-new", az2TserverDi.storageClass);
+
+    assertNotNull(
+        "Newly added az2 should pick up the master fallback override (no perAZ for master)",
+        az2Ov.getPerProcess().get(ServerType.MASTER));
+    DeviceInfo az2MasterDi = az2Ov.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+    assertEquals(providerStorageClass, az2MasterDi.storageClass);
+
+    // Retained az1 keeps its existing master override (skipAZs covers it for the master fallback)
+    // and gets its tserver entry rewritten from the perAZ block in the spec.
+    AZOverrides az1Ov = azOverrides.get(az1.getUuid());
+    assertNotNull(az1Ov);
+    assertNotNull(az1Ov.getPerProcess());
+    assertNotNull(az1Ov.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az1TserverDi = az1Ov.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(200, az1TserverDi.volumeSize.intValue());
+    assertEquals("az1-tserver-existing", az1TserverDi.storageClass);
+    assertNotNull(az1Ov.getPerProcess().get(ServerType.MASTER));
+    DeviceInfo az1MasterDi = az1Ov.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+    assertEquals("az1-master-existing", az1MasterDi.storageClass);
   }
 }

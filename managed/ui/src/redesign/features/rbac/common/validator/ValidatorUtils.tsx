@@ -102,7 +102,9 @@ export const ControlComp = ({
       id="rbac-perm-error"
     >
       <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
-        {children as any}
+        {
+          Array.isArray(children) ? <>{children}</> : (children as React.ReactElement) as any 
+        }
       </ButtonDisabledPopover>
     </div>
   </ErrorBoundary>

@@ -21,6 +21,7 @@ import {
   getEffectiveReplicationFactorForResilience,
   getPlacementRegions
 } from '../../create-universe/CreateUniverseUtils';
+import { sanitizeClusters } from '../../read-replica/add/buildUniverseSpecForReadReplicaPricing';
 
 export function navigateToUniverseSettingsFromWizard(
   universeData?: UniverseRespResponse
@@ -274,7 +275,7 @@ export function buildUniverseSpecForGeoPartitionPricing(
   return {
     spec: {
       ...universeData.spec,
-      clusters: universeData.spec.clusters.map((cluster) =>
+      clusters: sanitizeClusters(universeData.spec.clusters).map((cluster) =>
         cluster.cluster_type === ClusterSpecClusterType.PRIMARY
           ? {
               ...cluster,
@@ -350,6 +351,10 @@ export const prepareAddGeoPartitionPayload = (
     throw new Error('Primary cluster placement cloud is missing in universe data');
   }
 
+  // Preserve the existing default partition's uuid when the wizard is converting a
+  // non-geo-partitioned universe (payload[0] replaces the existing default rather than appends).
+  const existingDefaultPartition = getDefaultPrimaryPartitionSpec(universeData);
+
   if (geoPartitions.length) {
     return geoPartitions.map((gp, index) => {
       if (!gp.resilience) {
@@ -362,8 +367,11 @@ export const prepareAddGeoPartitionPayload = (
 
       const base: Pick<
         ClusterPartitionSpec,
-        'name' | 'tablespace_name' | 'default_partition' | 'replication_factor'
+        'uuid' | 'name' | 'tablespace_name' | 'default_partition' | 'replication_factor'
       > = {
+        ...(isDefaultNewPartition && existingDefaultPartition?.uuid
+          ? { uuid: existingDefaultPartition.uuid }
+          : {}),
         name: gp.name,
         tablespace_name: gp.tablespaceName,
         default_partition: isDefaultNewPartition,

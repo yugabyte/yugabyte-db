@@ -81,6 +81,13 @@ class VectorIndexWriterIf {
   // Returns the number of reserved vectors
   virtual size_t Capacity() const = 0;
 
+  // Returns an estimate of the number of vectors that this index implementation will fit into the
+  // given amount of memory. The estimate is derived from the underlying library's per-vector
+  // memory layout (vector data, neighbor lists at each level, lookup tables, etc.) so that
+  // reserving the returned number of vectors is expected to consume approximately bytes_limit
+  // bytes of memory.
+  virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
+
   virtual Status Insert(VectorId vector_id, const Vector& vector) = 0;
 };
 

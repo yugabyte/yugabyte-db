@@ -5,7 +5,7 @@
     <artifactId>yba-client-v2</artifactId>
     <packaging>jar</packaging>
     <name>yba-client-v2</name>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <url>https://github.com/openapitools/openapi-generator</url>
     <description>Java V2 client for Yugabyte Anywhere</description>
     <scm>

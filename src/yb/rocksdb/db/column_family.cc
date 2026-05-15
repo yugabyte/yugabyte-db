@@ -336,9 +336,8 @@ void SuperVersionUnrefHandle(void* ptr) {
 }  // anonymous namespace
 
 ColumnFamilyData::ColumnFamilyData(
-    uint32_t id, const std::string& name, Version* _dummy_versions,
-    Cache* _table_cache, WriteBuffer* write_buffer,
-    const ColumnFamilyOptions& cf_options, const DBOptions* db_options,
+    uint32_t id, const std::string& name, Version* _dummy_versions, Cache* _table_cache,
+    WriteBuffer* write_buffer, const ColumnFamilyOptions& cf_options, const DBOptions* db_options,
     const EnvOptions& env_options, ColumnFamilySet* column_family_set)
     : id_(id),
       name_(name),
@@ -347,14 +346,12 @@ ColumnFamilyData::ColumnFamilyData(
       refs_(0),
       dropped_(false),
       internal_comparator_(std::make_shared<InternalKeyComparator>(cf_options.comparator)),
-      options_(*db_options,
-               SanitizeOptions(*db_options, internal_comparator_.get(), cf_options)),
+      options_(*db_options, SanitizeOptions(*db_options, internal_comparator_.get(), cf_options)),
       ioptions_(options_),
       mutable_cf_options_(options_, ioptions_),
       write_buffer_(write_buffer),
       mem_(nullptr),
-      imm_(options_.min_write_buffer_number_to_merge,
-           options_.max_write_buffer_number_to_maintain),
+      imm_(options_.min_write_buffer_number_to_merge, options_.max_write_buffer_number_to_maintain),
       super_version_(nullptr),
       super_version_number_(0),
       local_sv_(new ThreadLocalPtr(&SuperVersionUnrefHandle)),
@@ -362,7 +359,6 @@ ColumnFamilyData::ColumnFamilyData(
       prev_(nullptr),
       log_number_(0),
       column_family_set_(column_family_set),
-      pending_flush_(false),
       prev_compaction_needed_bytes_(0) {
   for (auto& num_pending_compactions : num_pending_compactions_) {
     num_pending_compactions = 0;
@@ -443,7 +439,7 @@ ColumnFamilyData::~ColumnFamilyData() {
 
   // It would be wrong if this ColumnFamilyData is in flush_queue_ or
   // compaction_queue_ and we destroyed it
-  DCHECK(!pending_flush_);
+  DCHECK(!pending_flush());
   for (size_t idx = 0; idx < num_pending_compactions_.size(); ++idx) {
     LOG_IF(DFATAL, num_pending_compactions_[idx] != 0)
         << ioptions_.info_log->Prefix() <<  "Expected no " << yb::AsString(CompactionSizeKind(idx))

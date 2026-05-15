@@ -19,6 +19,26 @@ interface PlacementAzMetadata {
 }
 
 /**
+ * Display name for an AZ in software-upgrade UI (flag, AZ name, region in parentheses),
+ * using placement from the universe cluster that matches `clusterUUID`.
+ */
+export const getPlacementAzDisplayNameForCluster = (
+  clusters: ClusterSpec[],
+  clusterUuid: string,
+  azUuid: string,
+  fallbackDisplayName: string
+): string => {
+  const matchingCluster = clusters.find((clusterSpec) => clusterSpec.uuid === clusterUuid);
+  if (!matchingCluster) {
+    return fallbackDisplayName;
+  }
+  const placementRow = getPlacementAzMetadataList(matchingCluster).find(
+    (placementAz) => placementAz.azUuid === azUuid
+  );
+  return placementRow?.displayName ?? fallbackDisplayName;
+};
+
+/**
  * Get placement AZ metadata list for a cluster.
  */
 export const getPlacementAzMetadataList = (cluster: ClusterSpec | null): PlacementAzMetadata[] => {
@@ -95,15 +115,16 @@ export const getDefaultCanaryUpgradeConfig = (clusters: ClusterSpec[]): CanaryUp
   const primaryClusterPlacementAzs = getPlacementAzMetadataList(primaryCluster);
   const primaryClusterAzOrder = primaryClusterPlacementAzs.map((placementAz) => placementAz.azUuid);
   const primaryClusterAzSteps: Record<string, AzUpgradeStep> = {};
-  const totalClusterPlacementAzsCount = primaryClusterPlacementAzs.length + readReplicaClusterPlacementAzs.length;
+  const totalClusterPlacementAzsCount =
+    primaryClusterPlacementAzs.length + readReplicaClusterPlacementAzs.length;
   primaryClusterPlacementAzs.forEach((placementAz, index) => {
     primaryClusterAzSteps[placementAz.azUuid] = {
       azUuid: placementAz.azUuid,
       displayName: placementAz.displayName,
       displayNameWithoutRegion: placementAz.displayNameWithoutRegion,
-      // Pause after the first AZ by default for primary cluster if there are at least 2 AZs in the cluster across 
+      // Pause after the first AZ by default for primary cluster if there are at least 2 AZs in the cluster across
       // primary and read replica.
-      pauseAfterTserverUpgrade: totalClusterPlacementAzsCount > 2 && index === 0
+      pauseAfterTserverUpgrade: totalClusterPlacementAzsCount >= 2 && index === 0
     };
   });
 

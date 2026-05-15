@@ -1,0 +1,6 @@
+title: KmsConfigPagedResp
+description: Paged list response for KMS configurations.
+type: object
+x-data-container: PaginationResp
+x-data-item: KmsConfiguration
+x-data-entities-description: KMS configurations for this page.

@@ -110,7 +110,14 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
-        "(^src/postgres/)"
+        "(^src/postgres/)",
+        "(^src/yb/integration-tests/.*[.]out$)",
+        "(^[.]gitignore$)",
+        "(^.*[.]svg$)",
+        "(^.*[.]md$)",
+        "(^java/yb-pgsql/src/test/resources/expected/)",
+        "(^java/yb-pgsql/src/test/resources/TestYbBackup/)",
+        "(^java/yb-pgsql/src/test/resources/TestYsqlDump/)"
       ]
     },
     "pycodestyle": {

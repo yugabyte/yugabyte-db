@@ -1,6 +1,7 @@
 from embeddings import EmbeddingsGenerator
 from db import YugabyteDBVectorStore, PipelineTracking, PipelineStatus
 from source_location_crawlers import S3BucketCrawler
+from observability import meko_observe
 import logging
 
 
@@ -27,6 +28,7 @@ class RagPipelineHandler:
         self.vector_store = YugabyteDBVectorStore()
         self.pipeline_tracking = PipelineTracking()
 
+    @meko_observe(name="Ingest Document / RagPipelineHandler", as_type="chain", capture_input=False)
     def _ingest_document(
         self,
         pipeline_id,
@@ -34,18 +36,27 @@ class RagPipelineHandler:
         document_id,
         document_uri,
         table_name,
+        schema_name=None,
         metadata=None,
         chunk_kwargs=None,
-        embedding_model_params=None
+        embedding_model_params=None,
+        ai_provider=None,
+        tenant_id=None
     ):
         """
         Runs the pipeline: splits document, creates embeddings, and stores in YugabyteDB.
 
         Args:
             document_uri (str): Document URI to process.
+            schema_name (str, optional): Schema the backing vector table lives in.
+                If None, the vector store falls back to its constructor default
+                (currently 'public').
             metadata (dict, optional): Additional metadata to store.
             document_id (int, optional): document identifier of the file to be ingested.
             chunk_kwargs (dict, optional): Additional arguments for text chunking (e.g. chunk_size).
+            tenant_id (UUID/str, optional): Tenant identifier propagated to the
+                vector store row. Falls back to the all-zero UUID default when
+                not provided.
         """
 
         self.logger.debug(f"Ingesting document: {document_uri} with chunk_kwargs: {chunk_kwargs}")
@@ -75,32 +86,46 @@ class RagPipelineHandler:
 
         embedder = EmbeddingsGenerator(
             embedding_model=embedding_model,
-            embedding_model_params=embedding_model_params
+            embedding_model_params=embedding_model_params,
+            ai_provider=ai_provider
         )
         # 1. Process file and Generate embeddings
         embedding_iterator = embedder.generate_embeddings(
             pipeline_id=pipeline_id, file_location=document_uri, chunk_args=chunk_kwargs)
 
         # 2. Insert into vector store
-        self.logger.debug(f"Inserting embeddings into vector store for document: {document_uri}")
+        self.logger.debug(
+            f"Inserting embeddings into vector store for document: {document_uri} "
+            f"target=({schema_name or 'public'}.{table_name})"
+        )
         self.vector_store.insert_embeddings(
             document_id=document_id,
             table_name=table_name,
+            schema=schema_name,
             embedding_iterator=embedding_iterator,
             metadata=metadata or {},
-            pipeline_id=pipeline_id
+            pipeline_id=pipeline_id,
+            tenant_id=tenant_id
         )
         return True
 
+    @meko_observe(
+        name="Start Processing / RagPipelineHandler",
+        as_type="agent",
+        capture_input=False,
+    )
     def start_processing(
         self,
         source_id,
         document_id,
         document_uri,
         table_name,
+        schema_name=None,
         metadata=None,
         chunk_kwargs=None,
-        embedding_model_params=None
+        embedding_model_params=None,
+        ai_provider=None,
+        tenant_id=None
     ):
         """
         Starts the processing of the document.
@@ -118,13 +143,18 @@ class RagPipelineHandler:
                 pipeline_id=pipeline_id,
                 document_uri=document_uri,
                 table_name=table_name,
+                schema_name=schema_name,
                 metadata=metadata,
                 chunk_kwargs=chunk_kwargs,
-                embedding_model_params=embedding_model_params
+                embedding_model_params=embedding_model_params,
+                ai_provider=ai_provider,
+                tenant_id=tenant_id
             )
             self.logger.info(f"Processing of document: {document_uri} completed")
-            self.vector_store.create_index(table_name=table_name)
-            self.logger.info(f"Vector Index created successfully on {table_name}")
+            self.vector_store.create_index(table_name=table_name, table_schema=schema_name)
+            self.logger.info(
+                f"Vector Index created successfully on {schema_name or 'public'}.{table_name}"
+            )
 
             self.pipeline_tracking.update_pipeline_status(
                 pipeline_id=pipeline_id,

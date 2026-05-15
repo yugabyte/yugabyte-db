@@ -56,6 +56,7 @@
 #include "commands/dbcommands.h"
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
+#include "utils/palloc.h"
 #include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -102,7 +103,14 @@ enum FdwScanPrivateIndex
 	 * String describing join i.e. names of relations being joined and types
 	 * of join, added when the scan is join
 	 */
-	FdwScanPrivateRelations
+	FdwScanPrivateRelations,
+
+	/*
+	 * YB: UUID of the target tserver for per-tserver federated scans.
+	 * Present only when the scan targets a specific tserver in a global
+	 * views UNION ALL plan.
+	 */
+	YbFdwScanPrivateTserverUuid
 };
 
 /*
@@ -194,8 +202,9 @@ typedef struct PgFdwScanState
 
 	int			fetch_size;		/* number of tuples per fetch */
 
-	/* YB state: opaque handle to PgGlobalViewRead for federatedYugabyteDB scans */
+	/* YB: per-tserver global-view scan state (federatedYugabyteDB only) */
 	YbcPgGlobalViewRead yb_gvr;
+	char	   *yb_tserver_uuid;
 } PgFdwScanState;
 
 /*
@@ -578,8 +587,30 @@ static YbPgFdwServerType yb_get_server_type(const char *server_type);
 static YbPgFdwServerType yb_get_server_type_from_ftrelid(Oid relid);
 static const char *yb_get_tuple_identifier_colname(YbPgFdwServerType server_type);
 static AttrNumber yb_get_min_attr_from_server_type(YbPgFdwServerType server_type);
-static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *query);
+static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr,
+										  const char *database_name,
+										  const char *query,
+										  const char *tserver_uuid);
 
+static const char *
+yb_get_current_db_name(void)
+{
+	static const char *yb_cached_current_db_name = NULL;
+
+	if (!yb_cached_current_db_name)
+	{
+		/*
+		 * get_database_name pallocs the string, and we store it in TopMemoryContext
+		 * since that is destroyed only when the backend is terminated, and the
+		 * database cannot be changed without terminating the backend.
+		 */
+		MemoryContext old = MemoryContextSwitchTo(TopMemoryContext);
+		yb_cached_current_db_name = get_database_name(MyDatabaseId);
+		MemoryContextSwitchTo(old);
+	}
+
+	return yb_cached_current_db_name;
+}
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -692,6 +723,19 @@ postgresGetForeignRelSize(PlannerInfo *root,
 
 	apply_server_options(fpinfo);
 	apply_table_options(fpinfo);
+
+	/*
+	 * For per-tserver children of a federated foreign table,
+	 * yb_expand_federated_rtentry() recorded the target tserver UUID in
+	 * PlannerInfo->yb_tserver_uuids.  Pick it up now.  Returns NULL for
+	 * everything else (including an unexpanded federated parent and
+	 * non-federated foreign tables).
+	 */
+	if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+		fpinfo->yb_tserver_uuid = (char *)
+			YbGetFederatedPartitionTserverUuid(root, baserel->relid);
+	else
+		fpinfo->yb_tserver_uuid = NULL;
 
 	/*
 	 * If the table or the server is configured to use remote estimates,
@@ -1054,6 +1098,17 @@ postgresGetForeignPaths(PlannerInfo *root,
 	ListCell   *lc;
 
 	/*
+	 * YB: When yb_enable_global_views is on, the federated parent is expanded
+	 * into per-tserver children by yb_expand_federated_rtentry() before we
+	 * get here, so each child must carry a target tserver UUID.
+	 * postgresGetForeignPlan reads it from fpinfo and propagates it into the
+	 * ForeignScan's fdw_private.  When the GUC is off, the table is not
+	 * expanded and yb_tserver_uuid stays NULL.
+	 */
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB ||
+		   !yb_enable_global_views || fpinfo->yb_tserver_uuid);
+
+	/*
 	 * Create simplest ForeignScan path node and add it to baserel.  This path
 	 * corresponds to SeqScan path of regular tables (though depending on what
 	 * baserestrict conditions we were able to send to remote, there might
@@ -1074,12 +1129,8 @@ postgresGetForeignPaths(PlannerInfo *root,
 								   NIL);	/* no fdw_private list */
 	add_path(baserel, (Path *) path);
 
-	/*
-	 * Add paths with pathkeys.
-	 * YB: Do not push down ORDER BY for federated server (global views).
-	 */
-	if (fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
-		add_paths_with_pathkeys_for_rel(root, baserel, NULL);
+	/* Add paths with pathkeys */
+	add_paths_with_pathkeys_for_rel(root, baserel, NULL);
 
 	/*
 	 * If we're not using remote estimates, stop here.  We have no way to
@@ -1088,6 +1139,8 @@ postgresGetForeignPaths(PlannerInfo *root,
 	 */
 	if (!fpinfo->use_remote_estimate)
 		return;
+
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB);
 
 	/*
 	 * Thumb through all join clauses for the rel to identify which outer
@@ -1456,6 +1509,24 @@ postgresGetForeignPlan(PlannerInfo *root,
 							  makeString(fpinfo->relation_name));
 
 	/*
+	 * YB: For per-tserver federated scans, propagate the target tserver UUID
+	 * from PgFdwRelationInfo into the plan's fdw_private at
+	 * YbFdwScanPrivateTserverUuid so the executor knows which tserver to
+	 * target.  Only base-relation children of a federated parent carry a
+	 * UUID; join/upper rels never do.  FdwScanPrivateRelations is only pushed
+	 * for join/upper rels above, so insert an empty-string placeholder for
+	 * base-relation federated scans to keep YbFdwScanPrivateTserverUuid at
+	 * its expected index.
+	 */
+	if (fpinfo->yb_tserver_uuid)
+	{
+		if (list_length(fdw_private) == FdwScanPrivateRelations)
+			fdw_private = lappend(fdw_private, makeString(""));
+		fdw_private = lappend(fdw_private,
+							  makeString(fpinfo->yb_tserver_uuid));
+	}
+
+	/*
 	 * Create the ForeignScan node for the given relation.
 	 *
 	 * Note that the remote parameter expressions are stored in the fdw_exprs
@@ -1625,6 +1696,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	 */
 	fsstate->cursor_exists = false;
 	fsstate->yb_gvr = NULL;
+	fsstate->yb_tserver_uuid = NULL;
 
 	/* Get private info created by planner functions. */
 	fsstate->query = strVal(list_nth(fsplan->fdw_private,
@@ -1634,10 +1706,16 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	fsstate->fetch_size = intVal(list_nth(fsplan->fdw_private,
 										  FdwScanPrivateFetchSize));
 
-	/* YB: Create and initialize the global view scan. */
+	/*
+	 * YB: One foreign scan node is created per tserver, and one global view
+	 * scan handle is created per foreign scan node.
+	 */
 	if (yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
-		HandleYBStatus(YBCPgNewGlobalViewRead(get_database_name(MyDatabaseId),
-			&fsstate->yb_gvr));
+	{
+		fsstate->yb_tserver_uuid = strVal(list_nth(fsplan->fdw_private,
+												   YbFdwScanPrivateTserverUuid));
+		HandleYBStatus(YBCPgNewGlobalViewRead(&fsstate->yb_gvr));
+	}
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,
@@ -1760,7 +1838,6 @@ postgresReScanForeignScan(ForeignScanState *node)
 
 	if (fsstate->yb_gvr)
 	{
-		YBCPgGlobalViewReadResetScan(fsstate->yb_gvr);
 		YbResetForeignScanControlState(fsstate);
 		/*
 		 * YB: yb_gvr scans cannot be rewound, so force create_cursor on the
@@ -2969,6 +3046,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
 	ForeignScan *plan = castNode(ForeignScan, node->ss.ps.plan);
 	List	   *fdw_private = plan->fdw_private;
+	bool		yb_is_join_or_upper;
 
 	/*
 	 * Identify foreign scans that are really joins or upper relations.  The
@@ -2976,8 +3054,15 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	 * digit string(s), which are RT indexes, with the correct relation names.
 	 * We do that here, not when the plan is created, because we can't know
 	 * what aliases ruleutils.c will assign at plan creation time.
+	 *
+	 * YB: For per-tserver federated base-relation scans, postgresGetForeignPlan
+	 * inserts an empty-string placeholder at FdwScanPrivateRelations so the
+	 * tserver UUID lands at the right index; treat that as "not a join".
 	 */
-	if (list_length(fdw_private) > FdwScanPrivateRelations)
+	yb_is_join_or_upper = (list_length(fdw_private) > FdwScanPrivateRelations &&
+						   strVal(list_nth(fdw_private,
+												FdwScanPrivateRelations))[0] != '\0');
+	if (yb_is_join_or_upper)
 	{
 		StringInfo	relations;
 		char	   *rawrelations;
@@ -3064,6 +3149,17 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 
 		sql = strVal(list_nth(fdw_private, FdwScanPrivateSelectSql));
 		ExplainPropertyText("Remote SQL", sql, es);
+	}
+
+	/* YB: Show the target tablet server for per-tserver federated scans */
+	if (!yb_explain_hide_non_deterministic_fields &&
+		list_length(fdw_private) > YbFdwScanPrivateTserverUuid)
+	{
+		char	   *uuid = strVal(list_nth(fdw_private,
+										   YbFdwScanPrivateTserverUuid));
+
+		if (uuid[0] != '\0')
+			ExplainPropertyText("Tablet Server", uuid, es);
 	}
 }
 
@@ -3980,7 +4076,10 @@ fetch_more_data(ForeignScanState *node)
 			fsstate->conn_state->pendingAreq = NULL;
 		}
 		else if (fsstate->yb_gvr)
-			res = YbGlobalViewReadExecScan(fsstate->yb_gvr, fsstate->query);
+			res = YbGlobalViewReadExecScan(fsstate->yb_gvr,
+										   yb_get_current_db_name(),
+										   fsstate->query,
+										   fsstate->yb_tserver_uuid);
 		else
 		{
 			char		sql[64];
@@ -4024,7 +4123,8 @@ fetch_more_data(ForeignScanState *node)
 
 		/* Must be EOF if we didn't get as many tuples as we asked for. */
 		if (fsstate->yb_gvr)
-			fsstate->eof_reached = YBCPgGlobalViewReadIsEof(fsstate->yb_gvr);
+			/* TODO(#30843): Update when pagination support is added. */
+			fsstate->eof_reached = true;
 		else
 			fsstate->eof_reached = (numrows < fsstate->fetch_size);
 	}
@@ -5771,13 +5871,6 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 		return false;
 
 	/*
-	 * YB: Do not push down joins for global views scans (federated server).
-	 */
-	if (fpinfo_o->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB ||
-		fpinfo_i->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
-		return false;
-
-	/*
 	 * Merge FDW options.  We might be tempted to do this after we have deemed
 	 * the foreign join to be OK.  But we must do this beforehand so that we
 	 * know which quals can be evaluated on the foreign server, which might
@@ -6381,6 +6474,8 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
 
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB);
+
 	/* Consider pathkeys for the join relation */
 	add_paths_with_pathkeys_for_rel(root, joinrel, epq_path);
 
@@ -6643,14 +6738,6 @@ postgresGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 	 */
 	if (!input_rel->fdw_private ||
 		!((PgFdwRelationInfo *) input_rel->fdw_private)->pushdown_safe)
-		return;
-
-	/*
-	 * YB: Do not push down GROUP BY, ORDER BY, or LIMIT for federated server
-	 * (global views). Only WHERE clauses should be pushed down.
-	 */
-	if (((PgFdwRelationInfo *) input_rel->fdw_private)->yb_server_type ==
-		PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
 		return;
 
 	/* Ignore stages we don't support; and skip any duplicate calls. */
@@ -7980,13 +8067,19 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 }
 
 static PGresult *
-YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *query)
+YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *database_name,
+						 const char *query, const char *tserver_uuid)
 {
-	YbcRemotePgExecResult yb_result = YBCPgGlobalViewReadExecScan(yb_gvr, query);
+	YbcRemotePgExecResult yb_result =
+		YBCPgGlobalViewReadExecScan(yb_gvr, database_name, query, tserver_uuid);
 	PGresult *res = YBCPgResultFromPB(yb_result.pgresult, yb_result.pgresult_size);
-	/*
-	 * This makes sure that we continue to query other tservers even if we get error
-	 * from one tserver due to timeouts / tserver down etc.
-	 */
-	return res ? res : PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK);
+	if (!res)
+	{
+		if (yb_result.error_message)
+			ereport(WARNING,
+					(errmsg("global view: skipping tserver %s: %s",
+							tserver_uuid, yb_result.error_message)));
+		res = PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK);
+	}
+	return res;
 }

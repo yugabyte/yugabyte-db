@@ -441,6 +441,17 @@ struct PlannerInfo
 
 	/* YB: parallel list of relids of 'prohibited joins */
 	List	   *ybProhibitedJoins;
+
+	/*
+	 * YB: Sparse array from RT index to tablet server UUID for the per-tserver
+	 * children of a federated YugabyteDB foreign table (global views).  Indexed
+	 * by rti and parallel to simple_rte_array; entries are NULL for any rti
+	 * that is not a per-tserver federated child.  Lazily allocated on the
+	 * first call to YbAddFederatedPartitionTserverUuid() and grown by
+	 * expand_planner_arrays(), so non-federated queries never pay for it.
+	 * NULL when the query has no federated foreign tables.
+	 */
+	const char **yb_tserver_uuids;
 };
 
 

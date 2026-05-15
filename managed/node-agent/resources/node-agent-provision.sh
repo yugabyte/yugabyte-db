@@ -102,160 +102,6 @@ setup_symlinks() {
     echo "Python symlinks updated."
 }
 
-# Function to install the python wheels
-install_pywheels() {
-    WHEEL_DIR="$(pwd)/pywheels"
-    # Check if the wheel directory exists
-    if [[ ! -d "$WHEEL_DIR" ]]; then
-        err_msg "Wheel directory $WHEEL_DIR does not exist."
-    fi
-    # Get the virtual environment path
-    VENV_PATH=$(get_activated_venv_path)
-    echo "Using virtual environment path: $VENV_PATH"
-    PYTHON_CMD=$(command -v python3)
-    PYTHON_VERSION_DETECTED=$(
-        $PYTHON_CMD -c "import sys; print('python' + '.'.join(map(str, sys.version_info[:2])))"
-    )
-    PYTHON_MAJOR_MINOR=$(
-        $PYTHON_CMD -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
-    )
-    # Select the appropriate requirements file based on Python version
-    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7"
-         || "$PYTHON_MAJOR_MINOR" == "3.8" ]]; then
-        REQUIREMENTS_FILE="$(pwd)/ynp_requirements_3.6.txt"
-        echo "Using Python 3.6/3.7/3.8 compatible requirements file: $REQUIREMENTS_FILE"
-    else
-        REQUIREMENTS_FILE="$(pwd)/ynp_requirements.txt"
-        echo "Using Python 3.9+ requirements file: $REQUIREMENTS_FILE"
-    fi
-
-    echo "Installing Python wheels from directory: $WHEEL_DIR using requirements: $REQUIREMENTS_FILE"
-
-    # Check if requirements file exists
-    if [[ ! -f "$REQUIREMENTS_FILE" ]]; then
-        err_msg "Requirements file $REQUIREMENTS_FILE does not exist."
-    fi
-    # If we are using system python, we need to use --break-system-packages to install packages.
-    extra_pip_flags=""
-    if [[ "$PYTHON_MAJOR_MINOR" > "3.11" && "$use_system_python" == true ]]; then
-        extra_pip_flags="--break-system-packages"
-    fi
-
-    echo "Using Python version: $PYTHON_VERSION_DETECTED"
-
-    # Check if virtual environment exists and use it
-    if [[ -d "$VENV_PATH" && "$use_system_python" == false ]]; then
-        echo "Using virtual environment at $VENV_PATH"
-        # Use the virtual environment's pip directly (no need to source activate)
-        PIP_CMD="$VENV_PATH/bin/pip"
-        PYTHON_CMD="$VENV_PATH/bin/python"
-
-    elif [[ "$use_system_python" == true ]]; then
-        echo "Using system Python"
-        PIP_CMD="python3 -m pip"
-        PYTHON_CMD="python3"
-    else
-        echo "Error: Virtual environment not found and system Python not enabled"
-        exit 1
-    fi
-
-    # Detect pip capability for --no-build-isolation
-    if $PIP_CMD install --help 2>&1 | grep -q -- '--no-build-isolation'; then
-        NO_BUILD_ISOLATION="--no-build-isolation"
-    else
-        echo "Warning: pip does not support --no-build-isolation, skipping it."
-        NO_BUILD_ISOLATION=""
-    fi
-
-    echo "Installing setuptools and wheel..."
-    if [[ "$PYTHON_MAJOR_MINOR" =~ ^(3\.6|3\.7|3\.8)$ ]]; then
-        SETUPTOOLS_VER=59.6.0
-        WHEEL_VER=0.37.1
-    else
-        SETUPTOOLS_VER=78.1.1
-        WHEEL_VER=0.43.0
-    fi
-
-    # Step 1: bootstrap setuptools and wheel
-    $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-        --find-links="$WHEEL_DIR" setuptools==$SETUPTOOLS_VER wheel==$WHEEL_VER || {
-        echo "Error installing setuptools/wheel"
-        exit 1
-    }
-    # Step 2: install all other requirements
-    echo "Installing remaining packages..."
-    $PIP_CMD install --no-index $NO_BUILD_ISOLATION $extra_pip_flags \
-        --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
-        echo "Error installing requirements packages"
-        exit 1
-    }
-    # Mark the venv setup as complete.
-    touch "${VENV_PATH}/${VENV_SETUP_COMPLETION_MARKER}"
-    echo "All packages installed successfully."
-}
-
-# Function to setup the virtual env.
-setup_virtualenv() {
-    VIRTUAL_ENV_DIR=$(pwd)
-    YB_VIRTUALENV_PATH_SUFFIX=$(get_env_path_suffix)
-    VENV_PATH="$VIRTUAL_ENV_DIR/$YB_VIRTUALENV_PATH_SUFFIX"
-    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
-        # Check if venv is available
-        if ! python3 -m ensurepip &>/dev/null; then
-            echo "venv module is missing. Installing it..."
-
-            if grep -q -i "ubuntu\|debian" /etc/os-release; then
-                retry_cmd apt update && retry_cmd apt install -y python3-venv
-            elif grep -q -i "almalinux\|rocky\|rhel\|amazon linux 2023" /etc/os-release; then
-                retry_cmd dnf install -y python3-venv
-            elif grep -q -i "sles\|suse" /etc/os-release; then
-                retry_cmd zypper install -y python3-venv
-            fi
-        fi
-    fi
-    VENV_SETUP_COMPLETION_MARKER_PATH="$VENV_PATH/$VENV_SETUP_COMPLETION_MARKER"
-    if [[ -d "$VENV_PATH" ]] && [ ! -f "$VENV_SETUP_COMPLETION_MARKER_PATH" ]; then
-        echo "Virtual environment exists but setup not completed. Recreating..."
-        rm -rf "$VENV_PATH"
-    fi
-    if [ ! -d "$VENV_PATH" ]; then
-        echo "Creating virtual environment at $VENV_PATH..."
-        if ! python3 -m venv "$VENV_PATH"; then
-            echo "Failed to create virtual environment. Continuing without it..."
-        fi
-    else
-        echo "Virtual environment already exists at $VENV_PATH."
-    fi
-    if source "$VENV_PATH/bin/activate"; then
-        echo "Virtual environment activated."
-    else
-        if [[ "$use_system_python" == true ]]; then
-            echo "Using system python..."
-        else
-            echo "Failed to activate virtual environment. Continuing without it..."
-            err_msg "Failed to activate virtual environment. Please check if the virtual \
-                    environment is correctly set up."
-        fi
-    fi
-}
-
-# Function to setup pip in venv.
-setup_pip() {
-    PYTHON_CMD=$(command -v python3)
-    PYTHON_VERSION_DETECTED=$(
-        $PYTHON_CMD -c "import sys; print('python' + '.'.join(map(str, sys.version_info[:2])))"
-    )
-    echo "Detected Python version: $PYTHON_VERSION_DETECTED"
-
-    # Install pip for detected Python version
-    if ! $PYTHON_CMD -m pip --version &>/dev/null; then
-        echo "Pip is not installed for $PYTHON_VERSION_DETECTED. Installing pip..."
-        curl -sSL https://bootstrap.pypa.io/get-pip.py | $PYTHON_CMD
-    else
-        echo "Upgrading pip for $PYTHON_VERSION_DETECTED..."
-    fi
-}
-
 # Get the root path of the virtual environment when it is activated.
 get_activated_venv_path() {
     PYTHON_CMD=$(command -v python3)
@@ -268,23 +114,13 @@ get_env_path_suffix() {
     echo "venv/$(id -u -n)"
 }
 
-# Function to check for Python
+# Function to check for Python. Python command is needed.
 check_python() {
     echo "Checking for Python and pip..."
     if ! command -v python3 &> /dev/null; then
         err_msg "python3 is not installed or not found in PATH."
     fi
-
-    if ! python3 -m pip --version &> /dev/null; then
-        err_msg "pip is not installed. Please install pip before proceeding."
-    fi
-
-    echo "Python and pip are available."
-}
-
-# Function to execute the Python script
-execute_python() {
-    python3 ynp/main.py "$@"
+    echo "Python is available."
 }
 
 # Function for importing the GPG key if required.
@@ -300,17 +136,6 @@ import_gpg_key_if_required() {
     fi
 }
 
-# Main function for Python execution.
-main_python() {
-    setup_virtualenv
-    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
-        setup_pip
-    fi
-    check_python
-    install_pywheels
-    execute_python "${filtered_args[@]}"
-}
-
 # Function to execute the Go script.
 execute_go() {
     COMMAND_PATH="$SCRIPT_DIR/node-provisioner"
@@ -321,19 +146,12 @@ execute_go() {
     "$COMMAND_PATH" --ynp_base_path "$YNP_BASE_PATH" "$@"
 }
 
-# Main function for Go execution.
-main_go() {
-    execute_go "${filtered_args[@]}"
-}
-
 # Main function
 main() {
     filtered_args=()
 
     for ((i=1; i<=$#; i++)); do
-        if [[ "${!i}" == "--use_python_driver" ]]; then
-            use_python_driver="true"
-        elif [[ "${!i}" == "--cloud_type" ]]; then
+        if [[ "${!i}" == "--cloud_type" ]]; then
             # Skip --cloud_type and its value
             next_index=$((i + 1))
             if [[ $next_index -le $# && ! "${!next_index}" =~ ^-- ]]; then
@@ -351,8 +169,6 @@ main() {
             fi
         elif [[ "${!i}" == "--is_airgap" ]]; then
             is_airgap=true  # Set the flag
-        elif [[ "${!i}" == "--use_system_python" ]]; then
-            use_system_python=true  # Set the flag
         else
             filtered_args+=("${!i}")  # Keep all other arguments
         fi
@@ -367,12 +183,8 @@ main() {
         fi
         setup_symlinks
     fi
-    if [[ "$use_python_driver" == "true" ]]; then
-        echo "Warning: Python driver is deprecated and will be removed in future releases."
-        main_python "${filtered_args[@]}"
-    else
-        main_go "${filtered_args[@]}"
-    fi
+    check_python
+    execute_go "${filtered_args[@]}"
 }
 
 # Call the main function and pass all arguments

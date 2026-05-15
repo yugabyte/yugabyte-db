@@ -1,5 +1,6 @@
 package com.yugabyte.ByocApiProxy;
 
+import com.yugabyte.ByocApiProxy.auth.ApiKeyAuthenticator;
 import com.yugabyte.ByocApiProxy.auth.BaseAuthenticator;
 import com.yugabyte.ByocApiProxy.auth.ServiceAccountAuthenticator;
 import com.yugabyte.ByocApiProxy.config.ProxiedAppProperties;
@@ -20,6 +21,17 @@ public class AppConfig {
           "proxied_app.auth.service_account is required when auth.type is service_account");
     }
     return new ServiceAccountAuthenticator(account);
+  }
+
+  @Bean
+  @ConditionalOnProperty(name = "proxied-app.auth.type", havingValue = "api_key")
+  public BaseAuthenticator apiKeyAuthenticator(ProxiedAppProperties proxiedApp) {
+    String apiKey = proxiedApp.auth().apiKey();
+    if (apiKey == null) {
+      throw new IllegalStateException(
+          "proxied_app.auth.api_key is required when auth.type is api_key");
+    }
+    return new ApiKeyAuthenticator(apiKey);
   }
 
   @Bean

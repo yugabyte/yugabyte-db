@@ -15,14 +15,19 @@
 #ifdef __linux__
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/html_print_helper.h"
 #include "yb/util/metrics.h"
+#include "yb/util/os-util.h"
 #include "yb/util/thread.h"
+#include "yb/util/url-coding.h"
 
 DECLARE_bool(enable_qos);
 
@@ -63,6 +68,11 @@ DEFINE_RUNTIME_double(qos_system_med_cpu_max_percent, 0,
     "(100% - qos_system_high_cpu_reserved_percent). "
     "0 means uncapped within @capped-pool. 100.0 = the full @capped-pool budget.");
 TAG_FLAG(qos_system_med_cpu_max_percent, advanced);
+
+DEFINE_RUNTIME_bool(qos_system_dbs_use_shared_pool, true,
+    "When true, system-internal database OIDs (system_postgres/sequences OID 0xFFFF, template1 "
+    "OID 1) are routed to the shared system worker pool instead of creating per-DB cgroup slots. "
+    "Prevents these synthetic/system databases from consuming per-DB pool capacity.");
 
 DEFINE_RUNTIME_bool(qos_compaction_per_db_cgroups, false,
     "When true, compaction/flush tasks run in the tablet's per-database cgroup (db_$DBOID) "
@@ -127,6 +137,8 @@ METRIC_DEFINE_gauge_int64(cgroup, cgroup_throttled_time_ns,
     "Cumulative time (ns) threads in this cgroup were throttled by CFS.",
     yb::EXPOSE_AS_COUNTER);
 
+using namespace std::chrono_literals;
+
 namespace yb::tserver {
 
 namespace {
@@ -171,7 +183,8 @@ REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCp
 REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
 
 Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid) {
-  auto* root = DCHECK_NOTNULL(RootCgroup());
+  auto* root = RootCgroup();
+  SCHECK(root, IllegalState, "Cgroup management not initialized");
   auto& capped_pool = VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
   auto& normal = VERIFY_RESULT_REF(capped_pool.CreateOrLoadChild("@normal"));
   return VERIFY_RESULT_REF(normal.CreateOrLoadChild(Format("db_$0", db_oid)));
@@ -181,6 +194,43 @@ Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction) {
   auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
   RETURN_NOT_OK(cgroup.UpdateCpuLimits(per_db_cpu_fraction, FLAGS_qos_evaluation_window_us));
   return cgroup;
+}
+
+std::string FormatNanoseconds(int64_t ns) {
+  return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
+}
+
+void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& out) {
+  auto thread_ids = cgroup.ReadThreadIds();
+  if (!thread_ids.ok()) {
+    EscapeForHtml(AsString(thread_ids.status()), &out);
+  } else {
+    auto printer = helper.CreateTablePrinter(
+        // Table name doesn't really matter, but needs to be a valid HTML ID.
+        /*table_name=*/Format("cgroup-$0", static_cast<void*>(&cgroup)),
+        {"Thread ID", "Name", "User CPU (s)", "System CPU (s)", "IO Wait (s)"},
+        {HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left, HtmlTableCellAlignment::Right,
+         HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right});
+
+    for (int64_t thread_id : *thread_ids) {
+      auto& row = printer.AddRow();
+      row.AddColumn(AsString(thread_id));
+      row.AddColumn(AsString(Thread::ThreadName(thread_id)));
+
+      ThreadStats stats;
+      auto status = GetThreadStats(thread_id, &stats);
+      if (!status.ok()) {
+        for (size_t i = 0; i < 3; ++i) {
+          row.AddColumn(AsString(status));
+        }
+      } else {
+        row.AddColumn(FormatNanoseconds(stats.user_ns));
+        row.AddColumn(FormatNanoseconds(stats.kernel_ns));
+        row.AddColumn(FormatNanoseconds(stats.iowait_ns));
+      }
+    }
+    printer.Print();
+  }
 }
 
 } // namespace
@@ -211,10 +261,10 @@ Status TServerCgroupManager::Init() {
   // $ROOT_CGROUP
   //   - @system-high  (latency-sensitive: reactors, consensus, WAL, network)
   //   - @capped-pool  (cap = 100% - reserved%; contains tenant and background work)
-  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance)
+  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance,
+  //                     and all uncategorized threads)
   //     - @normal      (uncapped within @capped-pool; groups tenant work so that
   //                     @system-med's weight share stays constant as DBs come and go)
-  //       - @default   (uncategorized threads; uncapped within @normal)
   //       - db_$DBOID  (per-database query processing threads; individually capped)
   //
   // Protection model (configured via gflags, both mechanisms compose):
@@ -229,11 +279,13 @@ Status TServerCgroupManager::Init() {
   system_med_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@system-med"));
   normal_pool_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@normal"));
 
-  // Move the infrastructure-created @default under @normal.
-  // SetupCgroupManagement() creates @default under $ROOT as a landing zone; we create the
-  // "real" @default under @normal and move threads there.
-  default_cgroup_ = &VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild("@default"));
-  RETURN_NOT_OK(default_cgroup_->MoveCurrentThreadToGroup());
+  // Uncategorized threads default to @system-med rather than a separate @default cgroup.
+  // This keeps the hierarchy simpler and ensures all non-tenant, non-latency-sensitive
+  // threads share the same CPU budget and are visible in @system-med metrics.
+  // Also update the global default so that thread pools without an explicit cgroup
+  // assignment (e.g. CQL reactors, misc infrastructure) land in @system-med.
+  SetDefaultThreadCgroup(system_med_cgroup_);
+  RETURN_NOT_OK(system_med_cgroup_->MoveCurrentThreadToGroup());
 
   return ApplyCpuLimits();
 }
@@ -285,7 +337,7 @@ Status TServerCgroupManager::ApplyCpuLimits() {
             << ", @capped-pool=" << (capped_pool_fraction * 100.0) << "%"
             << " weight=" << FLAGS_qos_capped_pool_cpu_weight
             << " (system-med max=" << FLAGS_qos_system_med_cpu_max_percent
-            << "% of pool, @normal uncapped within pool, includes @default)"
+            << "% of pool, @normal uncapped within pool)"
             << ", per-db cap=" << (per_db_fraction * 100.0)
             << "% (qos_max_db_cpu_percent=" << FLAGS_qos_max_db_cpu_percent
             << "% of @capped-pool)";
@@ -356,11 +408,11 @@ Status TServerCgroupManager::RegisterMetrics(MetricRegistry* registry) {
     system_cgroup_metrics_.push_back(
         CreateCgroupMetrics(normal_pool_cgroup_, "@normal", registry));
   }
-  if (default_cgroup_) {
+  auto* landing_zone = RootCgroup()->child("@default");
+  if (landing_zone) {
     system_cgroup_metrics_.push_back(
-        CreateCgroupMetrics(default_cgroup_, "@default", registry));
+        CreateCgroupMetrics(landing_zone, "@default", registry));
   }
-
   return Thread::Create(
       "cgroup", "metrics-collector",
       &TServerCgroupManager::MetricsCollectorThread, this, &metrics_thread_);
@@ -443,6 +495,181 @@ Status TServerCgroupManager::MovePgBackendToCgroup(PgOid db_oid) {
   // with TServer, so we can load and properly set up the cgroup on the TServer very soon after.
   auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
   return cgroup.MoveCurrentThreadToGroup();
+}
+
+void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_interval_ms) const {
+  auto* root_cgroup = RootCgroup();
+  if (!root_cgroup) {
+    out << "Cgroup management is not enabled.";
+    return;
+  }
+
+  out << Format(R"#(<p><b>Root cgroup</b>: <code>$0</code></p>)#",
+                EscapeForHtmlToString(root_cgroup->full_name()));
+
+  out << Format(R"#(
+      <p><b>Configuration</b>:</p>
+      <ul>
+        <li><b>enable_qos</b>: $0</li>
+        <li><b>qos_max_db_cpu_percent</b>: $1%</li>
+        <li><b>qos_evaluation_window</b>: $2us</li>
+        <li><b>qos_system_high_cpu_reserved_percent</b>: $3%</li>
+        <li><b>qos_system_high_cpu_max_percent</b>: $4%</li>
+        <li><b>qos_system_med_cpu_max_percent</b>: $5%</li>
+        <li><b>qos_capped_pool_cpu_weight</b>: $6</li>
+        <li><b>qos_compaction_per_db_cgroups</b>: $7</li>
+        <li><b>qos_consensus_per_db_cgroups</b>: $8</li>
+        <li><b>qos_metrics_interval_sec</b>: $9s</li>
+      </ul>)#",
+      FLAGS_enable_qos ? "true" : "false", FLAGS_qos_max_db_cpu_percent,
+      FLAGS_qos_evaluation_window_us, FLAGS_qos_system_high_cpu_reserved_percent,
+      FLAGS_qos_system_high_cpu_max_percent, FLAGS_qos_system_med_cpu_max_percent,
+      FLAGS_qos_capped_pool_cpu_weight, FLAGS_qos_compaction_per_db_cgroups ? "true" : "false",
+      FLAGS_qos_consensus_per_db_cgroups ? "true" : "false", FLAGS_qos_metrics_interval_sec);
+
+  out << R"#(
+      <table class="table table-striped collapsable-table">
+        <thead>
+          <tr>
+            <th>Cgroup</th>
+            <th>Status</th>
+            <th>Weight</th>
+            <th>CPU Quota</th>
+            <th>User CPU (s)</th>
+            <th>System CPU (s)</th>
+            <th>Total CPU (s)</th>
+            <th>Throttled Time (s)</th>
+            <th>Throttled Periods</th>
+          </tr>
+        </thead>
+        <tbody>
+      )#";
+
+  auto num_cpus = NumEffectiveCPUs();
+
+  struct InitialStats {
+    Result<int64_t> throttle_time = 0;
+    int child_weight = 0;
+  };
+  std::unordered_map<Cgroup*, InitialStats> initial_stats;
+
+  root_cgroup->VisitTree([&initial_stats](Cgroup& cgroup, size_t) {
+    InitialStats stats;
+    auto result = cgroup.ReadCpuStats();
+    if (!result.ok()) {
+      stats.throttle_time = std::move(result).status();
+    } else {
+      stats.throttle_time = result->throttled_time_ns;
+    }
+    cgroup.VisitChildren([&stats](Cgroup& child) {
+      stats.child_weight += child.cpu_weight();
+    });
+    initial_stats.try_emplace(&cgroup, std::move(stats));
+  });
+
+  std::this_thread::sleep_for(sample_interval_ms * 1ms);
+
+  HtmlPrintHelper helper(out);
+  root_cgroup->VisitTree([&out, &helper, &initial_stats, num_cpus](Cgroup& cgroup, size_t depth) {
+    auto current_stats = cgroup.ReadCpuStats();
+
+    std::string throttle_status;
+    {
+      auto iter = initial_stats.find(&cgroup);
+      if (iter == initial_stats.end()) {
+        // Newly created cgroup.
+        return;
+      }
+      auto& initial_throttle_time = iter->second.throttle_time;
+      if (!initial_throttle_time.ok()) {
+        throttle_status = EscapeForHtmlToString(AsString(initial_throttle_time.status()));
+      } else if (!current_stats.ok()) {
+        throttle_status = EscapeForHtmlToString(AsString(current_stats.status()));
+      } else if (*initial_throttle_time < current_stats->throttled_time_ns) {
+        throttle_status = "THROTTLED";
+      } else {
+        throttle_status = "OK";
+      }
+    }
+
+    int cpu_weight = cgroup.cpu_weight();
+    int total_weight = cpu_weight;
+    if (depth > 0) {
+      auto iter = initial_stats.find(cgroup.parent());
+      DCHECK(iter != initial_stats.end());
+      total_weight = iter->second.child_weight;
+    }
+
+    std::string_view name = cgroup.name();
+    if (auto index = name.rfind('/'); index != name.npos) {
+      // Take the last part of the name only.
+      name = name.substr(index + 1);
+    }
+    double cpu_fraction = cgroup.cpu_max_fraction();
+    int cpu_period_us = cgroup.cpu_period_us();
+    int cpu_quota_us = cpu_period_us * cpu_fraction * num_cpus;
+    auto quota_str = cpu_period_us * num_cpus <= cpu_quota_us
+        ? "uncapped"
+        : Format("$0% ($1us / $2us)", 100.0 * cpu_fraction, cpu_quota_us, cpu_period_us);
+
+    out << Format(R"#(
+          <tr data-depth="$0" class="level$0 $6" style="display: table-row">
+            <td><span class="toggle $6"></span>$1</td>
+            <td>$2</td>
+            <td>$3% ($4)</td>
+            <td>$5</td>
+        )#", depth, depth == 0 ? "Root" : name, throttle_status,
+        StringPrintf("%.3f", (100.0 * cpu_weight) / total_weight), cpu_weight, quota_str,
+        cgroup.is_leaf() ? "expand" : "collapse");
+
+    if (current_stats.ok()) {
+      double throttled_percentage = 0.0;
+      if (current_stats->nr_periods > 0) {
+        throttled_percentage = 100.0 * current_stats->nr_throttled / current_stats->nr_periods;
+      }
+      out << Format(R"#(
+            <td>$0</td>
+            <td>$1</td>
+            <td>$2</td>
+            <td>$3</td>
+            <td>$4% ($5 / $6)</td>
+          )#",
+          FormatNanoseconds(current_stats->usage_user_ns),
+          FormatNanoseconds(current_stats->usage_sys_ns),
+          FormatNanoseconds(current_stats->usage_ns),
+          FormatNanoseconds(current_stats->throttled_time_ns),
+          StringPrintf("%.3f", throttled_percentage),
+          current_stats->nr_throttled,
+          current_stats->nr_periods);
+    } else {
+      out << R"#(
+            <td colspan="5">$0</td>
+          )#", EscapeForHtmlToString(AsString(current_stats.status()));
+    }
+
+    out << R"#(
+          </tr>
+        )#";
+
+    if (cgroup.is_leaf()) {
+      out << Format(R"#(
+          <tr data-depth="$0" class="level$0" style="display: none">
+            <td></td>
+            <td colspan="8">
+          )#", depth + 1);
+
+      CgroupThreadsToHtml(cgroup, helper, out);
+
+      out << R"#(
+          </tr>
+          )#";
+    }
+  });
+
+  out << R"#(
+      </tbody>
+    </table>
+  )#";
 }
 
 } // namespace yb::tserver

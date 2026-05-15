@@ -97,8 +97,9 @@ docdb::DocVectorIndexesPtr TabletComponent::VectorIndexesList() const {
   return tablet_.vector_indexes().List();
 }
 
-Status TabletComponent::Flush(FlushMode mode, FlushFlags flags) {
-  return tablet_.Flush(mode, flags);
+Status TabletComponent::Flush(
+    FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason) {
+  return tablet_.Flush(mode, flags, rocksdb::FlushOptions::kNeverIgnore, rocksdb_flush_reason);
 }
 
 } // namespace yb::tablet

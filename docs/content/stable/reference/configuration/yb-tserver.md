@@ -680,9 +680,9 @@ Enables derivation of additional equalities for columns that are generated or co
 Default: `false`
 {{% /tags/wrap %}}
 
-Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_merge_scan_streams` is 0.
 
-##### yb_max_saop_merge_streams
+##### yb_max_merge_scan_streams
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="2275">}}
@@ -690,6 +690,16 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
+{{<tags/feature/ea idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
 ## Networking
 
@@ -1360,6 +1370,37 @@ Default: `4 * 3600` (4 hours)
 
 The time interval, in seconds, to retain history/older versions of the system catalog.
 
+### LISTEN/NOTIFY flags
+
+{{<tags/feature/ea idea="1901">}}Available in v2025.2.3 and later. To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
+
+##### --ysql_yb_enable_listen_notify
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables YSQL LISTEN/NOTIFY.
+
+##### --ysql_yb_notifications_poll_sleep_duration_nonempty_ms
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Wait time in milliseconds before the notifications poller polls again when the previous poll returned data.
+
+##### --ysql_yb_notifications_poll_sleep_duration_empty_ms
+
+{{% tags/wrap %}}
+
+Default: `100`
+{{% /tags/wrap %}}
+
+Wait time in milliseconds before the notifications poller polls again when the previous poll returned no data.
+
 ### File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
@@ -2029,51 +2070,14 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 ##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
-
-Default: `true`
+{{<tags/feature/deprecated>}}
 {{% /tags/wrap %}}
 
-Enable the per database catalog version mode. A DDL statement that
-affects the current database can only increment catalog version for
-that database.
+{{< warning title="Deprecated" >}}
+Per-database catalog version mode is now mandatory. This flag is deprecated and has no effect; if set explicitly, a deprecation warning is logged at startup and the value is ignored.
+{{< /warning >}}
 
-{{< note title="Important" >}}
-
-In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
-they execute the next statement. However, when per database catalog version mode is
-enabled, multiple DDL statements can be concurrently executed if each DDL only
-affects its current database and is executed in a separate database. Existing
-connections only need to refresh their catalog caches if they are connected to
-the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
-
-{{< /note >}}
-
-If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
-
-1. Shut down the cluster.
-
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(false);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-To re-enable the per database catalog version mode using the following steps:
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(true);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-1. Shut down the cluster.
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+In per-database catalog version mode, a DDL statement that affects the current database can only increment the catalog version for that database. As a result, multiple DDL statements can be concurrently executed if each DDL only affects its current database and is executed in a separate database. Existing connections only need to refresh their catalog caches if they are connected to the same database as that of a DDL statement.
 
 ##### --enable_heartbeat_pg_catalog_versions_cache
 
@@ -2086,8 +2090,6 @@ Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
 from the table. This is beneficial when there are many databases and/or
 many yb-tservers in the cluster.
-
-Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
 
 {{< note title="Important" >}}
 

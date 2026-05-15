@@ -19,12 +19,8 @@ export const getCreateEITPayload = (
   securitySettings: SecuritySettingsProps,
   cloudType: CloudType
 ): EncryptionInTransitSpec => {
-  const {
-    enableNodeToNodeEncryption,
-    enableClientToNodeEncryption,
-    rootCertificate,
-    certType
-  } = securitySettings;
+  const { enableNodeToNodeEncryption, enableClientToNodeEncryption, rootCertificate, certType } =
+    securitySettings;
   if (cloudType === CloudType.kubernetes) {
     return {
       enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
@@ -53,24 +49,28 @@ export const getCreateEITPayload = (
     return {
       enable_node_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
+          ? true
+          : false
         : enableNodeToNodeEncryption,
       enable_client_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
+          ? true
+          : false
         : enableClientToNodeEncryption,
       root_ca: useSameCertificate
         ? certType === CertType.CUSTOM
           ? rootCertificate
           : ''
         : certTypeNtoN === CertType.CUSTOM
-        ? rootNToNCertificate
-        : '',
+          ? rootNToNCertificate
+          : '',
       client_root_ca: useSameCertificate
         ? certType === CertType.CUSTOM
           ? rootCertificate
           : ''
         : certTypeCToN === CertType.CUSTOM
-        ? rootCToNCertificate
-        : ''
+          ? rootCToNCertificate
+          : ''
     };
   }
 };
@@ -92,7 +92,7 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
   };
 };
 
-const mapGFlags = (
+export const mapGFlags = (
   gflags: {
     Name: string;
     MASTER?: string | boolean | number;
@@ -215,14 +215,19 @@ export const mapCreateUniversePayload = (
             })
           },
           ...(providerType !== CloudType.kubernetes && {
-            instance_tags: otherAdvancedSettings?.instanceTags.reduce((acc, tag) => {
-              acc[tag.name] = tag.value;
-              return acc;
-            }, {} as Record<string, string>)
+            instance_tags: otherAdvancedSettings?.instanceTags.reduce(
+              (acc, tag) => {
+                acc[tag.name] = tag.value;
+                return acc;
+              },
+              {} as Record<string, string>
+            )
           }),
           networking_spec: {
             enable_lb: true,
-            enable_exposing_service: otherAdvancedSettings?.enableExposingService ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
+            enable_exposing_service: otherAdvancedSettings?.enableExposingService
+              ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
+              : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
             ...(proxySettings.enableProxyServer
               ? {
                   proxy_config: {

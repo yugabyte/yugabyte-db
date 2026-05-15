@@ -10,12 +10,16 @@ SELECT * FROM test_method where h1 = 1 AND a IN (1, 2, 3, 4);
 SELECT * FROM test_method where h1 = 1 AND a IN (1, 2, 3, 4) AND b IN (1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
-SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
+SELECT yb_hash_code(h1), * FROM test_method where h1 IN (1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 8192;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1 AND yb_hash_code(h1) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 4624;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) <= 4624;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) > 64672;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) >= 64672;
 
 set yb_enable_hash_batch_in = true;
 SELECT * FROM test_method where h1 = 1;
@@ -25,12 +29,16 @@ SELECT * FROM test_method where h1 = 2 AND a = 1 AND b = 1;
 SELECT * FROM test_method where h1 = 1 AND a IN (1, 2, 3, 4);
 SELECT * FROM test_method where h1 = 1 AND a IN (1, 2, 3, 4) AND b IN (1, 2, 3, 4);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
-SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
+SELECT yb_hash_code(h1), * FROM test_method where h1 IN (1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 8192;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1 AND yb_hash_code(h1) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 4624;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) <= 4624;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) > 64672;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) >= 64672;
 DROP TABLE test_method;
 
 -- Testing IN queries on range keys

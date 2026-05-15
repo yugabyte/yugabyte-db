@@ -127,6 +127,17 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         .thenReturn(true);
   }
 
+  /** Minimal child row so canary resume can find a max-success position to prune past. */
+  private static void persistSuccessfulCanaryChildSubtask(UUID parentTaskUuid) {
+    TaskInfo subTask = new TaskInfo(TaskType.WaitForDuration, UUID.randomUUID());
+    subTask.setParentUuid(parentTaskUuid);
+    subTask.setPosition(0);
+    subTask.setTaskState(TaskInfo.State.Success);
+    subTask.setTaskParams(Json.newObject());
+    subTask.setOwner("test");
+    subTask.save();
+  }
+
   private static Object[] tlsToggleCustomTypeNameParams() {
     return new Object[][] {
       {false, false, true, false, "TLS Toggle ON"},
@@ -1464,9 +1475,11 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
+
+    persistSuccessfulCanaryChildSubtask(taskUUID);
 
     when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
         .thenAnswer(invocation -> invocation.getArgument(2));
@@ -1613,7 +1626,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = otherTaskUUID;
+              details.placementModificationTaskUuid = otherTaskUUID;
               universe.setUniverseDetails(details);
             });
 
@@ -1688,9 +1701,11 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
+
+    persistSuccessfulCanaryChildSubtask(taskUUID);
 
     CustomerTask customerTask =
         CustomerTask.create(

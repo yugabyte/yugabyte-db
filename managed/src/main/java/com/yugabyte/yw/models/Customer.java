@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -131,6 +132,17 @@ public class Customer extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
     }
     return customer;
+  }
+
+  public static Customer getOrNotFound(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("uuid", customerUUID)
+        .findOneOrEmpty()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    NOT_FOUND, String.format("Could not find customer %s", customerUUID)));
   }
 
   public static Customer get(UUID customerUUID) {

@@ -22,6 +22,7 @@ import { generateUniqueName } from '../../../../../helpers/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
+  initialCreateUniverseFormState,
   StepsRef
 } from '../../CreateUniverseContext';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
@@ -48,7 +49,12 @@ const CONTROL_WIDTH = '480px';
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings },
-    { moveToNextPage, saveGeneralSettings, saveResilienceAndRegionsSettings }
+    {
+      moveToNextPage,
+      saveGeneralSettings,
+      saveResilienceAndRegionsSettings,
+      saveInstanceSettings
+    }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
@@ -87,6 +93,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
         resilienceAndRegionsSettings?.[FAULT_TOLERANCE_TYPE] ?? FaultToleranceType.AZ_LEVEL,
       [NODE_COUNT]: resilienceAndRegionsSettings?.[NODE_COUNT] ?? 1
     });
+    saveInstanceSettings(initialCreateUniverseFormState.instanceSettings!);
   }, [cloud]);
 
   return (

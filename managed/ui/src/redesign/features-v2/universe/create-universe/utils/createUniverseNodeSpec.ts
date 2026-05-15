@@ -9,7 +9,7 @@ import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-
  * Builds API storage_spec from form device info. Omits storage_type when unset (e.g. Kubernetes).
  * Matches legacy fillNodeSpec: num_volumes fixed to 1, volume_size = numVolumes * volumeSize from deviceInfo.
  */
-const buildStorageSpecFromDeviceInfo = (
+export const buildStorageSpecFromDeviceInfo = (
   deviceInfo: DeviceInfo,
   enableEbsVolumeEncryption?: boolean,
   ebsKmsConfigUUID?: string | null

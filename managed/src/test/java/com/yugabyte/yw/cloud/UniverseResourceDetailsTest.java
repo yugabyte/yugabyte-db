@@ -25,6 +25,7 @@ import static org.mockito.Mockito.mock;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -36,6 +37,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.UUID;
@@ -64,9 +68,21 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   private int throughput = 1000;
   private NodeDetails sampleNodeDetails;
   private Context context;
+  private static final int NUM_NODES = 3;
+
+  private PlacementInfo setupPlacement() {
+    return setupPlacement(setUpNodeDetailsSet());
+  }
+
+  private PlacementInfo setupPlacement(Collection<NodeDetails> nodes) {
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        nodes.iterator().next().azUuid, placementInfo, 1, nodes.size());
+    return placementInfo;
+  }
 
   private Set<NodeDetails> setUpNodeDetailsSet() {
-    return setUpNodeDetailsSet(3);
+    return setUpNodeDetailsSet(NUM_NODES);
   }
 
   private Set<NodeDetails> setUpNodeDetailsSet(int numNodes) {
@@ -113,7 +129,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null, null);
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(numNodes, modifier);
     context = new Context(null, customer, params);
@@ -178,7 +194,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null, null);
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
 
@@ -212,7 +228,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null, null);
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
     context = new Context(null, customer, params);
@@ -241,10 +257,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null, null);
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
-    params.nodeDetailsSet = setUpNodeDetailsSet();
     context = new Context(null, customer, params);
+    params.nodeDetailsSet = setUpNodeDetailsSet();
 
     return params;
   }
@@ -517,6 +533,9 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testRRWithDiffProvider() {
     InstanceType.upsert(provider.getUuid(), testInstanceType, 10, 5.5, null);
     Provider provider2 = ModelFactory.gcpProvider(customer);
+    Region region2 = Region.create(provider2, "region-2", "Region 2", "yb-image-2");
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(region2, "az-2", "PlacementAZ 2", "subnet-2");
     String testInstanceType2 = "c4.large";
     InstanceType.upsert(provider2.getUuid(), testInstanceType2, 5, 5.0, null);
 
@@ -535,18 +554,19 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null, null);
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(2, null);
-    params.upsertCluster(rrIntent, null, null, UUID.randomUUID());
     NodeDetails nodeDetails = new NodeDetails();
     nodeDetails.cloudInfo = new CloudSpecificInfo();
     nodeDetails.cloudInfo.cloud = provider2.getCode();
     nodeDetails.cloudInfo.instance_type = testInstanceType2;
-    nodeDetails.cloudInfo.region = region.getCode();
-    nodeDetails.cloudInfo.az = az.getCode();
-    nodeDetails.azUuid = az.getUuid();
+    nodeDetails.cloudInfo.region = region2.getCode();
+    nodeDetails.cloudInfo.az = az2.getCode();
+    nodeDetails.azUuid = az2.getUuid();
     nodeDetails.state = NodeDetails.NodeState.Live;
+    params.upsertCluster(
+        rrIntent, null, setupPlacement(Collections.singleton(nodeDetails)), UUID.randomUUID());
     nodeDetails.placementUuid = params.getReadOnlyClusters().get(0).uuid;
     params.nodeDetailsSet.add(nodeDetails);
 

@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useToggle } from 'react-use';
 import { mui } from '@yugabyte-ui-library/core';
-import { ClusterType } from '@app/redesign/helpers/dtos';
 import {
   useEditUniverseContext,
   countRegionsAzsAndNodes,
@@ -17,9 +16,11 @@ const { Box, Typography } = mui;
 export const NonDedicatedView = () => {
   const { universeData } = useEditUniverseContext();
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
-  const [isEditHardwareModalVisible, setEditHardwareModalVisible] = useToggle(false);
+  const [isClusterEditOpen, setClusterEditOpen] = useToggle(false);
+  const [isReadReplicaEditOpen, setReadReplicaEditOpen] = useToggle(false);
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
 
   return (
@@ -40,24 +41,39 @@ export const NonDedicatedView = () => {
         </Box>
       </StyledPane>
       <InstanceCard
-        title={t('tServerInstance')}
+        title={t('clusterInstance')}
         arch={universeData?.info?.arch}
         nodeSpec={primaryCluster?.node_spec}
         storageSpec={primaryCluster?.node_spec?.storage_spec}
         onEditClicked={() => {
-          setEditHardwareModalVisible(true);
+          setClusterEditOpen(true);
         }}
       />
+      {readReplicaCluster && (
+        <InstanceCard
+          title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
+          nodeSpec={readReplicaCluster.node_spec}
+          storageSpec={readReplicaCluster.node_spec?.storage_spec}
+          onEditClicked={() => {
+            setReadReplicaEditOpen(true);
+          }}
+        />
+      )}
       <EditHardwareConfirmModal
-        visible={isEditHardwareModalVisible}
-        title={t('tServerInstance')}
-        onSubmit={() => {
-          setEditHardwareModalVisible(false);
-        }}
-        onHide={() => {
-          setEditHardwareModalVisible(false);
-        }}
+        visible={isClusterEditOpen}
+        mode="cluster"
+        onSubmit={() => setClusterEditOpen(false)}
+        onHide={() => setClusterEditOpen(false)}
       />
+      {readReplicaCluster && (
+        <EditHardwareConfirmModal
+          visible={isReadReplicaEditOpen}
+          mode="readReplica"
+          clusterType={ClusterSpecClusterType.ASYNC}
+          onSubmit={() => setReadReplicaEditOpen(false)}
+          onHide={() => setReadReplicaEditOpen(false)}
+        />
+      )}
     </Box>
   );
 };

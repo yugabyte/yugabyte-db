@@ -1469,7 +1469,10 @@ Status VectorIndexesUpdater::Complete() {
   }
   for (size_t i = 0; i != batches_.size(); ++i) {
     if (!batches_[i].empty()) {
-      RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], frontiers_));
+      InsertOptions options = {
+        .frontiers = &frontiers_,
+      };
+      RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], options));
     }
   }
   return Status::OK();

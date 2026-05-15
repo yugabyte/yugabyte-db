@@ -523,7 +523,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private CustomerConfig createImmutableStorageConfig(String configName) {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, configName);
     ObjectNode data = (ObjectNode) customerConfig.getData();
-    data.put("IMMUTABLE STORAGE", true);
+    data.put("IMMUTABLE_STORAGE", true);
     customerConfig.setData(data);
     customerConfig.update();
     return customerConfig;

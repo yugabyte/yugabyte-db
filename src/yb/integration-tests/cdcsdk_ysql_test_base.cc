@@ -3866,6 +3866,7 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
   const uint32_t num_tablets = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = false;
 
   auto table = ASSERT_RESULT(CreateTable(
       &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
@@ -3875,6 +3876,10 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_, {kValue2ColumnName}));
@@ -3897,10 +3902,6 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
 
   CHECK_OK(ASSERT_RESULT(test_cluster()->mini_master(0)->tablet_peer()->shared_tablet())
                 ->ForceManualRocksDBCompact());
-
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(resp.has_error());
 
   GetChangesResponsePB change_resp;
   auto result = GetChangesFromCDC(stream_id, tablets);

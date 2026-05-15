@@ -185,6 +185,13 @@ class PgSupervisor : public ProcessSupervisor {
   Status UpdateAndReloadConfig();
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
 
+  // Writes all PG config files (GUC, HBA, ident) into tmp_dir using the given CSV overrides
+  // and returns the paths to the generated files. The real postgresql.conf is copied from
+  // data_dir so that WritePostgresConfig can read it as a base.
+  Result<PgConfigPaths> WritePgConfigFiles(
+      const std::string& tmp_dir, const std::string& ysql_pg_conf_csv,
+      const std::string& hba_conf_csv, const std::string& ident_conf_csv);
+
   // Get the shared memory key to be used by ysql connection manager to publish stats
   key_t GetYsqlConnManagerStatsShmkey();
 

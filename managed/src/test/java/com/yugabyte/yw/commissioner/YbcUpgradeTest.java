@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -13,6 +14,8 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
@@ -35,6 +38,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -508,5 +512,143 @@ public class YbcUpgradeTest extends FakeDBApplication {
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     assertFalse(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
+  }
+
+  /**
+   * Adds a master-only node (isMaster=true, isTserver=false) to {@link #defaultUniverse} to
+   * simulate a Kubernetes master pod, where YBC is not co-located with the master.
+   *
+   * @return the master-only node's private IP.
+   */
+  private String addMasterOnlyNodeToDefaultUniverse() {
+    String masterIp = "10.0.0.99";
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          NodeDetails masterOnly = new NodeDetails();
+          masterOnly.nodeName = "yb-master-0";
+          masterOnly.nodeUuid = UUID.randomUUID();
+          masterOnly.cloudInfo = new CloudSpecificInfo();
+          masterOnly.cloudInfo.private_ip = masterIp;
+          masterOnly.isTserver = false;
+          masterOnly.isMaster = true;
+          params.nodeDetailsSet.add(masterOnly);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    return masterIp;
+  }
+
+  /**
+   * Regression test for the K8s background YBC upgrade bug: previously {@code
+   * pollUpgradeTaskResult} iterated every node in the universe. On Kubernetes, master pods are
+   * deployed separately and do not run YBC, so polling them always failed and {@code success} was
+   * stuck at {@code false}, preventing {@code updateUniverseYBCVersion} from running.
+   */
+  @Test
+  public void testPollUpgradeTaskResultSkipsMasterOnlyNodesOnK8s() {
+    String masterIp = addMasterOnlyNodeToDefaultUniverse();
+    mockedUtil.when(() -> Util.isKubernetesBasedUniverse(any(Universe.class))).thenReturn(true);
+
+    // Tserver pods successfully report the new YBC version. Use any() as the default since
+    // ModelFactory's default universe leaves one tserver's private_ip null.
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    // The master pod has no YBC running; if the loop ever attempted this IP it would NPE on
+    // UpgradeResult and set success=false.
+    when(mockYbcClientService.getNewClient(eq(masterIp), anyInt(), any())).thenReturn(null);
+
+    assertTrue(
+        ybcUpgrade.pollUpgradeTaskResult(defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION));
+    // Master should have been skipped entirely (no client requested).
+    verify(mockYbcClientService, never()).getNewClient(eq(masterIp), anyInt(), any());
+  }
+
+  /**
+   * Dedicated-master VM nodes do not run YBC and must also be skipped (otherwise polling the
+   * non-existent YBC on the master VM would always fail and prevent the universe details from being
+   * updated, mirroring the K8s bug).
+   */
+  @Test
+  public void testPollUpgradeTaskResultSkipsDedicatedMasterNodesOnVm() {
+    String masterIp = addMasterOnlyNodeToDefaultUniverse();
+    // mockedUtil.isKubernetesBasedUniverse defaults to false; do not stub.
+
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    // If the master IP is ever asked for, return null so we'd NPE and fail loudly.
+    when(mockYbcClientService.getNewClient(eq(masterIp), anyInt(), any())).thenReturn(null);
+
+    assertTrue(
+        ybcUpgrade.pollUpgradeTaskResult(defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION));
+    verify(mockYbcClientService, never()).getNewClient(eq(masterIp), anyInt(), any());
+  }
+
+  /**
+   * End-to-end test that the universe details are actually updated when the K8s background upgrade
+   * flow runs against a universe with master-only pods.
+   */
+  @Test
+  public void testWaitForYbcServersUpdatesUniverseOnK8sWithMasterOnlyPods() {
+    String masterIp = addMasterOnlyNodeToDefaultUniverse();
+    mockedUtil.when(() -> Util.isKubernetesBasedUniverse(any(Universe.class))).thenReturn(true);
+    doNothing().when(mockYbcManager).waitForYbc(any(), anySet());
+
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    when(mockYbcClientService.getNewClient(eq(masterIp), anyInt(), any())).thenReturn(null);
+
+    assertTrue(
+        ybcUpgrade.waitForYbcServers(
+            defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, true /* isK8s */));
+    assertEquals(
+        NEW_YBC_VERSION,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getYbcSoftwareVersion());
+  }
+
+  /**
+   * End-to-end test for the VM scheduler path: a dedicated-master node should be skipped both
+   * during the per-node upgrade (no nodeCommand or YBC RPC against the master IP) and during
+   * polling, and the universe's YBC version should still be updated.
+   */
+  @Test
+  public void testScheduleRunnerSkipsDedicatedMasterNodesOnVmUpgrade() {
+    String masterIp = addMasterOnlyNodeToDefaultUniverse();
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    // If the master IP is ever asked for, return null so we'd NPE and fail loudly.
+    when(mockYbcClientService.getNewClient(eq(masterIp), anyInt(), any())).thenReturn(null);
+
+    ybcUpgrade.scheduleRunner();
+
+    assertEquals(
+        NEW_YBC_VERSION,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getYbcSoftwareVersion());
+    verify(mockYbcClientService, never()).getNewClient(eq(masterIp), anyInt(), any());
   }
 }

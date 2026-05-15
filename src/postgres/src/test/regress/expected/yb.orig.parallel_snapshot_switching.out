@@ -14,7 +14,7 @@ CREATE TABLE pss_test (k INT PRIMARY KEY, v TEXT) SPLIT INTO 5 TABLETS;
 CREATE TABLE pss_dummy (k INT PRIMARY KEY, v INT);
 INSERT INTO pss_test SELECT i, 'value_' || i FROM generate_series(1, 10000) i;
 ALTER TABLE pss_test SET (parallel_workers = 4);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 ANALYZE pss_test;
 -- This function triggers a snapshot switch on each invocation in RC isolation,
 -- because the SELECT inside the function acquires a new snapshot.

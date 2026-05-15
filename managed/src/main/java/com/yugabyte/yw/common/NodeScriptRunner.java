@@ -7,7 +7,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -179,6 +178,19 @@ public class NodeScriptRunner {
   private NodeResult executeOnNode(Universe universe, NodeDetails node, ScriptParams scriptParams) {
     long nodeStartTime = System.currentTimeMillis();
 
+    if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+      long executionTime = System.currentTimeMillis() - nodeStartTime;
+      return NodeResult.builder()
+          .nodeName(node.nodeName)
+          .nodeAddress(node.cloudInfo.private_ip)
+          .exitCode(-1)
+          .stdout("")
+          .errorMessage("Node is unreachable")
+          .executionTimeMs(executionTime)
+          .success(false)
+          .build();
+    }
+
     try {
       ShellProcessContext.ShellProcessContextBuilder contextBuilder =
           ShellProcessContext.builder()
@@ -200,13 +212,14 @@ public class NodeScriptRunner {
             nodeUniverseManager.runScript(
                 node, universe, scriptParams.getScriptFile(), params, context);
       } else {
-        // Run inline script content - we construct the bash command ourselves
-        // to avoid the double-quoting issue in getBashCommand when script contains spaces
-        StringBuilder scriptCmd = new StringBuilder(scriptParams.getScriptContent());
+        List<String> cmd = new ArrayList<>();
+        cmd.add("bash");
+        cmd.add("-c");
+        cmd.add(scriptParams.getScriptContent());
         if (!params.isEmpty()) {
-          scriptCmd.append(" ").append(String.join(" ", params));
+          cmd.add("--"); // $0 placeholder required by bash -c for positional args to work
+          cmd.addAll(params); // become $1, $2, ...
         }
-        List<String> cmd = Arrays.asList("bash", "-c", scriptCmd.toString());
         response = nodeUniverseManager.runCommand(node, universe, cmd, context, false);
       }
 
@@ -269,12 +282,17 @@ public class NodeScriptRunner {
               .collect(Collectors.toList());
     }
 
-    // Filter by role
+    // Filter by role. mastersOnly and tserversOnly are mutually exclusive; the API handler
+    // rejects both-true at the boundary, so this throw is a defensive guard for internal
+    // callers that build a NodeFilter directly.
     boolean mastersOnly = Boolean.TRUE.equals(nodeFilter.getMastersOnly());
     boolean tserversOnly = Boolean.TRUE.equals(nodeFilter.getTserversOnly());
-    if (mastersOnly && !tserversOnly) {
+    if (mastersOnly && tserversOnly) {
+      throw new IllegalArgumentException("masters_only and tservers_only cannot both be true");
+    }
+    if (mastersOnly) {
       nodes = nodes.stream().filter(n -> n.isMaster).collect(Collectors.toList());
-    } else if (tserversOnly && !mastersOnly) {
+    } else if (tserversOnly) {
       nodes = nodes.stream().filter(n -> n.isTserver).collect(Collectors.toList());
     }
 

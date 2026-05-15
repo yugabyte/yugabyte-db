@@ -1246,19 +1246,18 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
-	 * query (e.g. Close, Describe, Flush, Sync). YbRedactPasswordIfExists
-	 * would dereference it, so skip redaction in that case.
+	 * query (e.g. Close, Describe, Flush, Sync). YBCDistTraceStartRootSpan
+	 * requires a non-NULL query pointer (DCHECK / string_view), so we use an
+	 * empty string in that case.
 	 */
-	const char *redacted_query_string = (is_query_string_redacted || query_string == NULL)
-		? query_string : YbRedactPasswordIfExists(query_string, CMDTAG_UNKNOWN);
+	const char *redacted_query_string =
+		query_string == NULL ? ""
+							 : is_query_string_redacted ? query_string
+														: YbRedactPasswordIfExists(query_string,
+																				   CMDTAG_UNKNOWN);
 
-	/*
-	 * redacted_query_string may be NULL for protocol messages that don't carry
-	 * a query (e.g. Close, Describe, Flush, Sync).
-	 */
-	YbTraceparentResult tp_result = redacted_query_string
-		? YbExtractTraceParentFromComment(redacted_query_string, traceparent)
-		: YB_TRACEPARENT_NO_COMMENT;
+	YbTraceparentResult tp_result =
+		YbExtractTraceParentFromComment(redacted_query_string, traceparent);
 
 	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
 	if (yb_guc_remote_span_ctx)
@@ -6820,35 +6819,31 @@ PostgresMain(const char *dbname, const char *username)
 		if (ConfigReloadPending)
 		{
 			ConfigReloadPending = false;
-			/*
-			 * YB: Reloading postgres config file on a control connection can
-			 * have some repercussion, therefore adopting most safest option;
-			 * destroy the control connection which leads to failure of client
-			 * authentication and let client keep trying agin untill a new
-			 * control connection is formed for authentication with updated
-			 * config file.
-			 * Control connection is identified if a connection receives a
-			 * Auth Passthrough Request ('A') packet.
-			 */
-			if (firstchar == 'A')	/* Auth Passthrough Request */
-			{
-				/*
-				 * Make sure auth pass through packet is sent by connection
-				 * manager only
-				 */
-				if (!YbIsClientYsqlConnMgr())
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d", firstchar)));
 
-				ereport(FATAL,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("reloading config on control connection is not supported")));
-			}
-			else
+			/*
+			 * YB: Check whether this is a Conn Mgr "Control Backend", in case a
+			 * config reload happens before the first Auth request packet is
+			 * handled by this backend. See the 'A' packet handler below for
+			 * more details.
+			 * Control backends need to update their SIGHUP LCVs in tandem with
+			 * the postmaster process (for this, they need to be identified as
+			 * control backends before calling `ProcessConfigFile`).
+			 * We don't care about the actual GUC setting changed or its value
+			 * as these will be correctly set on transactional backends with
+			 * matching Logical Client Version
+			 * (Final LCV = catalog_table_LCV + SIGHUP_LCV).
+			 */
+			if (firstchar == 'A' && YbIsClientYsqlConnMgr())
+				yb_conn_mgr_is_auth_passthrough_backend = true;
+
+			ProcessConfigFile(PGC_SIGHUP);
+
+			if (yb_conn_mgr_is_auth_passthrough_backend &&
+				yb_conn_mgr_sighup_had_backend_guc_change)
 			{
-				ProcessConfigFile(PGC_SIGHUP);
-			}					/* YB */
+				yb_conn_mgr_sighup_logical_client_version++;
+				yb_conn_mgr_sighup_had_backend_guc_change = false;
+			}
 		}
 
 		/*
@@ -7413,6 +7408,18 @@ PostgresMain(const char *dbname, const char *username)
 				 * query protocol. (#28409)
 				 */
 				pq_getmsgend(&input_message);
+				/*
+				 * YB: On Sync, tell conn mgr (YB_BE_SYNC_ACK 'Y') so it can
+				 * reconcile outstanding parse / prep-stmt bookkeeping at this
+				 * boundary (before finish_xact_command output). Conn mgr only.
+				 */
+				if (YbIsClientYsqlConnMgr() &&
+					whereToSendOutput == DestRemote)
+				{
+					pq_putemptymessage('Y');
+					pq_flush();
+				}
+
 				MemoryContext yb_oldcontext = CurrentMemoryContext;
 
 				/* YB: substitute with YB errcode on failure */
@@ -7502,9 +7509,19 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				if (YbIsClientYsqlConnMgr())
 				{
+					/*
+					 * YB: Only "Control Backends" are supposed to receive 'A'
+					 * authentication request packets (in the Auth Passthrough mode
+					 * of Conn Mgr). Conversely, 'A' packets are supposed to be
+					 * handled by control backends only. So, the receipt of this
+					 * packet with Conn Mgr enabled can be taken as confirmation
+					 * that this is a control backend. This information is required
+					 * to correctly process SIGHUPs involving PGC_BACKEND GUC
+					 * updates.
+					 */
+					yb_conn_mgr_is_auth_passthrough_backend = true;
 					MyProcPort->yb_is_auth_passthrough_req = true;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
-
+					MyProcPort->yb_has_auth_passthrough_finished = false;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -7603,7 +7620,7 @@ PostgresMain(const char *dbname, const char *username)
 						 * instead, to avoid closing the control backend. Thus,
 						 * the subsequent steps need to be manually skipped.
 						 */
-						if (!MyProcPort->yb_has_auth_passthrough_failed)
+						if (!MyProcPort->yb_has_auth_passthrough_finished)
 						{
 							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
 
@@ -7611,6 +7628,7 @@ PostgresMain(const char *dbname, const char *username)
 								YbAuthPassthroughSetupGUCAndReport();
 						}
 
+						MyProcPort->yb_has_auth_passthrough_finished = true;
 						yb_abort_xact_command();
 					}
 
@@ -7622,7 +7640,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
+					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
@@ -8002,6 +8020,9 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 	while (isspace((unsigned char) *pos))
 		pos++;
 
+	if (strlen(pos) < YB_TRACEPARENT_KEY_PREFIX_LEN)
+		return YB_TRACEPARENT_NO_COMMENT;
+
 	if (pos[0] == '/' && pos[1] == '*')
 	{
 		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
@@ -8024,8 +8045,7 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 	 * Require at least 4 chars (the two-char open and two-char close delimiters)
 	 * and verify the query ends with the star-slash close delimiter.
 	 */
-	if (end - query < 2 * YB_TRACEPARENT_COMMENT_DELIMITERS_LEN ||
-		end[-2] != '*' || end[-1] != '/')
+	if (end - query < YB_TRACEPARENT_KEY_PREFIX_LEN || end[-2] != '*' || end[-1] != '/')
 		return YB_TRACEPARENT_NO_COMMENT;
 
 	/* Scan backwards to find the slash-star that opens the trailing comment. */

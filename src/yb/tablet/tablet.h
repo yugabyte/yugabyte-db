@@ -103,15 +103,23 @@ YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
-inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
-inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
-inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator~(FlushFlags a) {
+  return static_cast<FlushFlags>(~std::to_underlying(a));
+}
+
+constexpr inline FlushFlags operator-(FlushFlags a, FlushFlags b) {
+  return a & ~b;
+}
+
+constexpr inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
   return (lhs & rhs) != FlushFlags::kNone;
 }
 
@@ -456,9 +464,13 @@ class Tablet : public AbstractTablet,
       const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
-  Status Flush(FlushMode mode,
-               FlushFlags flags = FlushFlags::kAllDbs,
-               int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
+  Status Flush(
+      FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
+      rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason);
 
   Status WaitForFlush();
 

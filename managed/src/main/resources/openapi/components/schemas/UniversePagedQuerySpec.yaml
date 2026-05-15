@@ -1,12 +1,7 @@
 title: UniversePagedQuerySpec
 description: |
   Paged list of universes for a customer.
-
-  Results include only universes the caller may read (same RBAC filtering as V1
-  `GET /api/customers/{id}/universes`). Pagination is applied after that filter.
-
-  Universes are ordered by name (case-insensitive), then universe UUID, for stable pages.
-  The `direction` field reverses that ordering when set to `DESC`.
+  Universes are ordered by name (case-insensitive), then universe UUID. The order is ascending by default.
 type: object
 allOf:
   - $ref: "./PaginationSpec.yaml"

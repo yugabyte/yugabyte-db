@@ -9,8 +9,7 @@ export GO111MODULE=on
 readonly protoc_version=33.0
 readonly package_name='node-agent'
 readonly default_platforms=("linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
-                    "pywheels")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -142,38 +141,6 @@ prepare() {
     generate_golang_grpc_files
 }
 
-build_ynp_python() {
-    pushd "$project_dir"
-    WHEEL_DIR="./pywheels"
-    mkdir -p "$WHEEL_DIR"
-    # Read requirements.txt and download packages
-    while IFS= read -r pkg || [ -n "$pkg" ]; do
-        echo "Downloading $pkg..."
-        # Special handling for setuptools - download as wheel
-        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
-            echo "Downloading setuptools as wheel (no build dependencies)..."
-            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
-        else
-            echo "Downloading $pkg as source distribution..."
-            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
-        fi
-    done < ynp_requirements.txt
-
-    while IFS= read -r pkg || [ -n "$pkg" ]; do
-        echo "Downloading $pkg..."
-
-        # Special handling for setuptools - download as wheel
-        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
-            echo "Downloading setuptools as wheel (no build dependencies)..."
-            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
-        else
-            echo "Downloading $pkg as source distribution..."
-            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
-        fi
-    done < ynp_requirements_3.6.txt
-    popd
-}
-
 build_ynp_go() {
     local exec_name=$(get_ynp_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
@@ -191,7 +158,6 @@ build_ynp_go() {
 build_for_platform() {
     local os=$1
     local arch=$2
-    build_ynp_python
     build_ynp_go
     local exec_name=$(get_node_agent_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
@@ -313,7 +279,6 @@ package_for_platform() {
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
     cp -rf templates/* "$templates_dir/"
-    cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
     cp -rf ynp "${script_dir}"/ynp
@@ -321,8 +286,6 @@ package_for_platform() {
     cp -rf earlyoom-installer.sh "${script_dir}"/earlyoom-installer.sh
     cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
-    cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
-    cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
     cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
     cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/rootsystemd/templates/
     chmod 755 "${script_dir}"/*.sh

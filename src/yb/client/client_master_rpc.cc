@@ -145,7 +145,9 @@ void ClientMasterRpcBase::Finished(const Status& status) {
   }
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    if (rpc::RpcError(new_status) != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+    const auto rpc_error = rpc::RpcError(new_status);
+    if (rpc_error != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD &&
+        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN) {
       LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
                    << client_data_->leader_master_hostport().ToString()
                    << "): " << new_status.ToString() << ", retrying...";

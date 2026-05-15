@@ -1053,6 +1053,7 @@ Status PopulateCDCSDKIntentRecord(
     if (FLAGS_enable_single_record_update) {
       new_cdc_record_needed =
           (prev_key != primary_key) ||
+          (IsPackedRow(value_type) && row_message->op() == RowMessage_Op_DELETE) ||
           (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
           prev_intent_phy_time != intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     } else {
@@ -1102,15 +1103,12 @@ Status PopulateCDCSDKIntentRecord(
                          : VERIFY_RESULT(GetTableInfoForColocatedTable(decoded_key, tablet));
         // If the table_info is null, then it means that the decoded_key belongs to a dropped
         // object on the colocated tablet.
-        if (!table_info) {
-          continue;
-        }
-        table_id = table_info->table_id;
-        if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+        if (!table_info || !IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
           *write_id = intent.write_id;
           *reverse_index_key = intent.reverse_index_key;
           continue;
         }
+        table_id = table_info->table_id;
 
         schema_packing_storage = &schema_packing_storages->at(table_id);
         std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(

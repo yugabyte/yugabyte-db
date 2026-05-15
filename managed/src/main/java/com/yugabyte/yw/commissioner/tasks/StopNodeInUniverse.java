@@ -90,7 +90,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           null,
           false);
     }
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)
+    if (isFirstTry()
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)
         && instanceExists(taskParams())) {
       createCheckNodeCommandExecutionTasks(Collections.singletonList(currentNode))
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
@@ -164,6 +165,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
               EnumSet.of(ServerType.TSERVER),
               false /* remove master from quorum */,
               true /* deconfigure */,
+              false /* flushTablets */,
               SubTaskGroupType.StoppingNodeProcesses);
           // Remove leader blacklist.
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);

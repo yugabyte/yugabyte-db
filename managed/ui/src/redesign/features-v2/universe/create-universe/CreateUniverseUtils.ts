@@ -17,6 +17,14 @@ export {
   getAZCount
 } from './utils/placementAndAvailability';
 export { inferResilience, getInferredOutageCount } from './utils/inferResilience';
-export { getCreateEITPayload, mapCreateUniversePayload } from './utils/createUniversePayload';
-export { effectiveUseDedicatedNodes, getNodeSpec } from './utils/createUniverseNodeSpec';
+export {
+  getCreateEITPayload,
+  mapCreateUniversePayload,
+  mapGFlags
+} from './utils/createUniversePayload';
+export {
+  buildStorageSpecFromDeviceInfo,
+  effectiveUseDedicatedNodes,
+  getNodeSpec
+} from './utils/createUniverseNodeSpec';
 export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';

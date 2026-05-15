@@ -34,6 +34,10 @@ public final class BuildTypeUtil {
     return TestUtils.getBuildType().equals("asan");
   }
 
+  public static boolean isFastDebug() {
+    return TestUtils.getBuildType().equals("fastdebug");
+  }
+
   public static boolean isRelease() {
     return TestUtils.getBuildType().equals("release");
   }

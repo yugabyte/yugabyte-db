@@ -60,6 +60,8 @@ const StyledLink = styled(Link)(({ theme }) => ({
 }));
 
 interface VolumeInfoFieldProps {
+  /** When true, do not replace form deviceInfo with defaults from instance metadata (edit-universe hardware). */
+  isEditMode?: boolean;
   isMaster?: boolean;
   maxVolumeCount: number;
   disabled: boolean;
@@ -80,6 +82,7 @@ const menuProps = {
 } as any;
 
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
+  isEditMode = false,
   isMaster,
   maxVolumeCount,
   disabled,
@@ -127,15 +130,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
-  // Update volume info after instance changes
+  // Update volume info after instance changes (create flow only; edit flow keeps API/universe values)
   useEffect(() => {
-    if (!instance || !provider?.uuid) return;
+    if (isEditMode || !instance || !provider?.uuid) return;
     const updateDeviceInfo = () => {
       const deviceInfo = getDeviceInfoFromInstance(instance, providerRuntimeConfigs);
       deviceInfo && setValue(UPDATE_FIELD, deviceInfo);
     };
     !fieldValue && updateDeviceInfo();
-  }, [instance, provider?.uuid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate only when instance/provider loads; omit fieldValue to avoid clobbering after user edits
+  }, [instance, provider?.uuid, isEditMode]);
 
   const convertToString = (str: string | number) => str?.toString() ?? '';
 

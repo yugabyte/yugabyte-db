@@ -4475,11 +4475,12 @@ $$ AS query \gset
 \set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
- Aggregate (actual rows=1 loops=1)
+ Finalize Aggregate (actual rows=1 loops=1)
    ->  Index Only Scan using simple_i_i1_idx on simple (actual rows=1 loops=1)
          Index Cond: (i < 5)
          Heap Fetches: 0
-(4 rows)
+         Partial Aggregate: true
+(5 rows)
 
  count 
 -------
@@ -4517,12 +4518,11 @@ explain (analyze, dist, costs off, timing off, summary off)
 -------------------------------------------------------------------------
  Index Only Scan using simple_i_i1_idx on simple (actual rows=4 loops=1)
    Index Cond: (i < 5)
-   Rows Removed by Index Recheck: 996
    Heap Fetches: 0
    Storage Index Read Requests: 1
    Storage Index Read Ops: 3
-   Storage Index Rows Scanned: 1000
-(7 rows)
+   Storage Index Rows Scanned: 4
+(6 rows)
 
 reset yb_fetch_row_limit;
 reset yb_fetch_size_limit;

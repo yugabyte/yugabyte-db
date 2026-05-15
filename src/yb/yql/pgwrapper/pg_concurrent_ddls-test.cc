@@ -37,8 +37,9 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.emplace_back(
         "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_pg_conf_csv=$0", "yb_enable_concurrent_ddl=true"));
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     opts->extra_master_flags.emplace_back(
         "--master_ysql_operation_lease_ttl_ms=10000");
   }
@@ -126,20 +127,29 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
 class PgConcurrentCreateIndexWithSlowOtherDDLTest : public PgConcurrentDDLsTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=5000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
+    // Scale RPC/operation budgets by kTimeMultiplier so that under sanitizers, where a freshly
+    // forked PG backend can take several seconds to reach ReadyForQuery, the master->tserver
+    // probes do not time out and trigger an avalanche of retried local PG connections (and
+    // therefore an avalanche of newly forked backends).
+    options->extra_master_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
+        5000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
 
     PgConcurrentDDLsTest::UpdateMiniClusterOptions(options);
   }
@@ -185,36 +195,41 @@ TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, SlowBackfillTest) {
 // This is the SlowBackfillTest for partitioned table, where we can allow concurrent
 // execution of CREATE INDEX on child partitions to speed up indexing process.
 TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, PartitionedSlowBackfillTest) {
+  // TSAN amplifies catalog-cache and cluster startup overhead. 50 rows still keep
+  // the 1 row/sec backfill active across the 10s stagger with three tablets.
+  constexpr int kRowsPerPartition = NonTsanVsTsan(100, 50);
   auto setup_script =
-    R"#(
+    Format(R"#(
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
-CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to (100);
-CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to (201);
+CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to ($0);
+CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM ($1) to ($2);
 CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
--- Insert 200 rows of data
--- 100 rows into child_part_1 (c1 from 0 to 99)
--- 100 rows into child_part_2 (c1 from 101 to 200)
+-- Insert rows of data into both partitions.
 INSERT INTO parent_partition (c1, c2)
 SELECT
     CASE
-        WHEN i <= 100 THEN i - 1      -- 0 to 99
-        ELSE i                        -- 101 to 200
+        WHEN i <= $0 THEN i - 1
+        ELSE i
     END,
-    (random() * 1000)::int            -- random data for c2
-FROM generate_series(1, 200) AS i;
-        )#";
-  // Verify each partition has 100 rows.
+    (random() * 1000)::int
+FROM generate_series(1, $3) AS i;
+        )#",
+           kRowsPerPartition,
+           kRowsPerPartition + 1,
+           2 * kRowsPerPartition + 1,
+           2 * kRowsPerPartition);
+  // Verify each partition has the expected number of rows.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(setup_script));
   auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_1"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_2"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM parent_partition"));
-  ASSERT_EQ(count, 200);
+  ASSERT_EQ(count, 2 * kRowsPerPartition);
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this] {
       auto conn = ASSERT_RESULT(Connect());

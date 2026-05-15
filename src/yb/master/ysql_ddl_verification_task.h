@@ -69,7 +69,8 @@ namespace master {
 class PollTransactionStatusBase {
  public:
   PollTransactionStatusBase(
-      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future);
+      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
+      const std::string& description);
 
   virtual ~PollTransactionStatusBase();
 
@@ -78,8 +79,10 @@ class PollTransactionStatusBase {
   virtual void TransactionPending() = 0;
   virtual void FinishPollTransaction() = 0;
   void Shutdown();
+  std::string LogPrefix() const;
 
   TransactionMetadata transaction_;
+  std::string description_;
 
  private:
   void TransactionReceived(Status txn_status,
@@ -114,7 +117,7 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   std::string type_name() const override { return "Namespace verification"; }
 
   std::string description() const override {
-    return Format("TableSchemaVerificationTask for $0", namespace_info_.ToString());
+    return Format("NamespaceSchemaVerificationTask for $0", namespace_info_.ToString());
   };
 
   ~NamespaceVerificationTask() = default;

@@ -257,8 +257,15 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   auto l = table->LockForRead();
   if (!l->has_ysql_ddl_txn_verifier_state()) {
-    // The table no longer has transaction verifier state on it, it was probably cleaned up
-    // concurrently.
+    if (!l->pb.has_transaction()) {
+      // Both verifier state and transaction were cleared, consistent with an explicit
+      // cleanup by a known master path like ClearYsqlTxnState
+      LOG(INFO) << "Skipping DDL schema comparison for " << table->ToString()
+                << " because ysql_ddl_txn_verifier_state and transaction were both cleared"
+                << " (likely by a concurrent task)";
+      *result = std::nullopt;
+      return Status::OK();
+    }
     return STATUS_FORMAT(Aborted, "Not performing transaction verification for table $0 as it no "
                          "longer has any transaction verification state", table->ToString());
   }
@@ -552,9 +559,16 @@ Status ReadPgAttributeWithReadTime(
 } // namespace
 
 PollTransactionStatusBase::PollTransactionStatusBase(
-    const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future)
-    : transaction_(transaction), client_future_(std::move(client_future)) {
+    const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
+    const std::string& description)
+    : transaction_(transaction),
+      description_(description),
+      client_future_(std::move(client_future)) {
   sync_.StatusCB(Status::OK());
+}
+
+std::string PollTransactionStatusBase::LogPrefix() const {
+  return Format("DDL verification $0: ", description_);
 }
 
 PollTransactionStatusBase::~PollTransactionStatusBase() {
@@ -578,7 +592,7 @@ Status PollTransactionStatusBase::VerifyTransaction() {
     return Status::OK();
   }
 
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "Verifying Transaction " << transaction_;
+  YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Verifying Transaction " << transaction_;
 
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(transaction_.status_tablet);
@@ -631,20 +645,19 @@ void PollTransactionStatusBase::TransactionReceived(
   }
 
   if (!txn_status.ok()) {
-    LOG(WARNING) << "Transaction Status attempt (" << transaction_
-                 << ") failed with status " << txn_status;
+    LOG_WITH_PREFIX(WARNING) << "Transaction Status attempt (" << transaction_
+                             << ") failed with status " << txn_status;
     TransactionPending();
     return;
   }
   if (resp.has_error()) {
     const Status s = StatusFromPB(resp.error().status());
-    LOG(WARNING) << "Transaction Status attempt failed with error code "
-                 << tserver::TabletServerErrorPB::Code_Name(resp.error().code())
-                 << s;
+    LOG_WITH_PREFIX(WARNING) << "Transaction Status attempt failed with error code "
+                             << tserver::TabletServerErrorPB::Code_Name(resp.error().code()) << s;
     TransactionPending();
     return;
   }
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction_
+  YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Got Response for " << transaction_
                                << ", resp: " << resp.ShortDebugString();
   bool is_pending = (resp.status_size() == 0);
   for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
@@ -659,6 +672,8 @@ void PollTransactionStatusBase::TransactionReceived(
   // If this transaction isn't pending, then the transaction is in a terminal state.
   // Note: We ignore the resp.status() now, because it could be ABORT'd but actually a SUCCESS.
   // Determine whether the transaction was a success by comparing with the PG schema.
+  LOG_WITH_PREFIX(INFO) << "Txn reached terminal state, " << transaction_
+                        << ", resp: " << resp.ShortDebugString();
   FinishPollTransaction();
 }
 
@@ -669,7 +684,7 @@ NamespaceVerificationTask::NamespaceVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch)
     : MultiStepNamespaceTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, *ns, epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future)),
+      PollTransactionStatusBase(transaction, std::move(client_future), ns->ToString()),
       sys_catalog_(*sys_catalog) {
   completion_callback_ = [this,
                           complete_callback = std::move(complete_callback)](const Status& status) {
@@ -762,7 +777,7 @@ TableSchemaVerificationTask::TableSchemaVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch, bool ddl_atomicity_enabled)
     : MultiStepTableTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future)),
+      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
       sys_catalog_(*sys_catalog),
       ddl_atomicity_enabled_(ddl_atomicity_enabled) {
   completion_callback_ = [this,

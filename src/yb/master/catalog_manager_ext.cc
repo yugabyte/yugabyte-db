@@ -36,6 +36,8 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -150,6 +152,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
 namespace yb {
 
@@ -459,6 +462,8 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
+  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
+  // expose this.
   std::optional<TableId> colocation_parent_table_id;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
@@ -602,8 +607,14 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   return Status::OK();
 }
 
-Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
-                                     ListSnapshotsResponsePB* resp) {
+Status CatalogManager::ListSnapshots(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp) {
+  return ListSnapshotsInternal(req, resp);
+}
+
+Status CatalogManager::ListSnapshotsInternal(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
+    bool skip_missing_tables) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (req->prepare_for_backup() && !txn_snapshot_id) {
     return STATUS(
@@ -615,14 +626,15 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   bool include_ddl_in_progress_tables =
       req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
+    RETURN_NOT_OK(
+        RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables, skip_missing_tables));
   }
 
   return Status::OK();
 }
 
 Status CatalogManager::RepackSnapshotsForBackup(
-    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables, bool skip_missing_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
   // Repack & extend the backup row entries.
@@ -655,6 +667,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
         TRACE("Looking up table");
         scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
         if (table_info == nullptr) {
+          if (skip_missing_tables) {
+            LOG(INFO) << Format(
+                "While repacking a snapshot couldn't find snapshotted table $0 in memory, skipping",
+                entry.id());
+            tables_to_skip.insert(entry.id());
+            continue;
+          }
           return STATUS(
               InvalidArgument, "Table not found by ID", entry.id(),
               MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
@@ -1316,13 +1335,14 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
-Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id) {
+Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForClone(const TxnSnapshotId& snapshot_id) {
   ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   req.set_prepare_for_backup(true);
   RETURN_NOT_OK_PREPEND(
-      ListSnapshots(&req, &resp), Format("Failed to list snapshot: $0", snapshot_id));
+      ListSnapshotsInternal(&req, &resp, /* skip_missing_tables */ true),
+      Format("Failed to list snapshot: $0", snapshot_id));
   if (resp.snapshots().size() < 1) {
     return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
   }
@@ -1364,7 +1384,7 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
   // Get the SnapshotInfoPB, save the set of tablets it contained, and clear backup_entries.
   // backup_entries will be repopulated with the set of tablets that were running at read_time
   // later when reading from DocDB as of read_time.
-  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForBackup(snapshot_id));
+  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForClone(snapshot_id));
   std::unordered_set<TabletId> snapshotted_tablets;
   for (auto& backup_entry : snapshot_info.backup_entries()) {
     if (backup_entry.entry().type() == SysRowEntryType::TABLET) {
@@ -1447,14 +1467,13 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
-  std::optional<std::string> colocation_parent_table_id;
-  bool found_colocated_user_table = false;
+  std::unordered_map<std::string, bool> colocated_parent_tables;
   docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
+      [&source_ns_id, &tables_to_tablets, &colocated_parent_tables](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         // Skip including tables in PREPARING state, even though they are normally considered
@@ -1474,9 +1493,9 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
-              colocation_parent_table_id = id_str;
+              colocated_parent_tables.try_emplace(id_str, false);
             } else {
-              found_colocated_user_table = true;
+              colocated_parent_tables[pb.parent_table_id()] = true;
             }
           }
           // Tables and tablets will be added to backup entries at the end.
@@ -1529,14 +1548,14 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
-  // Start with the colocation_parent_table_id if the database is colocated.
-  if (colocation_parent_table_id) {
-    // Only create the colocated parent table if there are colocated user tables.
-    if (found_colocated_user_table) {
-      tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-          colocation_parent_table_id.value(), backup_entries);
+  // Start with all colocated parent tables that have children.
+  // The import snapshot flow is broken if colocated children preceed their parents.
+  for (const auto& [parent_table_id, has_child] : colocated_parent_tables) {
+    if (has_child) {
+      tables_to_tablets[parent_table_id].AddToBackupEntries(
+          parent_table_id, backup_entries);
     }
-    tables_to_tablets.erase(colocation_parent_table_id.value());
+    tables_to_tablets.erase(parent_table_id);
   }
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
@@ -2086,7 +2105,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(
+        old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
+        TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -3609,7 +3630,35 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
-  return master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+  auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+
+  DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
+
+  // Until we know that CDC is enabled or not via the cdc_enabled_status_known_, we return a cutoff
+  // of HybridTime::kMin.
+  if (!cdc_enabled_status_known_.load(std::memory_order_acquire)) {
+    cutoff.MakeAtMost({HybridTime::kMin, HybridTime::kMin});
+    return cutoff;
+  }
+
+  auto cdc_service = master_->tablet_server()->GetCDCService();
+  // If CDC service is not enabled, then we don't consult CDC for cutoff calculation.
+  if (!cdc_service || !cdc_service->CDCEnabled()) {
+    return cutoff;
+  }
+
+  // CDC service is enabled, so we can consult it for cutoff calculation.
+  // Until CDCMasterBgTask has not run at least once, return cutoff equal to HybridTime::kMin. Once
+  // it has run, we then use the cdc_sdk_safe_time for cutoff calculation.
+  if (!cdc_service->HasCDCMasterBgTaskRunOnce()) {
+    cutoff.MakeAtMost({HybridTime::kMin, HybridTime::kMin});
+  } else {
+    VLOG(1) << "CDC SDK historycutoff: " << metadata->cdc_sdk_safe_time()
+            << " for tablet: " << metadata->raft_group_id();
+    cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
+  }
+
+  return cutoff;
 }
 
 }  // namespace master

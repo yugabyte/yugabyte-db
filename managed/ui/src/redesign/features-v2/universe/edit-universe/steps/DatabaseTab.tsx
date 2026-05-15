@@ -18,6 +18,7 @@ import {
   useEditUniverseContext
 } from '../EditUniverseUtils';
 
+import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditConnectionPoolModal } from '@app/redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditPGCompatibilityModal } from '@app/redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EnableYSQLModal } from '@app/redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
@@ -27,7 +28,10 @@ import {
   api as universeFormApi,
   QUERY_KEY as universeFormQueryKey
 } from '@app/redesign/features/universe/universe-form/utils/api';
-import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import {
+  ClusterType,
+  RunTimeConfigEntry
+} from '@app/redesign/features/universe/universe-form/utils/dto';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { CloudType } from '@app/redesign/helpers/dtos';
@@ -36,6 +40,7 @@ import {
   ClusterGFlagsAllOfGflagGroupsItem,
   ClusterSpecClusterType
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ReadOnlyGflagTable } from '@app/redesign/features/universe/universe-form/form/sections/gflags/ReadOnlyGflagsModal';
 import { GFlagsFieldNew } from '@app/redesign/features/universe/universe-form/form/fields/GflagsField/GflagsFieldNew';
 import { DatabaseSettingsProps } from '../../create-universe/steps/database-settings/dtos';
 import { DatabaseValidationSchema } from '../../create-universe/steps/database-settings/ValidationSchema';
@@ -43,6 +48,12 @@ import { DatabaseValidationSchema } from '../../create-universe/steps/database-s
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
+import AddCircleIcon from '@app/redesign/assets/add-circle-blue.svg';
+import {
+  getClusterByType as getLegacyClusterType,
+  transformSpecificGFlagToFlagsArray,
+  transformGFlagToFlagsArray
+} from '@app/redesign/features/universe/universe-form/utils/helpers';
 
 const { Box, Grid2: Grid, MenuItem, styled } = mui;
 
@@ -67,6 +78,7 @@ export const DatabaseTab = () => {
   const [pgCompatibilityModalOpen, setPgCompatibilityModalOpen] = useState(false);
   const [ysqlModalOpen, setYsqlModalOpen] = useState(false);
   const [ycqlModalOpen, setYcqlModalOpen] = useState(false);
+  const [gflagsModalOpen, setGflagsModalOpen] = useState(false);
 
   const universeUUID = universeData?.info?.universe_uuid;
 
@@ -84,6 +96,12 @@ export const DatabaseTab = () => {
   const isAuthEnforced = !!(
     runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
+    )?.value === 'true'
+  );
+
+  const isGFlagMultilineConfEnabled = !!(
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
     )?.value === 'true'
   );
 
@@ -117,6 +135,14 @@ export const DatabaseTab = () => {
   );
 
   const databaseVersion = universeData?.spec?.yb_software_version;
+
+  const legacyPrimaryCluster = legacyUniverse?.universeDetails
+    ? getLegacyClusterType(legacyUniverse.universeDetails, ClusterType.PRIMARY)
+    : undefined;
+  const userIntent = legacyPrimaryCluster?.userIntent;
+  const legacyGflags = userIntent?.specificGFlags
+    ? transformSpecificGFlagToFlagsArray(userIntent.specificGFlags)
+    : transformGFlagToFlagsArray(userIntent?.masterGFlags, userIntent?.tserverGFlags);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -269,18 +295,54 @@ export const DatabaseTab = () => {
         </StyledContent>
       </StyledPanel>
       <StyledPanel>
-        <StyledHeader>{t('advancedConfigFlags')}</StyledHeader>
+        <StyledHeader
+          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          {t('advancedConfigFlags')}
+          {legacyGflags.length > 0 && (
+            <YBButton
+              dataTestId="edit-gflags-button"
+              variant="ghost"
+              startIcon={<EditIcon />}
+              disabled={isLegacyUniverseLoading || !legacyUniverse}
+              onClick={() => setGflagsModalOpen(true)}
+            >
+              {t('edit', { keyPrefix: 'common' })}
+            </YBButton>
+          )}
+        </StyledHeader>
         <StyledContent>
-          <GFlagsFieldNew
-            control={control}
-            fieldPath={'gFlags'}
-            dbVersion={databaseVersion ?? ''}
-            isReadReplica={false}
-            editMode={false}
-            isGFlagMultilineConfEnabled={false}
-            isPGSupported={true}
-            isReadOnly={false}
-          />
+          {legacyGflags.length <= 0 ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '168px',
+                width: '100%',
+                justifyContent: 'center',
+                alignItems: 'center',
+                bgcolor: '#F2F6FF',
+                border: '1px dashed #CBDBFF',
+                borderRadius: '8px',
+                color: '#4E5F6D',
+                fontSize: '13px'
+              }}
+            >
+              {t('noGflagsAdded')} <br />
+              <YBButton
+                variant="secondary"
+                dataTestId="add-gflags-button"
+                startIcon={<AddCircleIcon />}
+                sx={{ mt: 2 }}
+                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                onClick={() => setGflagsModalOpen(true)}
+              >
+                {t('addFlag')}
+              </YBButton>
+            </Box>
+          ) : (
+            <ReadOnlyGflagTable gFlags={legacyGflags} isPrimary={true} />
+          )}
         </StyledContent>
       </StyledPanel>
       {legacyUniverse && universeUUID && (
@@ -320,6 +382,15 @@ export const DatabaseTab = () => {
             universeData={legacyUniverse}
             enforceAuth={isAuthEnforced}
             isItKubernetesUniverse={isItKubernetesUniverse}
+          />
+          <EditGflagsModal
+            open={gflagsModalOpen}
+            onClose={() => {
+              setGflagsModalOpen(false);
+              invalidateUniverseQueries();
+            }}
+            universeData={legacyUniverse}
+            isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           />
         </>
       )}

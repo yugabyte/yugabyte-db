@@ -22,11 +22,14 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
@@ -42,6 +45,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 
 namespace yb {
 
@@ -762,6 +766,54 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
     CheckRecord(record, expected_records[i], count, num_cols);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+// Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
+// produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
+  // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
+  // !kIsDebug). The fix this test guards is on the IsPackedRow branch in PopulateCDCSDKIntentRecord,
+  // so force packed rows on to exercise that path on every build flavor.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  // Insert a row and consume its CDC records so the next GetChanges only returns upsert records.
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+
+  // Upsert with PK column in SET clause — triggers YBCExecuteUpdateReplace (DELETE + INSERT).
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_table VALUES (1, 10) "
+      "ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key, value_1 = EXCLUDED.value_1"));
+
+  // Expect DELETE(key=1) + INSERT(key=1, value_1=10), no UPDATEs.
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  // Expected records: BEGIN, DELETE(key=1), INSERT(key=1, value_1=10), COMMIT.
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 0}, {1, 10}, {0, 0}};
+
+  GetChangesResponsePB upsert_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
+      &change_resp.cdc_sdk_checkpoint()));
+
+  uint32_t record_size = upsert_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size, 4);  // BEGIN, DELETE, INSERT, COMMIT
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = upsert_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count);
+  }
   CheckCount(expected_count, count);
 }
 
@@ -6194,7 +6246,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 10;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -10765,8 +10817,9 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
   ASSERT_EQ(change_resp3.cdc_sdk_proto_records_size(), 16);
 }
 
-TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
+void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ASSERT_OK(SetUpWithParams(3, 3, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -10774,16 +10827,28 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto num_qualified_table_ids =
+      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+  auto num_state_table_rows = use_logical_replication ? 3 : 1;
+
+  auto stream_id = use_logical_replication
+                       ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+                       : ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
-  ASSERT_EQ(stream_metadata.table_info_size(), 1);
-  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+  ASSERT_EQ(stream_metadata.table_info_size(), num_qualified_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), num_state_table_rows);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
 
+  // We don't check for not-of-interest for sys_catalog tablet. Thus, its cdc_state table entry
+  // won't get deleted. Also, the sys_catalog tables won't get removed from stream metadata's
+  // qualified tables list.
+  auto expected_num_state_table_rows = use_logical_replication ? 2 : 0;
+  auto expected_num_qualified_tables = use_logical_replication ? 2 : 0;
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
-      stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      stream_id, expected_num_state_table_rows,
+      /* qualified_table_ids_count */ expected_num_qualified_tables,
       /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
       /* timeout_msg */ "Timed out waiting for expired table cleanup"));
 
@@ -10792,8 +10857,17 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
   ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is not part of stream ID");
 }
 
-TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTable) {
+TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterestForGRPCStream) {
+  TestCleanupOfTableNotOfInterest(false /* use_logical_replication */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterestForLogicalReplicationStream) {
+  TestCleanupOfTableNotOfInterest(true /* use_logical_replication */);
+}
+
+void CDCSDKYsqlTest::TestCleanupOfExpiredTable(bool use_logical_replication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -10801,19 +10875,27 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTable) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto num_qualified_table_ids =
+      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+  auto num_state_table_rows = use_logical_replication ? 3 : 1;
+
+  auto stream_id = use_logical_replication
+                       ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+                       : ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
-  ASSERT_EQ(stream_metadata.table_info_size(), 1);
-  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+  ASSERT_EQ(stream_metadata.table_info_size(), num_qualified_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), num_state_table_rows);
 
   auto get_changes_result = GetChangesFromCDC(stream_id, tablets);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
+  auto expected_num_state_table_rows = use_logical_replication ? 1 : 0;
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
-      stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
-      /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
+      stream_id, expected_num_state_table_rows,
+      /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ num_qualified_table_ids, /* timeout */ 60 * kTimeMultiplier,
       /* timeout_msg */ "Timed out waiting for expired table cleanup"));
 
   get_changes_result = GetChangesFromCDC(stream_id, tablets);
@@ -10828,6 +10910,171 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTable) {
   get_changes_result = GetChangesFromCDC(stream_id, tablets);
   ASSERT_NOK(get_changes_result);
   ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is not part of stream ID");
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTableForGRPCStream) {
+  TestCleanupOfExpiredTable(false /* use_logical_replication */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTableForLogicalReplicationStream) {
+  TestCleanupOfExpiredTable(true /* use_logical_replication */);
+}
+
+// Verify that non-eligible tables (like indexes) that end up in an logical replication stream's
+// metadata are cleaned up by the master bg thread after a master restart.
+TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Create an index AFTER the stream has been created. With the test flag, it gets added to the
+  // stream.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  auto idx_table =
+      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", kTableName)));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx_tablets;
+  ASSERT_OK(
+      test_client()->GetTablets(idx_table, 0, &idx_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(idx_tablets.size(), 1);
+
+  // Verify stream metadata contains user table, index, and catalog tables.
+  std::unordered_set<TableId> expected_tables = {table.table_id(), idx_table.table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_tables,
+      "Waiting for GetDBStreamInfo after creating an index after stream creation",
+      std::nullopt /* expected_unqualified_table_ids */, true /* include_catalog_tables */);
+
+  // Verify cdc state table contains entries for user table and index tablets.
+  std::unordered_set<TabletId> expected_tablets;
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  for (const auto& tablet : tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  for (const auto& tablet : idx_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
+      "Waiting for cdc state table entries after creating an index after stream creation",
+      true /* include_catalog_tables */);
+
+  // Disable the test flag so indexes are no longer eligible for CDC.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = false;
+
+  // Master restart triggers FindAllNonEligibleTablesInCDCSDKStream during stream reload.
+  auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(leader_master->Restart());
+  LOG(INFO) << "Master Restarted";
+
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
+  // Stream metadata should no longer contain the index, only user table + catalog tables.
+  expected_tables.clear();
+  expected_tables.insert(table.table_id());
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_tables,
+      "Waiting for GetDBStreamInfo after non-eligible table removal from replication slot stream.",
+      std::nullopt /* expected_unqualified_table_ids */, true /* include_catalog_tables */);
+
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Verify only user table's tablets remain in cdc_state.
+  expected_tablets.clear();
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  for (const auto& tablet : tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
+      "Waiting for cdc state table entries after master restart",
+      true /* include_catalog_tables */);
+}
+
+// Verify that the cdc_state table entries created for non-eligible tables (like indexes) (due to
+// the bug GHI #30773) are cleaned up by the master bg thread even after a master restart.
+TEST_F(CDCSDKYsqlTest, TestInEligibleTableEntriesRemovalFromCDCStateTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) = true;
+
+  // Create an index AFTER the stream has been created. With the test flag, cdc_state table entries
+  // for the index will be created.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  auto idx_table =
+      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", kTableName)));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx_tablets;
+  ASSERT_OK(
+      test_client()->GetTablets(idx_table, 0, &idx_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(idx_tablets.size(), 1);
+
+  // Verify stream metadata contains user table and catalog tables only.
+  std::unordered_set<TableId> expected_tables = {table.table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_tables,
+      "Waiting for GetDBStreamInfo after creating an index after stream creation",
+      std::nullopt /* expected_unqualified_table_ids */, true /* include_catalog_tables */);
+
+  // Verify cdc state table contains entries for user table and index tablets.
+  std::unordered_set<TabletId> expected_tablets;
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  for (const auto& tablet : tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  for (const auto& tablet : idx_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
+      "Waiting for cdc state table entries after creating an index after stream creation",
+      true /* include_catalog_tables */);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
+  // Set up a sync point to block ProcessTablesToBeDeletedFromCDCStateTable.
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+  Synchronizer sync;
+  sync_point_instance->SetCallBack(
+      "ProcessTablesToBeDeletedFromCDCStateTable::Start",
+      [sync_point_instance, callback = sync.AsStdStatusCallback()](void* /*arg*/) {
+        LOG(INFO) << "ProcessTablesToBeDeletedFromCDCStateTable sync point hit, restarting master";
+        sync_point_instance->DisableProcessing();
+        callback(Status::OK());
+      });
+  sync_point_instance->EnableProcessing();
+
+  // Wait for the bg task to hit the sync point (triggered by UPAM sending
+  // RemoveTablesFromCDCSDKStream which populates the ineligible tables map).
+  ASSERT_OK(sync.Wait());
+  auto master = test_cluster()->mini_master();
+  ASSERT_OK(master->Restart());
+
+  // After restart, in-memory maps are gone. UPAM will again send RemoveTablesFromCDCSDKStream
+  // RPC which repopulates the ineligible tables map, and the bg thread will clean up the
+  // cdc_state entries for the index.
+  expected_tablets.clear();
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
+      "Waiting for cdc state table entries after master restart",
+      false /* include_catalog_tables */);
 }
 
 TEST_F(CDCSDKYsqlTest, TestCleanupOfUnpolledTableWithTabletSplit) {
@@ -11297,18 +11544,25 @@ TEST_F(CDCSDKYsqlTest, TestRemoveUserTablesFailsForNonEligibleTable) {
   CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
 
   // Remove test_table_1_idx_0 from stream by calling the same RPC used by UpdatePeersAndMetrics to
-  // remove tables. This should fail as removal of non-eligible table is not allowed.
+  // remove tables. This will remove the entry of such non-eligible table from cdc_state table.
+  // Note that it doesn't removes the table from the stream's metadata since such a table is not
+  // expected to be in stream's metadata at the first place. Here, it is present because test
+  // simulated such behaviour via flag FLAGS_TEST_cdcsdk_add_indexes_to_stream.
   ASSERT_OK(test_client()->RemoveTablesFromCDCSDKStream({indexes[0].table_id()}, stream_id));
 
   // Wait for sometime for background thread to process any tables to be removed.
   SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
 
-  // Qualified table list & cdc state entries should remain same as before.
+  // Qualified table list should remain same as before.
   VerifyTablesInStreamMetadata(
       stream_id, expected_tables,
       "Waiting for GetDBStreamInfo after non-user table removal by UpdatePeersAndMetrics from CDC "
       "stream.");
 
+  // cdc_state table entries list shouldn't contain indexes[0] table's tablets entries.
+  for (const auto& tablet : idx_tablets[0]) {
+    expected_tablets.erase(tablet.tablet_id());
+  }
   CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
 }
 
@@ -13401,14 +13655,19 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_2_tablets;
   ASSERT_OK(test_client()->GetTablets(table_2, 0, &table_2_tablets, nullptr));
   ASSERT_EQ(table_2_tablets.size(), 1);
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   auto table_2_tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_2_tablets[0].tablet_id()));
 
-  auto cdc_state_table = MakeCDCStateTable(test_client());
-  auto table_2_entry =
-      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_1}));
-  ASSERT_FALSE(table_2_entry.has_value());
-  ASSERT_FALSE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto table_2_stream_1_entry = VERIFY_RESULT(
+            cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_1}));
+        return !table_2_stream_1_entry.has_value() &&
+               !table_2_tablet_peer->is_under_cdc_sdk_replication();
+      },
+      MonoDelta::FromSeconds(60), "checks failed for table_2 wrt stream_1" /* timeout_msg */));
 
   auto stream_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_2"));
 
@@ -13421,18 +13680,24 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
   auto table_3_tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_3_tablets[0].tablet_id()));
 
-  table_2_entry =
-      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_2}));
-  ASSERT_TRUE(table_2_entry.has_value());
-  ASSERT_TRUE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto table_2_stream_2_entry = VERIFY_RESULT(
+            cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_2}));
+        bool result = table_2_stream_2_entry.has_value() &&
+                      table_2_tablet_peer->is_under_cdc_sdk_replication();
 
-  auto table_3_stream_1_entry =
-      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_1}));
-  auto table_3_stream_2_entry =
-      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_2}));
-  ASSERT_FALSE(table_3_stream_1_entry.has_value());
-  ASSERT_TRUE(table_3_stream_2_entry.has_value());
-  ASSERT_TRUE(table_3_tablet_peer->is_under_cdc_sdk_replication());
+        auto table_3_stream_1_entry = VERIFY_RESULT(
+            cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_1}));
+        auto table_3_stream_2_entry = VERIFY_RESULT(
+            cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_2}));
+        result = result && !table_3_stream_1_entry.has_value() &&
+                 table_3_stream_2_entry.has_value() &&
+                 table_3_tablet_peer->is_under_cdc_sdk_replication();
+        return result;
+      },
+      MonoDelta::FromSeconds(60),
+      "checks failed for table_2 and table_3 wrt stream_2" /* timeout_msg */));
 }
 
 TEST_F(CDCSDKYsqlTest, TestMetricsDontRecreateAfterStreamDeletion) {
@@ -13529,6 +13794,234 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetSchemaUpdatesSch
       ASSERT_EQ(record.row_message().pgschema_name(), "new_schema");
     }
   }
+}
+
+TEST_F(CDCSDKYsqlTest, TestNoMetricsCreationForSysCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+  ASSERT_FALSE(change_resp.has_error());
+
+  auto cdc_service = test_cluster()->mini_master()->master()->tablet_server()->GetCDCService();
+  // Verify metrics don't exist for sys catalog tablet.
+  auto metrics = GetCDCSDKTabletMetrics(
+      *cdc_service, master::kSysCatalogTabletId, stream_id, CreateMetricsEntityIfNotFound::kFalse);
+  ASSERT_TRUE(!metrics.ok() && metrics.status().IsNotFound());
+}
+
+TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto mini_master = test_cluster_.mini_cluster_->mini_master();
+  auto tablet_peer = mini_master->tablet_peer();
+  auto metadata = tablet_peer->tablet_metadata();
+
+  // Given that the auto flag FLAGS_cdc_enable_dynamic_schema_changes is false, the CDCMasterBgTask
+  // will not run. Thus, the sys_catalog tablet's cdc_sdk_safe_time will not be set. And history
+  // cutoff will be computed to HybridTime::kMin by AllowedHistoryCutoffProvider.
+  auto& cm = mini_master->catalog_manager_impl();
+  auto cutoff = cm.AllowedHistoryCutoffProvider(metadata.get());
+  ASSERT_EQ(cutoff.primary_cutoff_ht, HybridTime::kMin);
+  ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Skip running CDCMasterBgTask.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
+  // Simulate an upgrade by promoting the auto flag.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = true;
+
+  // Since CDCMasterBgTask hasn't ran yet, the sys_catalog tablet's cdc_sdk_safe_time will not be
+  // set. And history cutoff will still be computed to HybridTime::kMin by
+  // AllowedHistoryCutoffProvider.
+  auto cutoff_after_upgrade = cm.AllowedHistoryCutoffProvider(metadata.get());
+  ASSERT_EQ(cutoff_after_upgrade.primary_cutoff_ht, HybridTime::kMin);
+  ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Now allow CDCMasterBgTask to run.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());
+        return (cutoff_after_bg_task.primary_cutoff_ht > HybridTime::kMin) &&
+               (cutoff_after_bg_task.primary_cutoff_ht < HybridTime::kInvalid) &&
+               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for CDCMasterBgTask to move ahead history retention barrier on sys "
+      "catalog"));
+
+  // We will now check that even after a stream expiry, the history retention barrier on the sys
+  // catalog tablet will not be lifted. This is because stream expiry ligic will delete the
+  // sys_catalog tablet-stream entry in cdc_state table. But it doesn't act upon such stream's slot
+  // entry. In the next run of CDCMasterBgTask, it will use the slot entry's restart time to set the
+  // history barrier.
+  // Since current stream 'stream_without_sys_catalog_poll' doesn't poll sys_catalog
+  // tablet, there's no sys_catalog tablet-stream entry in cdc_state table. Thus, the logic of
+  // deleting tablet-stream entry on stream expiry will not be triggered by CDCMasterBgTask. So, we
+  // will create a new stream which will poll sys_catalog tablet for changes.
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_NE(metadata->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
+  // Verify that the history barrier gets set to current time by CDCMasterBgTask and intents
+  // retention barrier gets lifted due to stream expiry.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());
+        auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
+        auto diff_us =
+            static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
+            static_cast<int64_t>(cutoff_after_bg_task.primary_cutoff_ht.GetPhysicalValueMicros());
+        return (std::abs(diff_us) < 5000000) &&
+               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time()) &&
+               (metadata->cdc_sdk_min_checkpoint_op_id() == OpId::Max());
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for CDCMasterBgTask to release retention barriers on sys catalog"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto mini_master = test_cluster_.mini_cluster_->mini_master();
+  auto& cm = mini_master->catalog_manager_impl();
+  auto tablet_peer = mini_master->tablet_peer();
+  auto metadata = tablet_peer->tablet_metadata();
+
+  // Wait for CDCMasterBgTask to set the history retention barrier on the sys catalog tablet. Thus,
+  // verify that AllowedHistoryCutoffProvider returns the cdc_sdk_safe_time-based cutoff.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_before_drop_stream = cm.AllowedHistoryCutoffProvider(metadata.get());
+        return (cutoff_before_drop_stream.primary_cutoff_ht > HybridTime::kMin) &&
+               (cutoff_before_drop_stream.primary_cutoff_ht < HybridTime::kInvalid) &&
+               (cutoff_before_drop_stream.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for CDCMasterBgTask to set history retention barrier on sys catalog "
+      "before dropping stream"));
+
+  DeleteCDCStream(stream);
+  // Once cdc stream is deleted, the CDCMasterBgTask won't be able to release the barriers on sys
+  // catalog tablet because it won't see any stream entry in cdc_state table. So, we will set the
+  // cdc_min_replicated_index_considered_stale_secs to 5 seconds to allow the
+  // ResetStaleRetentionBarriersOp to release the barriers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_after_drop_stream = cm.AllowedHistoryCutoffProvider(metadata.get());
+        return (cutoff_after_drop_stream.primary_cutoff_ht == HybridTime::kMax) &&
+               (metadata->cdc_sdk_safe_time() == HybridTime::kInvalid);
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for ResetStaleRetentionBarriersOp to release the history retention "
+      "barrier on sys catalog after stream deletion"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  // Simulate an upgrade by promoting the auto flag after initial master startup and stream
+  // creation.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Promote auto flag to true.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = true;
+
+  auto mini_master = test_cluster_.mini_cluster_->mini_master();
+  auto tablet_peer = mini_master->tablet_peer();
+  auto metadata = tablet_peer->tablet_metadata();
+
+  auto& cm_after_upgrade = mini_master->catalog_manager_impl();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_after_upgrade = cm_after_upgrade.AllowedHistoryCutoffProvider(metadata.get());
+        return (cutoff_after_upgrade.primary_cutoff_ht > HybridTime::kMin) &&
+               (cutoff_after_upgrade.primary_cutoff_ht < HybridTime::kInvalid) &&
+               (cutoff_after_upgrade.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for CDCMasterBgTask to move ahead the history retention barrier on sys "
+      "catalog"));
+
+  auto cutoff_after_upgrade = metadata->cdc_sdk_safe_time();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
+  // Restart the master after upgrade and check that the history cutoff calculated for sys_catalog
+  // is HybridTime::kMin until CDCMasterBgTask runs.
+  ASSERT_OK(mini_master->Restart());
+  LOG(INFO) << "Master Restarted";
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  mini_master = test_cluster_.mini_cluster_->mini_master();
+  tablet_peer = mini_master->tablet_peer();
+  metadata = tablet_peer->tablet_metadata();
+
+  auto& cm_after_restart = mini_master->catalog_manager_impl();
+  auto cutoff_after_restart = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
+  ASSERT_EQ(cutoff_after_restart.primary_cutoff_ht, HybridTime::kMin);
+  ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
+
+  // Allow CDCMasterBgTask to run. The history cutoff should go back to normal value i.e
+  // cutoff_after_upgrade.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cutoff_after_bg_task = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
+        return (cutoff_after_bg_task.primary_cutoff_ht >= cutoff_after_upgrade) &&
+               (cutoff_after_bg_task.primary_cutoff_ht < HybridTime::kInvalid) &&
+               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for CDCMasterBgTask to run on sys catalog"));
 }
 
 }  // namespace cdc

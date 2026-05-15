@@ -117,6 +117,13 @@ class YbHnswIndex :
     return index_.header().dimensions;
   }
 
+  // YbHnsw is a read-only, file-backed format that does not allocate per-vector heap memory in
+  // the same way as the in-memory hnswlib/usearch indexes. We don't size new chunks against it,
+  // so this estimate is unused in practice.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return 0;
+  }
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     return index_.Distance(
         pointer_cast<const std::byte*>(lhs.data()), pointer_cast<const std::byte*>(rhs.data()));

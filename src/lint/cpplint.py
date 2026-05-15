@@ -3356,7 +3356,7 @@ def CheckSpacing(filename, clean_lines, linenum, nesting_state, error):
 
   # You shouldn't have spaces before your brackets, except maybe after
   # 'delete []', 'return []() {};', or 'auto [abc, ...] = ...;'.
-  if Search(r'\w\s+\[', line) and not Search(r'(?:auto&?|delete|return)\s+\[', line):
+  if Search(r'\w\s+\[', line) and not Search(r'(?:auto&?|delete|return|class|struct)\s+\[', line):
     error(filename, linenum, 'whitespace/braces', 5,
           'Extra space before [')
 
@@ -4545,17 +4545,18 @@ def _ClassifyInclude(fileinfo, include, is_system):
     One of the _XXX_HEADER constants.
 
   For example:
-    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'stdio.h', True)
-    _C_SYS_HEADER
-    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'string', True)
-    _CPP_SYS_HEADER
-    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'foo/foo.h', False)
-    _LIKELY_MY_HEADER
+    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'stdio.h', True) == _C_SYS_HEADER
+    True
+    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'string', True) == _CPP_SYS_HEADER
+    True
+    >>> _ClassifyInclude(FileInfo('foo/foo.cc'),
+    ...                  os.path.abspath('foo/foo.h'), False) == _LIKELY_MY_HEADER
+    True
     >>> _ClassifyInclude(FileInfo('foo/foo_unknown_extension.cc'),
-    ...                  'bar/foo_other_ext.h', False)
-    _POSSIBLE_MY_HEADER
-    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'foo/bar.h', False)
-    _OTHER_HEADER
+    ...                  'bar/foo_other_ext.h', False) == _POSSIBLE_MY_HEADER
+    True
+    >>> _ClassifyInclude(FileInfo('foo/foo.cc'), 'foo/bar.h', False) == _OTHER_HEADER
+    True
   """
 
   # We include some third-party headers using angle brackets, so don't treat those as C system

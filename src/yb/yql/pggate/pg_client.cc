@@ -16,6 +16,9 @@
 #include <concepts>
 #include <mutex>
 
+#include "opentelemetry/nostd/shared_ptr.h"
+#include "opentelemetry/trace/span.h"
+
 #include "yb/ash/rpc_wait_state.h"
 
 #include "yb/cdc/cdc_service.proxy.h"
@@ -43,6 +46,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -81,7 +85,6 @@ DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
@@ -252,6 +255,18 @@ class BigDataFetcher {
 template <class T>
 struct ResponseReadyTraits;
 
+std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
+  switch (req_type) {
+    case tserver::PgSharedExchangeReqType::PERFORM:
+      return "shmem req yb.tserver.PgClientService.Perform";
+    case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
+      return "shmem req yb.tserver.PgClientService.AcquireObjectLock";
+    case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
+    case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
+  }
+  FATAL_INVALID_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
+}
+
 template <>
 struct ResponseReadyTraits<bool> {
   static bool AllowNotReady() {
@@ -350,6 +365,7 @@ template <class Data>
 void ExchangeFuture<Data>::wait() const {
   if (!value_) {
     value_ = MakeExchangeResult(*data_, data_->Complete());
+    data_->EndSharedMemorySpan(value_->status);
   }
 }
 
@@ -386,8 +402,33 @@ struct PgClientData : public FetchBigDataCallback {
   std::optional<Result<Slice>> exchange_result GUARDED_BY(exchange_mutex);
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
+  // Only the owning future accesses this span while starting or finishing the shared-memory
+  // request. Exchange callbacks do not touch it, so it does not need exchange_mutex protection.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span;
 
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
+
+  void StartSharedMemorySpan() {
+    if (dist_trace::HasActiveContext()) {
+      otel_span = dist_trace::StartSpan(
+          GetSharedMemSpanName(kSharedExchangeRequestType), dist_trace::GetPendingRpcAttrPairs());
+    }
+  }
+
+  void EndSharedMemorySpan(const Status& status) {
+    if (!otel_span) {
+      return;
+    }
+    if (status.ok()) {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
+    } else if (status.IsTimedOut()) {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call TimedOut");
+    } else {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call ErroredOut");
+    }
+    otel_span->End();
+    otel_span = nullptr;
+  }
 
   void SetupExchange(
       tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_,
@@ -889,19 +930,13 @@ class PgClient::Impl : public BigDataFetcher {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
-    if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-      req.set_ysql_db_catalog_version(ysql_catalog_version);
-    } else {
-      req.set_ysql_catalog_version(ysql_catalog_version);
-    }
+    req.set_ysql_db_catalog_version(ysql_catalog_version);
     req.set_last_val(last_val);
     req.set_is_called(is_called);
 
@@ -915,7 +950,6 @@ class PgClient::Impl : public BigDataFetcher {
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
-                                   bool is_db_catalog_version_mode,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -924,12 +958,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
-    if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-      req.set_ysql_db_catalog_version(ysql_catalog_version);
-    } else {
-      req.set_ysql_catalog_version(ysql_catalog_version);
-    }
+    req.set_ysql_db_catalog_version(ysql_catalog_version);
     req.set_last_val(last_val);
     req.set_is_called(is_called);
     if (expected_last_val && expected_is_called) {
@@ -949,7 +978,6 @@ class PgClient::Impl : public BigDataFetcher {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
-                                                         bool is_db_catalog_version_mode,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -959,12 +987,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
-    if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-      req.set_ysql_db_catalog_version(ysql_catalog_version);
-    } else {
-      req.set_ysql_catalog_version(ysql_catalog_version);
-    }
+    req.set_ysql_db_catalog_version(ysql_catalog_version);
     req.set_fetch_count(fetch_count);
     req.set_inc_by(inc_by);
     req.set_min_value(min_value);
@@ -981,18 +1004,13 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
+      std::optional<uint64_t> read_time) {
     tserver::PgReadSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (ysql_catalog_version) {
-      if (is_db_catalog_version_mode) {
-        DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-        req.set_ysql_db_catalog_version(*ysql_catalog_version);
-      } else {
-        req.set_ysql_catalog_version(*ysql_catalog_version);
-      }
+      req.set_ysql_db_catalog_version(*ysql_catalog_version);
     }
 
     if (read_time) {
@@ -1042,6 +1060,7 @@ class PgClient::Impl : public BigDataFetcher {
       auto& exchange = session_shared_mem_->exchange();
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
+        data->StartSharedMemorySpan();
         const auto [rpc_deadline, rpc_timeout] =
             timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
@@ -1060,7 +1079,9 @@ class PgClient::Impl : public BigDataFetcher {
           status = exchange.SendRequest();
         }
         if (!status.ok()) {
-          data->promise.set_value(MakeExchangeResult(*data, status));
+          auto result = MakeExchangeResult(*data, status);
+          data->EndSharedMemorySpan(result.status);
+          data->promise.set_value(std::move(result));
           return data->promise.get_future();
         }
         data->SetupExchange(&exchange, this, rpc_deadline);
@@ -1885,14 +1906,14 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& database_name,
-      const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params) {
+      std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
+      const std::vector<std::optional<std::string>>& params) {
     tserver::PgRemoteExecRequestPB req;
     tserver::PgRemoteExecResponsePB resp;
 
-    req.set_query(std::string(query));
-    req.set_tserver_uuid(tserver_uuid);
-    req.set_database_name(database_name);
+    req.set_query(query.data(), query.size());
+    req.set_tserver_uuid(tserver_uuid.data(), tserver_uuid.size());
+    req.set_database_name(database_name.data(), database_name.size());
 
     for (const auto& p : params) {
       auto* param = req.add_params();
@@ -2199,45 +2220,42 @@ Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
 Status PgClient::InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
-                                     bool is_db_catalog_version_mode,
                                      int64_t last_val,
                                      bool is_called) {
   return impl_->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
 }
 
 Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
                                            int64_t seq_oid,
                                            uint64_t ysql_catalog_version,
-                                           bool is_db_catalog_version_mode,
                                            int64_t last_val,
                                            bool is_called,
                                            std::optional<int64_t> expected_last_val,
                                            std::optional<bool> expected_is_called) {
   return impl_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
       expected_last_val, expected_is_called);
 }
 
 Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
                                                                  int64_t seq_oid,
                                                                  uint64_t ysql_catalog_version,
-                                                                 bool is_db_catalog_version_mode,
                                                                  uint32_t fetch_count,
                                                                  int64_t inc_by,
                                                                  int64_t min_value,
                                                                  int64_t max_value,
                                                                  bool cycle) {
   return impl_->FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
       min_value, max_value, cycle);
 }
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(
     int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-    bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
+    std::optional<uint64_t> read_time) {
   return impl_->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, read_time);
+      db_oid, seq_oid, ysql_catalog_version, read_time);
 }
 
 Status PgClient::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -2417,8 +2435,8 @@ Status PgClient::GetYbSystemTableInfo(
 }
 
 Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
-    std::string_view query, const std::string& database_name,
-    const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params) {
+    std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
+    const std::vector<std::optional<std::string>>& params) {
   return impl_->RemoteExec(query, database_name, tserver_uuid, params);
 }
 

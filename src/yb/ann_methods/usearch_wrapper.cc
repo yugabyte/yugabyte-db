@@ -26,6 +26,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
+#include "yb/ann_methods/index_memory_consumption.h"
+
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
@@ -121,16 +123,9 @@ class UsearchIndex :
         distance_kind_(options.distance_kind),
         metric_(options.CreateMetric<Vector>()),
         backend_(backend),
-        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))),
-        mem_tracker_(mem_tracker) {
+        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
-  }
-
-  ~UsearchIndex() {
-    auto current_consumption = current_consumption_.load();
-    if (current_consumption) {
-      mem_tracker_->Release(current_consumption);
-    }
+    consumption_.Init(mem_tracker);
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -145,12 +140,21 @@ class UsearchIndex :
 
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
-    auto se = UpdateConsumptionOnExit();
+    // Reserve allocates both the per-vector heap structures (vectors_lookup_, nodes_) and the
+    // per-thread search contexts buffer, so we update both children when it returns.
+    auto se = UpdateAllConsumptionOnExit();
     // Usearch could allocate 3 times more entries, than requested.
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
     auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
+    // TODO(vector_index): index_dense_gt allocates a contexts_ buffer of context_t per slot,
+    // and every context_t holds top_candidates / next_candidates priority queues plus a
+    // visits_hash_set_t sized to the member capacity. With many vector_index chunks per
+    // tablet that scratch storage is duplicated, scaling as O(threads x members) per chunk.
+    // Same opportunity as the hnswlib VisitedListPool TODO -- investigate sharing the search
+    // contexts (or just the visits hash set) across UsearchIndex instances of compatible
+    // capacity.
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
@@ -162,7 +166,9 @@ class UsearchIndex :
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
-    auto se = UpdateConsumptionOnExit();
+    // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
+    // does not change, so only the data tracker is updated.
+    auto se = UpdateDataConsumptionOnExit();
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
         add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
@@ -180,6 +186,10 @@ class UsearchIndex :
 
   size_t Dimensions() const override {
     return dimensions_;
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return index_.estimate_num_vectors_for_bytes(bytes_limit);
   }
 
   Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(
@@ -201,7 +211,9 @@ class UsearchIndex :
   }
 
   Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
-    auto se = UpdateConsumptionOnExit();
+    // Loading replaces the index entirely, which can invalidate both data and search context
+    // sizes; refresh both children.
+    auto se = UpdateAllConsumptionOnExit();
     try {
       auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
       if (result) {
@@ -289,31 +301,22 @@ class UsearchIndex :
   }
 
  private:
-  auto UpdateConsumptionOnExit() {
+  // RAII helper that refreshes the index_data tracker on scope exit (e.g. on the way out of
+  // an insert path). Use this when only the per-vector heap allocations changed.
+  auto UpdateDataConsumptionOnExit() {
     return ScopeExit([this] {
-      UpdateConsumption();
+      consumption_.UpdateData(index_.index_data_bytes());
     });
   }
 
-  void UpdateConsumption() {
-    if (!mem_tracker_) {
-      return;
-    }
-    auto new_consumption = index_.impl().tape_allocator().total_allocated();
-    auto current_consumption = current_consumption_.load();
-    // usearch does not release memory, so lower new_consumption just means that we have 2
-    // concurrent calls to UpdateConsumption, and call with lesser new_consumption happened
-    // earlier.
-    if (new_consumption <= current_consumption) {
-      return;
-    }
-    std::lock_guard lock(consumption_mutex_);
-    current_consumption = current_consumption_.load();
-    if (new_consumption <= current_consumption) {
-      return;
-    }
-    mem_tracker_->Consume(new_consumption - current_consumption);
-    current_consumption_.store(new_consumption);
+  // RAII helper that refreshes both the index_data and search_contexts trackers. Use this on
+  // operations that rebuild or resize the index (e.g. Reserve, LoadFromFile) where the
+  // per-thread search contexts buffer can also change size.
+  auto UpdateAllConsumptionOnExit() {
+    return ScopeExit([this] {
+      consumption_.UpdateData(index_.index_data_bytes());
+      consumption_.UpdateSearch(index_.impl().contexts_static_bytes());
+    });
   }
 
   const hnsw::BlockCachePtr block_cache_;
@@ -323,9 +326,7 @@ class UsearchIndex :
   const HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
-  MemTrackerPtr mem_tracker_;
-  std::atomic<size_t> current_consumption_;
-  simple_spinlock consumption_mutex_;
+  IndexMemoryConsumption consumption_;
 };
 
 }  // namespace

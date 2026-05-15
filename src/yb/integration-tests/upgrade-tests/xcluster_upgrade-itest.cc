@@ -249,6 +249,73 @@ class XClusterUpgradeTestBase : public UpgradeTestBase {
     return Status::OK();
   }
 
+  // Regression test for #31533. Old SchemaVersionsPB records where old_consumer_schema_version was
+  // 0 (proto3 default so not serialized) and post-upgrade the lockstep iteration over
+  // old_producer/consumer arrays read past the empty consumer side. The fix repairs the in-memory
+  // cluster_config during XClusterTargetManager::SysCatalogLoaded; the next CMOP persists it.
+  void SchemaVersionsRepairOnUpgradeTest() {
+    ASSERT_OK(RunOnBothClusters([](ExternalMiniCluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return conn.ExecuteFormat(
+          "CREATE TABLE $0($1 int PRIMARY KEY, $2 int)", kTable, kKeyCol, kCol2);
+    }));
+    ASSERT_OK(
+        XClusterTestUtils::CheckpointReplicationGroup(
+            producer_client(), kReplicationGroupId, kNamespaceName, kRpcTimeout));
+    ASSERT_OK(
+        XClusterTestUtils::CreateReplicationFromCheckpoint(
+            producer_client(), kReplicationGroupId, consumer_cluster().GetMasterAddresses(),
+            kRpcTimeout));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto p_conn = ASSERT_RESULT(producer_cluster().ConnectToDB(kNamespaceName));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, i % $1 FROM generate_series(1, 10) i", kTable, kCol2MaxValue));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Create the index on the producer first. Its index permission state machine bumps the parent
+    // table's schema_version several times, emitting CMOPs that flow to the consumer. The
+    // consumer's local tbl1 stays at schema_version 0 while these CMOPs are processed, so each one
+    // records (producer=N, consumer=0) and the old-pair persisted to cluster_config is (N != 0, 0).
+    ASSERT_OK(p_conn.ExecuteFormat("CREATE INDEX ON $0 ($1)", kTable, kCol2));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto c_conn = ASSERT_RESULT(consumer_cluster().ConnectToDB(kNamespaceName));
+    ASSERT_OK(c_conn.ExecuteFormat("CREATE INDEX ON $0 ($1)", kTable, kCol2));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Upgrade the consumer cluster first. Without the fix the consumer master SIGSEGVs on the next
+    // CMOP after the legacy (N, 0) entries are read back post-upgrade. With the fix,
+    // ClusterConfigLoader::Visit repairs the in-memory cluster_config and upgrade completes.
+    SwitchToConsumerCluster();
+    const auto delay_between_nodes = 5s;
+    ASSERT_OK(UpgradeClusterToCurrentVersion(delay_between_nodes));
+
+    SwitchToProducerCluster();
+    ASSERT_OK(UpgradeClusterToCurrentVersion(delay_between_nodes));
+
+    // Create another index post-upgrade, on both sides, to exercise the
+    // natural CMOP persistence path on the now-repaired cluster_config, and
+    // verify replication is still progressing.
+    auto p_conn2 = ASSERT_RESULT(producer_cluster().ConnectToDB(kNamespaceName));
+    ASSERT_OK(p_conn2.ExecuteFormat("CREATE INDEX ON $0 ($1, $2)", kTable, kKeyCol, kCol2));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto c_conn2 = ASSERT_RESULT(consumer_cluster().ConnectToDB(kNamespaceName));
+    ASSERT_OK(c_conn2.ExecuteFormat("CREATE INDEX ON $0 ($1, $2)", kTable, kKeyCol, kCol2));
+    ASSERT_OK(p_conn2.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, i % $1 FROM generate_series(11, 20) i", kTable, kCol2MaxValue));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Validate base-table row counts match on both clusters.
+    auto count_rows = [](ExternalMiniCluster* cluster) -> Result<int64_t> {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      return conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTable));
+    };
+    auto producer_rows = ASSERT_RESULT(count_rows(&producer_cluster()));
+    auto consumer_rows = ASSERT_RESULT(count_rows(&consumer_cluster()));
+    ASSERT_EQ(producer_rows, 20);
+    ASSERT_EQ(consumer_rows, 20);
+  }
+
   void SimpleReplicationTest(RangePartitioned ranged_partitioned) {
     ASSERT_OK(CreateTablesAndSetupXCluster(ranged_partitioned));
 
@@ -325,6 +392,10 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(XClusterUpgradeTest, UpgradeHashPartitionedTable) {
   ASSERT_NO_FATAL_FAILURE(SimpleReplicationTest(RangePartitioned::kFalse));
+}
+
+TEST_P(XClusterUpgradeTest, UpgradePastSchemaVersionsRepair) {
+  ASSERT_NO_FATAL_FAILURE(SchemaVersionsRepairOnUpgradeTest());
 }
 
 // #27380 added support for range partitioned tables in xCluster replication.

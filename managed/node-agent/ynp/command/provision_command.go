@@ -906,5 +906,28 @@ func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 			"Major version mismatch detected. Current: %d, Stored: %d",
 			currentVersion[0], storedVersion[0])
 	}
+
+	expectedVersionStr, _ :=
+		pc.iniConfig.DefaultSectionValue()["expected_ynp_version"].(string)
+	if expectedVersionStr != "" {
+		expectedVersion, err := parseVersion(expectedVersionStr)
+		if err != nil {
+			util.FileLogger().
+				Errorf(pc.ctx, "Unable to parse expected YNP version '%s': %v",
+					expectedVersionStr, err)
+			return err
+		}
+		if expectedVersion[0] != storedVersion[0] {
+			return fmt.Errorf(
+				"YNP version mismatch. Expected major version: %d (from %s),"+
+					" found: %d (from %s). Please re-provision the node with"+
+					" the current YNP version",
+				expectedVersion[0], expectedVersionStr,
+				storedVersion[0], strings.TrimSpace(string(data)))
+		}
+		util.FileLogger().
+			Infof(pc.ctx, "YNP expected version check passed. Expected: %s, Stored: %s",
+				expectedVersionStr, strings.TrimSpace(string(data)))
+	}
 	return nil
 }

@@ -285,10 +285,9 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
 void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB& resp) {
-  // Retrieve the ysql catalog schema version. We only check --enable_ysql
-  // when --ysql_enable_db_catalog_version_mode=true to keep the logic
-  // backward compatible.
-  if (!FLAGS_ysql_enable_db_catalog_version_mode || !FLAGS_enable_ysql) {
+  // When YSQL is disabled fall back to a single shared catalog version so that we still send
+  // something back to legacy tservers.
+  if (!FLAGS_enable_ysql) {
     uint64_t last_breaking_version = 0;
     uint64_t catalog_version = 0;
     auto s = catalog_manager_->GetYsqlCatalogVersion(

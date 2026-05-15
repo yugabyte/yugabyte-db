@@ -1639,6 +1639,16 @@ struct FlushOptions {
   static constexpr int64_t kNeverIgnore = std::numeric_limits<int64_t>::max();
 
   int64_t ignore_if_flushed_after_tick = kNeverIgnore;
+
+  // Best-effort tag for observability (listeners, EVENT_LOG_v1, schedule VLOG(2) in `db_impl.cc`).
+  // Production DocDB/tablet code must pass an explicit reason via `FlushOptions(FlushReason)` (see
+  // `listener.h`). Default `kUnknown` is for legacy RocksDB tests and callers that intentionally
+  // omit a reason (often `kTestOnly` in YB tests).
+  FlushReason flush_reason = FlushReason::kUnknown;
+
+  FlushOptions() = default;
+
+  explicit FlushOptions(FlushReason reason) : flush_reason(reason) {}
 };
 
 // Get options based on some guidelines. Now only tune parameter based on

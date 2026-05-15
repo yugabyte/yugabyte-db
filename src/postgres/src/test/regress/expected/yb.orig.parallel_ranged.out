@@ -1268,13 +1268,13 @@ SELECT * FROM
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 /*+ Parallel(pctest3 3 hard) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-                   QUERY PLAN                   
-------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
          Workers Planned: 3
          ->  Noop Aggregate
-               ->  Parallel Seq Scan on pctest3
+               ->  Parallel Index Only Scan using pctest3_a_key on pctest3
                      Storage Filter: (a > 123)
                      Partial Aggregate: true
 (7 rows)

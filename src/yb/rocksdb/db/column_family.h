@@ -25,6 +25,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -320,9 +321,14 @@ class ColumnFamilyData {
 
   void ResetThreadLocalSuperVersions();
 
-  // Protected by DB mutex
-  void set_pending_flush(bool value) { pending_flush_ = value; }
-  bool pending_flush() { return pending_flush_; }
+  // Protected by DB mutex. When engaged, a flush is scheduled / in progress for this CF.
+  bool pending_flush() const { return pending_flush_.has_value(); }
+  // Best-effort reason for the in-flight or scheduled flush; kUnknown when unset or unknown.
+  FlushReason pending_flush_reason() const {
+    return pending_flush_.value_or(FlushReason::kUnknown);
+  }
+  void mark_pending_flush(FlushReason reason) { pending_flush_ = reason; }
+  void clear_pending_flush() { pending_flush_.reset(); }
 
   void PendingCompactionAdded(CompactionSizeKind compaction_size_kind);
   void PendingCompactionRemoved(CompactionSizeKind compaction_size_kind);
@@ -412,8 +418,8 @@ class ColumnFamilyData {
 
   std::unique_ptr<WriteControllerToken> write_controller_token_;
 
-  // If true --> this ColumnFamily is currently present in DBImpl::flush_queue_
-  bool pending_flush_;
+  // Engaged while a flush is scheduled / in flight for this CF (DB mutex). Value is best-effort.
+  std::optional<FlushReason> pending_flush_;
 
   // How many times this ColumnFamily is currently present in DBImpl::compaction_queue_.
   // Note: in general it might be not effective to use such nearly aligned atomics. This is not a

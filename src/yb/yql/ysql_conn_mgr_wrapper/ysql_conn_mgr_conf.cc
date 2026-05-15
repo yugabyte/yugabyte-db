@@ -57,6 +57,7 @@ DECLARE_bool(ysql_conn_mgr_enable_prep_stmt_close);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
+DECLARE_bool(ysql_conn_mgr_enable_parse_queue_tracking);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
@@ -246,6 +247,8 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
     {"{%yb_max_prepared_statements%}", std::to_string(FLAGS_ysql_conn_mgr_max_prepared_statements)},
+    {"{%yb_enable_parse_queue_tracking%}",
+      BoolToString(FLAGS_ysql_conn_mgr_enable_parse_queue_tracking)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%yb_alter_guc_adoption_strategy%}", FLAGS_ysql_conn_mgr_alter_guc_adoption_strategy},

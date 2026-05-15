@@ -24,7 +24,21 @@ both in sync: add it to ``SUPPORTED_DOCUMENT_TYPES`` AND to the appropriate
 worker bucket (``PDF`` if it needs a GPU, ``TEXT`` otherwise).
 """
 
+import mimetypes
 from typing import Dict, FrozenSet, List
+
+# Some extensions (notably ``.md``) are not present in Python 3.11's default
+# ``mimetypes.types_map`` and slim Docker base images don't ship a
+# ``/etc/mime.types`` that fills the gap, so ``mimetypes.guess_type`` returns
+# ``(None, None)`` and otherwise-supported files get rejected by the
+# ingestion pipeline. Register the mappings the pipeline cares about here so
+# the fix is applied process-wide as soon as this module is imported.
+_CUSTOM_MIME_TYPES: Dict[str, str] = {
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+}
+for _ext, _mime in _CUSTOM_MIME_TYPES.items():
+    mimetypes.add_type(_mime, _ext)
 
 # Authoritative set of MIME types the ingestion pipeline will accept.
 SUPPORTED_DOCUMENT_TYPES: FrozenSet[str] = frozenset({

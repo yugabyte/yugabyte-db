@@ -65,6 +65,74 @@ cleanup:
 		machine_tls_free(server->tls);
 		server->tls = NULL;
 	}
+
+	/*
+	 * YB: Release the backend slot after the connection is closed, but only
+	 * if this server actually claimed one. Servers created for cancel
+	 * requests, logical replication, etc. never claim slots.
+	 */
+	if (server->yb_slot_claimed) {
+		yb_release_backend_slot((od_router_t *)server->global->router);
+		server->yb_slot_claimed = false;
+	}
+}
+
+/* YB: Max bytes of key data to hex-dump per log line (300 * 3 chars = 900, fits in OD_LOGLINE_MAXLEN). */
+#define YB_OD_HEX_BYTES_PER_LINE 300
+
+/* YB: Log a binary key as both text (up to first NUL) and full hex dump (split across lines). */
+static void yb_od_log_key_hexdump(od_logger_t *logger, char *context,
+				   od_server_t *server, int index,
+				   const char *key, size_t key_len)
+{
+	od_error(logger, context, NULL, server,
+		 "  [%d] text: %s", index, key);
+
+	size_t offset = 0;
+	while (offset < key_len) {
+		char hexbuf[OD_LOGLINE_MAXLEN];
+		size_t pos = 0;
+		size_t line_end = offset + YB_OD_HEX_BYTES_PER_LINE;
+		if (line_end > key_len)
+			line_end = key_len;
+		for (size_t j = offset; j < line_end; j++) {
+			pos += snprintf(hexbuf + pos, sizeof(hexbuf) - pos,
+					"%02x ", (unsigned char)key[j]);
+		}
+		od_error(logger, context, NULL, server,
+			 "  [%d] hex (%zu bytes, offset %zu): %s",
+			 index, key_len, offset, hexbuf);
+		offset = line_end;
+	}
+}
+
+void yb_evict_prep_stmt_by_keyhash(od_server_t *server, char *context, yb_od_hash_64_t keyhash)
+{
+	od_instance_t *instance = server->global->instance;
+	od_hashmap_elt_t *matched_keys = NULL;
+	int matched_count = 0;
+	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
+						&matched_keys, &matched_count)) {
+		server->yb_prep_stmt_count -= matched_count;
+		if (matched_count > 1) {
+			od_error(&instance->logger, context, NULL, server,
+				 "Got a hashmap collision for %016" PRIx64
+				 ". Evicted %d entries:",
+				 keyhash, matched_count);
+			for (int i = 0; i < matched_count; i++) {
+				yb_od_log_key_hexdump(&instance->logger,
+						      context, server, i,
+						      (const char *)matched_keys[i].data,
+						      matched_keys[i].len);
+				free(matched_keys[i].data);
+			}
+			free(matched_keys);
+		} else {
+			od_debug(&instance->logger, context, NULL, server,
+				 "Evicted %016" PRIx64 " hashmap entry from server",
+				 keyhash);
+		}
+	}
 }
 
 void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
@@ -81,27 +149,8 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 			"failed to parse error message from server");
 		return;
 	}
-	od_hash_t keyhash = strtoul(keyhash_str, NULL, 16);
-	char **matched_keys = NULL;
-	int matched_count = 0;
-	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
-					      &matched_keys, &matched_count)) {
-		server->yb_prep_stmt_count -= matched_count;
-		if (matched_count > 1) {
-			od_error(&instance->logger, context, NULL, server,
-				 "Got a hashmap collision for %08x. Evicted %d entries:",
-				 keyhash, matched_count);
-			for (int i = 0; i < matched_count; i++) {
-				od_error(&instance->logger, context, NULL, server,
-					 "  [%d] %s", i, matched_keys[i]);
-				free(matched_keys[i]);
-			}
-			free(matched_keys);
-		} else {
-			od_debug(&instance->logger, context, NULL, server,
-				 "Evicted %08x hashmap entry from server", keyhash);
-		}
-	}
+	yb_od_hash_64_t keyhash = strtoull(keyhash_str, NULL, 16);
+	yb_evict_prep_stmt_by_keyhash(server, context, keyhash);
 }
 
 void od_backend_error(od_server_t *server, char *context, char *data,
@@ -616,7 +665,7 @@ static inline int od_backend_startup(od_server_t *server,
 			machine_msg_free(msg);
 			break;
 		}
-		case KIWI_BE_NOTICE_RESPONSE:
+		case KIWI_BE_NOTICE_RESPONSE: {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 			/*
 			 * Store the client_id from the notice packet during authentication
@@ -632,8 +681,36 @@ static inline int od_backend_startup(od_server_t *server,
 				}
 			}
 #endif
-			machine_msg_free(msg);
+			od_client_t *client_to_forward = NULL;
+			if (is_authenticating)
+				client_to_forward = client->yb_external_client;
+			else if (client != NULL)
+				client_to_forward = client;
+
+			if (client_to_forward != NULL) {
+				rc = od_write(&client_to_forward->io, &msg);
+				if (rc < 0) {
+					od_error(
+						&instance->logger,
+						"startup notice-response",
+						client_to_forward, server,
+						"write error while forwarding notice-response packet: %s",
+						od_io_error(
+							&client_to_forward->io));
+				/*
+				 * YB: Don't return -1 here. The client may have
+				 * disconnected, but the backend connection is still
+				 * valid. Failing to forward an informational
+				 * NoticeResponse should not abort startup and tear
+				 * down the backend.
+				 */
+					break;
+				}
+			} else {
+				machine_msg_free(msg);
+			}
 			break;
+		}
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 				yb_handle_fatalforlogicalconnection_pkt(
 					is_authenticating ? client->yb_external_client : client,
@@ -1200,6 +1277,16 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_PARSE_NO_PARSE_COMPLETE ||
+				   type == KIWI_BE_PARSE_COMPLETE) {
+			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
+			machine_msg_free(msg);
+			if (res != 0) {
+				od_error(&instance->logger, context, server->client, server,
+					 "failed to dequeue parse queue");
+				return -1;
+			}
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
@@ -1209,10 +1296,20 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		}
+		else if (type == YB_BE_SYNC_ACK) {
+			/*
+			 * If SYNC present at head of parse queue means all parses in this
+			 * SYNC boundary were acknowledged (success path). Otherwise, some
+			 * parses were silently dropped after an error -- evict stale entries.
+			 */
+			yb_drain_parse_queue_till_sync(server, server->client);
+			machine_msg_free(msg);
+			continue;
+		}
 		/*
-		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE and
-		 * YB_BE_PARSE_NO_PARSE_COMPLETE here as od_backend_ready_wait's job is
-		 * to just consume all the packets from the backend.
+		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE here as
+		 * od_backend_ready_wait's job is to just consume all the packets from the backend. And
+		 * it's parse packets are never enqueued in parse_queue.
 		 */
 		machine_msg_free(msg);
 	}

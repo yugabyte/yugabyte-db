@@ -16,6 +16,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
+#include <cstdio>
 #include <fstream>
 #include <random>
 #include <regex>
@@ -40,7 +41,9 @@
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/csv_util.h"
+#include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flags_callback.h"
@@ -60,6 +63,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 #include "ybgate/ybgate_api.h"
@@ -71,14 +75,14 @@ DECLARE_bool(openssl_require_fips);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
-DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
+DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
         _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 
-DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
+DEFINE_NON_RUNTIME_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
@@ -86,9 +90,9 @@ DEFINE_NON_RUNTIME_string(yb_webserver_oom_score_adj, "900",
               "oom_score_adj of YSQL webserver in linux environments");
 DEFINE_NON_RUNTIME_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
-DEFINE_UNKNOWN_bool(pg_verbose_error_log, false,
+DEFINE_NON_RUNTIME_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
-DEFINE_UNKNOWN_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DEFINE_NON_RUNTIME_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
             "True to run postgres under Valgrind. Must compile with --no-tcmalloc");
 
@@ -99,8 +103,7 @@ DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
 
 // Default to 5MB
-DEFINE_UNKNOWN_string(
-    pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
+DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
     "defined in mem_tracker.cc. The overriding value is specifically "
     "set for Postgres backends");
@@ -113,7 +116,7 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
-DEFINE_UNKNOWN_bool(pg_stat_statements_enabled, true,
+DEFINE_NON_RUNTIME_bool(pg_stat_statements_enabled, true,
             "True to enable statement stats in PostgreSQL server");
 TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);
@@ -412,6 +415,15 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_conn_mgr_selective_deallocate, true,
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
+DEFINE_NON_RUNTIME_uint32(documentdb_port, 27017,
+    "Port for the DocumentDB Gateway to listen on.");
+
+DEFINE_NON_RUNTIME_string(documentdb_database, "yugabyte",
+    "Database for the DocumentDB Gateway background worker to connect to.");
+
+DEFINE_NON_RUNTIME_string(documentdb_user, "yugabyte",
+    "PostgreSQL system user for the DocumentDB Gateway to use.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
     "only applicable when invalidation messages are enabled.");
@@ -469,6 +481,11 @@ DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VAL
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
+                           "Enable the use of mage extension. "
+                           "NOTE: This is for internal use only.");
+TAG_FLAG(ysql_yb_enable_mage, hidden);
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -477,6 +494,11 @@ using namespace std::literals;  // NOLINT
 
 namespace yb {
 namespace pgwrapper {
+
+constexpr auto kDefaultPgConfFileName = "postgresql.conf";
+constexpr auto kYsqlPgConfFileName = "ysql_pg.conf";
+constexpr auto kYsqlHbaConfFileName = "ysql_hba.conf";
+constexpr auto kYsqlIdentConfFileName = "ysql_ident.conf";
 
 string FormatPgGFlagValue(const string& value, const string& type) {
   if (type == "string") {
@@ -493,6 +515,31 @@ string FormatPgGFlagValue(const string& value, const string& type) {
 }
 
 namespace {
+
+Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
+  auto gateway_config_path =
+      JoinPathSegments(conf.data_dir, "documentdb_gateway_config.json");
+  auto content = Format(
+      "{\n"
+      "  \"NodeHostName\": \"localhost\",\n"
+      "  \"PostgresHostName\": \"$0\",\n"
+      "  \"PostgresSystemUser\": \"$1\",\n"
+      "  \"PostgresDatabase\": \"$2\",\n"
+      "  \"BlockedRolePrefixes\": "
+      "[ \"documentdb\", \"citus\", \"pg\", \"internal_role\" ],\n"
+      "  \"PostgresPort\": $3,\n"
+      "  \"GatewayListenPort\": $4,\n"
+      "  \"CertificateOptions\": {\n"
+      "    \"CertType\": \"PemAutoGenerated\"\n"
+      "  },\n"
+      "  \"UseLocalHost\": false\n"
+      "}\n",
+      PgDeriveSocketDir(HostPort(conf.listen_addresses, conf.pg_port)),
+      FLAGS_documentdb_user, FLAGS_documentdb_database,
+      conf.pg_port, FLAGS_documentdb_port);
+  RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, gateway_config_path));
+  return gateway_config_path;
+}
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
   std::ofstream conf_file;
@@ -577,14 +624,6 @@ bool ValidateConfCsv(const char* flag_name, const std::string& value) {
   return true;
 }
 
-// Perform basic validation of the postgres parameter values. Postgres validates this via
-// `ParseConfigFp` function in `guc-file.c` using a lexer, which is very complicated to mimic
-// using a regex.
-DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
-
-DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
-DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
-
 static bool ValidateDocumentDB(const char* flag_name, bool value) {
 #ifndef YB_ENABLE_YSQL_DOCUMENTDB_EXT
   if (value) {
@@ -657,9 +696,9 @@ HostPort GetPgHostPort(const PgProcessConf& conf) {
 
 }  // namespace
 
-Result<string> WritePostgresConfig(const PgProcessConf& conf) {
+Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql_pg_conf_csv) {
   // First add default configuration created by local initdb.
-  string default_conf_path = JoinPathSegments(conf.data_dir, "postgresql.conf");
+  string default_conf_path = JoinPathSegments(conf.data_dir, kDefaultPgConfFileName);
   std::ifstream conf_file;
   conf_file.open(default_conf_path, std::ios_base::in);
   if (!conf_file) {
@@ -692,6 +731,11 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_ysql_enable_documentdb) {
     metricsLibs.push_back("pg_documentdb_core");
     metricsLibs.push_back("pg_documentdb");
+    metricsLibs.push_back("pg_documentdb_gw_host");
+  }
+
+  if (FLAGS_ysql_yb_enable_mage) {
+    metricsLibs.push_back("mage");
   }
 
   vector<string> lines;
@@ -702,8 +746,8 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   conf_file.close();
 
   vector<string> user_configs;
-  if (!FLAGS_ysql_pg_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &user_configs));
+  if (!ysql_pg_conf_csv.empty()) {
+    RETURN_NOT_OK(ReadCSVValues(ysql_pg_conf_csv, &user_configs));
   } else if (!FLAGS_ysql_pg_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &user_configs);
   }
@@ -734,24 +778,32 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   // Add cron.database_name
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
+  if (FLAGS_ysql_enable_documentdb) {
+    auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
+    lines.push_back(Format("documentdb_gateway.database='$0'",
+                           FLAGS_documentdb_database));
+    lines.push_back(Format("documentdb_gateway.setup_configuration_file='$0'",
+                           gateway_config_path));
+  }
+
   // Finally add gFlags.
   // If the file contains multiple entries for the same parameter, all but the last one are
   // ignored. If there are duplicates in FLAGS_ysql_pg_conf_csv then we want the values specified
   // via the gFlag to take precedence.
   AppendPgGFlags(&lines);
 
-  string conf_path = JoinPathSegments(conf.data_dir, "ysql_pg.conf");
+  string conf_path = JoinPathSegments(conf.data_dir, kYsqlPgConfFileName);
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "config_file=" + conf_path;
 }
 
-Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
+Result<string> WritePgHbaConfig(const PgProcessConf& conf, const string& hba_conf_csv) {
   vector<string> lines;
 
   // Add the user-defined custom configuration lines if any.
   // Put this first so that it can be used to override the auto-generated config below.
-  if (!FLAGS_ysql_hba_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_hba_conf_csv, &lines));
+  if (!hba_conf_csv.empty()) {
+    RETURN_NOT_OK(ReadCSVValues(hba_conf_csv, &lines));
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
@@ -785,17 +837,17 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
       "# local all postgres yb-tserver-key",
   });
 
-  const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
+  const auto conf_path = JoinPathSegments(conf.data_dir, kYsqlHbaConfFileName);
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "hba_file=" + conf_path;
 }
 
-Result<string> WritePgIdentConfig(const PgProcessConf& conf) {
+Result<string> WritePgIdentConfig(const PgProcessConf& conf, const string& ident_conf_csv) {
   vector<string> lines;
 
   // Add the user-defined custom configuration lines if any.
-  if (!FLAGS_ysql_ident_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_ident_conf_csv, &lines));
+  if (!ident_conf_csv.empty()) {
+    RETURN_NOT_OK(ReadCSVValues(ident_conf_csv, &lines));
   }
 
   if (lines.empty()) {
@@ -807,7 +859,7 @@ Result<string> WritePgIdentConfig(const PgProcessConf& conf) {
       "# MAPNAME IDP-USERNAME YB-USERNAME"
   });
 
-  const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_ident.conf");
+  const auto conf_path = JoinPathSegments(conf.data_dir, kYsqlIdentConfFileName);
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "ident_file=" + conf_path;
 }
@@ -815,18 +867,27 @@ Result<string> WritePgIdentConfig(const PgProcessConf& conf) {
 Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   vector<string> args;
   args.push_back("-c");
-  args.push_back(VERIFY_RESULT_PREPEND(WritePostgresConfig(conf),
+  args.push_back(VERIFY_RESULT_PREPEND(
+      WritePostgresConfig(conf, FLAGS_ysql_pg_conf_csv),
       "Failed to write ysql pg configuration: "));
   args.push_back("-c");
-  args.push_back(VERIFY_RESULT_PREPEND(WritePgHbaConfig(conf),
-      "Failed to write ysql hba configuration: "));
+  args.push_back(VERIFY_RESULT_PREPEND(
+      WritePgHbaConfig(conf, FLAGS_ysql_hba_conf_csv), "Failed to write ysql hba configuration: "));
   args.push_back("-c");
-  args.push_back(VERIFY_RESULT_PREPEND(WritePgIdentConfig(conf),
+  args.push_back(VERIFY_RESULT_PREPEND(
+      WritePgIdentConfig(conf, FLAGS_ysql_ident_conf_csv),
       "Failed to write ysql ident configuration: "));
   return args;
 }
 
 }  // namespace
+
+// Basic gflag validators -- only CSV/newline validation.
+// Extended PG-connection-based validation is done via TabletServer::ExtendedFlagValidation,
+// called from GenericServiceImpl::ValidateFlagValue.
+DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
+DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
+DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
 
 string GetPostgresInstallRoot() {
   return JoinPathSegments(yb::env_util::GetRootDir("postgres"), "postgres");
@@ -1024,9 +1085,9 @@ Status PgWrapper::ReloadConfig() {
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
-  RETURN_NOT_OK(WritePostgresConfig(conf_));
-  RETURN_NOT_OK(WritePgHbaConfig(conf_));
-  RETURN_NOT_OK(WritePgIdentConfig(conf_));
+  RETURN_NOT_OK(WritePostgresConfig(conf_, FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(WritePgHbaConfig(conf_, FLAGS_ysql_hba_conf_csv));
+  RETURN_NOT_OK(WritePgIdentConfig(conf_, FLAGS_ysql_ident_conf_csv));
   return ReloadConfig();
 }
 
@@ -1094,11 +1155,16 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 
   std::vector<std::string> args{
       program_path,
-      "--new-datadir", param.data_dir,
-      "--username", param.ysql_user_name,
-      "--new-socketdir", param.new_version_socket_dir,
-      "--new-port", ToString(param.new_version_pg_port),
-      "--old-port", ToString(param.old_version_pg_port)};
+      "--new-datadir",
+      param.data_dir,
+      "--username",
+      param.ysql_user_name,
+      "--new-socketdir",
+      param.new_version_socket_dir,
+      "--new-port",
+      ::yb::ToString(param.new_version_pg_port),
+      "--old-port",
+      ::yb::ToString(param.old_version_pg_port)};
 
   if (!param.old_version_socket_dir.empty()) {
     args.push_back("--old-socketdir");
@@ -1469,6 +1535,13 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
     server_->RegisterPgProcessKiller(std::bind(&PgSupervisor::Pause, this));
+    server_->RegisterPgConfigGenerator(
+        [this](
+            const std::string& tmp_dir, const std::string& ysql_pg_conf_csv,
+            const std::string& hba_conf_csv,
+            const std::string& ident_conf_csv) -> Result<PgConfigPaths> {
+          return WritePgConfigFiles(tmp_dir, ysql_pg_conf_csv, hba_conf_csv, ident_conf_csv);
+        });
   }
 }
 
@@ -1568,6 +1641,36 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     pgwrapper->PrepareSharedMemoryNegotiation(server_);
   }
   return pgwrapper;
+}
+
+Result<PgConfigPaths> PgSupervisor::WritePgConfigFiles(
+    const std::string& tmp_dir, const std::string& ysql_pg_conf_csv,
+    const std::string& hba_conf_csv, const std::string& ident_conf_csv) {
+  // Copy postgresql.conf from the real data_dir so WritePostgresConfig can read it.
+  RETURN_NOT_OK(env_util::CopyFile(
+      Env::Default(), JoinPathSegments(conf_.data_dir, kDefaultPgConfFileName),
+      JoinPathSegments(tmp_dir, kDefaultPgConfFileName), WritableFileOptions()));
+
+  PgProcessConf tmp_conf;
+  tmp_conf.data_dir = tmp_dir;
+
+  RETURN_NOT_OK_PREPEND(
+      ResultToStatus(WritePostgresConfig(tmp_conf, ysql_pg_conf_csv)),
+      "Failed to write temp GUC config for validation");
+
+  RETURN_NOT_OK_PREPEND(
+      ResultToStatus(WritePgHbaConfig(tmp_conf, hba_conf_csv)),
+      "Failed to write temp HBA config for validation");
+
+  RETURN_NOT_OK_PREPEND(
+      ResultToStatus(WritePgIdentConfig(tmp_conf, ident_conf_csv)),
+      "Failed to write temp ident config for validation");
+
+  return PgConfigPaths{
+      .hba_conf_path = JoinPathSegments(tmp_dir, kYsqlHbaConfFileName),
+      .guc_conf_path = JoinPathSegments(tmp_dir, kYsqlPgConfFileName),
+      .ident_conf_path = JoinPathSegments(tmp_dir, kYsqlIdentConfFileName),
+  };
 }
 
 void PgSupervisor::PrepareForStop() {

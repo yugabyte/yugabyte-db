@@ -541,6 +541,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default earlyoom arguments",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomOnOSUpgrade =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_on_os_upgrade",
+          ScopeType.PROVIDER,
+          "Whether to install and enable earlyoom during OS upgrade",
+          "Whether to install and enable earlyoom during OS upgrade (for old universes)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
       new ConfKeyInfo<>(
           "yb.gcp.operations.connection_draining_timeout",
@@ -580,6 +588,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ScopeType.PROVIDER,
           "Use System Level Systemd",
           "Use system-level systemd instead of user-level systemd for service management",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_gcp",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for GCP",
+          "Enable capacity reservations for GCP for tasks that need new nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybUserHomeOverride =

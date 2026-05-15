@@ -404,23 +404,25 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_fast_pitr) = true;
   // Without snapshot schedule, the retention should be
-  // min(t - timestamp_history_retention_interval_sec,
-  //     t - timestamp_syscatalog_history_retention_interval_sec).
+  // t - timestamp_history_retention_interval_sec irrespective of the value of
+  // timestamp_syscatalog_history_retention_interval_sec. This is because the
+  // timestamp_syscatalog_history_retention_interval_sec flag is no longer used for history
+  // retention for sys_catalog.
   // Case: 1
   // timestamp_history_retention_interval_sec <
   // timestamp_syscatalog_history_retention_interval_sec.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 60;
-  // Since FLAGS_timestamp_syscatalog_history_retention_interval_sec is 120,
-  // history retention should be t-120 where t is the current time obtained by
+  // Even when FLAGS_timestamp_syscatalog_history_retention_interval_sec is 120,
+  // history retention should be t-60 where t is the current time obtained by
   // GetRetentionDirective() call.
   auto& sys_catalog = cluster_->mini_master(0)->sys_catalog();
   auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet());
   auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-  // current_time-120 should be >= t-120 since current_time >= t.
+  // current_time-60 should be >= t-60 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
-  HybridTime expect = cluster_->mini_master(0)->Now().AddSeconds(
-      -FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+  HybridTime expect =
+      cluster_->mini_master(0)->Now().AddSeconds(-FLAGS_timestamp_history_retention_interval_sec);
   ASSERT_GE(expect, directive.primary_cutoff_ht);
   ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
   // Cotables should also have the same cutoff.
@@ -439,7 +441,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   // history retention should be t-240 where t is the current time obtained by
   // GetRetentionDirective() call.
   directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-  // current_time-120 should be >= t-120 since current_time >= t.
+  // current_time-240 should be >= t-240 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
   expect = cluster_->mini_master(0)->Now().AddSeconds(
       -FLAGS_timestamp_history_retention_interval_sec);

@@ -136,7 +136,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY, REPROVISION),
+    Stopped(START, REMOVE, QUERY, REPROVISION, DECOMMISSION, REPLACE),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),

@@ -324,6 +324,7 @@ extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
+extern PGDLLIMPORT bool yb_enable_mage;
 
 /*
  * Functions exported by guc.c

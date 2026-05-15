@@ -16,6 +16,8 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <optional>
+#include <ostream>
 #include <unordered_map>
 #include <vector>
 
@@ -81,6 +83,10 @@ class TServerCgroupManager {
 
   void Shutdown();
 
+  // Dump cgroups to HTML for the /cgroups endpoint. sample_interval_ms is the interval at which we
+  // sample statistics (we sample twice in order to determine if a cgroup is currently throttled).
+  void DumpCgroupsToHtml(std::ostream& out, uint64_t sample_interval_ms) const;
+
  private:
   struct CgroupMetrics {
     Cgroup* cgroup = nullptr;
@@ -112,7 +118,6 @@ class TServerCgroupManager {
   Cgroup* capped_pool_cgroup_ = nullptr;   // parent of @system-med and @normal
   Cgroup* system_med_cgroup_ = nullptr;
   Cgroup* normal_pool_cgroup_ = nullptr;
-  Cgroup* default_cgroup_ = nullptr;       // @default under @normal
 
   // Background metrics collector. shutdown_mutex_ + shutdown_cv_ enable responsive
   // shutdown: MetricsCollectorThread sleeps via cv.wait_for instead of SleepFor,

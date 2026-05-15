@@ -89,6 +89,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
     when(confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.ybUserHomeOverride)))
         .thenReturn("");
+    when(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel)).thenReturn(0);
     YNPConfigGenerator ynpConfigGenerator =
         new YNPConfigGenerator(
             confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);

@@ -12,15 +12,20 @@
 #include "yb/util/cgroups.h"
 
 #include <cmath>
+#include <ranges>
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/os-util.h"
 
 DEFINE_NON_RUNTIME_bool(use_cgroups_cpu, false,
     "Use the cgroup CPU quota to determine the effective number of CPUs instead of the host CPU "
     "count. Useful for containerized deployments (e.g. Kubernetes) where the process is limited "
     "to a fraction of the host's CPUs via cgroup CPU quotas.");
+
+DEFINE_test_flag(uint64, cgroups_delay_init_ms, 0, "Milliseconds to delay cgroup initialization.");
 
 DECLARE_int32(num_cpus);
 
@@ -35,6 +40,7 @@ DECLARE_int32(num_cpus);
 #include <syscall.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdlib>
 
 #include "yb/util/enums.h"
@@ -57,6 +63,10 @@ constexpr auto kRootPath = "/sys/fs/cgroup";
 constexpr auto kCpuRootPathV1 = "/sys/fs/cgroup/cpu";
 constexpr auto kDefaultThreadCgroupName = "@default";
 
+// Maximum time to wait for the process/thread that created a cgroup to set it up. This should
+// normally be on the order of microseconds (just a couple of syscalls).
+constexpr auto kCgroupSetupWaitTime = 5s;
+
 YB_DEFINE_ENUM(CgroupVersion, (kVersion1)(kVersion2));
 
 Status WriteConfigToDescriptor(int fd, std::string_view value) {
@@ -71,27 +81,6 @@ Status WriteConfigToPath(const std::string& path, std::string_view value) {
   int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_WRONLY);
   ScopeExit s([fd] { close(fd); });
   return WriteConfigToDescriptor(fd, value);
-}
-
-Result<std::string> ReadConfigFromPath(const std::string& path, size_t max_length) {
-  VLOG(3) << "Read config path: " << path;
-  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
-  ScopeExit s([fd] { close(fd); });
-
-  std::string out(max_length + 1, '\0');
-  ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
-  if (static_cast<size_t>(bytes_read) > max_length) {
-    return STATUS_FORMAT(
-        IllegalState, "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
-  }
-
-  if (bytes_read == 0) {
-    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
-  }
-
-  // Last byte is a newline, drop it.
-  out.resize(static_cast<size_t>(bytes_read - 1));
-  return out;
 }
 
 Result<CgroupVersion> GetCgroupVersion() {
@@ -127,7 +116,7 @@ Result<std::string> ReadCpuGroup(
     bool check_controllers = true) {
   // Arbitrary length that is definitely long enough.
   constexpr auto kMaxConfigLength = 65535uz;
-  std::string cgroups = VERIFY_RESULT(ReadConfigFromPath(
+  std::string cgroups = VERIFY_RESULT(ReadUnixConfigFromPath(
       Format("/proc/$0/cgroup", process_or_thread_id), kMaxConfigLength));
   if (!version) {
     version.emplace(VERIFY_RESULT(GetCgroupVersion()));
@@ -152,7 +141,7 @@ Result<std::string> ReadCpuGroup(
     if (check_controllers) {
       // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
       // if CPU controller is available.
-      auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
+      auto controllers = StringSplit(VERIFY_RESULT(ReadUnixConfigFromPath(
           Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
           kMaxConfigLength)), ' ');
       if (std::ranges::find(controllers, "cpu") == controllers.end()) {
@@ -207,15 +196,20 @@ class CgroupManager {
     }
     root_ = std::make_unique<Cgroup>(nullptr /* parent */, "" /* name */);
     RETURN_NOT_OK(root_->Init(true /* is_root */));
-    default_group_ = &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName));
-    RETURN_NOT_OK(default_group_->MoveCurrentThreadToGroup());
+    default_group_.store(
+        &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName)),
+        std::memory_order_release);
+    RETURN_NOT_OK(default_group_.load(std::memory_order_relaxed)->MoveCurrentThreadToGroup());
 
     initialized_ = true;
     return Status::OK();
   }
 
   Cgroup* root_group() { return root_.get(); }
-  Cgroup* default_thread_group() { return default_group_; }
+  Cgroup* default_thread_group() { return default_group_.load(std::memory_order_acquire); }
+  void set_default_thread_group(Cgroup* cg) {
+    default_group_.store(cg, std::memory_order_release);
+  }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
   std::string_view cpu_root_path() { return cpu_root_path_; }
@@ -229,7 +223,7 @@ class CgroupManager {
   std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
-  Cgroup* default_group_;
+  std::atomic<Cgroup*> default_group_{nullptr};
   bool initialized_ = false;
 };
 
@@ -274,12 +268,17 @@ Status Cgroup::WriteConfig(std::string_view config, std::string_view value) cons
 
 Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_length) const {
   VLOG_WITH_PREFIX(1) << "Read config: " << config;
-  auto out = ReadConfigFromPath(CgroupConfigPath(name_, config), max_length);
+  auto out = ReadUnixConfigFromPath(CgroupConfigPath(name_, config), max_length);
   VLOG_WITH_PREFIX(1) << "Config: " << config << " = " << out;
   return out;
 }
 
 Status Cgroup::Init(bool is_root) {
+  auto init_delay = FLAGS_TEST_cgroups_delay_init_ms;
+  if (init_delay > 0) {
+    SleepFor(init_delay * 1ms);
+  }
+
   if (!is_root) {
     RETURN_NOT_OK(UpdateCpuLimits(/*max_cpu_fraction=*/1.0));
     RETURN_NOT_OK(UpdateCpuWeight(kDefaultCpuWeight));
@@ -289,8 +288,23 @@ Status Cgroup::Init(bool is_root) {
   }
   if (cgroup_manager.version() == CgroupVersion::kVersion2) {
     RETURN_NOT_OK(WriteConfig("cgroup.subtree_control", "+cpu"));
+  } else {
+    // This setting only affects the cpuset controller, which we do not use. So this effectively
+    // does nothing, and we just use it as a way to signal that initialization is complete.
+    RETURN_NOT_OK(WriteConfig("cgroup.clone_children", "1"));
   }
   return Status::OK();
+}
+
+Result<bool> Cgroup::CheckReady() const {
+  if (cgroup_manager.version() == CgroupVersion::kVersion2) {
+    // Need to check both since reading from cgroup.subtree_control will fail if cgroup.type hasn't
+    // been set.
+    return VERIFY_RESULT(ReadConfig("cgroup.type")) == "threaded" &&
+        VERIFY_RESULT(ReadConfig("cgroup.subtree_control")) == "cpu";
+  } else {
+    return VERIFY_RESULT(ReadConfig("cgroup.clone_children")) == "1";
+  }
 }
 
 Status Cgroup::CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us) {
@@ -360,6 +374,10 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
 
   // Cgroup already exists: it may have been created by another process (child/parent).
   auto& cg = children_.try_emplace(std::string(name), this, name).first->second;
+  RETURN_NOT_OK(WaitFor(
+      [&cg] { return cg.CheckReady(); },
+      kCgroupSetupWaitTime,
+      Format("Wait for creator of cgroup $0 to set it up", name)));
 
   int cfs_period_us;
   int cfs_quota_us;
@@ -429,6 +447,31 @@ Status Cgroup::MoveProcessToGroup(int64_t pid) {
   return WriteConfig("cgroup.procs", AsString(pid));
 }
 
+void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
+  std::vector<Cgroup*> children;
+  {
+    std::lock_guard lock(mutex_);
+    children.reserve(children_.size());
+    for (auto& child : children_ | std::views::values) {
+      children.push_back(&child);
+    }
+  }
+  for (auto& child : children) {
+    visitor(*child);
+  }
+}
+
+void Cgroup::VisitTree(
+    const std::function<void(Cgroup&, size_t)>& visitor, size_t current_depth, size_t max_depth) {
+  visitor(*this, current_depth);
+  if (current_depth == max_depth) {
+    return;
+  }
+  VisitChildren([&](Cgroup& child) {
+    child.VisitTree(visitor, current_depth + 1, max_depth);
+  });
+}
+
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
   auto path = CgroupConfigPath(
       name_, cgroup_manager.version() == CgroupVersion::kVersion1 ? "tasks" : "cgroup.threads");
@@ -461,11 +504,10 @@ Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
 Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
   std::vector<std::string> names;
   for (int64_t thread_id : VERIFY_RESULT(ReadThreadIds())) {
-    auto result = ReadConfigFromPath(
-        Format("/proc/$0/comm", thread_id), Thread::kMaxThreadNameInPerf + 1);
+    auto result = Thread::ThreadName(thread_id);
     if (!result.ok()) {
       // This is possible if thread has exited since ReadThreadIds().
-      LOG(WARNING) << "Failed to read /proc/" << thread_id << "/comm: " << result.status();
+      LOG(WARNING) << "Failed to read thread name: " << result.status();
       continue;
     }
     names.emplace_back(*result);
@@ -537,6 +579,11 @@ Cgroup* Cgroup::child(std::string_view name) {
   return &itr->second;
 }
 
+bool Cgroup::is_leaf() const {
+  std::lock_guard lock(mutex_);
+  return children_.empty();
+}
+
 std::string Cgroup::ToString() const {
   std::lock_guard lock(mutex_);
   return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_max_fraction_, cpu_weight_);
@@ -556,6 +603,10 @@ Cgroup* RootCgroup() {
 
 Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
+}
+
+void SetDefaultThreadCgroup(Cgroup* cgroup) {
+  cgroup_manager.set_default_thread_group(cgroup);
 }
 
 Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {
@@ -590,9 +641,9 @@ Result<int> GetCgroupCpuQuota() {
   int64_t quota_us = 0;
   int64_t period_us = 0;
   if (version == CgroupVersion::kVersion1) {
-    auto quota_str = VERIFY_RESULT(ReadConfigFromPath(
+    auto quota_str = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.cfs_quota_us", kMaxConfigLength));
-    auto period_str = VERIFY_RESULT(ReadConfigFromPath(
+    auto period_str = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.cfs_period_us", kMaxConfigLength));
     quota_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(quota_str)));
     period_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(period_str)));
@@ -601,7 +652,7 @@ Result<int> GetCgroupCpuQuota() {
       return -1;
     }
   } else {
-    auto max_config = VERIFY_RESULT(ReadConfigFromPath(
+    auto max_config = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.max", kMaxConfigLength));
     auto separator = max_config.find(' ');
     if (separator == max_config.npos) {

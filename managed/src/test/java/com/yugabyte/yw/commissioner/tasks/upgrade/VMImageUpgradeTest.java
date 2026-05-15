@@ -4,6 +4,10 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -21,6 +25,8 @@ import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -29,7 +35,9 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -37,11 +45,13 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -81,6 +91,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
+          TaskType.UpdateUniverseFields,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
           TaskType.InstallNodeAgent,
@@ -601,5 +612,66 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         taskParams,
         false);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testVMImageUpgradeEnableEarlyoom() {
+    ImageBundleDetails ibDetails = new ImageBundleDetails();
+    ibDetails.setArch(Architecture.x86_64);
+    ImageBundleDetails.BundleInfo bundleInfoRegion1 = new ImageBundleDetails.BundleInfo();
+    Map<String, ImageBundleDetails.BundleInfo> ibRegionDetailsMap = new HashMap<>();
+    RuntimeConfigEntry.upsertGlobal(CustomerConfKeys.enableEarlyoomFeature.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableEarlyoomByDefaultForProvider.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableEarlyoomOnOSUpgrade.getKey(), "true");
+    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any()))
+        .thenReturn(Optional.of(new NodeAgent()));
+    when(mockNodeAgentClient.runConfigureEarlyoom(any(), any(), anyString()))
+        .thenReturn(ConfigureServiceOutput.newBuilder().setSuccess(true).build());
+
+    bundleInfoRegion1.setYbImage("region-1-yb-image");
+    bundleInfoRegion1.setSshUserOverride("region-1-ssh-user-override");
+    ibRegionDetailsMap.put("region-1", bundleInfoRegion1);
+    ibDetails.setRegions(ibRegionDetailsMap);
+    ImageBundle bundle = ImageBundle.create(defaultProvider, "ib-1", ibDetails, true);
+
+    VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.machineImages = null;
+    taskParams.imageBundleUUID = bundle.getUuid();
+
+    // Use output for verification and response is the raw string that parses into output.
+    Map<UUID, String> createVolumeOutputResponse =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        String.format(
+                            "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                                + "\"root_device_name\":\"/dev/sda1\"}",
+                            az.getCode())));
+
+    for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(e.getKey()))))
+          .thenReturn(ShellResponse.create(0, e.getValue()));
+    }
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    long configureOOMTasks =
+        subTasks.stream()
+            .filter(t -> t.getTaskType() == TaskType.ConfigureOOMServiceOnNode)
+            .count();
+    assertEquals(defaultUniverse.getNodes().size(), configureOOMTasks);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertNotNull(defaultUniverse.getUniverseDetails().additionalServicesStateData);
+    assertTrue(
+        defaultUniverse.getUniverseDetails().additionalServicesStateData.isEarlyoomEnabled());
+    assertTrue(false);
   }
 }

@@ -1,0 +1,14 @@
+title: ImageBundleMetadata
+description: Metadata for an image bundle (same shape as V1 ImageBundle metadata JSON).
+type: object
+properties:
+  type:
+    description: Origin of the bundle (platform default vs custom).
+    type: string
+    enum:
+      - YBA_ACTIVE
+      - YBA_DEPRECATED
+      - CUSTOM
+  version:
+    description: Software or schema version string associated with this bundle metadata.
+    type: string

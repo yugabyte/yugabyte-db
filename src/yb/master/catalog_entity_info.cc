@@ -1560,6 +1560,12 @@ bool CDCStreamInfo::IsTablesWithoutPrimaryKeyAllowed() const {
   return l->pb.has_allow_tables_without_primary_key() && l->pb.allow_tables_without_primary_key();
 }
 
+bool CDCStreamInfo::DetectPublicationChangesImplicitly() const {
+  auto l = LockForRead();
+  return l->pb.has_detect_publication_changes_implicitly() &&
+         l->pb.detect_publication_changes_implicitly();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {

@@ -172,7 +172,7 @@ void DocDBTestQl::TestTableTombstoneCompaction(T id) {
         t));
     t = t.AddDelta(1ms);
   }
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
 SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
@@ -190,7 +190,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         t));
     t = t.AddDelta(1ms);
   }
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
 SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
@@ -214,7 +214,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         t));
     t = t.AddDelta(1ms);
   }
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
 SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
@@ -240,7 +240,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         t));
     t = t.AddDelta(1ms);
   }
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
 SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
@@ -321,7 +321,7 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
     for (int i = 0; i != kTotalRows; ++i) {
       if (i % flush_rate == 0) {
         trackers.emplace_back();
-        ASSERT_OK(FlushRocksDbAndWait());
+        ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
       }
       auto key_str = "key_" + std::to_string(distribution(rng));
       auto key_int = distribution(rng);
@@ -339,7 +339,7 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
     ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
     SCOPED_TRACE("\nWrite batch:\n" + dwb_str);
     ASSERT_OK(WriteToRocksDB(dwb, 1000_usec_ht));
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
     for (auto i = 0; i != 2; ++i) {
       if (i) {

@@ -20,7 +20,7 @@ type: docs
 
 Strings, character data types, or text are part of every conceivable system. Manipulating and outputting text is a very important topic that is required for many different types of systems that you work with. This section provides an overview of the YugabyteDB SQL API's extensive text capabilities.
 
-The examples use the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+The examples use the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/).
 
 ## Character data types
 
@@ -140,7 +140,7 @@ Many functions can be applied to text. In the examples that follow, the function
 
 The focus here is to quickly show how each of the functions can be used, along with some examples.
 
-The example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+The example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/).
 
 ### Altering the appearance of text
 

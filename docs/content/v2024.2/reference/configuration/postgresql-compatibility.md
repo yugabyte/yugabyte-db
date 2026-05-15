@@ -201,8 +201,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | CREATE ACCESS METHOD | {{<issue 10693>}}|
 | DESC/HASH on GIN indexes (ASC supported) | {{<issue 10653>}}|
 | CREATE SCHEMA with elements | {{<issue 10865>}}|
-| Index on citext column | {{<issue 9698>}}|
-| ABSTIME type | {{<issue 15637>}}|
 | transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
 | DDL operations within transaction| {{<issue 1404>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|

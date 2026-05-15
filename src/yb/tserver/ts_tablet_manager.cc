@@ -232,6 +232,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, pause_apply_tablet_split, false,
                  "Pause TSTabletManager::ApplyTabletSplit.");
 
+DEFINE_test_flag(bool, pause_after_ts_manager_started_quiescing, false,
+    "Pause TSTabletManager::StartShutdown after the tablet manager state is set.");
+
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
@@ -339,6 +342,7 @@ DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
+DECLARE_bool(qos_system_dbs_use_shared_pool);
 
 namespace yb::tserver {
 
@@ -776,6 +780,18 @@ Status TSTabletManager::Init() {
   // Validator should be created before tablets are open.
   tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
 
+  // Switch state to MANAGER_RUNNING before opening tablets as apply of few ops might need the
+  // manager to be in running state.
+  {
+    std::lock_guard lock(mutex_);
+    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
+    if (!allow_compaction_failures_for_tablet_ids_.empty()) {
+      LOG_WITH_PREFIX(INFO) << "Flag allow_compaction_failures_for_tablet_ids is set to: "
+                            << allow_compaction_failures_for_tablet_ids_;
+    }
+    state_ = MANAGER_RUNNING;
+  }
+
   // Now submit the "Open" task for each.
   {
     std::lock_guard lock(metas.ready_metas_mutex);
@@ -814,16 +830,6 @@ Status TSTabletManager::Init() {
         "bg superblock flush",
         MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
     RETURN_NOT_OK(superblock_flush_bg_task_->Init());
-  }
-
-  {
-    std::lock_guard lock(mutex_);
-    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
-    if (!allow_compaction_failures_for_tablet_ids_.empty()) {
-      LOG_WITH_PREFIX(INFO) << "Flag allow_compaction_failures_for_tablet_ids is set to: "
-                            << allow_compaction_failures_for_tablet_ids_;
-    }
-    state_ = MANAGER_RUNNING;
   }
 
   RETURN_NOT_OK(mem_manager_->Init());
@@ -1195,7 +1201,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
 
-  if (state() != MANAGER_RUNNING) {
+  if (!IsOperational()) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
@@ -1532,7 +1538,7 @@ Status TSTabletManager::ApplyCloneTablet(
   // replicas A' and B' is maintained. Since the only way the clone op modifies the source tablet
   // is to set last_attempted_clone_seq_no_, this assumption is met.
 
-  if (state() != MANAGER_RUNNING) {
+  if (!IsOperational()) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
@@ -2048,6 +2054,9 @@ Status MaybeAssignPerDbCgroups(
   if (namespace_id.empty()) return Status::OK();
 
   auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
+    return Status::OK();
+  }
   auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
   cm->RegisterDbName(db_oid, meta.namespace_name());
   if (consensus_per_db) {
@@ -2374,6 +2383,7 @@ void TSTabletManager::StartShutdown() {
   {
     std::lock_guard lock(mutex_);
     switch (state_) {
+      case MANAGER_STARTED_QUIESCING: [[fallthrough]];
       case MANAGER_QUIESCING: {
         VLOG(1) << "Tablet manager shut down already in progress..";
         return;
@@ -2384,8 +2394,8 @@ void TSTabletManager::StartShutdown() {
       }
       case MANAGER_INITIALIZING:
       case MANAGER_RUNNING: {
-        LOG_WITH_PREFIX(INFO) << "Shutting down tablet manager...";
-        state_ = MANAGER_QUIESCING;
+        LOG_WITH_PREFIX(INFO) << "Starting to shut down tablet manager...";
+        state_ = MANAGER_STARTED_QUIESCING;
         break;
       }
       default: {
@@ -2393,6 +2403,8 @@ void TSTabletManager::StartShutdown() {
       }
     }
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_after_ts_manager_started_quiescing);
 
   for (auto& callback : flag_callbacks_) {
     callback.Deregister();
@@ -2450,6 +2462,11 @@ void TSTabletManager::StartShutdown() {
   }
   if (metadata_cache_holder_) {
     metadata_cache_holder_->Shutdown();
+  }
+  {
+    std::lock_guard lock(mutex_);
+    LOG_WITH_PREFIX(INFO) << "Shutting down tablet manager...";
+    state_ = MANAGER_QUIESCING;
   }
 }
 
@@ -2543,7 +2560,15 @@ std::string TSTabletManager::TabletLogPrefix(const TabletId& tablet_id) const {
 }
 
 bool TSTabletManager::ClosingUnlocked() const {
+  // Don't check for MANAGER_STARTED_QUIESCING so as to allow apply of operations like SPLIT_OP &
+  // CLONE_OP that could race with the shutdown process, and could fatal if TSTabletManager is
+  // unable to apply them.
   return state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN;
+}
+
+bool TSTabletManager::IsOperational() const {
+  SharedLock<RWMutex> shared_lock(mutex_);
+  return state_ == MANAGER_STARTED_QUIESCING || state_ == MANAGER_RUNNING;
 }
 
 Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
@@ -3407,13 +3432,16 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   bool restorations_updated;
   RestorationCompleteTimeMap restoration_complete_time;
   {
-    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    std::lock_guard lock(snapshot_schedule_info_mutex_);
     ++snapshot_schedules_version_;
-    snapshot_schedule_allowed_history_cutoff_.clear();
+    snapshot_schedule_info_.clear();
     for (const auto& schedule : info.schedules()) {
       auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
-      snapshot_schedule_allowed_history_cutoff_.emplace(
-          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      snapshot_schedule_info_.emplace(schedule_id, SnapshotScheduleInfo{
+          .last_snapshot_ht = HybridTime::FromPB(schedule.last_snapshot_hybrid_time()),
+          .retention_duration_sec = schedule.has_retention_duration_sec()
+              ? schedule.retention_duration_sec() : 0,
+      });
       missing_snapshot_schedules_.erase(schedule_id);
     }
     HybridTime restorations_update_ht(info.last_restorations_update_ht());
@@ -3445,6 +3473,13 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
     RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
+}
+
+HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
+    const SnapshotScheduleId& schedule_id) const {
+  std::lock_guard lock(snapshot_schedule_info_mutex_);
+  auto it = snapshot_schedule_info_.find(schedule_id);
+  return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
@@ -3484,10 +3519,19 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
   auto schedules = metadata->SnapshotSchedules();
   if (!schedules.empty()) {
     std::vector<SnapshotScheduleId> schedules_to_remove;
+    bool is_sequences_data = metadata->table_id() == kPgSequencesDataTableId;
     {
-      std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+      std::lock_guard lock(snapshot_schedule_info_mutex_);
+      // The sequences_data table is shared across all YSQL databases but its tablets only track
+      // last_snapshot_ht_ (which advances with each new snapshot). For clone/restore at an older
+      // timestamp, we need to retain history back to now - retention_duration_sec.
+      uint64_t max_retention_sec = 0;
       for (const auto& schedule_id : schedules) {
-        if (snapshot_schedule_allowed_history_cutoff_.contains(schedule_id)) {
+        auto it = snapshot_schedule_info_.find(schedule_id);
+        if (it != snapshot_schedule_info_.end()) {
+          if (is_sequences_data) {
+            max_retention_sec = std::max(max_retention_sec, it->second.retention_duration_sec);
+          }
           continue;
         }
         // We don't know this schedule.
@@ -3502,6 +3546,10 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
           // master, but response not yet received on TServer.
           schedules_to_remove.push_back(schedule_id);
         }
+      }
+      if (max_retention_sec > 0) {
+        auto retention_cutoff = server_->Clock()->Now().AddSeconds(-max_retention_sec);
+        result.MakeAtMost(retention_cutoff);
       }
     }
     bool any_removed = false;

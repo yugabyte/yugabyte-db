@@ -3,7 +3,6 @@ import {
   AZUpgradeStatus,
   CanaryPauseState,
   SoftwareUpgradeProgress,
-  DbUpgradePrecheckStatus,
   ServerType,
   Task,
   TaskState,
@@ -42,7 +41,6 @@ export const createMinimalSoftwareUpgradeProgressForTests = (
 ): SoftwareUpgradeProgress => ({
   canaryUpgrade: true,
   canaryPauseState: CanaryPauseState.NOT_PAUSED,
-  precheckStatus: DbUpgradePrecheckStatus.RUNNING,
   masterAZUpgradeStatesList: [],
   tserverAZUpgradeStatesList: [],
   ...partial
@@ -51,7 +49,6 @@ export const createMinimalSoftwareUpgradeProgressForTests = (
 export const defaultDbUpgradeSoftwareUpgradeProgress = (): SoftwareUpgradeProgress => ({
   canaryUpgrade: true,
   canaryPauseState: CanaryPauseState.NOT_PAUSED,
-  precheckStatus: DbUpgradePrecheckStatus.RUNNING,
   masterAZUpgradeStatesList: [
     createDbUpgradeMockAzUpgradeState(
       'us-west-2a-uuid',
@@ -124,8 +121,10 @@ export const tserverAzUpgradeStatesListWithSecondLastInProgress = <
   });
 };
 
-type CreateDbUpgradeTaskMockOverrides = Partial<Omit<Task, 'softwareUpgradeProgress'>> & {
+type CreateDbUpgradeTaskMockOverrides = Partial<Task> & {
   softwareUpgradeProgress?: Partial<SoftwareUpgradeProgress>;
+  /** Used to mimic API behaviour when DB upgrade still in pre-check phase.*/
+  omitSoftwareUpgradeProgress?: boolean;
 };
 
 const buildBaseDbUpgradeTask = (): Task => ({
@@ -169,7 +168,8 @@ const buildBaseDbUpgradeTask = (): Task => ({
     versionNumbers: {
       ybPrevSoftwareVersion: '2024.2.1.0-b123',
       ybSoftwareVersion: '2024.2.2.0-b456'
-    }
+    },
+    softwareUpgradeProgress: defaultDbUpgradeSoftwareUpgradeProgress()
   },
   abortable: true,
   retryable: false,
@@ -220,25 +220,45 @@ const buildBaseDbUpgradeTask = (): Task => ({
   ],
   taskInfo: {
     taskParams: {}
-  },
-  softwareUpgradeProgress: defaultDbUpgradeSoftwareUpgradeProgress()
+  }
 });
 
 export const createDbUpgradeTaskMock = (overrides: CreateDbUpgradeTaskMockOverrides = {}): Task => {
   const base = buildBaseDbUpgradeTask();
-  const { softwareUpgradeProgress: progressPartial, ...taskPartial } = overrides;
+  const {
+    softwareUpgradeProgress: progressPartial,
+    omitSoftwareUpgradeProgress = false,
+    details: detailsOverride,
+    ...taskPartial
+  } = overrides;
+
+  const { softwareUpgradeProgress: _baseSoftwareUpgradeProgress, ...baseDetailsWithoutProgress } =
+    base.details;
+
+  const details: Task['details'] = omitSoftwareUpgradeProgress
+    ? {
+        ...baseDetailsWithoutProgress,
+        ...detailsOverride
+      }
+    : {
+        ...base.details,
+        ...detailsOverride,
+        ...(progressPartial !== undefined && {
+          softwareUpgradeProgress: {
+            ...base.details.softwareUpgradeProgress!,
+            ...progressPartial
+          }
+        })
+      };
+
   return {
     ...base,
     ...taskPartial,
-    softwareUpgradeProgress: {
-      ...base.softwareUpgradeProgress!,
-      ...progressPartial
-    }
+    details
   };
 };
 
-export const DB_UPGRADE_PRECHECK_VALIDATION_TASK_ID =
-  'a0000001-0001-4000-8000-000000000001';
+export const DB_UPGRADE_PRECHECK_VALIDATION_TASK_ID = 'a0000001-0001-4000-8000-000000000001';
 
 export const DB_UPGRADE_PRECHECK_VALIDATION_TASK_UNIVERSE_UUID =
   'a0000001-0001-4000-8000-000000000002';
@@ -306,8 +326,7 @@ export const createDbUpgradePrecheckMetadataMock = (
 
 export const DB_UPGRADE_ROLLBACK_TASK_ID = 'b0000001-0001-4000-8000-000000000001';
 
-export const DB_UPGRADE_ROLLBACK_TASK_UNIVERSE_UUID =
-  'b0000001-0001-4000-8000-000000000002';
+export const DB_UPGRADE_ROLLBACK_TASK_UNIVERSE_UUID = 'b0000001-0001-4000-8000-000000000002';
 
 const buildDbUpgradeRollbackTaskFixture = (): Task => ({
   id: DB_UPGRADE_ROLLBACK_TASK_ID,
@@ -361,8 +380,7 @@ export const createDbUpgradeRollbackTaskMock = (overrides: Partial<Task> = {}): 
 
 export const DB_UPGRADE_FINALIZE_TASK_ID = 'c0000001-0001-4000-8000-000000000001';
 
-export const DB_UPGRADE_FINALIZE_TASK_UNIVERSE_UUID =
-  'c0000001-0001-4000-8000-000000000002';
+export const DB_UPGRADE_FINALIZE_TASK_UNIVERSE_UUID = 'c0000001-0001-4000-8000-000000000002';
 
 const buildDbUpgradeFinalizeTaskFixture = (): Task => ({
   id: DB_UPGRADE_FINALIZE_TASK_ID,

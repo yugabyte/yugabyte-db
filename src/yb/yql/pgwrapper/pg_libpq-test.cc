@@ -3346,10 +3346,11 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
 class PgLibPqConcurrentDdlDml : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(Format("--enable_object_locking_for_table_locks=true"));
-    options->extra_tserver_flags.push_back(Format("--ysql_yb_ddl_transaction_block_enabled=true"));
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -4739,6 +4740,61 @@ TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimal
   ASSERT_EQ(neg_after, 0);
 }
 
+// Test fixture with ysql_catalog_preload_additional_tables=true (preloads pg_proc, pg_cast, etc.)
+// and ysql_minimal_catalog_caches_preload=true.
+class PgMinimalPreloadAdditionalTablesTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_catalog_preload_additional_tables=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// Test that user-defined functions whose name collides with a builtin can be
+// resolved correctly when minimal preloading + additional table preload are on.
+// gen_random_uuid is a builtin (pg_catalog) and is commonly also installed in
+// the public schema via the pgcrypto extension.
+TEST_F_EX(PgLibPqTest, PgProcMinPreloadBuiltinNameCollision,
+          PgMinimalPreloadAdditionalTablesTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create a user-defined function that shadows a builtin name.
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION public.gen_random_uuid() "
+      "RETURNS uuid AS $$ SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid $$ "
+      "LANGUAGE sql"));
+
+  // Open a new connection so catcache lists are freshly loaded from preload.
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // The direct call goes through FuncnameGetCandidates ->
+  // SearchSysCacheList(PROCNAMEARGSNSP, ...) and should invoke the
+  // user-defined version, not the pg_catalog builtin.
+  auto uuid = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT public.gen_random_uuid()::text"));
+  ASSERT_EQ(uuid, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
+}
+
+// Test that a user-defined function with a unique name (no builtin collision)
+// works correctly with minimal preloading + additional table preload.
+TEST_F_EX(PgLibPqTest, PgProcMinPreloadUniqueUserFunc,
+          PgMinimalPreloadAdditionalTablesTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION my_custom_add(a int, b int) RETURNS int AS $$ "
+      "SELECT a + b $$ LANGUAGE sql"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  auto result = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      "SELECT my_custom_add(3, 4)"));
+  ASSERT_EQ(result, 7);
+}
+
 // Test that preloading pg_range prevents cache misses on the RANGEMULTIRANGE catcache.
 class PgRangeTest : public PgLibPqTest,
       public ::testing::WithParamInterface<bool> {
@@ -5304,12 +5360,7 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_utf8_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_utf8_db result: " << result;
-  // MacOS and Linux have different sort order of en_US.UTF-8 collation.
-#if defined(__linux__)
   ASSERT_EQ(result, utf8_expected);
-#else
-  ASSERT_EQ(result, c_expected);
-#endif
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_x_icu_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
@@ -5375,6 +5426,63 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   }
 };
 
+// Test case for GitHub issue #28628. The IN-list is on a non-prefix range column so the
+// variable bloom filter (which is keyed on the prefix range column) does not bypass scan
+// choices' intermediate seeks, allowing the rollback-of-max_seen_ht bug to surface. A
+// third range column `sub_id` is added so the planner cannot form full ybctids and must
+// exercise HybridScanChoices on the non-prefix `id` column.
+TEST_F(PgLibPqTest, InconsistentUpdateReadNonPrefixKey) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE bank_accounts (type VARCHAR(50), id INT, sub_id INT, balance INT, "
+      "PRIMARY KEY(type ASC, id ASC, sub_id ASC)) "
+      "SPLIT AT VALUES (('savings', 5, 0))"));
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO bank_accounts (type, id, sub_id, balance) "
+        "VALUES ('savings', $0, 0, 100)", i));
+  }
+
+  // Verify initial balances of (3, 7, 10): 3 and 7 exist, 10 does not.
+  auto initial_balances = ASSERT_RESULT(conn.FetchRows<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id IN (3, 7, 10)"));
+  auto initial_sum = std::accumulate(initial_balances.begin(), initial_balances.end(), 0);
+  ASSERT_EQ(initial_sum, 200);
+
+  auto s_sum = ASSERT_RESULT(Connect());
+  auto s_update = ASSERT_RESULT(Connect());
+
+  // s_sum: read from first tablet to set local_limit there only.
+  ASSERT_OK(s_sum.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto balance3 = ASSERT_RESULT(s_sum.FetchRow<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id = 3 AND sub_id = 0"));
+  ASSERT_EQ(balance3, 100);
+
+  // s_update: cross-tablet update transferring 10 from id=3 (tablet 1) to id=7 (tablet 2).
+  // Only atomicity is needed -- a default-isolation transaction is sufficient.
+  ASSERT_OK(s_update.Execute("BEGIN"));
+  ASSERT_OK(s_update.Execute(
+      "UPDATE bank_accounts SET balance = balance - 10 "
+      "WHERE type = 'savings' AND id = 3 AND sub_id = 0"));
+  ASSERT_OK(s_update.Execute(
+      "UPDATE bank_accounts SET balance = balance + 10 "
+      "WHERE type = 'savings' AND id = 7 AND sub_id = 0"));
+  ASSERT_OK(s_update.Execute("COMMIT"));
+
+  // Re-read with IN-list on the non-prefix key. The variable bloom filter remains enabled
+  // (prefix `type` is fixed), but the IN-list on `id` still drives scan choices, so the
+  // read must observe the conflicting update and require a restart.
+  ASSERT_OK(s_sum.Execute("SET yb_debug_log_docdb_requests=true"));
+  auto updated_balances_result = s_sum.FetchRows<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id IN (3, 7, 9)");
+  ASSERT_NOK(updated_balances_result);
+  ASSERT_STR_CONTAINS(updated_balances_result.status().ToString(), "Restart read required");
+
+  ASSERT_OK(s_sum.RollbackTransaction());
+}
+
 // Test aborting concurrent ANALYZEs doesn't cause the connection to FATAL.
 // During execution of ANALYZE, when analyzing each table, CurrentUserId is switched to the table
 // owner's userid and SecurityRestrictionContext is set to indicate security-restricted operations.
@@ -5430,9 +5538,11 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(namespace_name));
   const auto table_name = "tbl1";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", table_name));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT, salary NUMERIC(12,2)) SPLIT INTO 1 TABLETS",
+      table_name));
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", table_name));
+      "INSERT INTO $0 (id, name, salary) SELECT i, 'test' || i, i + 0.50 "
+      "FROM generate_series(1, 10) i", table_name));
 
   std::vector<TabletId> tablet_ids;
   auto table_names = ASSERT_RESULT(client_->ListTables(table_name));
@@ -5444,6 +5554,21 @@ TEST_F(PgLibPqTest, DumpTabletData) {
 
   // Wait for rows to get replicated to followers.
   SleepFor(1s * kTimeMultiplier);
+
+  // Dump tablet data with a destination path to exercise the binary -> string conversion path,
+  // which is required to reproduce decoding bugs for types like NUMERIC.
+  const auto dest_path = GetTestPath("dump_tablet_data.out");
+  ASSERT_OK(DumpTabletData(/* tserver_idx */ 0, tablet_id, HybridTime(), dest_path));
+
+  faststring dumped;
+  ASSERT_OK(ReadFileToString(Env::Default(), dest_path, &dumped));
+  const auto dumped_str = dumped.ToString();
+  LOG(INFO) << "Dumped tablet data:\n" << dumped_str;
+  ASSERT_STR_CONTAINS(dumped_str, Format("Tablet ID: $0", tablet_id));
+  ASSERT_STR_CONTAINS(dumped_str, "Row count: 10");
+  for (int i = 1; i <= 10; ++i) {
+    ASSERT_STR_CONTAINS(dumped_str, Format("$0, test$0, $0.5", i));
+  }
 
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }

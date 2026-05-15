@@ -181,7 +181,7 @@ class TestRandomAccess : public YBTabletTest {
   // Wakes up periodically to perform a flush or compaction.
   void BackgroundOpThread() {
     while (!done_.WaitFor(MonoDelta::FromMilliseconds(FLAGS_sleep_between_background_ops_ms))) {
-      CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
+      CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     }
   }
 
@@ -355,7 +355,7 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
         cur_val = pending_val;
         break;
       case TEST_FLUSH_TABLET:
-        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         break;
       default:
         LOG(FATAL) << test_op;

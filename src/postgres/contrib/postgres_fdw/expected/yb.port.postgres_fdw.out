@@ -73,13 +73,13 @@ CREATE TABLE "S 1"."T 4" (
 );
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO "S 1"."T 1"
 	SELECT id,
 	       id % 10,
@@ -6770,7 +6770,7 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 CREATE FUNCTION row_before_insupd_trigfunc() RETURNS trigger AS $$BEGIN NEW.a := NEW.a + 10; RETURN NEW; END$$ LANGUAGE plpgsql;
 CREATE TABLE base_tbl (a int, b int);
 ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON base_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS (table_name 'base_tbl');
@@ -6814,7 +6814,7 @@ DROP TABLE base_tbl;
 -- test WCO for partitions
 CREATE TABLE child_tbl (a int, b int);
 ALTER TABLE child_tbl SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON child_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS (table_name 'child_tbl');
@@ -6867,7 +6867,7 @@ DROP FUNCTION row_before_insupd_trigfunc;
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
 alter table loc1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -6905,7 +6905,7 @@ create table gloc1 (
   a int,
   b int generated always as (a * 2) stored);
 alter table gloc1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table grem1 (
   a int,
   b int generated always as (a * 2) stored)
@@ -7621,9 +7621,9 @@ DROP TRIGGER trig_row_after_delete ON rem1;
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
 ALTER TABLE a SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE loct SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
 INSERT INTO a(aa) VALUES('aaa');
@@ -7766,9 +7766,9 @@ DROP TABLE loct;
 create table loct1 (f1 int, f2 int, f3 int);
 create table loct2 (f1 int, f2 int, f3 int);
 alter table loct1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 alter table loct2 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create table foo (f1 int, f2 int);
 create foreign table foo2 (f3 int) inherits (foo)
   server loopback options (table_name 'loct1');
@@ -7776,9 +7776,9 @@ create table bar (f1 int, f2 int);
 create foreign table bar2 (f3 int) inherits (bar)
   server loopback options (table_name 'loct2');
 alter table foo set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 alter table bar set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 insert into foo values(1,1);
 insert into foo values(3,3);
 insert into foo2 values(2,2,2);
@@ -8756,7 +8756,7 @@ drop table loct2;
 -- ===================================================================
 create table loc2 (f1 int, f2 text);
 alter table loc2 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
 -- Test basic functionality
 copy rem2 from stdin;
@@ -9516,9 +9516,9 @@ CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
 ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -9532,9 +9532,9 @@ CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
 ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)

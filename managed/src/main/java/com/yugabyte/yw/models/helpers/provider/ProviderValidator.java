@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -51,6 +52,7 @@ public class ProviderValidator extends BaseBeanValidator {
       AWSCloudImpl awsCloudImpl,
       GCPCloudImpl gcpCloudImpl,
       KubernetesManagerFactory kubernetesManagerFactory,
+      GCPProjectApiClientFactory gcpClientFactory,
       RuntimeConfGetter runtimeConfGetter,
       ConfigHelper configHelper) {
     super(beanValidator);
@@ -69,7 +71,7 @@ public class ProviderValidator extends BaseBeanValidator {
         new AzureProviderValidator(runtimeConfGetter, beanValidator, configHelper));
     this.providerValidatorMap.put(
         CloudType.gcp.toString(),
-        new GCPProviderValidator(beanValidator, runtimeConfGetter, gcpCloudImpl));
+        new GCPProviderValidator(beanValidator, runtimeConfGetter, gcpCloudImpl, gcpClientFactory));
   }
 
   public void validateAvailabiltyZone(

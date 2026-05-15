@@ -9,6 +9,8 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,8 +29,10 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
@@ -162,8 +166,16 @@ public class CustomerConfig extends Model {
     this.save();
   }
 
-  public static final Finder<UUID, CustomerConfig> find =
-      new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
+  public static final Finder<UUID, CustomerConfig> find = new Finder<>(CustomerConfig.class) {};
+
+  public static PagedList<CustomerConfig> getPagedList(
+      UUID customerUUID, NormalizedPaginationSpec normalized) {
+    ExpressionList<CustomerConfig> expr =
+        CustomerConfig.find.query().where().eq("customer_uuid", customerUUID);
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+  }
 
   public Map<String, String> dataAsMap() {
     ObjectMapper mapper = new ObjectMapper();

@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -88,9 +87,7 @@ public class ManageOtelCollector extends NodeTaskBase {
   }
 
   private boolean isTServerServiceSystemLevel(Universe universe, NodeDetails node) {
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
     String ybHomeDir = provider.getYbHome();
     log.debug("Using ybHomeDir {} to check for the tserver service unit file", ybHomeDir);
     String serviceFilePath = String.format("%s/.config/systemd/user/yb-tserver.service", ybHomeDir);

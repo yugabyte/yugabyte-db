@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/algorithm/string/replace.hpp>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/client/transaction.h"
@@ -280,8 +282,6 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
 
 DEFINE_test_flag(bool, block_apply_intent, false,
     "When set, block handling of UpdateTransaction(APPLYING) until the flag is cleared.");
-
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
     "Skip aborting active transactions during schema change");
@@ -1935,7 +1935,8 @@ class TabletsFlusher final : public TabletsFlusherBase {
 
  private:
   Status Flush(const tablet::TabletPtr& tablet) override {
-    return tablet->Flush(tablet::FlushMode::kAsync, flush_flags_);
+    return tablet->Flush(
+        tablet::FlushMode::kAsync, flush_flags_, rocksdb::FlushReason::kAdminFlush);
   }
 
   Status WaitForFlush(const tablet::TabletPtr& tablet) override {
@@ -1994,7 +1995,7 @@ bool IsRegularOnly(const FlushTabletsRequestPB& req) {
 }
 
 bool IsVectorIndexOnly(const FlushTabletsRequestPB& req) {
-  return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX) ||
+  return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY) ||
          (req.flags() == tablet::FLUSH_COMPACT_DEFAULT && req.vector_index_ids_size());
 }
 
@@ -2010,17 +2011,23 @@ Status TriggerFlush(
   // FlushCompactFlags for FLUSH operation:
   // 1. FLUSH_COMPACT_DEFAULT
   //    Flush regular + intents + vector indexes. If vector_index_ids field is not empty,
-  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX_ONLY.
   //
   // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
   //    Flush only regular db, used in tests only.
   //
-  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  // 3. FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED
+  //    Not applicable for FLUSH operation.
+  //
+  // 4. FLUSH_COMPACT_VECTOR_INDEX_ONLY
   //    Flush only vector indexes. Empty vector_index_ids means all vector indexes.
   //
-  // 4. FLUSH_COMPACT_ALL
+  // 5. FLUSH_COMPACT_ALL
   //    Flush regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
   DCHECK_EQ(req.operation(), FlushTabletsRequestPB::FLUSH);
+  SCHECK_FORMAT(
+    req.flags() != tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED, InvalidArgument,
+    "Flag [$0] is not supported for FLUSH operation", req.flags());
 
   if (IsVectorIndexOnly(req)) {
     return VectorIndexFlusher{ service, tablets, CopyVectorIndexIds(req), resp }.Run();
@@ -2031,15 +2038,14 @@ Status TriggerFlush(
   return TabletsFlusher{ service, tablets, flush_flags, resp }.Run();
 }
 
-TableIdsPtr VectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
-  // If vector indexes are specfied in the request, return them unconditionally.
-  // May return empty collection to indicate "all vectors".
-  if (req.vector_index_ids_size() ||
-      req.flags() & tablet::FLUSH_COMPACT_VECTOR_INDEX) {
-    return std::make_shared<TableIds>(CopyVectorIndexIds(req));
+Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
+  if (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED) {
+    SCHECK(req.vector_index_ids_size() == 0, InvalidArgument,
+           "vector_index_ids must not be specified with FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED flag");
+    return nullptr;
   }
 
-  return nullptr;
+  return std::make_shared<TableIds>(CopyVectorIndexIds(req));
 }
 
 Status TriggerCompact(
@@ -2048,16 +2054,19 @@ Status TriggerCompact(
     const FlushTabletsRequestPB& req) {
   // FlushCompactFlags for COMPACT operation:
   // 1. FLUSH_COMPACT_DEFAULT
-  //    Compact ONLY regular and intents DB. Please mention, vector index is NOT compacted!
-  //    If vector_index_ids field is not empty, the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //    Compact regular + intents + vector indexes. If vector_index_ids field is not empty,
+  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX_ONLY.
   //
   // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
   //    Not applicable for COMPACT operation.
   //
-  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  // 3. FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED
+  //    Compacts all storages except vector indexes.
+  //
+  // 4. FLUSH_COMPACT_VECTOR_INDEX_ONLY
   //    Compact only vector indexes. Empty vector_index_ids means all vector indexes.
   //
-  // 4. FLUSH_COMPACT_ALL
+  // 5. FLUSH_COMPACT_ALL
   //    Compact regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
   DCHECK_EQ(req.operation(), FlushTabletsRequestPB::COMPACT);
   SCHECK_FORMAT(
@@ -2067,7 +2076,7 @@ Status TriggerCompact(
   AdminCompactionOptions options {
     ShouldWait::kTrue,
     rocksdb::SkipCorruptDataBlocksUnsafe(req.remove_corrupt_data_blocks_unsafe()),
-    VectorIndexesForCompaction(req),
+    VERIFY_RESULT(CollectVectorIndexesForCompaction(req)),
     tablet::VectorIndexOnly(IsVectorIndexOnly(req))
   };
 
@@ -2324,8 +2333,7 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   YsqlDumpRunner ysql_dump_runner =
       VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
-      req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
-      HybridTime(req->restore_ht())));
+      req->source_db_name(), target_db_name, req->target_owner(), HybridTime(req->restore_ht())));
   VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.
@@ -2445,26 +2453,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   bool first_run = true;
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
-        // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
-        // sure to handle that case if initdb ever goes through this codepath.
-        bool perdb_mode = false;
-        if (FLAGS_ysql_enable_db_catalog_version_mode) {
-          const std::optional<bool> catalog_version_table_in_perdb_mode =
-            server_->catalog_version_table_in_perdb_mode();
-          if (!catalog_version_table_in_perdb_mode.has_value()) {
-            // This is a temporary known case when this tserver hasn't get the answer
-            // from master yet via heartbeat response.
-            return false;
-          }
-          perdb_mode = catalog_version_table_in_perdb_mode.value();
-        }
-        if (perdb_mode) {
-          server_->get_ysql_db_catalog_version(
-              database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        } else {
-          server_->get_ysql_catalog_version(
-              &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
-        }
+        server_->get_ysql_db_catalog_version(
+            database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         if (ts_catalog_version >= catalog_version) {
           return true;
         }
@@ -3456,12 +3446,16 @@ void TabletServiceImpl::TriggerRelcacheInitConnection(
     const TriggerRelcacheInitConnectionRequestPB* req,
     TriggerRelcacheInitConnectionResponsePB* resp,
     rpc::RpcContext context) {
-  auto status = server_->TriggerRelcacheInitConnection(*req, resp);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, &context);
-    return;
-  }
-  context.RespondSuccess();
+  auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  server_->TriggerRelcacheInitConnection(
+      *req,
+      [resp, shared_context](const Status& status) {
+        if (!status.ok()) {
+          SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+          return;
+        }
+        shared_context->RespondSuccess();
+      });
 }
 
 void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,

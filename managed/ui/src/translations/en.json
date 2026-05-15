@@ -270,18 +270,39 @@
         "forceApply": "Force Apply"
       },
       "dbUpgrade": {
-        "upgradeModal": {
-          "modalTitle": "Upgrade Database",
-          "fields": {
+        "sharedComponents": {
+          "rollingUpdateBatchSettings": {
             "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "maxNodesPerBatchTooltipRollback": "Applies to T-Servers.\nMasters are rolled back one at a time.",
             "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers).",
             "seconds": "seconds",
             "validationError": {
               "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
               "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}.",
               "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
             }
+          }
+        },
+        "clusterWidget": {
+          "version": "Version",
+          "upgradeAvailable": "Upgrade Available",
+          "upgradingTo": "Upgrading to {{version}}",
+          "rollingBackTo": "Rolling back to {{version}}",
+          "finalizingUpgrade": "Finalizing {{version}}",
+          "tag": {
+            "pendingFinalization": "Pending finalization",
+            "operationFailed": "Failed",
+            "operationInProgress": "In progress",
+            "operationPaused": "Paused"
           },
+          "tooltip": {
+            "upgradeNotCompleteUntilFinalized": "Database upgrade is not complete until finalized."
+          }
+        },
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
           "stepper": {
             "dbVersion": "DATABASE VERSION",
             "upgradeMethod": "UPGRADE METHOD",
@@ -345,6 +366,7 @@
               "rolling": "Rolling upgrade",
               "concurrent": "Concurrent upgrade of all nodes."
             },
+            "concurrentUpgradeDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the upgrade is in progress.",
             "recommendationLabel": "Recommendation",
             "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
           },
@@ -353,13 +375,15 @@
             "stepDescription": "The upgrade runs in a controlled sequence. Add pauses to monitor and evaluate the Universe before proceeding.",
             "upgradeStage": {
               "upgradeMasterServers": "Upgrade Master Servers",
+              "upgradeTservers": "Upgrade T-Servers",
               "upgradePrimaryClusterTServers": "Upgrade Primary Cluster T-Servers",
               "upgradeReadReplicaTServers": "Upgrade Read Replica T-Servers"
             },
             "executionOrder": "Execution Order",
-            "addMonitoringPause": "Add monitoring pause",
+            "addMonitoringPause": "Add Monitoring Pause",
             "pauseToMonitorUpgrade": "Pause to monitor upgrade",
             "pauseAfterFirstAzTooltip": "<bold>Pause after the first AZ</bold> to validate the upgrade on a single AZ and keep a faster rollback path if needed.",
+            "reminder": "Reminder",
             "pauseRequiresManualResume": "Every pause requires you to manually resume the upgrade."
           },
           "upgradePaceStep": {
@@ -370,8 +394,10 @@
             "upgrade": "Upgrade"
           },
           "toast": {
-            "dbUpgradeFailed": "Database upgrade request failed",
-            "dbUpgradePrecheckFailed": "Database pre-check request failed"
+            "dbUpgradeFailedLabel": "Database upgrade request failed",
+            "dbUpgradePrecheckFailedLabel": "Database pre-check request failed",
+            "dbUpgradePrecheckSuccess": "Database upgrade pre-check passed.",
+            "dbUpgradeSuccess": "Database upgrade completed."
           }
         },
         "rollbackModal": {
@@ -389,19 +415,9 @@
           "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
           "upgradedAzsLabel": "Upgraded AZs:",
           "submitLabel": "Proceed to Roll Back",
-          "rollingOptions": {
-            "maxNodesPerBatch": "Max nodes per batch:",
-            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
-            "waitBetweenBatches": "Wait between batches:",
-            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers)."
-          },
           "toast": {
+            "rollbackSuccess": "Database upgrade rollback completed.",
             "rollbackFailedLabel": "Rollback request failed"
-          },
-          "validation": {
-            "maxNodesPerBatchMinimum": "Must be at least 1.",
-            "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
-            "waitBetweenBatchesMin": "Must be 0 or greater."
           }
         },
         "finalizeModal": {
@@ -411,6 +427,7 @@
           "evaluationLink": "View recommended evaluation steps",
           "submitLabel": "Proceed to finalize the upgrade",
           "toast": {
+            "finalizeUpgradeSuccess": "Database upgrade finalized.",
             "finalizeUpgradeFailedLabel": "Finalize DB upgrade request failed"
           }
         },
@@ -424,6 +441,7 @@
             "rollBack": "Roll Back",
             "resumeUpgrade": "Resume Upgrade",
             "finalizeUpgradeNow": "Finalize Upgrade Now",
+            "readReplicaTag": "Read Replica",
             "temporaryRestrictions": {
               "tag": "Temporary Restrictions",
               "ddlAndSomeOperationsBlockedForUpgrade": "DDLs and <dbUpgradeImpactDocLink>some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
@@ -651,6 +669,18 @@
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
       },
+      "multiTenancy": {
+        "modalTitle": "Edit multi-tenancy (QoS)",
+        "toggleLabel": "Enable QoS multi-tenancy",
+        "subText": "Configure QoS-based multi-tenancy for YSQL. Requires cgroup support, compatible DB version, and YSQL-only access (YCQL disabled).",
+        "cpuPercentLabel": "Max DB CPU % (qosMaxDbCpuPercent)",
+        "cpuPercentHelper": "0–100",
+        "dbCountLabel": "Max DB count (qosMaxDbCount)",
+        "dbCountHelper": "Integer ≥ 1",
+        "changeWarningRf3": "<strong>Note!</strong> Changing multi-tenancy may require a rolling restart of <strong>{{universeName}}</strong>.",
+        "changeWarningRf1": "<strong>Note!</strong> Changing multi-tenancy may require a restart of <strong>{{universeName}}</strong>.",
+        "requestFailedLabel": "Request to update YSQL settings failed"
+      },
       "supportBundle": {
         "editCustomPrometheusQueriesModal": {
           "title": "Custom Queries",
@@ -789,7 +819,8 @@
         "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
         "enterUniverseName": "Enter universe name to confirm delete:",
         "forceDeleteCheckbox": "Ignore Errors and Force Delete",
-        "modalTitle": "Delete Read Replica of {{universeName}}"
+        "modalTitle": "Delete Read Replica of {{universeName}}",
+        "deletionStarted": "Deletion is in progress"
       },
       "gFlags": {
         "loadingGflagGroups": "Loading Gflag groups ...",
@@ -819,6 +850,7 @@
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
+        "requiresRestart": "RESTART REQUIRED",
         "addRow": "Add Row",
         "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
@@ -2805,6 +2837,7 @@
       "actions": {
         "retry": "Retry",
         "abort": "Abort",
+        "rollback": "Rollback",
         "diffs": {
           "Update": "View Universe Changes",
           "SoftwareUpgrade": "View Software Upgrade Changes",
@@ -2816,10 +2849,14 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
+          "rollbackConfirmTitle": "Rollback Task ?",
+          "rollbackConfirmMsg": "Do you really want to rollback this task?",
           "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
-          "taskRetryFailed": "Task retry failed"
+          "taskRetryFailed": "Task retry failed",
+          "taskRollbackSuccess": "Task rollback started",
+          "taskRollbackFailed": "Task rollback failed"
         }
       },
       "info": {
@@ -4181,11 +4218,13 @@
       },
       "placement": {
         "actions": "Actions",
-        "editResilienceAndRegions": "Edit Resilience and Regions",
-        "editNodesAndAvailabilityZones": "Edit Nodes and Availability Zones",
+        "editResilienceAndRegions": "Edit Regions",
+        "editNodesAndAvailabilityZones": "Edit AZ and Node Placement",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
         "clusterPlacement": "Cluster Placement",
+        "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
+        "readReplica": "Read Replica",
         "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
@@ -4220,7 +4259,9 @@
         "geoParitionPlacementView": {
           "title": "Geo Partitions",
           "addGeoPartition": "Add Geo Partition"
-        }
+        },
+        "menuEditPlacement": "Edit Placement",
+        "menuDeleteReadReplica": "Delete Read Replica"
       },
       "editResilienceAndRegions": {
         "title": "Edit Placement"
@@ -4239,7 +4280,32 @@
         "masterServerInstance": "Master Server Instance",
         "editHardwareModal": {
           "title": "Cluster Instance",
-          "submitLabel": "Review Changes"
+          "submitLabel": "Review Changes",
+          "noHardwareChanges": "Nothing to update - no hardware fields changed.",
+          "totalNodes": "Total Nodes",
+          "totalTServerNodes": "Total T-Server Nodes",
+          "totalMasterServerNodes": "Total Master Server Nodes"
+        },
+        "unableToApplyChanges": "Unable to apply hardware changes.",
+        "reviewChangesModal": {
+          "title": "Review Changes",
+          "summary": "Summary of instance configuration changes:",
+          "noChangedFieldsSummary": "No field differences to display for this review.",
+          "storageClass": "Storage class :",
+          "mountPoints": "Mount points :",
+          "current": "Current",
+          "new": "New",
+          "instanceType": "Instance Type :",
+          "volumeAndNode": "Volume / Node :",
+          "universeUpdateOptions": "Universe Update Options",
+          "rollingRestart": "Rolling restart the current nodes.",
+          "fasterAndRecommended": "Faster and Recommended",
+          "rollingRestartDescription": "No data migration is required. The universe will remain online and available throughout.",
+          "delayBetweenNodes": "Delay between nodes:",
+          "seconds": "seconds",
+          "migrateNodes": "Migrate to a new set of nodes.",
+          "migrateNodesDescription": "Migrate all data to a new set of nodes with new IP addresses. The universe will remain online and available throughout.",
+          "confirmAndApply": "Confirm and Apply"
         }
       },
       "security": {
@@ -4263,7 +4329,9 @@
         "editYSQLSettings": "Edit YSQL Settings",
         "editYCQLSettings": "Edit YCQL Settings",
         "editConnectionPooling": "Edit Connection Pooling Settings",
-        "editPostgresCompatibility": "Edit Postgres Compatibility Settings"
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings",
+        "noGflagsAdded": "You have not added any database configuration flags yet",
+        "addFlag": "Add Configuration Flag"
       },
       "advanced": {
         "proxyConfiguration": "Proxy Configuration",
@@ -4275,7 +4343,7 @@
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",
-        "editMasterServer": "Edit Master Server Instance  (Optional)",
+        "editMasterServer": "Edit Master Server Instance",
         "subText": "You can change master server instance settings at any time by going to:",
         "settingsAndHardware": "Settings > Hardware"
       }
@@ -4297,10 +4365,43 @@
         "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
         "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
         "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "regionsSectionTitle": "Regions",
+        "regionLabel": "Region {{index}}",
+        "availabilityZone": "Availability Zone",
+        "nodes": "Nodes",
+        "replicationFactor": "Replication Factor",
+        "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
+        "totalNodesPlacement": "Total Nodes",
+        "addAvailabilityZone": "Add Availability Zone",
+        "removeRegion": "Remove region",
+        "addRegion": "Add Region",
+        "newRegionBadge": "NEW",
+        "undoChange": "Undo Change",
+        "legendPrimaryCluster": "Primary Cluster",
+        "legendReadReplica": "Read Replica",
+        "legendSecondary": "Secondary",
+        "loadingRegions": "Loading regions…",
         "rrInstance": "Read Replica Instance",
         "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
         "primaryClusterInstSettings": "Primary Cluster Instance Settings",
         "kmsConfig": "Key Management Service Config",
+        "reviewCostSummary": {
+          "primaryCluster": "Primary Cluster",
+          "readReplicaTitle": "Read Replica"
+        },
+        "reviewSummary": {
+          "daily": "Daily",
+          "monthly": "Monthly",
+          "universeTotal": "Universe total",
+          "totalNodes": "Total nodes",
+          "totalCores": "Total cores",
+          "totalMemory": "Total memory",
+          "totalStorage": "Total storage"
+        },
+        "toast": {
+          "addRRFailed": "Failed to add read replica",
+          "updateRRFailed": "Failed to update read replica"
+        },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
           "positiveNumber": "{{field}} must be a positive number",
@@ -4309,7 +4410,11 @@
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
-          "required": "{{field}} is required"
+          "required": "{{field}} is required",
+          "regionRequired": "Select a region.",
+          "zoneRequired": "Select an availability zone.",
+          "nodesPositiveInteger": "Nodes must be a positive whole number.",
+          "universeUuidMissing": "Universe identifier is missing."
         }
       }
     }

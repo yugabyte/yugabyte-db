@@ -155,6 +155,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  // Once a tserver is marked as faulty it remains that way until it reregisters here.
+  // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
+  has_faulty_drive_ = false;
   return std::move(l);
 }
 

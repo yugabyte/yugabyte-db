@@ -856,6 +856,16 @@ class page_allocator_t {
  *
  *  Using this memory allocator won't affect your overall speed much, as that is not the bottleneck.
  *  However, it can drastically improve memory usage especially for huge indexes of small vectors.
+ *
+ *  TODO(yugabyte): the 4 MB-min / x2-doubling arena schedule below has no upper bound, so the
+ *  worst-case slack scales with the index size: data that lands just past an arena boundary
+ *  forces the next (twice as large) arena and wastes nearly its full capacity. For example a
+ *  ~1.1 GB working set commits 8+16+...+1024 = 2040 MB, leaving ~900 MB unused. Investigate a
+ *  tighter scheme -- growing in fixed page_size() multiples, capping the arena at some
+ *  threshold and switching to fixed-size arenas after that, or using a smaller multiplier
+ *  (1.25-1.5x). Nothing inside this allocator or its callers actually consumes the power-of-2
+ *  property -- ceil2()/x2 here is just amortized geometric growth, not used for masking or
+ *  buddy pairing.
  */
 template <std::size_t alignment_ak = 1> class memory_mapping_allocator_gt {
 

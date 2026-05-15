@@ -1,0 +1,450 @@
+-- =============================================================================
+-- Test yb_presplit reloption storage for SPLIT INTO N TABLETS
+-- =============================================================================
+
+-- Test that SPLIT INTO N TABLETS is stored as yb_presplit reloption
+CREATE TABLE test_split_into (k int PRIMARY KEY, v int) SPLIT INTO 6 TABLETS;
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_split_into'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_into';
+DROP TABLE test_split_into;
+
+-- Test the same for indexes
+CREATE TABLE test_split_idx (k int PRIMARY KEY, v int);
+CREATE INDEX test_split_idx_idx ON test_split_idx(v) SPLIT INTO 5 TABLETS;
+-- Verify tablet count for index
+SELECT num_tablets FROM yb_table_properties('test_split_idx_idx'::regclass);
+-- Verify yb_presplit is stored in reloptions for index
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_idx_idx';
+DROP TABLE test_split_idx;
+
+-- Test that tables without SPLIT INTO don't have yb_presplit in reloptions
+CREATE TABLE test_no_split (k int PRIMARY KEY, v int);
+-- Verify yb_presplit is NOT in reloptions for tables without SPLIT INTO
+SELECT reloptions FROM pg_class WHERE relname = 'test_no_split';
+DROP TABLE test_no_split;
+
+-- Test CREATE TABLE AS with yb_presplit option
+CREATE TABLE test_source (k int, v int);
+INSERT INTO test_source VALUES (1, 10), (2, 20), (3, 30);
+CREATE TABLE test_ctas_split WITH (yb_presplit=4) AS SELECT * FROM test_source;
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_ctas_split'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_ctas_split';
+-- Verify data
+SELECT * FROM test_ctas_split ORDER BY k;
+DROP TABLE test_ctas_split;
+DROP TABLE test_source;
+
+-- Test CREATE MATERIALIZED VIEW with yb_presplit option
+CREATE TABLE test_mv_source (k int, v int);
+INSERT INTO test_mv_source VALUES (1, 10), (2, 20), (3, 30);
+CREATE MATERIALIZED VIEW test_mv_split WITH (yb_presplit=3) AS SELECT * FROM test_mv_source;
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_mv_split'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_mv_split';
+-- Verify data
+SELECT * FROM test_mv_split ORDER BY k;
+DROP MATERIALIZED VIEW test_mv_split;
+DROP TABLE test_mv_source;
+
+-- Test that SPLIT INTO and WITH (yb_presplit=...) are equivalent
+CREATE TABLE test_split_syntax1 (k int PRIMARY KEY, v int) SPLIT INTO 7 TABLETS;
+CREATE TABLE test_split_syntax2 (k int PRIMARY KEY, v int) WITH (yb_presplit=7);
+-- Both should have 7 tablets
+SELECT num_tablets FROM yb_table_properties('test_split_syntax1'::regclass);
+SELECT num_tablets FROM yb_table_properties('test_split_syntax2'::regclass);
+-- Both should have yb_presplit in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_syntax1';
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_syntax2';
+DROP TABLE test_split_syntax1;
+DROP TABLE test_split_syntax2;
+
+-- =============================================================================
+-- Test yb_presplit reloption storage for SPLIT AT VALUES
+-- =============================================================================
+
+-- Test that SPLIT AT VALUES is stored as yb_presplit reloption
+-- Note: SPLIT AT VALUES requires range partitioning (ASC/DESC key)
+CREATE TABLE test_split_at (k int, v int, PRIMARY KEY(k ASC)) SPLIT AT VALUES ((100), (200), (300));
+-- Verify tablet count (4 tablets: before 100, 100-200, 200-300, after 300)
+SELECT num_tablets FROM yb_table_properties('test_split_at'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at';
+-- Verify the split points via yb_get_range_split_clause
+SELECT yb_get_range_split_clause('test_split_at'::regclass);
+DROP TABLE test_split_at;
+
+-- Test SPLIT AT VALUES with composite key (range partitioning)
+CREATE TABLE test_split_at_composite (k1 int, k2 text, v int, PRIMARY KEY(k1 ASC, k2 ASC))
+    SPLIT AT VALUES ((100, 'bar'), (200, 'foo'));
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_split_at_composite'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_composite';
+DROP TABLE test_split_at_composite;
+
+-- Test SPLIT AT VALUES with string key (range partitioning)
+CREATE TABLE test_split_at_string (k text, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES (('bar'), ('foo'), ('qux'));
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_split_at_string'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_string';
+DROP TABLE test_split_at_string;
+
+-- Test SPLIT AT VALUES for indexes
+CREATE TABLE test_split_at_idx (k int PRIMARY KEY, v int);
+CREATE INDEX test_split_at_idx_idx ON test_split_at_idx(v ASC) SPLIT AT VALUES ((10), (20), (30));
+-- Verify tablet count for index
+SELECT num_tablets FROM yb_table_properties('test_split_at_idx_idx'::regclass);
+-- Verify yb_presplit is stored in reloptions for index
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_idx_idx';
+DROP TABLE test_split_at_idx;
+
+-- Test SPLIT AT VALUES with negative numbers (range partitioning)
+CREATE TABLE test_split_at_negative (k int, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((-100), (0), (100));
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_split_at_negative'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_negative';
+DROP TABLE test_split_at_negative;
+
+-- Test SPLIT AT VALUES with special characters in strings (range partitioning)
+CREATE TABLE test_split_at_special (k text, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES (('hello "world"'), ('it''s'));
+-- Verify tablet count
+SELECT num_tablets FROM yb_table_properties('test_split_at_special'::regclass);
+-- Verify yb_presplit is stored in reloptions
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_special';
+DROP TABLE test_split_at_special;
+
+-- =============================================================================
+-- SPLIT AT VALUES coverage for different split point data types and type casts
+-- =============================================================================
+
+-- bigint key with explicit type cast on the split values (foo::type form)
+CREATE TABLE test_split_at_bigint_cast (k bigint, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((100::bigint), (200::bigint), (300::bigint));
+SELECT num_tablets FROM yb_table_properties('test_split_at_bigint_cast'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_bigint_cast';
+DROP TABLE test_split_at_bigint_cast;
+
+-- CAST(... AS ...) form on integer key
+CREATE TABLE test_split_at_cast_form (k int, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((CAST(100 AS int)), (CAST(200 AS int)));
+SELECT num_tablets FROM yb_table_properties('test_split_at_cast_form'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_cast_form';
+DROP TABLE test_split_at_cast_form;
+
+-- numeric key with floating-point split points
+CREATE TABLE test_split_at_numeric (k numeric, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((1.5), (2.5), (3.5));
+SELECT num_tablets FROM yb_table_properties('test_split_at_numeric'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_numeric';
+DROP TABLE test_split_at_numeric;
+
+-- Mixed-type composite key with a type cast on the leading column
+CREATE TABLE test_split_at_mixed (k1 bigint, k2 text, v int, PRIMARY KEY(k1 ASC, k2 ASC))
+    SPLIT AT VALUES ((100::bigint, 'a'), (200::bigint, 'b'));
+SELECT num_tablets FROM yb_table_properties('test_split_at_mixed'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_split_at_mixed';
+DROP TABLE test_split_at_mixed;
+
+-- =============================================================================
+-- Edge case tests for yb_presplit validation
+-- =============================================================================
+
+-- Test: yb_presplit=0 should fail (invalid tablet count)
+CREATE TABLE test_presplit_zero (k int PRIMARY KEY, v int) WITH (yb_presplit='0');
+
+-- Test: yb_presplit with negative number should fail
+CREATE TABLE test_presplit_negative (k int PRIMARY KEY, v int) WITH (yb_presplit='-5');
+
+-- Test: yb_presplit with non-numeric, non-split-points string should fail
+CREATE TABLE test_presplit_invalid (k int PRIMARY KEY, v int) WITH (yb_presplit='invalid');
+
+-- Test: yb_presplit with malformed split points should fail
+CREATE TABLE test_presplit_malformed (k int PRIMARY KEY, v int) WITH (yb_presplit='((100)');
+
+-- Test: yb_presplit=1 (single tablet) should work
+CREATE TABLE test_presplit_one (k int PRIMARY KEY, v int) WITH (yb_presplit='1');
+SELECT num_tablets FROM yb_table_properties('test_presplit_one'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_one';
+DROP TABLE test_presplit_one;
+
+-- Test: yb_presplit with multiple tablets should work
+CREATE TABLE test_presplit_multiple (k int PRIMARY KEY, v int) WITH (yb_presplit='10');
+SELECT num_tablets FROM yb_table_properties('test_presplit_multiple'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_multiple';
+DROP TABLE test_presplit_multiple;
+
+-- Test: SPLIT INTO and yb_presplit together should fail (duplicate option)
+CREATE TABLE test_presplit_duplicate (k int PRIMARY KEY, v int)
+    WITH (yb_presplit='5') SPLIT INTO 3 TABLETS;
+
+-- Test: yb_presplit with valid split points format on range table
+CREATE TABLE test_presplit_range_points (k int, v int, PRIMARY KEY(k ASC))
+    WITH (yb_presplit='((100), (200))');
+SELECT num_tablets FROM yb_table_properties('test_presplit_range_points'::regclass);
+SELECT yb_get_range_split_clause('test_presplit_range_points'::regclass);
+DROP TABLE test_presplit_range_points;
+
+-- Test: yb_presplit with quoted number should work (string form)
+CREATE TABLE test_presplit_quoted (k int PRIMARY KEY, v int) WITH (yb_presplit='5');
+SELECT num_tablets FROM yb_table_properties('test_presplit_quoted'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_quoted';
+DROP TABLE test_presplit_quoted;
+
+-- Test: yb_presplit on index should work
+CREATE TABLE test_presplit_idx_base (k int PRIMARY KEY, v int);
+CREATE INDEX test_presplit_idx ON test_presplit_idx_base(v) WITH (yb_presplit='4');
+SELECT num_tablets FROM yb_table_properties('test_presplit_idx'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_idx';
+DROP TABLE test_presplit_idx_base;
+
+-- Test: yb_presplit with split points on ASC index
+CREATE TABLE test_presplit_idx_range_base (k int PRIMARY KEY, v int);
+CREATE INDEX test_presplit_idx_range ON test_presplit_idx_range_base(v ASC)
+    WITH (yb_presplit='((10), (20), (30))');
+SELECT num_tablets FROM yb_table_properties('test_presplit_idx_range'::regclass);
+SELECT yb_get_range_split_clause('test_presplit_idx_range'::regclass);
+DROP TABLE test_presplit_idx_range_base;
+
+-- =============================================================================
+-- ALTER TABLE tests for yb_presplit
+-- =============================================================================
+
+-- Test 1a: Create table without split clause, then ALTER TABLE to add yb_presplit (num tablets)
+CREATE TABLE test_alter_add_num (k int PRIMARY KEY, v int);
+-- Verify no yb_presplit initially
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_add_num';
+-- Add yb_presplit via ALTER TABLE
+ALTER TABLE test_alter_add_num SET (yb_presplit='5');
+-- Verify yb_presplit is now set
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_add_num';
+DROP TABLE test_alter_add_num;
+
+-- Test 1b: Create table without split clause, then ALTER TABLE to add yb_presplit (split points)
+CREATE TABLE test_alter_add_points (k int, v int, PRIMARY KEY(k ASC));
+-- Verify no yb_presplit initially
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_add_points';
+-- Add yb_presplit via ALTER TABLE with split points
+ALTER TABLE test_alter_add_points SET (yb_presplit='((100), (200))');
+-- Verify yb_presplit is now set
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_add_points';
+DROP TABLE test_alter_add_points;
+
+-- Test 2a: Create table with SPLIT INTO, then ALTER TABLE to modify yb_presplit
+CREATE TABLE test_alter_modify_num (k int PRIMARY KEY, v int) SPLIT INTO 4 TABLETS;
+-- Verify initial yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_modify_num';
+-- Modify yb_presplit via ALTER TABLE
+ALTER TABLE test_alter_modify_num SET (yb_presplit='8');
+-- Verify yb_presplit is updated
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_modify_num';
+DROP TABLE test_alter_modify_num;
+
+-- Test 2b: Create table with SPLIT AT VALUES, then ALTER TABLE to modify yb_presplit
+CREATE TABLE test_alter_modify_points (k int, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((100), (200));
+-- Verify initial yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_modify_points';
+-- Modify yb_presplit via ALTER TABLE
+ALTER TABLE test_alter_modify_points SET (yb_presplit='((50), (150), (250))');
+-- Verify yb_presplit is updated
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_modify_points';
+DROP TABLE test_alter_modify_points;
+
+-- Test 3a: Create hash table with num tablets, then ALTER to different num tablets
+CREATE TABLE test_alter_num_to_num (k int PRIMARY KEY, v int) SPLIT INTO 3 TABLETS;
+-- Verify initial yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_num_to_num';
+-- Change to different num tablets
+ALTER TABLE test_alter_num_to_num SET (yb_presplit='7');
+-- Verify yb_presplit is updated
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_num_to_num';
+DROP TABLE test_alter_num_to_num;
+
+-- Test 3b: Create table with split points, then ALTER to num tablets should FAIL
+-- (num tablets requires hash partitioning, but this table is range partitioned)
+CREATE TABLE test_alter_points_to_num (k int, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((100), (200));
+-- Verify initial yb_presplit is split points format
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_points_to_num';
+-- Attempt to change to num tablets format - should fail
+ALTER TABLE test_alter_points_to_num SET (yb_presplit='5');
+-- Verify yb_presplit is unchanged
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_points_to_num';
+DROP TABLE test_alter_points_to_num;
+
+-- Test 4: ALTER TABLE to remove yb_presplit
+CREATE TABLE test_alter_reset (k int PRIMARY KEY, v int) SPLIT INTO 5 TABLETS;
+-- Verify initial yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_reset';
+-- Reset yb_presplit
+ALTER TABLE test_alter_reset RESET (yb_presplit);
+-- Verify yb_presplit is removed
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_reset';
+DROP TABLE test_alter_reset;
+
+-- Test 5: ALTER TABLE with incompatible split type should fail
+-- 5a: Cannot set num tablets on range-partitioned table
+CREATE TABLE test_alter_range (k int, v int, PRIMARY KEY(k ASC));
+ALTER TABLE test_alter_range SET (yb_presplit='5');
+DROP TABLE test_alter_range;
+
+-- 5b: Cannot set split points on hash-partitioned table
+CREATE TABLE test_alter_hash (k int PRIMARY KEY, v int);
+ALTER TABLE test_alter_hash SET (yb_presplit='((100), (200))');
+DROP TABLE test_alter_hash;
+
+-- 5c: CAN set num tablets on hash-partitioned table (should work)
+CREATE TABLE test_alter_hash_num (k int PRIMARY KEY, v int);
+ALTER TABLE test_alter_hash_num SET (yb_presplit='5');
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_hash_num';
+DROP TABLE test_alter_hash_num;
+
+-- 5d: CAN set split points on range-partitioned table (should work)
+CREATE TABLE test_alter_range_points (k int, v int, PRIMARY KEY(k ASC));
+ALTER TABLE test_alter_range_points SET (yb_presplit='((100), (200))');
+SELECT reloptions FROM pg_class WHERE relname = 'test_alter_range_points';
+DROP TABLE test_alter_range_points;
+
+-- =============================================================================
+-- Partitioned table tests for yb_presplit
+-- =============================================================================
+
+-- Test 1: SPLIT clause on a partitioned parent table is ignored with warning
+CREATE TABLE test_part_parent_split (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k)
+    SPLIT AT VALUES ((100), (200));
+-- Parent should have no yb_presplit (split was ignored)
+SELECT reloptions FROM pg_class WHERE relname = 'test_part_parent_split';
+DROP TABLE test_part_parent_split;
+
+-- Test 2: Child partitions can have their own SPLIT AT VALUES
+CREATE TABLE test_part_parent (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_part_child1 PARTITION OF test_part_parent
+    FOR VALUES FROM (MINVALUE) TO (100)
+    SPLIT AT VALUES ((25), (50), (75));
+CREATE TABLE test_part_child2 PARTITION OF test_part_parent
+    FOR VALUES FROM (100) TO (MAXVALUE)
+    SPLIT AT VALUES ((200), (300));
+-- Verify children have yb_presplit
+SELECT c.relname, c.reloptions
+    FROM pg_class c
+    WHERE c.relname LIKE 'test_part_child%'
+    ORDER BY c.relname;
+-- Verify tablet counts
+SELECT num_tablets FROM yb_table_properties('test_part_child1'::regclass);
+SELECT num_tablets FROM yb_table_properties('test_part_child2'::regclass);
+DROP TABLE test_part_parent;
+
+-- Test 3: Child partitions can have their own SPLIT INTO
+CREATE TABLE test_part_hash_parent (k int, v int, PRIMARY KEY(k HASH))
+    PARTITION BY HASH (k);
+CREATE TABLE test_part_hash_child1 PARTITION OF test_part_hash_parent
+    FOR VALUES WITH (MODULUS 2, REMAINDER 0)
+    SPLIT INTO 4 TABLETS;
+CREATE TABLE test_part_hash_child2 PARTITION OF test_part_hash_parent
+    FOR VALUES WITH (MODULUS 2, REMAINDER 1)
+    SPLIT INTO 6 TABLETS;
+-- Verify children have yb_presplit
+SELECT c.relname, c.reloptions
+    FROM pg_class c
+    WHERE c.relname LIKE 'test_part_hash_child%'
+    ORDER BY c.relname;
+SELECT num_tablets FROM yb_table_properties('test_part_hash_child1'::regclass);
+SELECT num_tablets FROM yb_table_properties('test_part_hash_child2'::regclass);
+DROP TABLE test_part_hash_parent;
+
+-- Test 4: Child partitions do NOT inherit split options from parent.
+-- The parent is created with a SPLIT AT VALUES clause (which is ignored on
+-- partitioned parents, see Test 1 above) to make sure that even if the
+-- parent did somehow carry split state, it would not propagate to a child
+-- that has no SPLIT clause of its own.
+CREATE TABLE test_part_no_inherit (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k)
+    SPLIT AT VALUES ((100), (200));
+CREATE TABLE test_part_no_inherit_child PARTITION OF test_part_no_inherit
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE);
+-- Child should have no yb_presplit (no split clause, nothing inherited)
+SELECT reloptions FROM pg_class WHERE relname = 'test_part_no_inherit_child';
+DROP TABLE test_part_no_inherit;
+
+-- Test 5: CREATE INDEX on partitioned table with SPLIT INTO propagates to children
+CREATE TABLE test_part_idx_parent (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_part_idx_child1 PARTITION OF test_part_idx_parent
+    FOR VALUES FROM (MINVALUE) TO (500);
+CREATE TABLE test_part_idx_child2 PARTITION OF test_part_idx_parent
+    FOR VALUES FROM (500) TO (MAXVALUE);
+CREATE INDEX ON test_part_idx_parent (v) SPLIT INTO 4 TABLETS;
+-- Verify child indexes inherited the split option
+SELECT c.relname, c.reloptions
+    FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid
+    WHERE c.relname LIKE 'test_part_idx_child%'
+    ORDER BY c.relname;
+DROP TABLE test_part_idx_parent;
+
+-- Test 6: CREATE INDEX on partitioned table with SPLIT AT VALUES propagates
+CREATE TABLE test_part_idx_range (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_part_idx_range_c1 PARTITION OF test_part_idx_range
+    FOR VALUES FROM (MINVALUE) TO (500);
+CREATE TABLE test_part_idx_range_c2 PARTITION OF test_part_idx_range
+    FOR VALUES FROM (500) TO (MAXVALUE);
+CREATE INDEX ON test_part_idx_range (v ASC)
+    SPLIT AT VALUES ((10), (20), (30));
+-- Verify child indexes inherited the split points
+SELECT c.relname, c.reloptions
+    FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid
+    WHERE c.relname LIKE 'test_part_idx_range_c%'
+    ORDER BY c.relname;
+DROP TABLE test_part_idx_range;
+
+-- Test 7: ATTACH PARTITION preserves existing table's yb_presplit
+CREATE TABLE test_attach_parent (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_attach_child (k int, v int, PRIMARY KEY(k ASC))
+    SPLIT AT VALUES ((50), (150));
+-- Verify the standalone table has yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_attach_child';
+ALTER TABLE test_attach_parent ATTACH PARTITION test_attach_child
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE);
+-- After attach, the child should still have its yb_presplit
+SELECT reloptions FROM pg_class WHERE relname = 'test_attach_child';
+DROP TABLE test_attach_parent;
+
+-- Test 8: yb_presplit via WITH clause on child partitions
+CREATE TABLE test_part_with_parent (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_part_with_child PARTITION OF test_part_with_parent
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE)
+    WITH (yb_presplit='((25), (50), (75))');
+SELECT reloptions FROM pg_class WHERE relname = 'test_part_with_child';
+SELECT num_tablets FROM yb_table_properties('test_part_with_child'::regclass);
+DROP TABLE test_part_with_parent;
+
+-- Test 9: Multi-level partitioning with split options at leaf level only
+CREATE TABLE test_multi_parent (k int, v int, PRIMARY KEY(k ASC))
+    PARTITION BY RANGE (k);
+CREATE TABLE test_multi_mid PARTITION OF test_multi_parent
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE)
+    PARTITION BY RANGE (k);
+CREATE TABLE test_multi_leaf PARTITION OF test_multi_mid
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE)
+    SPLIT AT VALUES ((100), (200));
+-- Only the leaf should have yb_presplit
+SELECT c.relname, c.reloptions
+    FROM pg_class c
+    WHERE c.relname LIKE 'test_multi_%'
+    ORDER BY c.relname;
+SELECT num_tablets FROM yb_table_properties('test_multi_leaf'::regclass);
+DROP TABLE test_multi_parent;

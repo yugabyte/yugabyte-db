@@ -1,11 +1,19 @@
 from db.active_pipeline_tracking import PipelineTracking
 from langchain_openai import OpenAIEmbeddings
+from langchain_aws import BedrockEmbeddings
 from pdf_processing import PDFProcessor
 from html_processing import HTMLProcessor
+from observability import meko_observe
 import logging
 import psycopg
 import os
 import mimetypes
+
+
+AI_PROVIDER_OPENAI = "OPENAI"
+AI_PROVIDER_AWS_BEDROCK = "AWS_BEDROCK"
+
+SUPPORTED_AI_PROVIDERS = {AI_PROVIDER_OPENAI, AI_PROVIDER_AWS_BEDROCK}
 
 
 class EmbeddingsGenerator:
@@ -16,29 +24,42 @@ class EmbeddingsGenerator:
         embedding_model: str = "text-embedding-ada-002",
         llm_api_key: str = None,
         embedding_model_params: dict = None,
-        batch_size: int = 100
+        batch_size: int = 100,
+        ai_provider: str = AI_PROVIDER_OPENAI,
     ):
         """
         Initialize the EmbeddingsGenerator.
 
         Args:
-            embedding_model (str): Model name for OpenAI embeddings.
-                Defaults to "text-embedding-ada-002".
-            llm_api_key (str, optional): OpenAI API key.
-                If None, uses environment variable.
+            embedding_model (str): Model name for the embedding provider.
+                For OPENAI, e.g. "text-embedding-ada-002",
+                "text-embedding-3-large".
+                For AWS_BEDROCK, a Bedrock model id, e.g.
+                "amazon.titan-embed-text-v2:0",
+                "amazon.titan-embed-text-v1",
+                "cohere.embed-english-v3".
+            llm_api_key (str, optional): API key. Only consumed by the OPENAI
+                provider; falls back to OPENAI_API_KEY env var. AWS_BEDROCK
+                uses standard AWS credential resolution (env vars,
+                ~/.aws/credentials, instance profile) and the AWS_REGION
+                env var.
+            embedding_model_params (dict): Provider params; must include
+                ``dimensions``. Note that for AWS_BEDROCK the actual output
+                dimension is determined by the chosen ``model`` -- the
+                ``dimensions`` key is consumed by the SQL extension to size
+                the backing ``vector(N)`` column and must match the model.
             batch_size (int): Number of chunks to embed in a single API call.
                 Defaults to 100. Max supported by OpenAI is 2048.
+            ai_provider (str): Embedding provider. One of "OPENAI" or
+                "AWS_BEDROCK". Defaults to "OPENAI".
         """
         self.embedding_model = embedding_model
-        self.embedding_dimensions = embedding_model_params.get('dimensions')
+        self.embedding_model_params = embedding_model_params or {}
+        self.embedding_dimensions = self.embedding_model_params.get('dimensions')
         self.batch_size = batch_size
-        # nikhil-todo: add support for other LLMs.
+        self.ai_provider = (ai_provider or AI_PROVIDER_OPENAI).upper()
         self.llm_api_key = llm_api_key or os.getenv("OPENAI_API_KEY")
-        self.embedder = OpenAIEmbeddings(
-            model=self.embedding_model,
-            openai_api_key=self.llm_api_key,
-            dimensions=self.embedding_dimensions
-        )
+        self.embedder = self._build_embedder()
 
         # self.model = ChatOpenAI(temperature=0.6, model="gpt-4o-mini",
         #                         callbacks=[ConsoleCallbackHandler()])
@@ -46,6 +67,24 @@ class EmbeddingsGenerator:
         self.pdf_processor = PDFProcessor()
         self.html_processor = HTMLProcessor()
         self.pipeline_tracking = PipelineTracking()
+
+    def _build_embedder(self):
+        """Construct the underlying LangChain embedder for the configured provider."""
+        if self.ai_provider == AI_PROVIDER_OPENAI:
+            return OpenAIEmbeddings(
+                model=self.embedding_model,
+                openai_api_key=self.llm_api_key,
+                dimensions=self.embedding_dimensions,
+            )
+        if self.ai_provider == AI_PROVIDER_AWS_BEDROCK:
+            return BedrockEmbeddings(
+                model_id=self.embedding_model,
+                region_name=os.getenv("AWS_REGION"),
+            )
+        raise ValueError(
+            f"Unsupported ai_provider: {self.ai_provider!r}. "
+            f"Supported providers: {sorted(SUPPORTED_AI_PROVIDERS)}"
+        )
 
     def _generate_embeddings_for_text_files(
         self,
@@ -118,6 +157,10 @@ class EmbeddingsGenerator:
             f"empty/whitespace chunks, {yielded_count} embeddings yielded"
         )
 
+    @meko_observe(
+        name="Generate Embeddings for PDF Files / EmbeddingsGenerator",
+        as_type="embedding",
+    )
     def _generate_embeddings_for_pdf_files(
         self,
         pipeline_id: int,
@@ -167,6 +210,10 @@ class EmbeddingsGenerator:
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
 
+    @meko_observe(
+        name="Generate Embeddings for HTML Files / EmbeddingsGenerator",
+        as_type="embedding",
+    )
     def _generate_embeddings_for_html_file(
         self,
         pipeline_id: int,
@@ -218,10 +265,15 @@ class EmbeddingsGenerator:
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
 
+    @meko_observe(
+        name="Generate Embeddings for Video Files / EmbeddingsGenerator",
+        as_type="embedding",
+    )
     def _generate_embeddings_for_video_files(self, file_location: str, chunk_args=None):
         """Generate embeddings for video files."""
         pass
 
+    @meko_observe(name="Generate Embeddings / EmbeddingsGenerator", as_type="chain")
     def generate_embeddings(self, pipeline_id: int, file_location: str, chunk_args=None):
         """
         Generator that yields (chunk_text, embedding_vector) tuples.
@@ -275,6 +327,7 @@ class EmbeddingsGenerator:
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
+    @meko_observe(name="Generate User Prompt Embeddings / EmbeddingsGenerator", as_type="embedding")
     def generate_user_prompt_embeddings(self, user_prompt: str) -> list[float]:
         """Generate embeddings for user prompt."""
 

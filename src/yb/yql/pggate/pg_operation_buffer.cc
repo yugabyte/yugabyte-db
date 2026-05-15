@@ -490,9 +490,17 @@ class PgOperationBuffer::Impl {
   }
 
   Status EnsureCompleted(size_t count) {
-    for (; count && !in_flight_ops_.empty(); --count) {
-      RETURN_NOT_OK(in_flight_ops_.front().future.Get());
+    while (count > 0 && !in_flight_ops_.empty()) {
+      // Move the operation out of the queue into a local variable.
+      // This ensures this specific operation is removed from the in-flight list
+      // regardless of whether Get() succeeds or fails, even if Get() throws an
+      // exception.
+      auto op = std::move(in_flight_ops_.front());
       in_flight_ops_.pop_front();
+      --count;
+
+      Status status = op.future.Get();
+      RETURN_NOT_OK(status);
     }
     return Status::OK();
   }

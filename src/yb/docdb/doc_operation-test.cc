@@ -889,7 +889,7 @@ class DocOperationScanTest : public DocOperationTest {
         }
       }
 
-      ASSERT_OK(FlushRocksDbAndWait());
+      ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
     }
 
     SchemaPackingProvider* schema_packing_provider = this;
@@ -1228,7 +1228,7 @@ size_t GenerateFiles(int total_batches, DocOperationTest* test, const int kBigFi
       test->WriteQLRow(
           QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
     }
-    EXPECT_OK(test->FlushRocksDbAndWait());
+    EXPECT_OK(test->FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   }
   return expected_files;
 }

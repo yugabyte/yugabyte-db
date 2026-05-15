@@ -18,7 +18,10 @@ public record ProxiedAppProperties(
     @DefaultValue("10") @Min(1) @Max(10_000) int pollBatchSize,
     @NotNull @Valid Auth auth) {
 
-  public record Auth(@NotNull ProxiedAppAuthType type, @Valid ServiceAccount serviceAccount) {}
+  public record Auth(
+      @NotNull ProxiedAppAuthType type,
+      @Valid ServiceAccount serviceAccount,
+      @Valid String apiKey) {}
 
   public record ServiceAccount(
       @NotBlank String email, @NotBlank String password, @NotNull Duration refreshInterval) {}

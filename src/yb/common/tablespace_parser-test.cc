@@ -65,12 +65,11 @@ TEST(TablespaceParserTest, TestTablespaceJsonProcessing) {
   options.push_back(option);
   ASSERT_OK(TablespaceParser::FromQLValue(options));
 
-  // Adding the same option as a read replica option should fail,
-  // since it is missing a placement_uuid.
+  // Adding the same option as a read replica option should succeed.
   options.push_back(invalid_option);
-  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+  ASSERT_OK(TablespaceParser::FromQLValue(options));
 
-  // Invalid option name (only read_replica_placement alone is not sufficient for live placement).
+  // read_replica_placement alone (without a live replica_placement option) is not sufficient.
   options.clear();
   options.push_back(invalid_option);
   ASSERT_NOK(TablespaceParser::FromQLValue(options));
@@ -324,17 +323,6 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
         "placement_blocks": []
       })",
       "Invalid or missing \"num_replicas\""},
-    {"missing_uuid",
-     R"({
-        "num_replicas":1,
-        "placement_blocks": [
-           {"cloud":"cloud0",
-            "region":"rack4",
-            "zone":"zone",
-            "min_num_replicas":1}
-        ]
-      })",
-     "missing \"placement_uuid\""},
     {"invalid_uuid_type",
      R"({
         "num_replicas":1,
@@ -530,6 +518,19 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
           "placement_blocks": []
         })",
        ""},
+      // placement_uuid is optional; the parser accepts a read-replica placement that omits it
+      // (the master fills it in later from the cluster config).
+      {"omitted_placement_uuid",
+       R"({
+          "num_replicas":1,
+          "placement_blocks": [
+             {"cloud":"cloud0",
+              "region":"rack4",
+              "zone":"zone",
+              "min_num_replicas":1}
+          ]
+        })",
+       ""},
       {"wildcard_region_and_zone",
        R"({
           "placement_uuid": "read_replica",
@@ -720,38 +721,47 @@ TEST(TablespaceParserTest, TestDuplicatePlacementBlocks) {
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Duplicate placement block");
 }
 
+// Verifies that FromString correctly populates both live and read-replica placements, with
+// either an explicit read-replica placement_uuid or none (in which case the resulting uuid is
+// empty and the master would fill it in later from the cluster config).
 TEST(TablespaceParserTest, FromStringPopulatesReplicas) {
   const string& live_placement_json =
       "{\"num_replicas\":1,\"placement_blocks\":["
       "{\"cloud\":\"live\",\"region\":\"r_live\",\"zone\":\"z_live\",\"min_num_replicas\":1}]}";
-  const string& read_replica_placement_json =
-      "{\"num_replicas\":1,\"placement_uuid\": \"read_replica\", \"placement_blocks\":["
-      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
 
-  auto replication_info = ASSERT_RESULT(
-      TablespaceParser::FromString(live_placement_json, read_replica_placement_json, true));
+  for (const string& read_replica_uuid : {string("read_replica"), string("")}) {
+    SCOPED_TRACE("read_replica_uuid='" + read_replica_uuid + "'");
+    const string read_replica_placement_json = read_replica_uuid.empty()
+        ? string("{\"num_replicas\":1,\"placement_blocks\":["
+                 "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}")
+        : string("{\"num_replicas\":1,\"placement_uuid\":\"") + read_replica_uuid +
+              "\",\"placement_blocks\":["
+              "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
 
-  // Validate live replicas.
-  const auto& live_replicas = replication_info.live_replicas();
-  ASSERT_EQ(live_replicas.num_replicas(), 1);
-  ASSERT_EQ(live_replicas.placement_blocks_size(), 1);
-  const auto& live_block = live_replicas.placement_blocks(0);
-  ASSERT_EQ(live_block.min_num_replicas(), 1);
-  ASSERT_EQ(live_block.cloud_info().placement_cloud(), "live");
-  ASSERT_EQ(live_block.cloud_info().placement_region(), "r_live");
-  ASSERT_EQ(live_block.cloud_info().placement_zone(), "z_live");
+    auto replication_info = ASSERT_RESULT(
+        TablespaceParser::FromString(live_placement_json, read_replica_placement_json, true));
 
-  // Validate read replicas.
-  ASSERT_EQ(replication_info.read_replicas_size(), 1);
-  const auto& read_replica = replication_info.read_replicas(0);
-  ASSERT_EQ(read_replica.num_replicas(), 1);
-  ASSERT_EQ(read_replica.placement_blocks_size(), 1);
-  const auto& block = read_replica.placement_blocks(0);
-  ASSERT_EQ(block.min_num_replicas(), 1);
-  ASSERT_EQ(block.cloud_info().placement_cloud(), "c1");
-  ASSERT_EQ(block.cloud_info().placement_region(), "r1");
-  ASSERT_EQ(block.cloud_info().placement_zone(), "z1");
-  ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
+    const auto& live_replicas = replication_info.live_replicas();
+    ASSERT_EQ(live_replicas.num_replicas(), 1);
+    ASSERT_EQ(live_replicas.placement_blocks_size(), 1);
+    const auto& live_block = live_replicas.placement_blocks(0);
+    ASSERT_EQ(live_block.min_num_replicas(), 1);
+    ASSERT_EQ(live_block.cloud_info().placement_cloud(), "live");
+    ASSERT_EQ(live_block.cloud_info().placement_region(), "r_live");
+    ASSERT_EQ(live_block.cloud_info().placement_zone(), "z_live");
+
+    ASSERT_EQ(replication_info.read_replicas_size(), 1);
+    const auto& read_replica = replication_info.read_replicas(0);
+    ASSERT_EQ(read_replica.num_replicas(), 1);
+    ASSERT_EQ(read_replica.placement_uuid(), read_replica_uuid);
+    ASSERT_EQ(read_replica.placement_blocks_size(), 1);
+    const auto& block = read_replica.placement_blocks(0);
+    ASSERT_EQ(block.min_num_replicas(), 1);
+    ASSERT_EQ(block.cloud_info().placement_cloud(), "c1");
+    ASSERT_EQ(block.cloud_info().placement_region(), "r1");
+    ASSERT_EQ(block.cloud_info().placement_zone(), "z1");
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
+  }
 }
 
 } // namespace yb

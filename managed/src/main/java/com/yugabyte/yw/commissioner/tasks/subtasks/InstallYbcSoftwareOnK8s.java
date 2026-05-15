@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -20,9 +21,13 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
 
+  private final YbcUpgrade ybcUpgrade;
+
   @Inject
-  protected InstallYbcSoftwareOnK8s(BaseTaskDependencies baseTaskDependencies) {
+  protected InstallYbcSoftwareOnK8s(
+      BaseTaskDependencies baseTaskDependencies, YbcUpgrade ybcUpgrade) {
     super(baseTaskDependencies);
+    this.ybcUpgrade = ybcUpgrade;
   }
 
   protected UniverseDefinitionTaskParams taskParams() {
@@ -31,8 +36,8 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     try {
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       Set<NodeDetails> allTservers = new HashSet<>();
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
@@ -40,6 +45,15 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       allTservers.addAll(primaryTservers);
 
       if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+        if (!ybcUpgrade.checkYBCUpgradeProcessExistsOnK8s(universe.getUniverseUUID())) {
+          ybcUpgrade.setYBCUpgradeProcessOnK8s(universe.getUniverseUUID());
+        } else {
+          log.warn(
+              "YBC upgrade process already exists for universe {}", universe.getUniverseUUID());
+          // Still wait for the upgrade to finish
+          createWaitForYbcServerTask(primaryTservers);
+          return;
+        }
         /* This calls kubectl cp, it is idempotent */
         installYbcOnThePods(
             primaryTservers,
@@ -69,7 +83,9 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       // Marks update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      ybcUpgrade.removeYBCUpgradeProcessOnK8s(universe.getUniverseUUID());
     } catch (Throwable t) {
+      ybcUpgrade.addFailedYBCUpgradeUniverseOnK8s(universe.getUniverseUUID());
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     }

@@ -23,6 +23,7 @@
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 /* YB includes */
+#include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"
 #include "utils/datum.h"
 
@@ -1066,6 +1067,9 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         elemTupleSlot->tts_values[vertex_tuple_properties] = prop;
         elemTupleSlot->tts_isnull[vertex_tuple_properties] = isNull;
 
+        if (IsYugaByteEnabled())
+            yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(prop, isNull), false /* is_edge */);
+
         /*
          * Insert the new vertex.
          *
@@ -1407,6 +1411,9 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
     /* store the properties in the tuple slot */
     elemTupleSlot->tts_values[edge_tuple_properties] = prop;
     elemTupleSlot->tts_isnull[edge_tuple_properties] = isNull;
+
+    if (IsYugaByteEnabled())
+        yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(prop, isNull), true /* is_edge */);
 
     /*
      * Insert the new edge.

@@ -4,9 +4,11 @@ package com.yugabyte.yw.api.v2;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -78,6 +80,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         assertThrows(
             ApiException.class, () -> universeApi().pageListUniverses(customer.getUuid(), query));
     assertEquals(400, e.getCode());
+    assertThat(e.getResponseBody(), notNullValue());
+    assertThat(e.getResponseBody(), containsString("Bean validation"));
   }
 
   @Test

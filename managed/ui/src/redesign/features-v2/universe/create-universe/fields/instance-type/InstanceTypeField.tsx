@@ -60,6 +60,7 @@ interface InstanceTypeFieldProps {
 }
 
 export const InstanceTypeField = ({
+  isEditMode = false,
   isMaster,
   disabled,
   provider,
@@ -118,7 +119,7 @@ export const InstanceTypeField = ({
           }
         );
       }
-    } else if (!getValues(UPDATE_DEVICE_INFO_FIELD)) {
+    } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
       const option = data.find((i) => i.instanceTypeCode === currentInstanceType);
       if (option) {
         setValue(
@@ -137,7 +138,8 @@ export const InstanceTypeField = ({
     UPDATE_FIELD,
     UPDATE_DEVICE_INFO_FIELD,
     getValues,
-    setValue
+    setValue,
+    isEditMode
   ]);
 
   const instanceTypes = sortAndGroup(data, provider?.code);

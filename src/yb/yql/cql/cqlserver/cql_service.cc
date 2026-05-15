@@ -82,7 +82,7 @@ DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
 DEFINE_RUNTIME_int32(cql_batch_stmts_entries_limit, 500,
             "Limit the number of batch statements that are being tracked.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
+DEFINE_NON_RUNTIME_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
 
 DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
     "Users that are authenticated via the local password"

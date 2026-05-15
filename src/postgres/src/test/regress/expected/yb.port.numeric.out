@@ -3218,7 +3218,7 @@ SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
 -- check that parallel execution produces the same result
 BEGIN;
 ALTER TABLE num_variance SET (parallel_workers = 4);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 SET LOCAL parallel_setup_cost = 0;
 SET LOCAL max_parallel_workers_per_gather = 4;
 SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
@@ -3240,7 +3240,7 @@ SELECT variance(a) FROM num_variance;
 -- check that parallel execution produces the same result
 BEGIN;
 ALTER TABLE num_variance SET (parallel_workers = 4);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 SET LOCAL parallel_setup_cost = 0;
 SET LOCAL max_parallel_workers_per_gather = 4;
 SELECT variance(a) FROM num_variance;

@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.115-SNAPSHOT</version>
+    <version>0.8.116-SNAPSHOT</version>
   </parent>
   <artifactId>yb-pgsql</artifactId>
   <name>YB PostgreSQL Support</name>
@@ -97,6 +97,12 @@
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>mockwebserver</artifactId>
       <version>4.1.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mongodb</groupId>
+      <artifactId>mongodb-driver-sync</artifactId>
+      <version>5.3.1</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

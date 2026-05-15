@@ -526,4 +526,60 @@ public class UniverseDefinitionTaskParamsTest {
         Integer.valueOf(350),
         currentAz3.getPerProcess().get(ServerType.TSERVER).getDeviceInfo().volumeSize);
   }
+
+  @Test
+  public void testUnsetCgroupSize_ClearsCgroupSizeFromAZOverrides() {
+    // Test that cgroupSize is cleared from AZ overrides when other fields exist
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<UUID, AZOverrides> azOverrides = new HashMap<>();
+
+    UUID az1 = UUID.randomUUID();
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+
+    AZOverrides azOverride = new AZOverrides();
+    azOverride.setCgroupSize(1024);
+    azOverride.setDeviceInfo(deviceInfo);
+
+    azOverrides.put(az1, azOverride);
+    overrides.setAzOverrides(azOverrides);
+
+    // Verify initial state
+    assertEquals(Integer.valueOf(1024), overrides.getAzOverrides().get(az1).getCgroupSize());
+
+    // Execute
+    overrides.unsetCgroupSize();
+
+    // Verify: cgroupSize should be cleared, but other fields should remain
+    assertNotNull(overrides.getAzOverrides());
+    AZOverrides updatedAzOverride = overrides.getAzOverrides().get(az1);
+    assertNotNull(updatedAzOverride);
+    assertNull(updatedAzOverride.getCgroupSize());
+    assertNotNull(updatedAzOverride.getDeviceInfo());
+    assertEquals(Integer.valueOf(100), updatedAzOverride.getDeviceInfo().volumeSize);
+  }
+
+  @Test
+  public void testUnsetCgroupSize_RemovesOverridesWhenCgroupSizeWasOnlyValue() {
+    // Test that azOverrides becomes null when cgroupSize was the only value set
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<UUID, AZOverrides> azOverrides = new HashMap<>();
+
+    UUID az1 = UUID.randomUUID();
+    AZOverrides azOverride = new AZOverrides();
+    azOverride.setCgroupSize(2048);
+
+    azOverrides.put(az1, azOverride);
+    overrides.setAzOverrides(azOverrides);
+
+    // Verify initial state
+    assertNotNull(overrides.getAzOverrides());
+    assertEquals(Integer.valueOf(2048), overrides.getAzOverrides().get(az1).getCgroupSize());
+
+    // Execute
+    overrides.unsetCgroupSize();
+
+    // Verify: azOverrides should be null since cgroupSize was the only value
+    assertNull(overrides.getAzOverrides());
+  }
 }

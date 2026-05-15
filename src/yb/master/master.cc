@@ -125,19 +125,19 @@ DEPRECATE_FLAG(int32, master_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, master_consensus_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, master_remote_bootstrap_svc_num_threads, "02_2024");
 
-DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_consensus_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
@@ -151,8 +151,6 @@ DEFINE_test_flag(string, master_extra_list_host_port, "",
 DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
-
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
@@ -674,7 +672,6 @@ const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() c
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
   // We do not use cache/fingerprint which is only used for filling heartbeat
@@ -733,10 +730,10 @@ Status Master::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
-Status Master::TriggerRelcacheInitConnection(
+void Master::TriggerRelcacheInitConnection(
     const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
-  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
+    StdStatusCallback callback) {
+  callback(STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__));
 }
 
 void Master::EnableCDCService() {

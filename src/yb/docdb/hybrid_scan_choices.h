@@ -255,7 +255,8 @@ class HybridScanChoices : public ScanChoices {
     return finished_;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override;
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter,
+                               const EncodedDocHybridTime& max_seen_ht_checkpoint) override;
   Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
                                 IntentAwareIterator& iter,
                                 bool current_fetched_row_skipped) override;
@@ -278,8 +279,8 @@ class HybridScanChoices : public ScanChoices {
   Result<bool> DoneWithCurrentTarget(bool current_row_skipped, bool not_found);
   void SeekToCurrentTarget(IntentAwareIterator& db_iter);
 
-  // Also updates the checkpoint to latest seen ht from iter.
-  bool CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter);
+  // Returns true iff curr matches the current scan target.
+  bool CurrentTargetMatchesKey(Slice curr);
 
   // Utility function for (multi)key scans. Updates the target scan key by
   // incrementing the option index for an OptionList. Will handle overflow by setting current
@@ -361,8 +362,6 @@ class HybridScanChoices : public ScanChoices {
   size_t prefix_length_ = 0;
 
   size_t schema_num_keys_;
-
-  MaxSeenHtData max_seen_ht_checkpoint_ = {};
 
   docdb::BloomFilterOptions bloom_filter_options_;
 

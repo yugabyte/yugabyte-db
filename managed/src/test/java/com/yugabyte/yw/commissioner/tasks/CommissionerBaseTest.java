@@ -33,6 +33,8 @@ import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -131,6 +133,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPoin
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -145,7 +148,6 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -253,6 +255,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
   protected AZUResourceGroupApiClient azuResourceGroupApiClient =
       mock(AZUResourceGroupApiClient.class);
+  protected GCPProjectApiClientFactory gcpClientFactory = mock(GCPProjectApiClientFactory.class);
+  protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
+
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
 
   protected int failsOnCapacityReservation = 0;
@@ -300,11 +305,36 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    taskExecutor.setMaxWaitForTime(Duration.ofMillis(5));
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
     lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
     lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
+    lenient().when(gcpClientFactory.getClient(any())).thenReturn(gcpProjectApiClient);
+
+    // GCP createCapacityReservation: echo back the reservation name (arg 0),
+    // matching the AWS/Azure stub style.
+    Map<String, Integer> gcpFailsPerReservation = new HashMap<>();
+    try {
+      lenient()
+          .doAnswer(
+              invocation -> {
+                String reservationName = invocation.getArgument(0);
+                if (failsOnCapacityReservation > 0) {
+                  int n = gcpFailsPerReservation.merge(reservationName, 1, Integer::sum);
+                  if (n <= failsOnCapacityReservation) {
+                    throw new RuntimeException("Failing");
+                  }
+                }
+                return reservationName;
+              })
+          .when(gcpProjectApiClient)
+          .createCapacityReservation(
+              anyString(), anyString(), anyString(), any(Integer.class), any(Map.class));
+    } catch (java.io.IOException e) {
+      throw new RuntimeException(e);
+    }
 
     PrometheusRegistry collectorRegistry = new PrometheusRegistry();
     capacityReservationGauge = CapacityReservationMetrics.initReservationGauge(collectorRegistry);
@@ -536,6 +566,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
             bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
@@ -572,85 +603,41 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    return waitForTask(taskUUID, null, 200, MAX_RETRY_COUNT);
+    return waitForTask(taskUUID, 200 /*sleepDurationMs*/);
   }
 
-  public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
-    return waitForTask(taskUUID, null, sleepDuration, MAX_RETRY_COUNT);
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs) throws InterruptedException {
+    return waitForTask(taskUUID, sleepDurationMs, MAX_RETRY_COUNT);
   }
 
-  /**
-   * Waits until the task reaches {@code expectedState} (e.g. {@link TaskInfo.State#Paused} for
-   * canary upgrades). Polls persisted {@link TaskInfo} state; unlike {@link #waitForTask(UUID)}
-   * this does not require a {@link TaskInfo#COMPLETED_STATES completed} state.
-   *
-   * <p>Uses a short poll interval suitable for mock/unit tests. For slow local-provider tests, use
-   * {@link #waitForTask(UUID, TaskInfo.State, long, int)} with a larger sleep and retry count.
-   */
-  public TaskInfo waitForTask(UUID taskUUID, TaskInfo.State expectedState)
-      throws InterruptedException {
-    return waitForTask(taskUUID, expectedState, 10, 2000);
-  }
-
-  /**
-   * Waits for the task to finish in a {@link TaskInfo#COMPLETED_STATES terminal success/failure
-   * state} (when {@code expectedState} is null), or until it reaches the given {@code
-   * expectedState}.
-   */
-  public TaskInfo waitForTask(
-      UUID taskUUID, @Nullable TaskInfo.State expectedState, long sleepDuration, int maxRetries)
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs, int maxRetries)
       throws InterruptedException {
     int numRetries = 0;
     TaskInfo taskInfo = null;
     while (numRetries < maxRetries) {
-      if (expectedState == null) {
-        // Here is a hack to decrease amount of accidental problems for tests using this
-        // function:
-        // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
-        // inside the get() request. We are not afraid of such exception as the next
-        // request will succeeded.
-        if (!commissioner.isTaskRunning(taskUUID)) {
-          try {
-            taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-            // Also, ensure task details are set before returning.
-            if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())
-                && taskInfo.getTaskParams() != null) {
-              return taskInfo;
-            }
-          } catch (Exception e) {
-            log.error(
-                "Error while fetching task info for taskUUID: {} : {}. Retrying...",
-                taskUUID,
-                e.getMessage());
-          }
-        }
-      } else {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      if (!commissioner.isTaskRunning(taskUUID)) {
         try {
           taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-          if (taskInfo.getTaskState() == expectedState) {
+          // Also, ensure task details are set before returning.
+          if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())
+              && taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
-          if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
-            fail(
-                "Task reached "
-                    + taskInfo.getTaskState()
-                    + " instead of "
-                    + expectedState
-                    + "; error: "
-                    + taskInfo.getTaskError());
-          }
         } catch (Exception e) {
-          // DB may not be consistent yet, retry.
+          log.error(
+              "Error while fetching task info for taskUUID: {} : {}. Retrying...",
+              taskUUID,
+              e.getMessage());
         }
       }
-      Thread.sleep(sleepDuration);
+      Thread.sleep(sleepDurationMs);
       numRetries++;
     }
-
-    if (expectedState != null) {
-      throw new RuntimeException("Task did not reach state " + expectedState + " within timeout");
-    }
-
     Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(taskUUID);
     if (!taskInfoOptional.isPresent()) {
       throw new RuntimeException(
@@ -706,7 +693,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         return isRunning;
       }
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
       Thread.sleep(10);
@@ -731,7 +718,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(10);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(
@@ -1144,7 +1131,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
           TabletServerInfo tserverInfo = new TabletServerInfo();
           tserverInfo.setCloudInfo(cloudInfo);
-          tserverInfo.setUuid(UUID.randomUUID());
+          tserverInfo.setPermanentUuid(UUID.randomUUID().toString().replace("-", ""));
           tserverInfo.setInPrimaryCluster(cluster.clusterType.equals(ClusterType.PRIMARY));
           tserverInfo.setPlacementUuid(clusterUuid);
           tserverInfo.setPrivateRpcAddress(
@@ -1358,6 +1345,108 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
 
     validateMetrics(Common.CloudType.aws, nodesCounts, 0);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID, Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    verifyCapacityReservationGcp(universeUUID, gcpProvider, instanceTypeToZonesAndNodesArray);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID,
+      Provider provider,
+      Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    ClusterType clusterType = CommonUtils.getClusterType(provider, universe);
+
+    // Capture all create calls so we can map (instanceType, zone) -> reservationName
+    // without relying on persisted CapacityReservationState (which may be cleared
+    // by later subtasks in the CreateUniverse pipeline).
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Integer> countCaptor = ArgumentCaptor.forClass(Integer.class);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    ArgumentCaptor<Map<String, String>> tagsCaptor =
+        (ArgumentCaptor<Map<String, String>>) (ArgumentCaptor) ArgumentCaptor.forClass(Map.class);
+
+    verify(gcpProjectApiClient, Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            countCaptor.capture(),
+            tagsCaptor.capture());
+
+    // Build (instanceType, zoneCode) -> reservationName index from captured calls.
+    Map<String, Map<String, String>> capturedNames = new HashMap<>();
+    List<String> capturedNameVals = nameCaptor.getAllValues();
+    List<String> capturedZoneVals = zoneCaptor.getAllValues();
+    List<String> capturedTypeVals = typeCaptor.getAllValues();
+    for (int i = 0; i < capturedNameVals.size(); i++) {
+      capturedNames
+          .computeIfAbsent(capturedTypeVals.get(i), x -> new HashMap<>())
+          .put(capturedZoneVals.get(i), capturedNameVals.get(i));
+    }
+
+    List<Double> nodesCounts = new ArrayList<>();
+    for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
+        instanceTypeToZonesAndNodesArray) {
+      for (Map.Entry<String, Map<String, ZoneData>> typeEntry :
+          instanceTypeToZonesAndNodes.entrySet()) {
+        String instanceType = typeEntry.getKey();
+        for (Map.Entry<String, ZoneData> zoneEntry : typeEntry.getValue().entrySet()) {
+          String zone = zoneEntry.getKey();
+          ZoneData zoneData = zoneEntry.getValue();
+          String fullZone = "az-" + zone;
+
+          String reservationName =
+              capturedNames.getOrDefault(instanceType, Collections.emptyMap()).get(fullZone);
+          assertNotNull(
+              "Expected captured GCP reservation for "
+                  + instanceType
+                  + "/"
+                  + fullZone
+                  + ". All captured: "
+                  + capturedNames,
+              reservationName);
+          assertTrue(
+              "GCP reservation name must start with r-: " + reservationName,
+              reservationName.startsWith("r-"));
+
+          Map<String, String> expectedTags =
+              Map.of(
+                  "universe-name",
+                  "universe-test",
+                  "universe-uuid",
+                  universeUUID.toString(),
+                  "cluster-type",
+                  clusterType.name(),
+                  "zone",
+                  fullZone,
+                  "instance-type",
+                  instanceType);
+
+          verify(gcpProjectApiClient)
+              .createCapacityReservation(
+                  Mockito.eq(reservationName),
+                  Mockito.eq(fullZone),
+                  Mockito.eq(instanceType),
+                  Mockito.eq(Integer.valueOf(zoneData.nodes.size())),
+                  Mockito.eq(expectedTags));
+          nodesCounts.add((double) zoneData.nodes.size());
+          verify(gcpProjectApiClient)
+              .deleteCapacityReservation(
+                  Mockito.eq(reservationName), Mockito.eq(fullZone), Mockito.eq(true));
+        }
+      }
+    }
+
+    // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
   }
 
   protected void verifyNodeInteractionsCapacityReservation(

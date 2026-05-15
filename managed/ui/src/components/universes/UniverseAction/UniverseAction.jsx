@@ -19,18 +19,20 @@ class UniverseAction extends Component {
             }}
             isControl
           >
-            <YBButton
-              btnText="Create Maintenance Window"
-              btnIcon="fa fa-clock-o"
-              btnClass={`btn btn-orange`}
-              onClick={() => window.open(`/admin/alertConfig/maintenanceWindow`, '_blank')}
-              style={{ marginRight: '5px' }}
-            />
-            <YBInfoTip
-                title="Create Maintenance Window"
-                content="Create a maintenance window to snooze alerts on your universe."
-                placement="left"
-              />
+            <span>
+              <YBButton
+                btnText="Create Maintenance Window"
+                btnIcon="fa fa-clock-o"
+                btnClass={`btn btn-orange`}
+                onClick={() => window.open(`/admin/alertConfig/maintenanceWindow`, '_blank')}
+                style={{ marginRight: '5px' }}
+                />
+              <YBInfoTip
+                  title="Create Maintenance Window"
+                  content="Create a maintenance window to snooze alerts on your universe."
+                  placement="left"
+                  />
+            </span>
           </RbacValidator>
         )}
       </div>

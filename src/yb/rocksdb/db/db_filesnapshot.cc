@@ -93,10 +93,9 @@ int DBImpl::IsFileDeletionsEnabled() const {
   return disable_delete_obsolete_files_;
 }
 
-Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
-    uint64_t *manifest_file_size,
-    bool flush_memtable) {
-
+Status DBImpl::GetLiveFiles(
+    std::vector<std::string>& ret, uint64_t* manifest_file_size, bool flush_memtable,
+    FlushReason flush_reason) {
   *manifest_file_size = 0;
 
   mutex_.Lock();
@@ -110,7 +109,7 @@ Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
       }
       cfd->Ref();
       mutex_.Unlock();
-      status = FlushMemTable(cfd, FlushOptions());
+      status = FlushMemTable(cfd, FlushOptions(flush_reason));
       DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::GetLiveFiles:1");
       DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::GetLiveFiles:2");
       mutex_.Lock();

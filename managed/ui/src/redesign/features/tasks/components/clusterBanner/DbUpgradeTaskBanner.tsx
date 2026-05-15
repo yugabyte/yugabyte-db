@@ -13,11 +13,11 @@ import { getUniverse, precheckSoftwareUpgrade } from '@app/v2/api/universe/unive
 import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
-import { getIsDbUpgradeTask } from '../../utils/dbUpgradeTaskUtils';
+import { getIsDbUpgradeTask } from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
+import { PollingIntervalMs } from '@app/components/xcluster/constants';
 
-import ConnectIcon from '@app/redesign/assets/approved/connect.svg';
 interface DbUpgradeTaskBannerProps {
   task: Task;
   universeUuid: string;
@@ -37,7 +37,9 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUuid),
     () => getUniverse(universeUuid),
-    { enabled: !!universeUuid }
+    {
+      refetchInterval: PollingIntervalMs.FOCUSED_TASK
+    }
   );
 
   const dbUpgradeMetadataQuery = useQuery(
@@ -53,13 +55,12 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
     }
   );
 
-  if (!isDbUpgradeTask) {
+  if (!isDbUpgradeTask || !universeDetailsQuery.data?.info?.software_upgrade_state) {
     return null;
   }
 
   const { ysql_major_version_upgrade: isYsqlMajorUpgrade = false } =
     dbUpgradeMetadataQuery.data ?? {};
-
   let bannerComponent = null;
   const openDbUpgradeManagementSidePanelButton = (
     <YBButton
@@ -122,31 +123,14 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
           <ClusterOperationBanner
             type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
             title={t('finalizeOrRollBack.title')}
-            actions={
-              <>
-                <YBButton
-                  variant="secondary"
-                  size="medium"
-                  data-testid="roll-back-upgrade-button-finalize"
-                  onClick={() => setIsDbUpgradeRollBackModalOpen(true)}
-                >
-                  {t('finalizeOrRollBack.rollBack')}
-                </YBButton>
-                <YBButton
-                  variant="primary"
-                  size="medium"
-                  startIcon={<ConnectIcon width={24} height={24} />}
-                  data-testid="finalize-upgrade-now-button"
-                  onClick={() => setIsDbUpgradeFinalizeModalOpen(true)}
-                >
-                  {t('finalizeOrRollBack.finalizeUpgradeNow')}
-                </YBButton>
-              </>
-            }
+            actions={openDbUpgradeManagementSidePanelButton}
             description={t('finalizeOrRollBack.description')}
           />
         );
-      } else {
+      } else if (
+        universeDetailsQuery.data?.info?.software_upgrade_state ===
+        UniverseInfoSoftwareUpgradeState.Ready
+      ) {
         bannerComponent = (
           <ClusterOperationBanner
             type={ClusterOperationBannerType.SUCCESS}
@@ -172,14 +156,28 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
       }
       break;
     case TaskState.FAILURE:
-      bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.ERROR}
-          title={t('softwareUpgradeFailed.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={openDbUpgradeManagementSidePanelButton}
-        />
-      );
+      if (
+        universeDetailsQuery.data?.info?.software_upgrade_state ===
+        UniverseInfoSoftwareUpgradeState.Ready
+      ) {
+        bannerComponent = (
+          <ClusterOperationBanner
+            type={ClusterOperationBannerType.ALERT}
+            title={t('upgradeAborted.title')}
+            description={t('upgradeAborted.description')}
+            actions={openDbUpgradeManagementSidePanelButton}
+          />
+        );
+      } else {
+        bannerComponent = (
+          <ClusterOperationBanner
+            type={ClusterOperationBannerType.ERROR}
+            title={t('softwareUpgradeFailed.title')}
+            progressPercent={task.percentComplete ?? 0}
+            actions={openDbUpgradeManagementSidePanelButton}
+          />
+        );
+      }
       break;
     case TaskState.CREATED:
     case TaskState.INITIALIZING:

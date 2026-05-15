@@ -15,7 +15,7 @@ import { useRefreshSoftwareUpgradeTasksCache } from '@app/redesign/helpers/cache
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 import { Task, TaskState } from '../../dtos';
-import { getIsDbUpgradeRollbackTask } from '../../utils/dbUpgradeTaskUtils';
+import { getIsDbUpgradeRollbackTask } from '../../TaskUtils';
 import { retryTasks } from '../drawerComp/api';
 import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';

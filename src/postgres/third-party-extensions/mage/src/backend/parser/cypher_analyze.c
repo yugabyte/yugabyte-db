@@ -927,9 +927,8 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
      * convert ParseState into cypher_parsestate temporarily to pass it to
      * make_cypher_parsestate()
      */
+    memset(&parent_cpstate, 0, sizeof(parent_cpstate)); /* YB */
     parent_cpstate.pstate = *parent_pstate;
-    parent_cpstate.graph_name = NULL;
-    parent_cpstate.params = NULL;
 
     cpstate = make_cypher_parsestate(&parent_cpstate);
 

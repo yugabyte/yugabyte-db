@@ -260,6 +260,9 @@ export function useNodesAvailabilityStep(
     if (watchedReplicationFactor === resilienceAndRegionsSettings.resilienceFactor) {
       return;
     }
+    if (typeof saveResilienceAndRegionsSettings !== 'function') {
+      return;
+    }
     saveResilienceAndRegionsSettings({
       ...resilienceAndRegionsSettings,
       [RESILIENCE_FACTOR]: watchedReplicationFactor
@@ -400,7 +403,7 @@ export function useNodesAvailabilityStep(
 
   // Geo-partition wizard only: Regions step drives layout. Stale nodesAndAvailability from context
   // (or prior visit) left availabilityZones non-empty, so applyNodesStepPlacementFromResilience
-  // skipped updating. Do not run for create-universe tests that seed custom availabilityZones.
+  // skipped updating. Only resync when zones are empty or region selection changed.
   useEffect(() => {
     if (guidedPlacementSyncSignature === null) {
       lastGuidedPlacementSignatureRef.current = null;
@@ -410,6 +413,18 @@ export function useNodesAvailabilityStep(
       return;
     }
     lastGuidedPlacementSignatureRef.current = guidedPlacementSyncSignature;
+
+    const currentAvailabilityZones = methods.getValues('availabilityZones');
+    const hasExistingZones = !isEmpty(currentAvailabilityZones);
+    const selectedRegions = resilienceAndRegionsSettings?.regions ?? [];
+    const selectedRegionsMatchAvailabilityZones = regionCodesMatchAvailabilityZones(
+      selectedRegions,
+      currentAvailabilityZones
+    );
+    if (hasExistingZones && selectedRegionsMatchAvailabilityZones) {
+      return;
+    }
+
     methods.setValue('availabilityZones', {});
     applyNodesStepPlacementFromResilience(
       methods,

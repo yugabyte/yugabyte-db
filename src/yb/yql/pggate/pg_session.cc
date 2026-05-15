@@ -18,7 +18,10 @@
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <set>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "yb/client/table_info.h"
 
@@ -33,6 +36,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -69,7 +73,10 @@ DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "The function yb_increment_db_catalog_version_with_inval_messages or "
                        "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
-                       "invalidation messages older than this time");
+                       "invalidation messages older than this time. The effective expiration "
+                       "is automatically raised to at least 10 * --heartbeat_interval_ms so "
+                       "that messages survive long enough for every TServer to receive them "
+                       "via heartbeats.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
                        "If a DDL statement generates more than this number of invalidation "
@@ -89,6 +96,31 @@ void Erase(Container* container, const Key& key) {
   auto it = container->find(key);
   if (it != container->end()) {
     container->erase(it);
+  }
+}
+
+void PublishPendingRpcTableInfo(
+    const std::vector<yb::PgObjectId>& relations,
+    const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
+  if (!dist_trace::HasActiveContext() || relations.empty()) {
+    return;
+  }
+  dist_trace::ClearPendingRpcAttrs();
+  std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
+  std::string joined_names;
+  for (const auto& relation : unique_relations) {
+    if (!relation.IsValid()) {
+      continue;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    auto it = table_cache.find(relation);
+    DCHECK(it != table_cache.end());
+    joined_names += it->second->table_name().table_name();
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
   }
 }
 
@@ -901,6 +933,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
+  // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
+  // empty and no table info gets published for the upcoming RPC client span.
+  PublishPendingRpcTableInfo(relations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));

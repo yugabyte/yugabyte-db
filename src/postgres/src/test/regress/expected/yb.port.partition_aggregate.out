@@ -1428,9 +1428,9 @@ SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) <
 -- Test when parent can produce parallel paths but not any (or some) of its children
 -- (Use one more aggregate to tilt the cost estimates for the plan we want)
 ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 ANALYZE pagg_tab_para;
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
@@ -1465,7 +1465,7 @@ SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVIN
 (6 rows)
 
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 ANALYZE pagg_tab_para;
 -- YB: yet another aggregate is required to "tilt the cost estimates" to get
 -- the desired plan.  Only one more aggregate is not enough because of higher

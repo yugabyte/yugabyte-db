@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
+import clsx from 'clsx';
 import { DragDropContext, Draggable, Droppable, DropResult } from 'react-beautiful-dnd';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -10,8 +11,7 @@ import { AzClusterKind, DropReason } from '../constants';
 import { applySlotSwap, getSlotId, parseSlotIndex } from '../utils/upgradeOrderUtils';
 
 import DragHandleIcon from '@app/redesign/assets/draggable.svg';
-
-const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.upgradePlanStep';
+import { YBTag } from '@yugabyte-ui-library/core';
 
 const useStyles = makeStyles((theme) => ({
   stepContainer: {
@@ -82,10 +82,12 @@ const useStyles = makeStyles((theme) => ({
   azSlot: {
     boxSizing: 'border-box',
     width: '100%',
-    
+
     borderRadius: theme.shape.borderRadius,
-    border: `2px dashed ${theme.palette.grey[400]}`,
     backgroundColor: 'transparent'
+  },
+  azSlotDragging: {
+    outline: `1px solid ${theme.palette.grey[300]}`
   },
   azContainer: {
     display: 'flex',
@@ -110,11 +112,22 @@ const useStyles = makeStyles((theme) => ({
     minHeight: 0,
     height: 0,
     overflow: 'hidden'
+  },
+  reminderContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+
+    padding: theme.spacing(0, 1)
   }
 }));
 
 export const UpgradePlanStep = () => {
-  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const [isPrimaryClusterDragging, setIsPrimaryClusterDragging] = useState(false);
+  const [isReadReplicaClusterDragging, setIsReadReplicaClusterDragging] = useState(false);
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'universeActions.dbUpgrade.upgradeModal.upgradePlanStep'
+  });
   const classes = useStyles();
   const formMethods = useFormContext<DBUpgradeFormFields>();
   const canaryConfig = formMethods.watch('canaryUpgradeConfig');
@@ -252,14 +265,22 @@ export const UpgradePlanStep = () => {
         />
 
         {/* Stage 2: Upgrade Primary Cluster T-Servers */}
-        <DragDropContext onDragEnd={handlePrimaryDragEnd}>
+        <DragDropContext
+          onDragStart={() => setIsPrimaryClusterDragging(true)}
+          onDragEnd={(dropResult) => {
+            setIsPrimaryClusterDragging(false);
+            handlePrimaryDragEnd(dropResult);
+          }}
+        >
           <div className={classes.upgradeStageContainer}>
             <div className={classes.upgradeStageHeader}>
               <div className={classes.iconContainer}>
                 <Typography variant="subtitle1">2</Typography>
               </div>
               <Typography variant="body1">
-                {t('upgradeStage.upgradePrimaryClusterTServers')}
+                {hasReadReplica
+                  ? t('upgradeStage.upgradePrimaryClusterTServers')
+                  : t('upgradeStage.upgradeTservers')}
               </Typography>
             </div>
             <div className={classes.executionOrderContainer}>
@@ -276,7 +297,10 @@ export const UpgradePlanStep = () => {
                           <div
                             ref={droppableProvided.innerRef}
                             {...droppableProvided.droppableProps}
-                            className={classes.azSlot}
+                            className={clsx(
+                              classes.azSlot,
+                              isSourceSlot && isPrimaryClusterDragging && classes.azSlotDragging
+                            )}
                           >
                             <Draggable draggableId={`primary-${azStep.azUuid}`} index={0}>
                               {(draggableProvided, draggableSnapshot) => (
@@ -334,7 +358,13 @@ export const UpgradePlanStep = () => {
 
         {/* Stage 3: Upgrade Read Replica T-Servers */}
         {hasReadReplica && (
-          <DragDropContext onDragEnd={handleReadReplicaDragEnd}>
+          <DragDropContext
+            onDragStart={() => setIsReadReplicaClusterDragging(true)}
+            onDragEnd={(dropResult) => {
+              setIsReadReplicaClusterDragging(false);
+              handleReadReplicaDragEnd(dropResult);
+            }}
+          >
             <div className={classes.upgradeStageContainer}>
               <div className={classes.upgradeStageHeader}>
                 <div className={classes.iconContainer}>
@@ -358,7 +388,10 @@ export const UpgradePlanStep = () => {
                             <div
                               ref={droppableProvided.innerRef}
                               {...droppableProvided.droppableProps}
-                              className={classes.azSlot}
+                              className={clsx(
+                                classes.azSlot,
+                                isReadReplicaClusterDragging && classes.azSlotDragging
+                              )}
                             >
                               <Draggable draggableId={`read-replica-${azStep.azUuid}`} index={0}>
                                 {(draggableProvided, draggableSnapshot) => (
@@ -404,6 +437,12 @@ export const UpgradePlanStep = () => {
             </div>
           </DragDropContext>
         )}
+      </div>
+      <div className={classes.reminderContainer}>
+        <YBTag color="warning" size="medium">
+          {t('reminder')}
+        </YBTag>
+        <Typography variant="body2">{t('pauseRequiresManualResume')}</Typography>
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
       (zone: ZoneType) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0
     )
   );
-
+  
   return (
     <>
       {regions?.map((region) => {
@@ -62,7 +62,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
                 ? MarkerType.READ_REPLICA
                 : hasHighestPreferedRank
                 ? MarkerType.REGION_PREFERRED
-                : MarkerType.READ_REPLICA
+                : MarkerType.REGION_SELECTED
             }
             tooltip={<MapRegionTooltip regions={regionsByName[region.code]} />}
           />

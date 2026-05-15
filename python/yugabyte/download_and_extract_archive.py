@@ -131,20 +131,24 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
     dest_dir = os.path.dirname(dest_path)
     if not os.path.isdir(dest_dir):
         raise IOError("Destination directory %s does not exist" % dest_dir)
-    # -f / --fail: don't write the response body for HTTP error responses, so we don't end up
-    #              with an HTML error page on disk masquerading as the requested artifact.
-    # --retry / --retry-delay: retry transient failures (5xx, connection errors) before giving up.
-    #              Note: curl --retry counts retries after the initial attempt, so we pass
-    #              MAX_DOWNLOAD_ATTEMPTS - 1 to get MAX_DOWNLOAD_ATTEMPTS total attempts.
-    # --retry-connrefused: also retry on ECONNREFUSED, which curl does not retry by default
-    #              and which is a common transient failure in CI environments.
-    run_cmd([
-        'curl', '-LsSf',
-        '--retry', str(MAX_DOWNLOAD_ATTEMPTS - 1),
-        '--retry-delay', str(RETRY_DELAY_SEC),
-        '--retry-connrefused',
-        url, '-o', dest_path,
-    ] + other_curl_flags)
+    # -f: exit 22 on HTTP errors instead of saving the error page as the artifact.
+    # Retry at the Python level so any curl failure is retried, including transient
+    # non-5xx HTTP errors (e.g. 403s on GitHub's signed release-asset redirects)
+    # that curl's --retry skips. --retry-all-errors would cover this but requires
+    # curl >= 7.71.0, which is unavailable on AlmaLinux 8 / RHEL 8 and similar.
+    cmd = ['curl', '-LsSf', url, '-o', dest_path] + other_curl_flags
+    for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            run_cmd(cmd)
+            break
+        except subprocess.CalledProcessError as ex:
+            if attempt == MAX_DOWNLOAD_ATTEMPTS:
+                raise
+            logging.warning(
+                "curl failed downloading %s (attempt %d/%d) with exit code %d, "
+                "retrying in %ds",
+                url, attempt, MAX_DOWNLOAD_ATTEMPTS, ex.returncode, RETRY_DELAY_SEC)
+            time.sleep(RETRY_DELAY_SEC)
     if not os.path.exists(dest_path):
         raise IOError("Failed to download %s: file %s does not exist" % (url, dest_path))
     elapsed_sec = time.time() - start_time_sec

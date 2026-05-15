@@ -31,7 +31,7 @@ Learn more about the YugabyteDB MCP Server:
 
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
-The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
+The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ uv sync
     ./bin/yugabyted start --advertise_address=127.0.0.1
     ```
 
-1. [Install the Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
+1. [Install the Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 ## Connect Claude to the server
 

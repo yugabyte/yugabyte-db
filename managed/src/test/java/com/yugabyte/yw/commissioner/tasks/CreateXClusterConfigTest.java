@@ -514,7 +514,6 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         .thenReturn(outReplGroupResp);
     when(mockClient.isXClusterBootstrapRequired(anyString(), anyString()))
         .thenReturn(completionResponse);
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellResponse());
     when(mockClient.getNamespaceInfo(anyString(), eq(YQL_DATABASE_PGSQL))).thenReturn(gnir);
     when(mockClient.getXClusterOutboundReplicationGroups(anyString()))
         .thenReturn(getOutReplGroupResp);
