@@ -1260,6 +1260,96 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   /**
+   * Simulates UI retry after a canary upgrade failure: universe is left in UpgradeFailed with
+   * placementModificationTaskUuid pointing at the original task, but prevYBSoftwareConfig still
+   * records completed AZs. Retry submits a new parent task UUID with previousTaskUUID set to the
+   * original task; progress must not reset completed tserver AZs to NOT_STARTED.
+   */
+  @Test
+  public void testCanaryFailedRetryPreservesCompletedTserverAzProgress()
+      throws InterruptedException {
+    updateDefaultUniverseTo5Nodes(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
+    List<UUID> azOrder = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
+    List<AZUpgradeStep> steps = new ArrayList<>();
+    for (UUID azUUID : azOrder) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUUID;
+      step.pauseAfterTserverUpgrade = azUUID.equals(az1.getUuid());
+      steps.add(step);
+    }
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
+    taskParams.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    UUID failedTaskUuid = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
+    TaskInfo taskInfo = waitForTask(failedTaskUuid);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    PrevYBSoftwareConfig prevAfterPause = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prevAfterPause);
+    assertTrue(
+        "First primary AZ should be completed before simulated failure",
+        primaryTserverAzCompleted(prevAfterPause, defaultUniverse, az1.getUuid()));
+
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.UpgradeFailed;
+          u.setUniverseDetails(u.getUniverseDetails());
+        });
+
+    SoftwareUpgradeParams retryParams =
+        play.libs.Json.fromJson(
+            TaskInfo.getOrBadRequest(failedTaskUuid).getTaskParams(), SoftwareUpgradeParams.class);
+    retryParams.setPreviousTaskUUID(failedTaskUuid);
+    retryParams.expectedUniverseVersion = -1;
+    retryParams.creatingUser = defaultUser;
+
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        retryParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    UUID retryTaskUuid = commissioner.submit(TaskType.SoftwareUpgradeYB, retryParams);
+
+    long deadline = System.currentTimeMillis() + 120_000;
+    boolean sawAz1StillCompleted = false;
+    while (System.currentTimeMillis() < deadline) {
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      PrevYBSoftwareConfig p = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
+      if (p != null && primaryTserverAzCompleted(p, defaultUniverse, az1.getUuid())) {
+        sawAz1StillCompleted = true;
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertTrue(
+        "Retry must not wipe completed AZ progress; az1 should stay COMPLETED in prev",
+        sawAz1StillCompleted);
+
+    taskInfo = waitForTask(retryTaskUuid);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  /**
    * After a successful canary run that ends in PreFinalize, unlock should clear task tracking
    * fields (including on resume when FreezeUniverse subtask is skipped).
    */

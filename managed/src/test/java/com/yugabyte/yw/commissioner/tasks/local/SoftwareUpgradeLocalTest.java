@@ -672,7 +672,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   /**
    * Canary upgrade with {@link CanaryUpgradeConfig#pauseAfterMasters} and no per-AZ tserver pauses,
-   * left in {@link SoftwareUpgradeState#Paused} after masters complete.
+   * left in {@link SoftwareUpgradeState#Paused} after masters complete (multi-AZ).
+   * Retry-after-failure progress preservation for canary is covered in
+   * SoftwareUpgradeYBTest#testCanaryFailedRetryPreservesCompletedTserverAzProgress.
    */
   private Universe createUniversePausedAfterCanaryMasterPhase() throws InterruptedException {
     updateProviderDetailsForCreateUniverse(OLD_VERSION_WITH_ROLLBACK);
