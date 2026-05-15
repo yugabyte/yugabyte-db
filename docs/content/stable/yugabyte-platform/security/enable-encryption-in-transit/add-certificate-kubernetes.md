@@ -98,7 +98,7 @@ To rotate server certificates:
     To rotate all certificates for the given universe in a given namespace, run the following:
 
     ```sh
-    cmctl renew -n <namespace> -l yugabyte.io/<universe-name>=<universe-name>
+    cmctl renew -n <namespace> -l yugabyte.io/universe=<universe-name>
     ```
 
     If the universe spans multiple namespaces, add the `-A` option to the command to mark certificates across namespaces for renewal.
@@ -113,7 +113,7 @@ To rotate root certificates:
 
 1. [Add the new root certificate](#add-certificates-using-cert-manager) to YugabyteDB Anywhere.
 
-1. Renew the cert-manager certificate resource as per step 1 of [Rotate cert-manager server certificates](#rotate-server-certificates).
+1. Renew the cert-manager certificate resource as per step 1 of [Rotate server certificates](#rotate-server-certificates).
 
 1. In YugabyteDB Anywhere, [rotate root certificates](../rotate-certificates/#rotate-root-certificates).
 
