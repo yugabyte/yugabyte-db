@@ -470,7 +470,8 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	int index = route->id.yb_stats_index;
 	od_route_lock(route);
 
-	if (route->status == YB_ROUTE_INACTIVE)
+	if (route->status == YB_ROUTE_INACTIVE &&
+	    od_server_pool_active(&route->server_pool) == 0)
 		goto clean;
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
