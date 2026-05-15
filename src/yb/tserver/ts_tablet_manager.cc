@@ -2045,9 +2045,6 @@ Status MaybeAssignPerDbCgroups(
     TabletPeer* tablet_peer, tablet::Tablet* tablet,
     const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
   if (!cm) return Status::OK();
-  bool consensus_per_db = FLAGS_qos_consensus_per_db_cgroups;
-  bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
-  if (!consensus_per_db && !compaction_per_db) return Status::OK();
 
   if (meta.table_type() != PGSQL_TABLE_TYPE) return Status::OK();
   auto namespace_id = meta.namespace_id();
@@ -2057,8 +2054,15 @@ Status MaybeAssignPerDbCgroups(
   if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
     return Status::OK();
   }
-  auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
+
+  // Register database name for metrics, regardless of per-DB cgroup flags.
   cm->RegisterDbName(db_oid, meta.namespace_name());
+
+  bool consensus_per_db = FLAGS_qos_consensus_per_db_cgroups;
+  bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
+  if (!consensus_per_db && !compaction_per_db) return Status::OK();
+
+  auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
   if (consensus_per_db) {
     tablet_peer->SetPerDbCgroup(&cgroup);
   }
