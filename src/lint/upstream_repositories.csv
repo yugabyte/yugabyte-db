@@ -1,5 +1,5 @@
 local_path,upstream_path,repository,commit
-src/postgres,,https://github.com/yugabyte/postgres,87c1734c097de2b9347432fe20d8bc719491825f
+src/postgres,,https://github.com/yugabyte/postgres,c7f8161aeb923ebce167c91cdd513701d696f735
 src/postgres/contrib/passwordcheck,passwordcheck_extra,https://github.com/michaelpq/pg_plugins,66a75ea0ca0706bef7b1e17055aa5fd364189fec
 src/postgres/contrib/passwordcheck/expected/passwordcheck.out,contrib/passwordcheck/expected/passwordcheck.out,https://github.com/yugabyte/postgres,src/postgres
 src/postgres/contrib/passwordcheck/sql/passwordcheck.sql,contrib/passwordcheck/sql/passwordcheck.sql,https://github.com/yugabyte/postgres,src/postgres
