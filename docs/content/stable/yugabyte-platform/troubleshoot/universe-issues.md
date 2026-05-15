@@ -276,9 +276,9 @@ You can also create "Custom Queries" by providing PromQL expressions; their resu
 
 ## All-nodes script and file collection APIs
 
-YugabyteDB Anywhere exposes REST APIs that run a short script on all database nodes in a universe (or on a subset you select) and collect specified files or directories into archives you can download. This is meant to replace the manual workflow of SSHing into each node to run the same diagnostic command or gather the same paths.
+YugabyteDB Anywhere exposes REST APIs that run a short script on all database nodes in a universe (or on a subset you select) and collects specified files or directories into archives you can download. This replaces the manual workflow of SSHing into each node to run the same diagnostic command or gather the same paths.
 
-The capability is available only through the [YugabyteDB Anywhere REST API](../../anywhere-automation/anywhere-api/) and, by extension, the [yba CLI](../../anywhere-automation/anywhere-cli/).
+This feature is available only through the [YugabyteDB Anywhere REST API](../../anywhere-automation/anywhere-api/) and, by extension, the [yba CLI](../../anywhere-automation/anywhere-cli/).
 
 ### Best practices
 
