@@ -161,34 +161,6 @@ std::optional<BsonRegionInfo> FindBsonRegionContaining(
         SkipComplementZeroEncoded(data, size, &pos);
         break;
 
-      // Frozen types - recursive structure terminated by GroupEnd markers.
-      case KeyEntryType::kFrozen:
-        while (pos < size &&
-               static_cast<KeyEntryType>(data[pos]) != KeyEntryType::kGroupEnd) {
-          // Skip inner entries recursively by calling FindBsonRegionContaining
-          // with a diff_pos beyond the key to just scan forward.
-          // Simpler: just skip to the GroupEnd.
-          auto inner_type = static_cast<KeyEntryType>(data[pos]);
-          pos++;
-          if (inner_type == KeyEntryType::kGroupEnd) break;
-          // Handle inner types the same way (simplified - skip to group end).
-        }
-        // We'll fall through to the end-of-key fallback below for complex frozen types.
-        // For correctness, scan for the kGroupEnd byte.
-        while (pos < size && static_cast<KeyEntryType>(data[pos]) != KeyEntryType::kGroupEnd) {
-          pos++;
-        }
-        if (pos < size) pos++;  // Skip kGroupEnd.
-        break;
-
-      case KeyEntryType::kFrozenDescending:
-        while (pos < size &&
-               static_cast<KeyEntryType>(data[pos]) != KeyEntryType::kGroupEndDescending) {
-          pos++;
-        }
-        if (pos < size) pos++;
-        break;
-
       // HybridTime appears at the end of keys. The encoding is variable-length
       // and complex, so we skip to the end.
       case KeyEntryType::kHybridTime:
@@ -202,31 +174,34 @@ std::optional<BsonRegionInfo> FindBsonRegionContaining(
         if (pos < size) pos++;
         break;
 
-      // TableId: 16 bytes UUID.
+      // TableId, TransactionId, ExternalTransactionId, and TransactionApplyState
+      // are encoded via KeyBytes::AppendString -> ZeroEncodeAndAppendStrToKey,
+      // so they live in the zero-encoded group.
       case KeyEntryType::kTableId:
-        pos += 16;
+      case KeyEntryType::kTransactionId:
+      case KeyEntryType::kExternalTransactionId:
+        SkipZeroEncoded(data, size, &pos);
         break;
 
-      // Intent types, transaction IDs, etc.
+      // Frozen types contain a sequence of zero-encoded values terminated by a
+      // kGroupEnd marker, where any inner string-like component can itself
+      // contain 0x00 0x01-escaped null bytes. Parsing them robustly without
+      // duplicating the full DocDB key decoder is non-trivial, and DocumentDB
+      // tablets never have frozen primary keys. Bail to byte-wise comparison.
+      case KeyEntryType::kFrozen:
+      case KeyEntryType::kFrozenDescending:
+      // Intent records, sub-transaction ids, and other internal markers don't
+      // appear in DocumentDB collection PKs either; rather than guess their
+      // encoded width, bail out so the caller falls back to byte-wise compare.
       case KeyEntryType::kIntentTypeSet:
       case KeyEntryType::kObsoleteIntentTypeSet:
       case KeyEntryType::kObsoleteIntentType:
-        pos += 1;
-        break;
-
-      case KeyEntryType::kTransactionId:
-      case KeyEntryType::kExternalTransactionId:
-        pos += 17;  // TransactionId is 16 bytes + 1 status byte typically.
-        break;
-
       case KeyEntryType::kSubTransactionId:
-        pos += 4;
-        break;
+        return std::nullopt;
 
       default:
-        // Unknown type, can't determine size. Skip to end.
-        pos = size;
-        break;
+        // Unknown type, can't determine size. Bail to byte-wise comparison.
+        return std::nullopt;
     }
 
     // Check if the diff_pos falls within this component.

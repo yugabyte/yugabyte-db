@@ -79,6 +79,9 @@ int CompareSortOrderType(bson_type_t left, bson_type_t right) {
 }
 
 // Converts a bson_value_t number to long double for cross-type comparison.
+// Decimal128 is routed through bson_decimal128_to_string + strtold; this loses
+// precision beyond ~19 significant digits but preserves canonical ordering for
+// the value ranges used as primary keys in practice.
 long double BsonNumberAsLongDouble(const bson_value_t* value) {
   switch (value->value_type) {
     case BSON_TYPE_DOUBLE:
@@ -89,6 +92,13 @@ long double BsonNumberAsLongDouble(const bson_value_t* value) {
       return static_cast<long double>(value->value.v_int64);
     case BSON_TYPE_BOOL:
       return value->value.v_bool ? 1.0L : 0.0L;
+    case BSON_TYPE_DECIMAL128: {
+      char buf[BSON_DECIMAL128_STRING];
+      bson_decimal128_to_string(&value->value.v_decimal128, buf);
+      char* end = nullptr;
+      long double result = strtold(buf, &end);
+      return result;
+    }
     default:
       return 0.0L;
   }
@@ -105,6 +115,8 @@ int64_t BsonNumberAsInt64(const bson_value_t* value) {
       return static_cast<int64_t>(value->value.v_double);
     case BSON_TYPE_BOOL:
       return value->value.v_bool ? 1 : 0;
+    case BSON_TYPE_DECIMAL128:
+      return static_cast<int64_t>(BsonNumberAsLongDouble(value));
     default:
       return 0;
   }
@@ -113,8 +125,10 @@ int64_t BsonNumberAsInt64(const bson_value_t* value) {
 // Compares two BSON numeric values with cross-type promotion.
 // Follows the same logic as DocumentDB's CompareNumbers.
 int CompareNumbers(const bson_value_t* left, const bson_value_t* right) {
-  // If either is double, compare as long double for precision.
-  if (left->value_type == BSON_TYPE_DOUBLE || right->value_type == BSON_TYPE_DOUBLE) {
+  // If either is double or decimal128, compare as long double for precision.
+  // Decimal128 is routed through string conversion in BsonNumberAsLongDouble.
+  if (left->value_type == BSON_TYPE_DOUBLE || right->value_type == BSON_TYPE_DOUBLE ||
+      left->value_type == BSON_TYPE_DECIMAL128 || right->value_type == BSON_TYPE_DECIMAL128) {
     long double left_val = BsonNumberAsLongDouble(left);
     long double right_val = BsonNumberAsLongDouble(right);
 
@@ -152,6 +166,20 @@ int CompareBsonValues(const bson_value_t* left, const bson_value_t* right) {
     case BSON_TYPE_MAXKEY:
       return 0;
 
+    case BSON_TYPE_DECIMAL128:
+      // Same-type DECIMAL128 vs DECIMAL128 keeps full precision via binary
+      // comparison of (high, low) limbs. Cross-type with other numerics
+      // routes through CompareNumbers / BsonNumberAsLongDouble below.
+      if (right->value_type == BSON_TYPE_DECIMAL128) {
+        if (left->value.v_decimal128.high != right->value.v_decimal128.high) {
+          return left->value.v_decimal128.high < right->value.v_decimal128.high ? -1 : 1;
+        }
+        if (left->value.v_decimal128.low != right->value.v_decimal128.low) {
+          return left->value.v_decimal128.low < right->value.v_decimal128.low ? -1 : 1;
+        }
+        return 0;
+      }
+      [[fallthrough]];
     case BSON_TYPE_DOUBLE:
     case BSON_TYPE_INT32:
     case BSON_TYPE_INT64:
@@ -235,6 +263,32 @@ int CompareBsonValues(const bson_value_t* left, const bson_value_t* right) {
       return CompareStrings(
           left->value.v_code.code, left->value.v_code.code_len,
           right->value.v_code.code, right->value.v_code.code_len);
+
+    case BSON_TYPE_DBPOINTER: {
+      // BSON spec: DBPointer compares collection name, then OID.
+      int cmp = CompareStrings(
+          left->value.v_dbpointer.collection, left->value.v_dbpointer.collection_len,
+          right->value.v_dbpointer.collection, right->value.v_dbpointer.collection_len);
+      if (cmp != 0) return cmp;
+      return bson_oid_compare(&left->value.v_dbpointer.oid, &right->value.v_dbpointer.oid);
+    }
+
+    case BSON_TYPE_CODEWSCOPE: {
+      // BSON spec: CodeWScope compares code, then scope document bytes.
+      int cmp = CompareStrings(
+          left->value.v_codewscope.code, left->value.v_codewscope.code_len,
+          right->value.v_codewscope.code, right->value.v_codewscope.code_len);
+      if (cmp != 0) return cmp;
+      uint32_t left_len = left->value.v_codewscope.scope_len;
+      uint32_t right_len = right->value.v_codewscope.scope_len;
+      uint32_t min_len = std::min(left_len, right_len);
+      if (min_len > 0) {
+        cmp = memcmp(left->value.v_codewscope.scope_data,
+                     right->value.v_codewscope.scope_data, min_len);
+        if (cmp != 0) return (cmp < 0) ? -1 : 1;
+      }
+      return (left_len < right_len) ? -1 : (left_len > right_len) ? 1 : 0;
+    }
 
     default:
       return 0;
