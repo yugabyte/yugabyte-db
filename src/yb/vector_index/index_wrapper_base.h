@@ -30,6 +30,8 @@ namespace rocksdb {
 class Cache;
 }
 
+DECLARE_bool(TEST_vector_index_exact);
+
 namespace yb::vector_index {
 
 // RAII handle for space reserved in a block cache. While alive it keeps `bytes` of the cache's
@@ -72,6 +74,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::unique_lock lock(TEST_search_exact_mutex_);
+      return impl().DoInsert(vector_id, v);
+    }
     // Take the write side: concurrent inserts run together (the backend coordinates them via its
     // own per-node locks) but exclude searches, whose lock-free traversal must not observe a
     // half-applied insert.
@@ -97,6 +103,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   Result<std::vector<VectorWithDistance<DistanceResult>>> Search(
       const Vector& query_vector, const SearchOptions& options)
       const override {
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::shared_lock lock(TEST_search_exact_mutex_);
+      return SearchExact(query_vector, options);
+    }
     // Take the read side while the index is still mutable, so searches never overlap an insert.
     // Immutable (flushed/loaded) indexes have no writers and are searched lock-free.
     std::optional<TwoGroupMutex::ReadLock> lock;
@@ -104,6 +114,24 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       lock.emplace(search_insert_mutex_);
     }
     return impl().DoSearch(query_vector, options);
+  }
+
+  std::vector<VectorWithDistance<DistanceResult>> SearchExact(
+      const Vector& query_vector, const SearchOptions& options) const {
+    using Entry = VectorWithDistance<DistanceResult>;
+    rocksdb::BinaryHeap<Entry> top;
+    for (const auto& [vector_id, vector] : *this) {
+      if (options.filter && !options.filter(vector_id)) {
+        continue;
+      }
+      Entry element(vector_id, this->Distance(vector, query_vector));
+      if (top.size() < options.max_num_results) {
+        top.push(element);
+      } else if (element < top.top()) {
+        top.replace_top(element);
+      }
+    }
+    return MakeResult<DistanceResult>(options.max_num_results, top.data());
   }
 
   std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
@@ -138,6 +166,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
+  mutable std::shared_mutex TEST_search_exact_mutex_;
 
   // Block cache space reserved for this index's footprint (#32357). Held for the index's lifetime
   // and released on destruction. Empty when no block cache is set or the feature is disabled.
