@@ -75,6 +75,36 @@
 
 #ifdef __cplusplus
 #include <utility>
+
+// Defer to Abseil's dynamic annotations to avoid macro redefinition conflicts.
+// Both gutil and absl originated from the same Google internal library, so they
+// define the same TSan/ASan ANNOTATE_* macros and Annotate*() C functions. By
+// including absl's header first here, absl's definitions take precedence and
+// the overlapping gutil definitions below are skipped via
+// #ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ guards.
+//
+// Pure C builds (only dynamic_annotations.c) intentionally do NOT pull in
+// absl, so the gutil declarations stay visible and consistent in C
+// translation units.
+#include "absl/base/dynamic_annotations.h"
+
+// Workaround for an absl bug: in clang non-TSan builds (the typical YB build),
+// absl's annotalysis path defines the unprefixed ANNOTATE_IGNORE_READS_BEGIN /
+// _END macros to call ::AbslInternalAnnotateIgnoreReadsBegin / _End at global
+// scope, but the underlying static-inline function is defined with an
+// inline-namespace suffix via ABSL_INTERNAL_C_SYMBOL, so the unsuffixed name
+// is never declared. The ABSL_-prefixed variants absl uses internally are
+// fine; only the unprefixed forms (which YB code uses) are broken. Undef
+// the unprefixed IGNORE_* family here so gutil's definitions below take over
+// without redefinition warnings. Behavior is unchanged: in non-TSan builds
+// gutil's macros are empty no-ops; in TSan builds they call the same
+// AnnotateIgnore* C functions absl would have called.
+#undef ANNOTATE_IGNORE_READS_BEGIN
+#undef ANNOTATE_IGNORE_READS_END
+#undef ANNOTATE_IGNORE_WRITES_BEGIN
+#undef ANNOTATE_IGNORE_WRITES_END
+#undef ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN
+#undef ANNOTATE_IGNORE_READS_AND_WRITES_END
 #endif
 
 #ifndef DYNAMIC_ANNOTATIONS_ENABLED
@@ -219,6 +249,7 @@
      program's synchronization using the other annotations, but these can
      be used when all else fails. */
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   /* Report that we may have a benign race at "pointer", with size
      "sizeof(*(pointer))". "pointer" must be a non-void* pointer.  Insert at the
      point where "pointer" has been allocated, preferably close to the point
@@ -231,6 +262,7 @@
      the memory range [address, address+size). */
   #define ANNOTATE_BENIGN_RACE_SIZED(address, size, description) \
     AnnotateBenignRaceSized(__FILE__, __LINE__, address, size, description)
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
   /* Request the analysis tool to ignore all reads in the current thread
      until ANNOTATE_IGNORE_READS_END is called.
@@ -275,11 +307,13 @@
   #define ANNOTATE_IGNORE_SYNC_END() \
     AnnotateIgnoreSyncEnd(__FILE__, __LINE__)
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   /* Enable (enable!=0) or disable (enable==0) race detection for all threads.
      This annotation could be useful if you want to skip expensive race analysis
      during some period of program execution, e.g. during initialization. */
   #define ANNOTATE_ENABLE_RACE_DETECTION(enable) \
     AnnotateEnableRaceDetection(__FILE__, __LINE__, enable)
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
   /* -------------------------------------------------------------
      Annotations useful for debugging. */
@@ -288,15 +322,18 @@
   #define ANNOTATE_TRACE_MEMORY(address) \
     AnnotateTraceMemory(__FILE__, __LINE__, address)
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   /* Report the current thread name to a race detector. */
   #define ANNOTATE_THREAD_NAME(name) \
     AnnotateThreadName(__FILE__, __LINE__, name)
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
   /* -------------------------------------------------------------
      Annotations useful when implementing locks.  They are not
      normally needed by modules that merely use locks.
      The "lock" argument is a pointer to the lock object. */
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   /* Report that a lock has been created at address "lock". */
   #define ANNOTATE_RWLOCK_CREATE(lock) \
     AnnotateRWLockCreate(__FILE__, __LINE__, lock)
@@ -322,6 +359,7 @@
   /* Report that the lock at address "lock" is about to be released. */
   #define ANNOTATE_RWLOCK_RELEASED(lock, is_w) \
     AnnotateRWLockReleased(__FILE__, __LINE__, lock, is_w)
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
   /* -------------------------------------------------------------
      Annotations useful when implementing barriers.  They are not
@@ -367,11 +405,13 @@
 
 #else  /* DYNAMIC_ANNOTATIONS_ENABLED == 0 */
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_RWLOCK_CREATE(lock) /* empty */
   #define ANNOTATE_RWLOCK_CREATE_STATIC(lock) /* empty */
   #define ANNOTATE_RWLOCK_DESTROY(lock) /* empty */
   #define ANNOTATE_RWLOCK_ACQUIRED(lock, is_w) /* empty */
   #define ANNOTATE_RWLOCK_RELEASED(lock, is_w) /* empty */
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
   #define ANNOTATE_BARRIER_INIT(barrier, count, reinitialization_allowed) /* */
   #define ANNOTATE_BARRIER_WAIT_BEFORE(barrier) /* empty */
   #define ANNOTATE_BARRIER_WAIT_AFTER(barrier) /* empty */
@@ -391,12 +431,16 @@
   #define ANNOTATE_PCQ_GET(pcq) /* empty */
   #define ANNOTATE_NEW_MEMORY(address, size) /* empty */
   #define ANNOTATE_EXPECT_RACE(address, description) /* empty */
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_BENIGN_RACE(address, description) /* empty */
   #define ANNOTATE_BENIGN_RACE_SIZED(address, size, description) /* empty */
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
   #define ANNOTATE_PURE_HAPPENS_BEFORE_MUTEX(mu) /* empty */
   #define ANNOTATE_MUTEX_IS_USED_AS_CONDVAR(mu) /* empty */
   #define ANNOTATE_TRACE_MEMORY(arg) /* empty */
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_THREAD_NAME(name) /* empty */
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
   #define ANNOTATE_IGNORE_READS_BEGIN() /* empty */
   #define ANNOTATE_IGNORE_READS_END() /* empty */
   #define ANNOTATE_IGNORE_WRITES_BEGIN() /* empty */
@@ -405,7 +449,9 @@
   #define ANNOTATE_IGNORE_READS_AND_WRITES_END() /* empty */
   #define ANNOTATE_IGNORE_SYNC_BEGIN() /* empty */
   #define ANNOTATE_IGNORE_SYNC_END() /* empty */
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_ENABLE_RACE_DETECTION(enable) /* empty */
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
   #define ANNOTATE_NO_OP(arg) /* empty */
   #define ANNOTATE_FLUSH_STATE() /* empty */
 
@@ -484,11 +530,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
 void AnnotateRWLockCreate(const char *file, int line, void *lock);
 void AnnotateRWLockCreateStatic(const char *file, int line, void *lock);
 void AnnotateRWLockDestroy(const char *file, int line, void *lock);
 void AnnotateRWLockAcquired(const char *file, int line, void *lock, long is_w);  // NOLINT
 void AnnotateRWLockReleased(const char *file, int line, void *lock, long is_w);  // NOLINT
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 void AnnotateBarrierInit(const char *file, int line,
                          const volatile void *barrier, long count,  // NOLINT
                          long reinitialization_allowed);  // NOLINT
@@ -523,6 +571,7 @@ void AnnotateNewMemory(const char *file, int line, void *address, size_t size);
 void AnnotateExpectRace(const char *file, int line,
                         const volatile void *address,
                         const char *description);
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
 void AnnotateBenignRace(const char *file, int line,
                         const volatile void *address,
                         const char *description);
@@ -530,12 +579,15 @@ void AnnotateBenignRaceSized(const char *file, int line,
                         const volatile void *address,
                         long size,  // NOLINT
                         const char *description);
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 void AnnotateMutexIsUsedAsCondVar(const char *file, int line,
                                   const volatile void *mu);
 void AnnotateTraceMemory(const char *file, int line,
                          const volatile void *arg);
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
 void AnnotateThreadName(const char *file, int line,
                         const char *name);
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 ANNOTALYSIS_STATIC_INLINE
 void AnnotateIgnoreReadsBegin(const char *file, int line)
     ANNOTALYSIS_IGNORE_READS_BEGIN ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
@@ -550,7 +602,9 @@ void AnnotateIgnoreWritesEnd(const char *file, int line)
     ANNOTALYSIS_IGNORE_WRITES_END ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
 void AnnotateIgnoreSyncBegin(const char *file, int line);
 void AnnotateIgnoreSyncEnd(const char *file, int line);
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
 void AnnotateEnableRaceDetection(const char *file, int line, int enable);
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 void AnnotateNoOp(const char *file, int line,
                   const volatile void *arg);
 void AnnotateFlushState(const char *file, int line);
@@ -647,6 +701,7 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
 
 #if DYNAMIC_ANNOTATIONS_ENABLED != 0 && defined(__cplusplus)
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   /* ANNOTATE_UNPROTECTED_READ is the preferred way to annotate racey reads.
 
      Instead of doing
@@ -676,6 +731,7 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
       };                                                              \
       static static_var ## _annotator the ## static_var ## _annotator;\
     }  // namespace
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
   template <class T>
   class UnprotectedWriter {
@@ -708,9 +764,13 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
 
 #else /* DYNAMIC_ANNOTATIONS_ENABLED == 0 */
 
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_UNPROTECTED_READ(x) (x)
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
   #define ANNOTATE_UNPROTECTED_WRITE(x) (x)
+#ifndef ABSL_BASE_DYNAMIC_ANNOTATIONS_H_
   #define ANNOTATE_BENIGN_RACE_STATIC(static_var, description)  /* empty */
+#endif  /* ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
 #endif /* DYNAMIC_ANNOTATIONS_ENABLED */
 
@@ -724,7 +784,7 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
    static inline functions so that the compiler will be able to remove the
    calls after the analysis. */
 
-#ifdef ANNOTALYSIS_ONLY
+#if defined(ANNOTALYSIS_ONLY) && !defined(ABSL_BASE_DYNAMIC_ANNOTATIONS_H_)
 
   #undef ANNOTALYSIS_ONLY
 
@@ -771,10 +831,10 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
     }
   #endif /* __cplusplus */
 
-#endif /* ANNOTALYSIS_ONLY */
+#endif /* ANNOTALYSIS_ONLY && !ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
 
-#ifdef CLANG_ANNOTALYSIS_ONLY
+#if defined(CLANG_ANNOTALYSIS_ONLY) && !defined(ABSL_BASE_DYNAMIC_ANNOTATIONS_H_)
 
 #undef CLANG_ANNOTALYSIS_ONLY
 
@@ -814,7 +874,7 @@ void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
   }
   #endif
 
-#endif  /* CLANG_ANNOTALYSIS_ONLY */
+#endif  /* CLANG_ANNOTALYSIS_ONLY && !ABSL_BASE_DYNAMIC_ANNOTATIONS_H_ */
 
 
 /* Undefine the macros intended only in this file. */
