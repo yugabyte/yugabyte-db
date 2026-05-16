@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <ranges>
-
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -1980,6 +1978,98 @@ TEST_F(PgSingleTServerTest, UpdateIndexWithHole) {
   auto num_index_rows = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT COUNT(*) FROM t WHERE value > 2"));
   ASSERT_EQ(num_index_rows, 1);
+}
+
+TEST_F(PgSingleTServerTest, VariableBloomFilterWithDeletes) {
+  constexpr int kNumRows = 250;
+  constexpr int kNumDeleted = 60;
+  constexpr int kNumGroups = 29;
+  constexpr int kGroupsPerQuery = 10;
+  constexpr int kNumQueries = 500;
+
+  std::mt19937_64 rng(42);
+
+  // Full set of payload values that rows can take; the first kNumFilteredPayloads are the subset
+  // used by the WHERE payload IN (...) filter below.
+  const std::vector<std::string> kPayloads = {
+    "e",
+    "b",
+    "c" + RandomHumanReadableString(1_KB, &rng),
+    "f" + RandomHumanReadableString(1_KB, &rng)};
+  constexpr size_t kNumFilteredPayloads = 3;
+
+  const auto quote = [](const std::string& s) { return Format("'$0'", s); };
+  const auto all_events_csv = JoinElements(
+      kPayloads | std::views::transform(quote), ", ");
+  const auto filtered_events_csv = JoinElements(
+      kPayloads | std::views::take(kNumFilteredPayloads) | std::views::transform(quote), ", ");
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(R"#(
+      CREATE TABLE test (
+          group_id int, payload text, id int,
+          PRIMARY KEY (group_id ASC, payload ASC, id ASC)
+      );
+  )#"));
+
+  // Insert rows with group_id and payload cycled deterministically over the keyspace so that
+  // every run produces the same table contents.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT (i % $1)::int, (ARRAY[$2])[(i % $3) + 1], i "
+      "FROM generate_series(1, $0) AS i",
+      kNumRows, kNumGroups, all_events_csv, kPayloads.size()));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto select_ids_for_deletion_query = Format(
+      "SELECT id FROM test ORDER BY md5(id::text) LIMIT $0", kNumDeleted);
+  const auto deleted_ids_rows = ASSERT_RESULT(conn.FetchRows<int32_t>(
+      select_ids_for_deletion_query));
+  std::unordered_set<int32_t> deleted_ids(deleted_ids_rows.begin(), deleted_ids_rows.end());
+
+  // Delete pseudo-randomly chosen rows. The md5 hash of the
+  // id gives a deterministic but well-distributed ordering across the keyspace, so the same
+  // rows are picked on every run.
+  ASSERT_OK(conn.ExecuteFormat(
+      "DELETE FROM test WHERE id IN ($0)", select_ids_for_deletion_query));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const std::string query_template = Format(
+      "SELECT group_id, id FROM test WHERE payload IN ($0) AND group_id IN ($$0)",
+      filtered_events_csv);
+
+  // Force a small read page size so the scan exercises multiple paginated reads.
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 8"));
+
+  std::vector<int> all_group_ids = Range(kNumGroups).ToContainer();
+
+  size_t total_rows = 0;
+  const auto start = MonoTime::Now();
+  for (int iter = 0; iter != kNumQueries; ++iter) {
+    // Pick kGroupsPerQuery random group_ids out of kNumGroups by shuffling the full list and
+    // taking the prefix.
+    std::shuffle(all_group_ids.begin(), all_group_ids.end(), rng);
+    std::vector<int> chosen(
+        all_group_ids.begin(), all_group_ids.begin() + kGroupsPerQuery);
+
+    const auto query = Format(query_template, JoinElements(chosen, ", "));
+    const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(query)));
+    for (const auto& [group_id, id] : rows) {
+      ASSERT_FALSE(deleted_ids.contains(id))
+          << "Iteration " << iter << " returned group_id=" << group_id
+          << " with deleted id=" << id;
+    }
+    total_rows += rows.size();
+  }
+  const auto finish = MonoTime::Now();
+  LOG(INFO) << "Ran " << kNumQueries << " queries in " << (finish - start)
+            << ", total rows returned: " << total_rows;
+  ASSERT_GT(total_rows, 0u);
 }
 
 TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {

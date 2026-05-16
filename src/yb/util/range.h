@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <compare>
 #include <iterator>
 #include <type_traits>
 
@@ -78,10 +79,16 @@ class ContainerRangeObject {
 template <class Int>
 class RangeIterator : public std::iterator<std::random_access_iterator_tag, Int> {
  public:
+  using difference_type = std::ptrdiff_t;
+
   RangeIterator(Int pos, Int step) : pos_(pos), step_(step) {}
 
   Int operator*() const {
     return pos_;
+  }
+
+  Int operator[](difference_type n) const {
+    return pos_ + static_cast<Int>(n) * step_;
   }
 
   RangeIterator& operator++() {
@@ -95,13 +102,53 @@ class RangeIterator : public std::iterator<std::random_access_iterator_tag, Int>
     return result;
   }
 
+  RangeIterator& operator--() {
+    pos_ -= step_;
+    return *this;
+  }
+
+  RangeIterator operator--(int) {
+    RangeIterator result = *this;
+    pos_ -= step_;
+    return result;
+  }
+
+  RangeIterator& operator+=(difference_type n) {
+    pos_ += static_cast<Int>(n) * step_;
+    return *this;
+  }
+
+  RangeIterator& operator-=(difference_type n) {
+    pos_ -= static_cast<Int>(n) * step_;
+    return *this;
+  }
+
  private:
+  friend RangeIterator operator+(RangeIterator it, difference_type n) {
+    it += n;
+    return it;
+  }
+
+  friend RangeIterator operator+(difference_type n, RangeIterator it) {
+    it += n;
+    return it;
+  }
+
+  friend RangeIterator operator-(RangeIterator it, difference_type n) {
+    it -= n;
+    return it;
+  }
+
+  friend difference_type operator-(const RangeIterator<Int>& lhs, const RangeIterator<Int>& rhs) {
+    return static_cast<difference_type>((lhs.pos_ - rhs.pos_) / lhs.step_);
+  }
+
   friend bool operator==(const RangeIterator<Int>& lhs, const RangeIterator<Int>& rhs) {
     return lhs.pos_ == rhs.pos_;
   }
 
-  friend bool operator!=(const RangeIterator<Int>& lhs, const RangeIterator<Int>& rhs) {
-    return lhs.pos_ != rhs.pos_;
+  friend auto operator<=>(const RangeIterator<Int>& lhs, const RangeIterator<Int>& rhs) {
+    return lhs.step_ > 0 ? lhs.pos_ <=> rhs.pos_ : rhs.pos_ <=> lhs.pos_;
   }
 
   Int pos_;
