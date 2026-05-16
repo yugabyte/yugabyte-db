@@ -2190,27 +2190,51 @@ Status ExternalMiniCluster::MoveTabletLeader(
   return itest::WaitUntilLeader(new_leader_ts, tablet_id, timeout);
 }
 
-LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
-    daemon_(daemon), string_to_wait_(string_to_wait) {
-  daemon_->SetLogListener(this);
+//------------------------------------------------------------
+// LogWaiter
+//------------------------------------------------------------
+
+LogWaiter::LogWaiter(std::vector<ExternalDaemon*> daemons, std::vector<std::string> strings_to_wait)
+  : daemons_(std::move(daemons)), strings_to_wait_(std::move(strings_to_wait)) {
+  for (auto daemon : daemons_) {
+    daemon->SetLogListener(this);
+  }
 }
 
 void LogWaiter::Handle(const GStringPiece& s) {
-  if (s.contains(string_to_wait_)) {
-    event_occurred_ = true;
+  for (const auto& string_to_wait : strings_to_wait_) {
+    if (s.contains(string_to_wait)) {
+      std::lock_guard lock(mutex_);
+      matched_log_line_ = s.as_string();
+      event_occurred_ = true;
+    }
   }
 }
 
 Status LogWaiter::WaitFor(const MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
-  return ::yb::WaitFor(
-      [this]{ return event_occurred_.load(); }, timeout,
-      Format("Waiting for log record '$0' on $1...", string_to_wait_, daemon_->id()),
+
+  std::vector<std::string> daemons_ids;
+  std::transform(
+      daemons_.begin(), daemons_.end(), std::back_inserter(daemons_ids),
+      [](const auto* daemon) { return daemon->id(); });
+
+  return ::yb::LoggedWaitFor(
+      [this] { return event_occurred_.load(); }, timeout,
+      Format("Waiting for log record '$0' on $1...", strings_to_wait_, ToString(daemons_ids)),
       kInitialWaitPeriod);
 }
 
+std::string LogWaiter::matched_log_line() const {
+  std::lock_guard lock(mutex_);
+  return matched_log_line_;
+}
+
+
 LogWaiter::~LogWaiter() {
-  daemon_->RemoveLogListener(this);
+  for (auto daemon : daemons_) {
+    daemon->RemoveLogListener(this);
+  }
 }
 
 //------------------------------------------------------------
