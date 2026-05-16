@@ -285,7 +285,9 @@ class RequestSequencer {
   }
 
   void Shutdown() {
+    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
     is_active_.store(false, std::memory_order_release);
+    impl_.RejectPendingRequests();
     cond_.notify_all();
   }
 
@@ -451,7 +453,10 @@ class LockablePgClientSession {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
-    request_sequencer_.Shutdown();
+    {
+      std::lock_guard lock(mutex_);
+      request_sequencer_.Shutdown();
+    }
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
