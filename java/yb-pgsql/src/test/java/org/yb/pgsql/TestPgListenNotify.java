@@ -58,6 +58,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   private static final String CHANNEL = "test_channel";
   private static final String PAYLOAD = "test_payload";
+  private static final String LARGE_PAYLOAD;
+  static {
+    char[] chars = new char[7000];
+    Arrays.fill(chars, 'x');
+    LARGE_PAYLOAD = new String(chars);
+  }
 
   /**
    * LISTEN should fail when cdc_max_virtual_wal_per_tserver is 0 (no virtual
@@ -881,55 +887,81 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * When the NOTIFY queue is full, the notifications poller should terminate the slowest listener
-   * to let the queue tail advance if another listener has caught up to the head. Verify that the
-   * slow listener is terminated while the fast listener stays alive.
-   *
-   * Uses yb_test_notify_queue_max_pages to artificially limit the queue so it fills up with a
-   * handful of large-payload notifications.
+   * When the NOTIFY queue fills up, verify that the slow listener is terminated.
    */
   @Test
-  public void testQueueFullTerminatesSlowestListener() throws Exception {
-    setNotifyQueueMaxPages("2");
-    try {
-      Connection connSlow = getConnectionBuilder().connect();
-      Connection connFast = getConnectionBuilder().connect();
-      Connection connNotifier = getConnectionBuilder().connect();
+  public void testQueueFullWithOneSlowListener() throws Exception {
+    fillQueueAndAssertSlowListenersTerminated(1);
+  }
 
-      // Register a listener and make it slow by starting an indefinite transaction (notifications
-      // are not delivered when the backend is inside a transaction).
-      try (Statement stmt = connSlow.createStatement()) {
-        stmt.execute("LISTEN ch1");
-        stmt.execute("BEGIN");
-      }
+  /**
+   * When the NOTIFY queue fills up, verify that both the slow listeners are terminated.
+   */
+  @Test
+  public void testQueueFullWithTwoSlowListeners() throws Exception {
+    fillQueueAndAssertSlowListenersTerminated(2);
+  }
+
+  /**
+   * When the NOTIFY queue fills up, verify that the slow listener is terminated and the fast
+   * listener receives all the notifications even though a single transaction sends more
+   * notifications than the queue capacity.
+   */
+  @Test
+  public void testQueueFullWithLargeTransaction() throws Exception {
+    try (Connection connFast = getConnectionBuilder().connect()) {
       try (Statement stmt = connFast.createStatement()) {
         stmt.execute("LISTEN ch1");
       }
+      fillQueueAndAssertSlowListenersTerminated(1);
+      waitForNotification(connFast, "ch1", LARGE_PAYLOAD);
+    }
+  }
 
-      // Send enough large-payload notifications to fill the small queue.
-      char[] chars = new char[7000];
-      Arrays.fill(chars, 'x');
-      String largePayload = new String(chars);
-      try (Statement stmt = connNotifier.createStatement()) {
-        for (int i = 0; i < 10; i++) {
-          stmt.execute("NOTIFY ch1, '" + largePayload + "'");
-        }
+  private Connection createSlowListener(String channel) throws Exception {
+    Connection conn = getConnectionBuilder().connect();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      stmt.execute("BEGIN");
+    }
+    return conn;
+  }
+
+  private Connection fillQueue(String channel, int count) throws Exception {
+    Connection conn = getConnectionBuilder().connect();
+    try (Statement stmt = conn.createStatement()) {
+      for (int i = 0; i < count; i++) {
+        stmt.execute("NOTIFY " + channel + ", '" + LARGE_PAYLOAD + "'");
       }
+    }
+    return conn;
+  }
 
-      // Wait for the poller to detect the full queue and terminate the slow
-      // listener, then verify its connection is dead.
+  private void assertConnectionTerminated(Connection conn, String label) {
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+      fail(label + " should have been terminated");
+    } catch (SQLException e) {
+      LOG.info("{} error (expected): {}", label, e.getMessage());
+    }
+  }
+
+  /**
+   * Uses yb_test_notify_queue_max_pages to artificially limit the queue so it fills up with a
+   * handful of large-payload notifications.
+   */
+  private void fillQueueAndAssertSlowListenersTerminated(int numSlowListeners) throws Exception {
+    setNotifyQueueMaxPages("2");
+    try {
+      Connection[] slowListeners = new Connection[numSlowListeners];
+      for (int i = 0; i < numSlowListeners; i++) {
+        slowListeners[i] = createSlowListener("ch1");
+      }
+      Connection connNotifier = fillQueue("ch1", 10);
       Thread.sleep(5000);
-      try (Statement stmt = connSlow.createStatement()) {
-        stmt.execute("SELECT 1");
-        fail("Slow listener should have been terminated");
-      } catch (SQLException e) {
-        LOG.info("Slow listener error (expected): {}", e.getMessage());
+      for (int i = 0; i < numSlowListeners; i++) {
+        assertConnectionTerminated(slowListeners[i], "Slow listener " + (i + 1));
       }
-
-      // Fast listener should still be alive.
-      waitForNotification(connFast, "ch1", largePayload);
-
-      connFast.close();
       connNotifier.close();
     } finally {
       setNotifyQueueMaxPages("0");
