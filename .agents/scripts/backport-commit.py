@@ -397,21 +397,24 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     def is_test_plan_heading(line: str) -> bool:
         return line.startswith("## Test plan") or line.startswith("Test Plan:")
 
-    if any(is_test_plan_heading(line) for line in body_lines):
-        new_body_lines: list[str] = []
-        inserted = False
-        for line in body_lines:
-            if not inserted and is_test_plan_heading(line):
-                new_body_lines.append(original_line)
-                new_body_lines.append("")
-                inserted = True
-            new_body_lines.append(line)
-        new_body = "\n".join(new_body_lines)
-    else:
-        # If body_lines is empty (rare: original commit had no body beyond
-        # the prior footers we just stripped), avoid a leading blank line.
-        prefix = "\n".join(body_lines).rstrip()
-        new_body = (prefix + "\n\n" if prefix else "") + original_line
+    # Single pass: insert above the first test-plan heading. If none is
+    # found (rare -- nearly every commit body has one), fall through to
+    # the append-at-end branch.
+    new_body_lines: list[str] = []
+    inserted = False
+    for line in body_lines:
+        if not inserted and is_test_plan_heading(line):
+            new_body_lines.append(original_line)
+            new_body_lines.append("")
+            inserted = True
+        new_body_lines.append(line)
+    if not inserted:
+        while new_body_lines and not new_body_lines[-1].strip():
+            new_body_lines.pop()
+        if new_body_lines:
+            new_body_lines.append("")
+        new_body_lines.append(original_line)
+    new_body = "\n".join(new_body_lines)
 
     run(["git", "commit", "--amend", "--cleanup=verbatim",
          "-m", new_subject, "-m", new_body])
