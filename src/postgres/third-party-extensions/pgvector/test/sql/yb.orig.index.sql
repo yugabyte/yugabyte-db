@@ -122,22 +122,9 @@ DROP TABLE vec1;
 
 CREATE TABLE vec1 (embedding vector(3));
 CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
-SET ybhnsw.ef_search = 100;
 SET hnsw.ef_search = 100;
 \d vec1
 DROP TABLE vec1;
-
--- Test to validate that both GUCs ybhnsw.ef_search and hnsw.ef_search are in sync.
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
-
-SET ybhnsw.ef_search = 200;
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
-
-RESET hnsw.ef_search;
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
 
 -- ANALYZE should not produce any warnings on tables with ybhnsw indexes.
 CREATE TABLE vec_analyze (id serial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;
