@@ -52,7 +52,10 @@
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/service_if.h"
 
+#include "yb/gutil/strings/join.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/lockfree.h"
@@ -82,8 +85,10 @@ DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
 
 DEFINE_RUNTIME_int32(rpc_queue_high_watermark_pct, 0,
     "Threshold (percentage of queue capacity) at which to start logging diagnostic "
-    "warnings for high RPC queue depth. A value of 0 (default) disables the logging.");
+    "warnings for high RPC queue depth. A value of 0 (default) disables the logging. "
+    "Valid range is [0, 100].");
 TAG_FLAG(rpc_queue_high_watermark_pct, advanced);
+DEFINE_validator(rpc_queue_high_watermark_pct, FLAG_RANGE_VALIDATOR(0, 100));
 
 DECLARE_bool(TEST_ash_debug_aux);
 
@@ -133,11 +138,15 @@ METRIC_DEFINE_counter(server, rpcs_started_processing,
                       "rpcs_dequeued - rpcs_started_processing approximates the number of calls "
                       "discarded after dequeue (e.g. timed out in the queue).");
 
-METRIC_DEFINE_gauge_int64(server, rpc_queue_max_size,
+METRIC_DEFINE_gauge_int64(server, rpcs_queue_max_size,
                            "RPC Queue Max Size",
                            yb::MetricUnit::kRequests,
                            "Maximum number of RPCs that can be queued before the service "
-                           "queue is considered full.");
+                           "queue is considered full. This is a constant per service pool "
+                           "(initialized from max_tasks at construction time and never "
+                           "modified at runtime); dashboards aggregating across nodes "
+                           "should treat it as a static configuration value rather than "
+                           "summing it.");
 
 METRIC_DEFINE_gauge_int64(server, rpcs_queue_high_water_mark,
                            "RPC Queue High Water Mark",
@@ -197,7 +206,7 @@ class ServicePoolImpl final : public InboundCallHandler {
                   description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
               static_cast<int64>(0) /* initial_value */);
 
-          rpc_queue_max_size_ = METRIC_rpc_queue_max_size.Instantiate(entity, max_queued_calls_);
+          rpcs_queue_max_size_ = METRIC_rpcs_queue_max_size.Instantiate(entity, max_queued_calls_);
           rpcs_queue_high_water_mark_ = METRIC_rpcs_queue_high_water_mark.InstantiateFunctionGauge(
               entity, Bind(&ServicePoolImpl::GetQueueHighWaterMark, Unretained(this)));
 
@@ -219,6 +228,14 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
     LOG_IF(DFATAL, !pre_check_timeout_queue_.Empty())
         << "Entries pushed to pre_check_timeout_queue_ after shutdown";
+    // Note: we deliberately do NOT DCHECK that per-method currently_queued gauges are
+    // zero here. ServicePoolImpl::CompleteShutdown() runs before the worker thread pool
+    // has necessarily drained (the thread pool is externally owned and shut down on a
+    // separate path, e.g. Messenger::Shutdown() or the test's own thread_pool->Shutdown()
+    // call), so calls already enqueued onto the worker pool may not yet have flowed
+    // through TryStartProcessing() -> CallDequeued(). The leak-free invariant is instead
+    // verified at the test boundary (see mt-rpc-test.cc TestBlowOutServiceQueue), after
+    // the worker thread pool has been drained.
   }
 
   int64_t GetQueueHighWaterMark() const {
@@ -268,7 +285,19 @@ class ServicePoolImpl final : public InboundCallHandler {
     // skew is acceptable for monitoring purposes.
     rpcs_added_to_queue_->Increment();
     if (auto* per_method_counters = GetPerMethodCounters(call->method_name())) {
+      // Leak-free invariant: every Increment() of currently_queued here MUST be paired
+      // with a matching Decrement() in CallDequeued(). We rely on:
+      //   (1) set_tracker_data() and the two Increment()s below being noexcept and
+      //       executed unconditionally together inside this `if`, so we never publish a
+      //       call as queued without also stashing the pmc pointer.
+      //   (2) Every queued call eventually transitioning through InboundCall::
+      //       TryStartProcessing() exactly once (guarded by processing_started_ CAS),
+      //       which is the sole caller of InboundCallHandler::CallDequeued().
+      // If any future refactor breaks either property, currently_queued will leak
+      // permanently for this method until the process restarts.
       per_method_counters->added->Increment();
+      per_method_counters->currently_queued->Increment();
+      call->set_tracker_data(per_method_counters);
     }
 
     auto call_deadline = call->GetClientDeadline();
@@ -470,44 +499,62 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
+  // Renders a "what is currently filling this queue?" summary. We rank by the per-method
+  // `currently_queued` gauge rather than the cumulative `added` counter so that the log
+  // emitted at threshold-crossing time reflects what is actually in the queue right now
+  // (e.g. a small fraction of a slow handler), not the most-frequent method since process
+  // start (which after a few hours is almost always dominated by Heartbeat / Read).
+  static constexpr int kTopKMethods = 5;
   std::string DumpTopKMethods() {
     std::vector<std::pair<std::string, int64_t>> snapshot;
     {
       SharedLock<std::shared_mutex> lock(per_method_mutex_);
       snapshot.reserve(per_method_counters_.size());
       for (const auto& [method, counters] : per_method_counters_) {
-        snapshot.emplace_back(method, counters.added->value());
+        int64_t depth = counters.currently_queued->value();
+        if (depth > 0) {
+          snapshot.emplace_back(method, depth);
+        }
       }
     }
     std::sort(snapshot.begin(), snapshot.end(),
               [](const auto& a, const auto& b) { return a.second > b.second; });
-    std::string result = "Top methods by added RPCs: ";
-    int k = 0;
-    for (const auto& [method, count] : snapshot) {
-      if (k++ >= 5) break;
-      result += Format("$0=$1, ", method, count);
+    if (snapshot.size() > kTopKMethods) {
+      snapshot.resize(kTopKMethods);
     }
-    return result;
+    std::vector<std::string> parts;
+    parts.reserve(snapshot.size());
+    for (const auto& [method, count] : snapshot) {
+      parts.push_back(Format("$0=$1", method, count));
+    }
+    return Format("Top methods currently queued: $0", JoinStrings(parts, ", "));
   }
 
   std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
-    auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
+    size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
+    // Use the bounded fetch-add so that a rejected enqueue does NOT speculatively
+    // increment queued_calls_ above max_queued_calls and pollute the high-water-mark
+    // gauge. Returns the pre-add (queue-position) value on success.
+    auto queued_calls_opt = queued_calls_.fetch_add_if_below(
+        1, static_cast<int64_t>(max_queued_calls));
+    if (!queued_calls_opt) {
+      return std::nullopt;
+    }
+    int64_t queued_calls = *queued_calls_opt;
     if (queued_calls < 0) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
     }
 
-    size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
-    if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
-      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      return std::nullopt;
-    }
-
     int pct = FLAGS_rpc_queue_high_watermark_pct;
-    if (pct > 0 && pct <= 100) {
+    // Range-checked at flag-set time via DEFINE_validator(FLAG_RANGE_VALIDATOR(0, 100)),
+    // so we trust the bounds here and only need the >0 fast-path check.
+    if (pct > 0) {
       size_t threshold = (max_queued_calls_ * pct) / 100;
-      if (implicit_cast<size_t>(queued_calls) >= threshold) {
+      // queued_calls is the pre-add value; the actual post-add queue depth is +1.
+      int64_t new_depth = queued_calls + 1;
+      if (implicit_cast<size_t>(new_depth) >= threshold) {
         YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
-            << "Queue depth " << queued_calls << " exceeds threshold of "
+            << "Queue depth " << new_depth << " exceeds threshold of "
             << threshold << " (" << pct << "% of " << max_queued_calls_ << "). "
             << DumpTopKMethods();
       }
@@ -517,19 +564,32 @@ class ServicePoolImpl final : public InboundCallHandler {
     return queued_calls;
   }
 
-  void CallDequeued() override {
+  void CallDequeued(InboundCall* call) override {
     queued_calls_.fetch_sub(1, std::memory_order_relaxed);
     rpcs_in_queue_->Decrement();
     rpcs_dequeued_->Increment();
+    // Pair with the increment in Process() above. The pmc pointer was stashed via
+    // call->set_tracker_data() in the same `if (auto* per_method_counters = ...)` block
+    // that incremented currently_queued; if it's non-null here, the increment happened
+    // and we must decrement it.
+    if (auto* pmc = static_cast<PerMethodCounters*>(call->tracker_data())) {
+      pmc->currently_queued->Decrement();
+    }
   }
 
   // Per-RPC-method counters. Lazily registered on first occurrence of each method name.
   // In normal operation cardinality is the number of methods declared on the service
   // (typically ~10-30); kMaxPerMethodMetrics is the absolute upper bound enforced as a
   // safety net (see comment on the constant).
+  //
+  // `currently_queued` is the per-method partition of rpcs_in_queue_: incremented in
+  // Process() when a call is successfully queued, decremented in CallDequeued() via the
+  // pmc pointer stashed on the InboundCall. See the leak-free invariant documented at
+  // the call sites.
   struct PerMethodCounters {
     scoped_refptr<Counter> added;
     scoped_refptr<Counter> overflow;
+    scoped_refptr<AtomicGauge<int64_t>> currently_queued;
   };
 
   // The hot (steady-state) lookup path does a heterogeneous std::string_view lookup
@@ -582,16 +642,19 @@ class ServicePoolImpl final : public InboundCallHandler {
                              "RPCs added to the service queue, by method"),
         .overflow = MakeCounter("rpcs_queue_overflow", method,
                                 "RPCs dropped because the service queue was full, by method"),
+        .currently_queued = MakeGauge("rpcs_in_queue", method,
+                                      "RPCs currently queued in the service queue, by method"),
     };
   }
 
-  // MakeCounter assumes that this ServicePoolImpl is the sole owner of `metric_entity_`
-  // for the synthesized metric name. MetricEntity::FindOrCreateMetric keys its dedup map
-  // by prototype pointer (not by name), and we allocate a fresh OwningCounterPrototype on
-  // every call, so two ServicePoolImpl instances sharing the same entity would register
-  // two distinct Counter objects under the same Prometheus name. In current YB usage each
-  // ServicePoolImpl is constructed with its own dedicated MetricEntity, so this is safe;
-  // revisit if that invariant ever changes.
+  // MakeCounter / MakeGauge assume that this ServicePoolImpl is the sole owner of
+  // `metric_entity_` for the synthesized metric name. MetricEntity::FindOrCreateMetric
+  // keys its dedup map by prototype pointer (not by name), and we allocate a fresh
+  // OwningCounterPrototype / OwningGaugePrototype on every call, so two ServicePoolImpl
+  // instances sharing the same entity would register two distinct Metric objects under
+  // the same Prometheus name. In current YB usage each ServicePoolImpl is constructed
+  // with its own dedicated MetricEntity, so this is safe; revisit if that invariant
+  // ever changes.
   scoped_refptr<Counter> MakeCounter(
       const std::string& base_name, const std::string& method, const std::string& description) {
     auto id = Format("$0_$1_$2", base_name, service_->metric_name(), method);
@@ -601,6 +664,18 @@ class ServicePoolImpl final : public InboundCallHandler {
         std::shared_ptr<CounterPrototype>(new OwningCounterPrototype(
             metric_entity_->prototype().name(), id, label, MetricUnit::kRequests, description,
             MetricLevel::kInfo)));
+  }
+
+  scoped_refptr<AtomicGauge<int64_t>> MakeGauge(
+      const std::string& base_name, const std::string& method, const std::string& description) {
+    auto id = Format("$0_$1_$2", base_name, service_->metric_name(), method);
+    EscapeMetricNameForPrometheus(&id);
+    auto label = Format("$0 ($1::$2)", description, service_->service_name(), method);
+    return metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+        std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+            metric_entity_->prototype().name(), id, label, MetricUnit::kRequests, description,
+            MetricLevel::kInfo)),
+        static_cast<int64_t>(0) /* initial_value */);
   }
 
   const size_t max_queued_calls_;
@@ -616,7 +691,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_dequeued_;
   scoped_refptr<Counter> rpcs_started_processing_;
   scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
-  scoped_refptr<AtomicGauge<int64_t>> rpc_queue_max_size_;
+  scoped_refptr<AtomicGauge<int64_t>> rpcs_queue_max_size_;
   scoped_refptr<FunctionGauge<int64_t>> rpcs_queue_high_water_mark_;
   std::shared_mutex per_method_mutex_;
   // UnorderedStringMap pairs StringHash (with is_transparent) and std::equal_to<void>

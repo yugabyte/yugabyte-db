@@ -32,6 +32,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 
 #include "yb/gutil/macros.h"
 
@@ -79,10 +80,29 @@ class HighWaterMark {
     UpdateMax(current_value_.fetch_add(amount, std::memory_order_acq_rel) + amount);
   }
 
-  int64_t fetch_add(int64_t amount, std::memory_order order = std::memory_order_seq_cst) {
-    int64_t old_val = current_value_.fetch_add(amount, order);
-    UpdateMax(old_val + amount);
-    return old_val;
+  // Atomically adds `amount` to the current value iff the post-add value would be <= `cap`,
+  // and on success updates the high-water-mark accordingly. Returns the pre-add value on
+  // success; returns std::nullopt (without modifying current_value_ or max_value_) if the
+  // add would exceed the cap.
+  //
+  // Unlike a plain fetch_add() followed by a rollback fetch_sub() on overflow, this never
+  // speculatively publishes a value > cap to current_value_ and therefore never inflates
+  // max_value_ with depths that the queue did not actually hold. This is the correct
+  // primitive for bounded queues that need a high-water-mark gauge.
+  std::optional<int64_t> fetch_add_if_below(int64_t amount, int64_t cap) {
+    int64_t old_val = current_value_.load(std::memory_order_acquire);
+    while (true) {
+      int64_t new_val = old_val + amount;
+      if (new_val > cap) {
+        return std::nullopt;
+      }
+      if (PREDICT_TRUE(current_value_.compare_exchange_weak(
+              old_val, new_val, std::memory_order_acq_rel))) {
+        UpdateMax(new_val);
+        return old_val;
+      }
+      // compare_exchange_weak refreshes old_val on failure; loop and retry.
+    }
   }
 
   int64_t fetch_sub(int64_t amount, std::memory_order order = std::memory_order_seq_cst) {

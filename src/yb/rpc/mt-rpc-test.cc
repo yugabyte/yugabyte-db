@@ -56,7 +56,7 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 METRIC_DECLARE_counter(rpcs_added_to_queue);
 METRIC_DECLARE_counter(rpcs_dequeued);
 METRIC_DECLARE_counter(rpcs_started_processing);
-METRIC_DECLARE_gauge_int64(rpc_queue_max_size);
+METRIC_DECLARE_gauge_int64(rpcs_queue_max_size);
 METRIC_DECLARE_gauge_int64(rpcs_queue_high_water_mark);
 
 using std::string;
@@ -259,7 +259,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   scoped_refptr<Counter> started =
       METRIC_rpcs_started_processing.Instantiate(metric_entity());
   auto max_size = metric_entity()->FindOrNull<AtomicGauge<int64_t>>(
-      METRIC_rpc_queue_max_size);
+      METRIC_rpcs_queue_max_size);
   auto hwm = metric_entity()->FindOrNull<FunctionGauge<int64_t>>(
       METRIC_rpcs_queue_high_water_mark);
 
@@ -270,8 +270,9 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   ASSERT_TRUE(max_size);
   EXPECT_EQ(2, max_size->value());
   ASSERT_TRUE(hwm);
-  EXPECT_GE(hwm->value(), 2);
-  EXPECT_LE(hwm->value(), 3);
+  // Exactly 2 -- the rejected 3rd call is gated by HighWaterMark::fetch_add_if_below()
+  // and therefore never speculatively bumps the gauge past max_queued_calls_.
+  EXPECT_EQ(2, hwm->value());
 
   // The new metrics should also show up in a Prometheus scrape, including the lazily-created
   // per-method counters for "Add". This guards against regressions where a metric is wired into
@@ -283,17 +284,47 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   ASSERT_OK(metric_registry()->WriteForPrometheus(&prom_writer, prom_opts));
   const std::string prom_text = prom_output.str();
   for (const char* metric_name : {
-           "rpc_queue_max_size",
+           "rpcs_queue_max_size",
            "rpcs_queue_high_water_mark",
            "rpcs_added_to_queue",
            "rpcs_dequeued",
            "rpcs_started_processing",
            "rpcs_added_to_queue_yb_rpc_test_CalculatorService_Add",
            "rpcs_queue_overflow_yb_rpc_test_CalculatorService_Add",
+           "rpcs_in_queue_yb_rpc_test_CalculatorService_Add",
        }) {
     EXPECT_NE(prom_text.find(metric_name), std::string::npos)
         << "Metric '" << metric_name << "' missing from Prometheus output. Full output:\n"
         << prom_text;
+  }
+
+  // Leak-free invariant for per-method currently_queued gauges (PR2 review item 2).
+  // At this point the thread pool has been shut down, all queued tasks have flowed
+  // through Done()/Failure()/TryStartProcessing() -> CallDequeued(), and every increment
+  // performed in ServicePool::Process() must have been matched by a Decrement() via the
+  // pmc pointer stashed on the InboundCall. If this asserts non-zero, the increment and
+  // its paired decrement have desynchronized somewhere -- typically a refactor that
+  // dropped set_tracker_data() or that bypassed TryStartProcessing().
+  //
+  // Prometheus text-format lines look like:
+  //   <metric_name>{<labels>} <value> <timestamp>
+  // so we anchor on the metric name + '{' and read the integer after the closing brace.
+  {
+    const std::string anchor =
+        "rpcs_in_queue_yb_rpc_test_CalculatorService_Add{";
+    auto pos = prom_text.find(anchor);
+    ASSERT_NE(pos, std::string::npos)
+        << "Per-method currently_queued gauge not exported. Full output:\n" << prom_text;
+    auto value_start = prom_text.find("} ", pos);
+    ASSERT_NE(value_start, std::string::npos);
+    value_start += 2;  // skip "} "
+    auto value_end = prom_text.find(' ', value_start);
+    ASSERT_NE(value_end, std::string::npos);
+    int64_t value = std::stoll(prom_text.substr(value_start, value_end - value_start));
+    EXPECT_EQ(0, value)
+        << "Per-method currently_queued gauge leaked after worker thread pool was "
+        << "drained. Some path in ServicePoolImpl is incrementing currently_queued "
+        << "without a paired CallDequeued()-driven decrement.";
   }
 }
 

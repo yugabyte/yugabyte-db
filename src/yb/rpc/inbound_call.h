@@ -79,7 +79,7 @@ class InboundCallHandler {
 
   virtual std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
 
-  virtual void CallDequeued() = 0;
+  virtual void CallDequeued(InboundCall* call) = 0;
 
  protected:
   ~InboundCallHandler() = default;
@@ -193,10 +193,18 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
       return false;
     }
     if (tracker_) {
-      tracker_->CallDequeued();
+      tracker_->CallDequeued(this);
     }
     return true;
   }
+
+  // Opaque per-call data slot reserved for the InboundCallHandler that owns this call.
+  // The handler is responsible for type-safety: it sets `tracker_data` to whatever
+  // pointer it wants to retrieve later in CallDequeued(this) (e.g. a per-method counter
+  // pointer cached from the queue-side lookup). The slot is never touched by InboundCall
+  // itself and lives for the lifetime of the call.
+  void set_tracker_data(void* data) { tracker_data_ = data; }
+  void* tracker_data() const { return tracker_data_; }
 
   std::string LogPrefix() const override;
 
@@ -318,6 +326,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   InboundCallTask task_;
   InboundCallHandler* tracker_ = nullptr;
+  void* tracker_data_ = nullptr;
 
   size_t method_index_ = 0;
   int64_t rpc_queue_position_ = -1;
