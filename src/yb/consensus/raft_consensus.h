@@ -245,6 +245,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId GetAllAppliedOpId();
 
+  Status CheckReadyAsRbsSource();
+
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
