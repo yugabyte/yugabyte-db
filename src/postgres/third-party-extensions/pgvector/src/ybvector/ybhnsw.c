@@ -50,7 +50,7 @@
 
 static relopt_kind ybhnsw_relopt_kind;
 
-int			hnsw_ef_search;
+int			ybhnsw_ef_search;
 
 /* 
  * Copied from pgvector's HnswInit (as of pgvector v0.8.0).
@@ -84,7 +84,7 @@ YbHnswInit(void)
 	YbAddColocationIdReloption(ybhnsw_relopt_kind);
 	DefineCustomIntVariable("hnsw.ef_search", "Sets the size of the dynamic candidate list for search",
 							"Valid range is 1..1000.",
-							&hnsw_ef_search,
+							&ybhnsw_ef_search,
 							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
 	MarkGUCPrefixReserved("hnsw");
 }
@@ -170,7 +170,7 @@ ybhnswbindcolumnschema(YbcPgStatement handle,
 static void
 ybBindHnswReadOptions(YbScanDesc yb_scan)
 {
-	YBCPgDmlHnswSetReadOptions(yb_scan->handle, hnsw_ef_search);
+	YBCPgDmlHnswSetReadOptions(yb_scan->handle, ybhnsw_ef_search);
 }
 
 /*
