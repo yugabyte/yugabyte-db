@@ -134,10 +134,13 @@ namespace {
 const CoarseDuration kTimeoutCheckGranularity = 100ms;
 const char* const kTimedOutInQueue = "Call waited in the queue past deadline";
 
-// The maximum number of distinct method names we will emit per-method metrics for.
-// In reality, we won't even come close to this number. This is just a safety measure
-// against DoS attacks (e.g. an attacker sending garbage method names in RPC headers
-// to unbounded-grow our metrics map and exhaust memory).
+// Hard cap on the number of distinct method names for which we emit per-method metrics.
+// Real services declare ~10-30 methods, so this is effectively unreachable in normal
+// operation. The cap exists purely as a safety net against pathological inputs that
+// could otherwise grow per_method_counters_ without bound (e.g. an attacker spraying
+// garbage method names in RPC headers, or a misconfigured / buggy peer that does the
+// same accidentally). When the cap is reached we silently drop per-method metric
+// granularity for new names; the aggregate counters keep working.
 constexpr size_t kMaxPerMethodMetrics = 1000;
 
 } // namespace
@@ -228,6 +231,12 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
+    // Note: rpcs_in_queue_ is already incremented inside CallQueued() (called via
+    // BindTask above) before we get here. As a result, a Prometheus scrape that races
+    // with us can momentarily observe rpcs_in_queue_ == rpcs_added_to_queue_ -
+    // rpcs_dequeued_ + 1. Reordering would require pulling rpcs_in_queue_->Increment()
+    // out of CallQueued(), which complicates the rollback-on-overflow path; the brief
+    // skew is acceptable for monitoring purposes.
     rpcs_added_to_queue_->Increment();
     if (auto* per_method_counters = GetPerMethodCounters(call->method_name())) {
       per_method_counters->added->Increment();
@@ -455,12 +464,18 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   // Per-RPC-method counters. Lazily registered on first occurrence of each method name.
-  // Cardinality is bounded by the number of methods declared on the service (~10-30).
+  // In normal operation cardinality is the number of methods declared on the service
+  // (typically ~10-30); kMaxPerMethodMetrics is the absolute upper bound enforced as a
+  // safety net (see comment on the constant).
   struct PerMethodCounters {
     scoped_refptr<Counter> added;
     scoped_refptr<Counter> overflow;
   };
 
+  // TODO(#31673): once Abseil containers are available we should migrate
+  // per_method_counters_ to absl::flat_hash_map with a transparent string hash, which
+  // would let the hot lookup path skip the per-call Slice->std::string allocation
+  // performed below.
   PerMethodCounters* GetPerMethodCounters(Slice method_name) EXCLUDES(per_method_mutex_) {
     auto method_str = method_name.ToBuffer();
     {
@@ -476,6 +491,13 @@ class ServicePoolImpl final : public InboundCallHandler {
       return &it->second;
     }
     if (per_method_counters_.size() >= kMaxPerMethodMetrics) {
+      // Log at most once every 60s so a runaway / hostile peer can't drown the log,
+      // but visibility of "we are no longer creating per-method metrics" is preserved.
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << LogPrefix()
+          << "Reached the per-service-pool cap of " << kMaxPerMethodMetrics
+          << " distinct RPC method names; new method '" << method_str
+          << "' will not get its own per-method metrics. Aggregate counters are unaffected.";
       return nullptr;
     }
     auto [new_it, inserted] = per_method_counters_.try_emplace(std::move(method_str));
@@ -494,6 +516,13 @@ class ServicePoolImpl final : public InboundCallHandler {
     };
   }
 
+  // MakeCounter assumes that this ServicePoolImpl is the sole owner of `metric_entity_`
+  // for the synthesized metric name. MetricEntity::FindOrCreateMetric keys its dedup map
+  // by prototype pointer (not by name), and we allocate a fresh OwningCounterPrototype on
+  // every call, so two ServicePoolImpl instances sharing the same entity would register
+  // two distinct Counter objects under the same Prometheus name. In current YB usage each
+  // ServicePoolImpl is constructed with its own dedicated MetricEntity, so this is safe;
+  // revisit if that invariant ever changes.
   scoped_refptr<Counter> MakeCounter(
       const std::string& base_name, const std::string& method, const std::string& description) {
     auto id = Format("$0_$1_$2", base_name, service_->metric_name(), method);
