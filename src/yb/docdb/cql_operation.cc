@@ -1974,11 +1974,7 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSp
 }
 
 Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
-  if (aggr_result_.empty()) {
-    while (aggr_result_.size() < request_.selected_exprs().size()) {
-      aggr_result_.emplace_back(&request_.arena());
-    }
-  }
+  PrepareAggregateResults(request_.selected_exprs().size());
 
   int aggr_index = 0;
   for (const auto& expr : request_.selected_exprs()) {

@@ -30,8 +30,10 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/hdr_histogram.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/metrics.h"
+#include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
@@ -69,6 +71,7 @@ DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
+DECLARE_uint64(arena_warn_threshold_bytes);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -287,6 +290,36 @@ TEST_F(PgSingleTServerTest, ManyRowsInsert) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0)", kRows));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Time: " << finish - start;
+}
+
+// Exercises the aggregate-private arena recycling path in DocExprExecutor via
+// the YSQL aggregate-pushdown route. Many large varchar rows would otherwise
+// grow a single arena well past the warning threshold.
+TEST_F(PgSingleTServerTest, AggregateArenaReset) {
+  constexpr int kNumRows = 1000;
+  constexpr size_t kValueLen = 1000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256 * 1024;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tbl (k INT PRIMARY KEY, v TEXT) SPLIT INTO 1 TABLETS"));
+
+  std::string expected_min;
+  for (int i = 0; i < kNumRows; ++i) {
+    auto v = RandomHumanReadableString(kValueLen);
+    if (expected_min.empty() || v < expected_min) {
+      expected_min = v;
+    }
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v));
+  }
+
+  auto actual_min = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT min(v) FROM tbl"));
+  ASSERT_EQ(expected_min, actual_min);
+
+  ASSERT_EQ(arena_warning_sink.GetEventCount(), 0);
 }
 
 class PgMiniBigPrefetchTest : public PgSingleTServerTest {
