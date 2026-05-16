@@ -28,8 +28,8 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_cat.h"     // NOLINT(build/include_alpha)
+#include "absl/strings/string_view.h"  // NOLINT(build/include_alpha)
 
 #include "yb/util/test_util.h"
 

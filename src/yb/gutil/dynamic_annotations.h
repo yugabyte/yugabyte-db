@@ -99,6 +99,15 @@
 // without redefinition warnings. Behavior is unchanged: in non-TSan builds
 // gutil's macros are empty no-ops; in TSan builds they call the same
 // AnnotateIgnore* C functions absl would have called.
+//
+// Forward compatibility: the bug is still present on absl master (verified
+// against abseil-cpp HEAD) and the unprefixed ANNOTATE_IGNORE_* macros are
+// explicitly marked transitional ("Remove after the backward compatibility
+// period") in absl/base/dynamic_annotations.h, so this workaround stays
+// valid across absl upgrades. If upstream eventually fixes or removes them,
+// the #undef becomes a harmless no-op and gutil continues to own these
+// macros with equivalent semantics; absl's own internal users go through
+// the ABSL_-prefixed forms and are unaffected.
 #undef ANNOTATE_IGNORE_READS_BEGIN
 #undef ANNOTATE_IGNORE_READS_END
 #undef ANNOTATE_IGNORE_WRITES_BEGIN
