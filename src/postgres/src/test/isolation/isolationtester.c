@@ -1079,6 +1079,8 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 		switch (PQresultStatus(res))
 		{
 			case PGRES_COMMAND_OK:
+				printf("%s\n", PQcmdStatus(res));
+				break;
 			case PGRES_EMPTY_QUERY:
 				break;
 			case PGRES_TUPLES_OK:
