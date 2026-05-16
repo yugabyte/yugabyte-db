@@ -44,6 +44,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -464,6 +465,17 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
   if (!s.ok()) {
     *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
     return STATUS(NotFound, Substitute("Tablet is not running yet: $0", tablet_id));
+  }
+  auto raft_consensus = tablet_peer->GetRaftConsensus();
+  if (!raft_consensus.ok()) {
+    *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
+    return STATUS_FORMAT(
+        NotFound, "Can't get tablet $0 Raft consensus: $1", tablet_id, raft_consensus.status());
+  }
+  s = raft_consensus.get()->CheckReadyAsRbsSource();
+  if (!s.ok()) {
+    *error_code = RemoteBootstrapErrorPB::NOT_READY_AS_RBS_SOURCE;
+    return STATUS_FORMAT(TryAgain, "Tablet $0 is not ready as RBS source: $1", tablet_id, s);
   }
 
   scoped_refptr<RemoteBootstrapSession> session;
