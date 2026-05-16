@@ -371,8 +371,10 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     new_subject = f"[BACKPORT {branch}]{sep}{subject}"
 
     # Body: original commit's body, minus any prior Backport-of / Original-commit
-    # footers, with `Original commit: <SHA> / #<PR>` inserted above the `## Test plan`
-    # heading (if present) or appended at the end.
+    # footers, with `Original commit: <SHA> / #<PR>` (GitHub-merged) or
+    # `Original commit: <SHA> / D<diff>` (Phorge-merged) inserted above the
+    # test-plan heading -- either Markdown `## Test plan` or Phorge
+    # `Test Plan:` -- or appended at the end if no heading exists.
     raw_body = git("log", "-n1", "--format=%b", commit)
     body_lines = [
         line for line in raw_body.splitlines()
@@ -381,15 +383,25 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
                 or line.startswith("Original commit:"))
     ]
     pr_num_match = re.search(r"/pull/(\d+)", pr_url) if pr_url else None
+    # Phorge-landed commits leave `Differential Revision: <url>/D<num>` in the
+    # body. Use the diff number when no GitHub PR was found.
+    phorge_match = (re.search(r"Differential Revision:\s*\S*?/D(\d+)", raw_body)
+                    if not pr_num_match else None)
     if pr_num_match:
         original_line = f"Original commit: {commit} / #{pr_num_match.group(1)}"
+    elif phorge_match:
+        original_line = f"Original commit: {commit} / D{phorge_match.group(1)}"
     else:
         original_line = f"Original commit: {commit}"
-    if any(line.startswith("## Test plan") for line in body_lines):
+
+    def is_test_plan_heading(line: str) -> bool:
+        return line.startswith("## Test plan") or line.startswith("Test Plan:")
+
+    if any(is_test_plan_heading(line) for line in body_lines):
         new_body_lines: list[str] = []
         inserted = False
         for line in body_lines:
-            if not inserted and line.startswith("## Test plan"):
+            if not inserted and is_test_plan_heading(line):
                 new_body_lines.append(original_line)
                 new_body_lines.append("")
                 inserted = True
