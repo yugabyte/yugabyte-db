@@ -136,6 +136,9 @@ message RemoteBootstrapErrorPB {
 
     // Cannot ChangeRole for the new peer on the tablet-leader
     REMOTE_CHANGE_PEER_ROLE_FAILURE = 10;
+
+    // Tablet replica has pending split operation.
+    NOT_READY_AS_RBS_SOURCE = 11;
   }
 
   // The error code.
