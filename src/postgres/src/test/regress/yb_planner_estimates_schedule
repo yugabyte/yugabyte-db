@@ -1,0 +1,11 @@
+# src/test/regress/yb_planner_estimates_schedule
+#
+####################################################################################################
+# Testsuite for tests covering planner/optimizer estimates.
+####################################################################################################
+test: yb.orig.row_estimates
+
+# Dependency for the seeknext estimate tests
+test: yb.orig.seeknext_estimate_setup
+
+test: yb.orig.seeknext_estimate

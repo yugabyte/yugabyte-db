@@ -8603,39 +8603,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/*
 	 * Estimate the cost of seeks and nexts needed to fetch the rows from the
 	 * base table in case of a secondary index scan.
-	 *
-	 * For a colocated table, each ybctid is looked up in the base table using
-	 * a seek. In case of non-colocated table a batch of ybctids is sent to
-	 * the base table to be looked up, this may reduce the number of seeks
-	 * needed.
 	 */
 	if (!is_primary_index && !index_only)
 	{
-		if (baserel_is_colocated)
-		{
-			/*
-			 * In case of colocated tables, DocDB performs a seek for each
-			 * lookup in the base table. This may be optimized in the future.
-			 */
-			num_seeks += num_index_tuples_matched;
-			run_cost += (baserel_per_seek_cost * num_index_tuples_matched);
-		}
-		else
-		{
-			/*
-			 * We do not have information to predict the number of seeks that
-			 * can be optimized with nexts, but we assume half lookups will be
-			 * seeks and remaining will be nexts.
-			 */
-			Cardinality	baserel_num_seeks = ceil(num_index_tuples_matched / 2.0);
-			Cardinality	baserel_num_nexts = (ceil(num_index_tuples_matched / 2.0) *
-											 (MAX_NEXTS_TO_AVOID_SEEK + 1));
-
-			num_seeks += baserel_num_seeks;
-			num_nexts_prevs += baserel_num_nexts;
-			run_cost += (baserel_per_seek_cost * baserel_num_seeks);
-			run_cost += (per_next_cost * baserel_num_nexts);
-		}
+		num_seeks += num_index_tuples_matched;
+		num_nexts_prevs += num_index_tuples_matched;
+		run_cost += (baserel_per_seek_cost * num_index_tuples_matched);
+		run_cost += (per_next_cost * num_index_tuples_matched);
 
 		/*
 		 * Estimate the cost of executing the base_table_pushed_down_filters on

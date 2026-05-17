@@ -56,6 +56,65 @@ explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
+
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+
+/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+
+-- anti join--
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+
+-- semi join--
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+
+/*+NoYbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+
+explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
+
+/*+NoYbBatchedNL(a c)*/ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
+
+-- Test sorted input
+CREATE INDEX p1_a_asc ON p1(a asc);
+CREATE INDEX p2_a_asc ON p2(a asc);
+ANALYZE p1;
+ANALYZE p2;
+
+-- Lower work_mem to penalize explicit sort but not too smal to trigger
+-- multi-batch HJ.
+SET work_mem TO '2MB';
+
+-- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
+-- sort operator imposed by nested loop join batching.
+explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
+
+/*+YbBatchedNL(p1 p2)*/ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
+
+INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 200000) i WHERE i % 2 = 0;
+INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 500000) i WHERE i % 3 = 0;
+ANALYZE p1;
+ANALYZE p2;
+
+-- After we have inserted many rows into each table, we expect that other
+-- join methods that preserve the sort order of its input relations to be better.
+explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
+
+-- However, removing the ordering constraint in this query allows us to prefer
+-- the batched nested loop join option again.
+-- Commenting this test until CBO is updated.
+-- explain (costs off) select * from p1, p2 where p1.a = p2.a;
+RESET work_mem;
+
+DROP TABLE p1;
+DROP TABLE p2;
+DROP TABLE p3;
+DROP TABLE p4;
+DROP TABLE p5;
+
 CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
 
 INSERT INTO t10
@@ -80,57 +139,6 @@ EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND 
 DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
-
-EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
-
-EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-
-/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-
--- anti join--
-EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
-
-EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
-
--- semi join--
-EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
-
-/*+NoYbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
-
-EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
-
-explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-
-/*+NoYbBatchedNL(a c)*/ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-
-CREATE INDEX p1_a_asc ON p1(a asc);
-CREATE INDEX p2_a_asc ON p2(a asc);
-ANALYZE;
-
--- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
--- sort operator imposed by nested loop join batching.
-explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-
-/*+YbBatchedNL(p1 p2)*/ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-
-INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 200000) i WHERE i % 2 = 0;
-INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 500000) i WHERE i % 3 = 0;
-ANALYZE;
-
--- After we have inserted many rows into each table, we expect that other
--- join methods that preserve the sort order of its input relations to be better.
-explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-
--- However, removing the ordering constraint in this query allows us to prefer
--- the batched nested loop join option again.
--- Commenting this test until CBO is updated.
--- explain (costs off) select * from p1, p2 where p1.a = p2.a;
-
-DROP TABLE p1;
-DROP TABLE p2;
-DROP TABLE p3;
-DROP TABLE p4;
-DROP TABLE p5;
 
 CREATE TABLE s1(r1 int, r2 int, r3 int);
 CREATE TABLE s2(r1 int, r2 int, r3 int);
