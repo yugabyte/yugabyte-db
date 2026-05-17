@@ -46,6 +46,8 @@ DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
 
 namespace yb {
 
@@ -774,8 +776,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
   // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
-  // !kIsDebug). The fix this test guards is on the IsPackedRow branch in PopulateCDCSDKIntentRecord,
-  // so force packed rows on to exercise that path on every build flavor.
+  // !kIsDebug). The fix this test guards is on the IsPackedRow branch in
+  // PopulateCDCSDKIntentRecord, so force packed rows on to exercise that path on every build
+  // flavor.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -789,7 +792,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndIn
   GetChangesResponsePB change_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
 
-  // Upsert with PK column in SET clause — triggers YBCExecuteUpdateReplace (DELETE + INSERT).
+  // Upsert with PK column in SET clause - triggers YBCExecuteUpdateReplace (DELETE + INSERT).
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute(
       "INSERT INTO test_table VALUES (1, 10) "
@@ -13121,34 +13124,11 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  // Helper: check that all BEGIN, DML (INSERT/UPDATE/DELETE), and COMMIT records in the response
-  // carry the expected xrepl_origin_id.
-  auto verify_origin_id_on_all_records =
-      [](const GetChangesResponsePB& resp, uint32_t expected_origin_id) {
-        for (const auto& record : resp.cdc_sdk_proto_records()) {
-          auto op = record.row_message().op();
-          if (op == RowMessage::BEGIN || op == RowMessage::INSERT || op == RowMessage::UPDATE ||
-              op == RowMessage::DELETE || op == RowMessage::COMMIT) {
-            if (expected_origin_id != 0) {
-              ASSERT_TRUE(record.row_message().has_xrepl_origin_id())
-                  << "Expected xrepl_origin_id on op=" << RowMessage::Op_Name(op);
-              ASSERT_EQ(record.row_message().xrepl_origin_id(), expected_origin_id)
-                  << "Wrong xrepl_origin_id on op=" << RowMessage::Op_Name(op);
-            } else {
-              // origin_id 0 means local - field should be absent or zero.
-              ASSERT_TRUE(!record.row_message().has_xrepl_origin_id() ||
-                          record.row_message().xrepl_origin_id() == 0)
-                  << "Expected no xrepl_origin_id on op=" << RowMessage::Op_Name(op);
-            }
-          }
-        }
-      };
-
   // Insert a row without any replication origin and consume the records.
   // These records should not carry any origin id.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
   auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 0));
   auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Single-shard (autocommit) path ---
@@ -13157,7 +13137,7 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // UPDATE with origin.
@@ -13166,7 +13146,7 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
       "UPDATE $0 SET $1 = 200 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // DELETE with origin.
@@ -13174,7 +13154,7 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Multi-shard (explicit transaction) path ---
@@ -13187,13 +13167,44 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Local (no origin) path - verify origin_id is 0/absent ---
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 300)", kTableName));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 0));
+}
+
+TEST_F(CDCSDKYsqlTest, TestOriginIdSurvivesApplyResend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin1 = "origin1";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = false;
+  SleepFor(MonoDelta::FromMilliseconds(500));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
 }
 
 TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
