@@ -4860,10 +4860,16 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   thread_holder.AddThreadFunctor([&conn1]() -> void {
     // Retry on 40001 (serialization failure) which can occur due to
     // running CREATE TABLE concurrently with the other thread.
+    //
+    // In debug builds, Read Committed is on by default. This results
+    // in an internal DB-side retry of the operation on a conflict error. The retry
+    // can fail with a duplicate table error because the rollback of the previous
+    // transaction is async and might still be in flight.
     Status s;
     do {
       s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
+    } while (!s.ok() && (HasTransactionError(s) ||
+          PgsqlError(s) == YBPgErrorCode::YB_PG_DUPLICATE_TABLE));
     ASSERT_OK(s);
     ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
   });
@@ -4871,7 +4877,8 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
     Status s;
     do {
       s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
+    } while (!s.ok() && (HasTransactionError(s) ||
+          PgsqlError(s) == YBPgErrorCode::YB_PG_DUPLICATE_TABLE));
     ASSERT_OK(s);
     ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
   });
