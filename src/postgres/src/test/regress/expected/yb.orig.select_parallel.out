@@ -797,12 +797,59 @@ SELECT 1 FROM tenk1_vw_sec
 
 rollback;
 -- GHI 21320
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explain_filters.sql'
+\i :filename
+-- EXPLAIN command wrapper table functions copied from `explain.sql`
+-- To produce stable regression test output, it's usually necessary to
+-- ignore details such as exact costs or row counts.  These filter
+-- functions replace changeable output details with fixed strings.
+create function explain_filter(text) returns setof text
+language plpgsql as
+$$
+declare
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just 'N'
+        ln := regexp_replace(ln, '-?\m\d+\M', 'N', 'g');
+        -- In sort output, the above won't match units-suffixed numbers
+        ln := regexp_replace(ln, '\m\d+kB', 'NkB', 'g');
+        -- Ignore text-mode buffers output because it varies depending
+        -- on the system state
+        CONTINUE WHEN (ln ~ ' +Buffers: .*');
+        -- Ignore text-mode "Planning:" line because whether it's output
+        -- varies depending on the system state
+        CONTINUE WHEN (ln = 'Planning:');
+        return next ln;
+    end loop;
+end;
+$$;
+-- To produce valid JSON output, replace numbers with "0" or "0.0" not "N"
+create function explain_filter_to_json(text) returns jsonb
+language plpgsql as
+$$
+declare
+    data text := '';
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just '0'
+        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
+        data := data || ln;
+    end loop;
+    return data::jsonb;
+end;
+$$;
 CREATE TABLE c (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT c_pkey PRIMARY KEY(pk ASC));
 CREATE TABLE d (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT d_pkey PRIMARY KEY(pk ASC));
 CREATE TABLE dummy (i integer);
 COPY c (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
 COPY d (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
 COPY dummy (i) FROM stdin;
+select explain_filter($$
 /*+ Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) */
 EXPLAIN (analyze, timing off, summary off, costs off) SELECT
 FROM
@@ -822,19 +869,20 @@ WHERE
             'r'
         FROM
             DUMMY
-    );
-                                     QUERY PLAN                                     
+    )
+$$);
+                                   explain_filter                                   
 ------------------------------------------------------------------------------------
- Nested Loop (actual rows=59 loops=1)
+ Nested Loop (actual rows=N loops=N)
    Join Filter: ((table2.col_varchar_key)::text = (table3.col_varchar_nokey)::text)
-   Rows Removed by Join Filter: 1721
-   ->  Nested Loop Semi Join (actual rows=89 loops=1)
+   Rows Removed by Join Filter: N
+   ->  Nested Loop Semi Join (actual rows=N loops=N)
          Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
-         Rows Removed by Join Filter: 23
-         ->  Seq Scan on d table2 (actual rows=100 loops=1)
-         ->  Append (actual rows=1 loops=100)
-               ->  Seq Scan on dummy (actual rows=1 loops=100)
-               ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=12)
-   ->  Seq Scan on c table3 (actual rows=20 loops=89)
+         Rows Removed by Join Filter: N
+         ->  Seq Scan on d table2 (actual rows=N loops=N)
+         ->  Append (actual rows=N loops=N)
+               ->  Seq Scan on dummy (actual rows=N loops=N)
+               ->  Seq Scan on dummy dummy_1 (actual rows=N loops=N)
+   ->  Seq Scan on c table3 (actual rows=N loops=N)
 (11 rows)
 

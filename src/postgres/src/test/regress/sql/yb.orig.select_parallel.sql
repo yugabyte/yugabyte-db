@@ -330,6 +330,10 @@ SELECT 1 FROM tenk1_vw_sec
 rollback;
 
 -- GHI 21320
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explain_filters.sql'
+\i :filename
+
 CREATE TABLE c (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT c_pkey PRIMARY KEY(pk ASC));
 CREATE TABLE d (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT d_pkey PRIMARY KEY(pk ASC));
 CREATE TABLE dummy (i integer);
@@ -463,6 +467,7 @@ COPY dummy (i) FROM stdin;
 0
 \.
 
+select explain_filter($$
 /*+ Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) */
 EXPLAIN (analyze, timing off, summary off, costs off) SELECT
 FROM
@@ -482,4 +487,5 @@ WHERE
             'r'
         FROM
             DUMMY
-    );
+    )
+$$);

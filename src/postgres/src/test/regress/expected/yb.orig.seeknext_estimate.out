@@ -1,0 +1,190 @@
+-- Test planner's seek/next estimates
+\c seeknext_test
+delete from queries;
+-- generate colocation x index/index-only x forward/backward scan combinations
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('', 10000),
+           ('C', 20000)
+),
+columns(col_id, col) as (
+    values (1, 'pk'), (2, 'f1'), (3, 'f2'), (4, 'f3'), (5, 'f4'), (6, 'f5'),
+           (7, 'f10'), (8, 'f100'), (9, 'f1000'), (10, 'dv1'),
+           (11, 'skw1'), (12, 'skw2'), (13, 'skw3')
+),
+scans(qidbase, is_only_scan, is_backward) as (
+    values (1000, false, false), -- index scan
+           (2000, true,  false), -- index only scan
+           (3000, false, true),  -- backward index scan
+           (4000, true,  true)   -- backward index only scan
+)
+select
+    s.qidbase + c_colo.qidcolo + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
+    'select ' ||
+    case when s.is_only_scan then c.col else 'v, ' || c.col end ||
+    ' from r' || c_colo.colo ||
+    ' where ' || c.col ||
+    case when s.is_backward
+         then ' <= 1 order by ' || c.col || ' desc'
+         else ' = 1'
+    end as query
+from colocations c_colo,
+     scans s,
+     columns c
+where not (s.is_only_scan and c.col = 'pk');
+set enable_seqscan = off;
+set enable_sort = off;
+select * from queries;
+  qid  |                            query                             
+-------+--------------------------------------------------------------
+ 11001 | select v, pk from r where pk = 1
+ 11002 | select v, f1 from r where f1 = 1
+ 11003 | select v, f2 from r where f2 = 1
+ 11004 | select v, f3 from r where f3 = 1
+ 11005 | select v, f4 from r where f4 = 1
+ 11006 | select v, f5 from r where f5 = 1
+ 11007 | select v, f10 from r where f10 = 1
+ 11008 | select v, f100 from r where f100 = 1
+ 11009 | select v, f1000 from r where f1000 = 1
+ 11010 | select v, dv1 from r where dv1 = 1
+ 11011 | select v, skw1 from r where skw1 = 1
+ 11012 | select v, skw2 from r where skw2 = 1
+ 11013 | select v, skw3 from r where skw3 = 1
+ 12001 | select f1 from r where f1 = 1
+ 12002 | select f2 from r where f2 = 1
+ 12003 | select f3 from r where f3 = 1
+ 12004 | select f4 from r where f4 = 1
+ 12005 | select f5 from r where f5 = 1
+ 12006 | select f10 from r where f10 = 1
+ 12007 | select f100 from r where f100 = 1
+ 12008 | select f1000 from r where f1000 = 1
+ 12009 | select dv1 from r where dv1 = 1
+ 12010 | select skw1 from r where skw1 = 1
+ 12011 | select skw2 from r where skw2 = 1
+ 12012 | select skw3 from r where skw3 = 1
+ 13001 | select v, pk from r where pk <= 1 order by pk desc
+ 13002 | select v, f1 from r where f1 <= 1 order by f1 desc
+ 13003 | select v, f2 from r where f2 <= 1 order by f2 desc
+ 13004 | select v, f3 from r where f3 <= 1 order by f3 desc
+ 13005 | select v, f4 from r where f4 <= 1 order by f4 desc
+ 13006 | select v, f5 from r where f5 <= 1 order by f5 desc
+ 13007 | select v, f10 from r where f10 <= 1 order by f10 desc
+ 13008 | select v, f100 from r where f100 <= 1 order by f100 desc
+ 13009 | select v, f1000 from r where f1000 <= 1 order by f1000 desc
+ 13010 | select v, dv1 from r where dv1 <= 1 order by dv1 desc
+ 13011 | select v, skw1 from r where skw1 <= 1 order by skw1 desc
+ 13012 | select v, skw2 from r where skw2 <= 1 order by skw2 desc
+ 13013 | select v, skw3 from r where skw3 <= 1 order by skw3 desc
+ 14001 | select f1 from r where f1 <= 1 order by f1 desc
+ 14002 | select f2 from r where f2 <= 1 order by f2 desc
+ 14003 | select f3 from r where f3 <= 1 order by f3 desc
+ 14004 | select f4 from r where f4 <= 1 order by f4 desc
+ 14005 | select f5 from r where f5 <= 1 order by f5 desc
+ 14006 | select f10 from r where f10 <= 1 order by f10 desc
+ 14007 | select f100 from r where f100 <= 1 order by f100 desc
+ 14008 | select f1000 from r where f1000 <= 1 order by f1000 desc
+ 14009 | select dv1 from r where dv1 <= 1 order by dv1 desc
+ 14010 | select skw1 from r where skw1 <= 1 order by skw1 desc
+ 14011 | select skw2 from r where skw2 <= 1 order by skw2 desc
+ 14012 | select skw3 from r where skw3 <= 1 order by skw3 desc
+ 21001 | select v, pk from rC where pk = 1
+ 21002 | select v, f1 from rC where f1 = 1
+ 21003 | select v, f2 from rC where f2 = 1
+ 21004 | select v, f3 from rC where f3 = 1
+ 21005 | select v, f4 from rC where f4 = 1
+ 21006 | select v, f5 from rC where f5 = 1
+ 21007 | select v, f10 from rC where f10 = 1
+ 21008 | select v, f100 from rC where f100 = 1
+ 21009 | select v, f1000 from rC where f1000 = 1
+ 21010 | select v, dv1 from rC where dv1 = 1
+ 21011 | select v, skw1 from rC where skw1 = 1
+ 21012 | select v, skw2 from rC where skw2 = 1
+ 21013 | select v, skw3 from rC where skw3 = 1
+ 22001 | select f1 from rC where f1 = 1
+ 22002 | select f2 from rC where f2 = 1
+ 22003 | select f3 from rC where f3 = 1
+ 22004 | select f4 from rC where f4 = 1
+ 22005 | select f5 from rC where f5 = 1
+ 22006 | select f10 from rC where f10 = 1
+ 22007 | select f100 from rC where f100 = 1
+ 22008 | select f1000 from rC where f1000 = 1
+ 22009 | select dv1 from rC where dv1 = 1
+ 22010 | select skw1 from rC where skw1 = 1
+ 22011 | select skw2 from rC where skw2 = 1
+ 22012 | select skw3 from rC where skw3 = 1
+ 23001 | select v, pk from rC where pk <= 1 order by pk desc
+ 23002 | select v, f1 from rC where f1 <= 1 order by f1 desc
+ 23003 | select v, f2 from rC where f2 <= 1 order by f2 desc
+ 23004 | select v, f3 from rC where f3 <= 1 order by f3 desc
+ 23005 | select v, f4 from rC where f4 <= 1 order by f4 desc
+ 23006 | select v, f5 from rC where f5 <= 1 order by f5 desc
+ 23007 | select v, f10 from rC where f10 <= 1 order by f10 desc
+ 23008 | select v, f100 from rC where f100 <= 1 order by f100 desc
+ 23009 | select v, f1000 from rC where f1000 <= 1 order by f1000 desc
+ 23010 | select v, dv1 from rC where dv1 <= 1 order by dv1 desc
+ 23011 | select v, skw1 from rC where skw1 <= 1 order by skw1 desc
+ 23012 | select v, skw2 from rC where skw2 <= 1 order by skw2 desc
+ 23013 | select v, skw3 from rC where skw3 <= 1 order by skw3 desc
+ 24001 | select f1 from rC where f1 <= 1 order by f1 desc
+ 24002 | select f2 from rC where f2 <= 1 order by f2 desc
+ 24003 | select f3 from rC where f3 <= 1 order by f3 desc
+ 24004 | select f4 from rC where f4 <= 1 order by f4 desc
+ 24005 | select f5 from rC where f5 <= 1 order by f5 desc
+ 24006 | select f10 from rC where f10 <= 1 order by f10 desc
+ 24007 | select f100 from rC where f100 <= 1 order by f100 desc
+ 24008 | select f1000 from rC where f1000 <= 1 order by f1000 desc
+ 24009 | select dv1 from rC where dv1 <= 1 order by dv1 desc
+ 24010 | select skw1 from rC where skw1 <= 1 order by skw1 desc
+ 24011 | select skw2 from rC where skw2 <= 1 order by skw2 desc
+ 24012 | select skw3 from rC where skw3 <= 1 order by skw3 desc
+(100 rows)
+
+update explain_query_options set with_analyze = false;
+-- should not return any row.  mismatches indicate non-index scan nodes.
+select q.*, x.qid, x.nid, "Node Type", "Index Name", "Index Cond"
+from queries q full join check_seeknext_estimates x on x.qid = q.qid
+where x.qid is null or q.qid is null;
+ qid | query | qid | nid | Node Type | Index Name | Index Cond 
+-----+-------+-----+-----+-----------+------------+------------
+(0 rows)
+
+select count(*) from queries q full join check_seeknext_estimates x on x.qid = q.qid
+where x.qid is not null and q.qid is not null;
+ count 
+-------
+   100
+(1 row)
+
+update explain_query_options set with_analyze = true;
+-- 24 queries still fail until https://phorge.dev.yugabyte.com/D45097 lands
+select * from check_seeknext_estimates
+where "Seek Estimates" <> 'passed' or "Next/Prev Estimates" <> 'passed'
+order by qid, nid;
+  qid  |                           query                           | nid |      Node Type      | Index Name  | Index Cond  | Storage Index Filter | Storage Filter | Filter | Seek Estimates | Next/Prev Estimates 
+-------+-----------------------------------------------------------+-----+---------------------+-------------+-------------+----------------------+----------------+--------+----------------+---------------------
+ 11002 | select v, f1 from r where f1 = 1                          |   1 | Index Scan          | r_f1_idx    | (f1 = 1)    |                      |                |        | failed         | passed
+ 11003 | select v, f2 from r where f2 = 1                          |   1 | Index Scan          | r_f2_idx    | (f2 = 1)    |                      |                |        | failed         | passed
+ 11004 | select v, f3 from r where f3 = 1                          |   1 | Index Scan          | r_f3_idx    | (f3 = 1)    |                      |                |        | failed         | passed
+ 11005 | select v, f4 from r where f4 = 1                          |   1 | Index Scan          | r_f4_idx    | (f4 = 1)    |                      |                |        | failed         | passed
+ 11006 | select v, f5 from r where f5 = 1                          |   1 | Index Scan          | r_f5_idx    | (f5 = 1)    |                      |                |        | failed         | passed
+ 11007 | select v, f10 from r where f10 = 1                        |   1 | Index Scan          | r_f10_idx   | (f10 = 1)   |                      |                |        | failed         | passed
+ 11011 | select v, skw1 from r where skw1 = 1                      |   1 | Index Scan          | r_skw1_idx  | (skw1 = 1)  |                      |                |        | failed         | passed
+ 11012 | select v, skw2 from r where skw2 = 1                      |   1 | Index Scan          | r_skw2_idx  | (skw2 = 1)  |                      |                |        | failed         | passed
+ 11013 | select v, skw3 from r where skw3 = 1                      |   1 | Index Scan          | r_skw3_idx  | (skw3 = 1)  |                      |                |        | failed         | passed
+ 13002 | select v, f1 from r where f1 <= 1 order by f1 desc        |   1 | Index Scan Backward | r_f1_idx    | (f1 <= 1)   |                      |                |        | failed         | passed
+ 13003 | select v, f2 from r where f2 <= 1 order by f2 desc        |   1 | Index Scan Backward | r_f2_idx    | (f2 <= 1)   |                      |                |        | failed         | passed
+ 13004 | select v, f3 from r where f3 <= 1 order by f3 desc        |   1 | Index Scan Backward | r_f3_idx    | (f3 <= 1)   |                      |                |        | failed         | passed
+ 13005 | select v, f4 from r where f4 <= 1 order by f4 desc        |   1 | Index Scan Backward | r_f4_idx    | (f4 <= 1)   |                      |                |        | failed         | passed
+ 13006 | select v, f5 from r where f5 <= 1 order by f5 desc        |   1 | Index Scan Backward | r_f5_idx    | (f5 <= 1)   |                      |                |        | failed         | passed
+ 13007 | select v, f10 from r where f10 <= 1 order by f10 desc     |   1 | Index Scan Backward | r_f10_idx   | (f10 <= 1)  |                      |                |        | failed         | passed
+ 13011 | select v, skw1 from r where skw1 <= 1 order by skw1 desc  |   1 | Index Scan Backward | r_skw1_idx  | (skw1 <= 1) |                      |                |        | failed         | passed
+ 13012 | select v, skw2 from r where skw2 <= 1 order by skw2 desc  |   1 | Index Scan Backward | r_skw2_idx  | (skw2 <= 1) |                      |                |        | failed         | passed
+ 13013 | select v, skw3 from r where skw3 <= 1 order by skw3 desc  |   1 | Index Scan Backward | r_skw3_idx  | (skw3 <= 1) |                      |                |        | failed         | passed
+ 23003 | select v, f2 from rC where f2 <= 1 order by f2 desc       |   1 | Index Scan Backward | rc_f2_idx   | (f2 <= 1)   |                      |                |        | failed         | passed
+ 23004 | select v, f3 from rC where f3 <= 1 order by f3 desc       |   1 | Index Scan Backward | rc_f3_idx   | (f3 <= 1)   |                      |                |        | failed         | passed
+ 23005 | select v, f4 from rC where f4 <= 1 order by f4 desc       |   1 | Index Scan Backward | rc_f4_idx   | (f4 <= 1)   |                      |                |        | failed         | passed
+ 23006 | select v, f5 from rC where f5 <= 1 order by f5 desc       |   1 | Index Scan Backward | rc_f5_idx   | (f5 <= 1)   |                      |                |        | failed         | passed
+ 23007 | select v, f10 from rC where f10 <= 1 order by f10 desc    |   1 | Index Scan Backward | rc_f10_idx  | (f10 <= 1)  |                      |                |        | failed         | passed
+ 23012 | select v, skw2 from rC where skw2 <= 1 order by skw2 desc |   1 | Index Scan Backward | rc_skw2_idx | (skw2 <= 1) |                      |                |        | failed         | passed
+(24 rows)
+
