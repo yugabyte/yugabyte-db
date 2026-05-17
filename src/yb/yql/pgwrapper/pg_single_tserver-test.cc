@@ -508,11 +508,9 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringCo
   ASSERT_GE(block_cache_miss_count, 0);
   if (NumScanRows() == kReleaseNumScanRows) {
     LOG(INFO) << "Checking that block cache hit/miss counts are within expected ranges";
-    ASSERT_GE(block_cache_miss_count, 9000);
-    ASSERT_LE(block_cache_miss_count, 11000);
+    ASSERT_BETWEEN(block_cache_miss_count, 10000, 12000);
     // The hit count would be ~30000 with docdb_ht_filter_conflict_with_committed turned off.
-    ASSERT_GE(block_cache_hit_count, 14000);
-    ASSERT_LE(block_cache_hit_count, 18000);
+    ASSERT_BETWEEN(block_cache_hit_count, 14000, 18000);
   } else {
     LOG(INFO) << "The number of rows " << NumScanRows() << " is different from the release build "
               << "number of rows " << kReleaseNumScanRows << ", not checking block cache stats.";
