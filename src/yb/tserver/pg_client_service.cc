@@ -68,8 +68,10 @@
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_create_table.h"
+#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_session_guard.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
@@ -224,28 +226,6 @@ class TxnAssignment {
 class LockablePgClientSession;
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
-class SessionGuard {
-  using BeforeReleaseFunctor = std::function<void()>;
-
- public:
-  SessionGuard(std::mutex& mutex, BeforeReleaseFunctor&& before_release)
-      : lock_(mutex), before_release_(std::move(before_release)) {}
-
-  SessionGuard(SessionGuard&&) = default;
-
-  ~SessionGuard() {
-    if (lock_) {
-      before_release_();
-    }
-  }
-
-  [[nodiscard]] auto& lock() { return lock_; }
-
- private:
-  std::unique_lock<std::mutex> lock_;
-  BeforeReleaseFunctor before_release_;
-};
-
 class RequestSequencer {
  public:
   using RequestExecutor = std::function<void(Result<PgClientSession&>)>;
@@ -256,6 +236,11 @@ class RequestSequencer {
   void ProcessPending(PgClientSession& session) {
     DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
     impl_.ProcessPending(session);
+  }
+
+  bool HasReadyToProcess() {
+    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
+    return impl_.HasReadyToProcess();
   }
 
   Status Enqueue(size_t serial_no, RequestExecutor&& executor, CoarseTimePoint deadline) {
@@ -270,25 +255,29 @@ class RequestSequencer {
     return impl_.RegisterForProcessing(serial_no);
   }
 
-  Status RegisterForProcessing(SessionGuard& guard, size_t serial_no, CoarseTimePoint deadline) {
+  Status RegisterForProcessing(
+      PgSessionGuard& guard, size_t serial_no, CoarseTimePoint deadline) {
     DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
     RETURN_NOT_OK(EnsureIsActive());
-    Status status = Status::OK();
-    auto predicate = [this, serial_no, &status] {
-      const auto register_res = TryRegisterForProcessing(serial_no);
+    Status pred_status = Status::OK();
+    auto pred = [this, serial_no, &pred_status] {
+      auto register_res = TryRegisterForProcessing(serial_no);
       if (!register_res.ok()) {
-        status = register_res.status();
+        pred_status = std::move(register_res.status());
         return true;
       }
       return *register_res;
     };
 
-    if (!cond_.wait_until(guard.lock(), ActualDeadline(deadline), predicate)) {
-      DCHECK(status.ok());
-      status = MakeRequestRejectStatus(serial_no);
-    }
+    const auto [result, lost_ownership] = guard.WaitUntil(cond_, ActualDeadline(deadline), pred);
+    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
     impl_.RegisterProcessed(serial_no);
-    return status;
+    RETURN_NOT_OK(pred_status);
+    if (!result) {
+      return MakeRequestRejectStatus(serial_no);
+    }
+    SCHECK(!lost_ownership, TimedOut, "Failed to restore owning on session");
+    return Status::OK();
   }
 
   void Shutdown() {
@@ -325,6 +314,16 @@ class RequestSequencer {
         ApplySerialNo(next_expected_serial_no - 1);
       }
     }
+
+    bool HasReadyToProcess() {
+      if (pending_requests_.empty()) {
+        return false;
+      }
+      const auto& front = pending_requests_.front();
+      return front.serial_no <= next_expected_serial_no_ ||
+             CoarseMonoClock::now() > front.deadline;
+    }
+
 
     Status Enqueue(size_t serial_no, RequestExecutor&& executor, CoarseTimePoint deadline) {
       DCHECK(serial_no > next_expected_serial_no_);
@@ -408,12 +407,20 @@ class RequestSequencer {
 };
 
 class LockablePgClientSession {
+ private:
+  using SharedThisSource = std::shared_ptr<void>;
+
  public:
   auto id() const { return session_.id(); }
 
   template <class... Args>
-  explicit LockablePgClientSession(CoarseDuration lifetime, Args&&... args)
-      : session_(std::forward<Args>(args)...),
+  explicit LockablePgClientSession(
+      CoarseDuration lifetime, SharedThisSource shared_this_source, rpc::Messenger& messenger,
+      Args&&... args)
+      : shared_this_{SharedField(shared_this_source, this)},
+        messenger_(messenger),
+        guard_state_{mutex_, [this](auto arg) { OnBeforeReleasingSessionLock(arg); }},
+        session_(std::move(shared_this_source), messenger.scheduler(), std::forward<Args>(args)...),
         lifetime_(lifetime), expiration_(NewExpiration()), request_sequencer_(mutex_) {}
 
   Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
@@ -481,16 +488,30 @@ class LockablePgClientSession {
  private:
   friend class SessionAccessor;
 
-  [[nodiscard]] SessionGuard Guard() {
-    return {mutex_, [this] { request_sequencer_.ProcessPending(session_); }};
+  void OnBeforeReleasingSessionLock(PgSessionGuardState::IsCrossThreadLock is_cross_thread) {
+    if (!is_cross_thread) {
+      ProcessPendingRequests();
+    } else if (request_sequencer_.HasReadyToProcess()) {
+      messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
+        auto obj = shared_this.lock();
+        if (obj) {
+          auto guard = obj->Guard();
+          obj->ProcessPendingRequests();
+        }
+      });
+    }
   }
 
-  Result<bool> TryRegisterRequestForProcessing(size_t request_serial_no) {
-    return request_sequencer_.TryRegisterForProcessing(request_serial_no);
+  void ProcessPendingRequests() {
+    request_sequencer_.ProcessPending(session_);
+  }
+
+  [[nodiscard]] PgSessionGuard Guard() {
+    return PgSessionGuard{SharedField(shared_this_.lock(), &guard_state_)};
   }
 
   Status RegisterRequestForProcessing(
-      SessionGuard& guard, size_t request_serial_no, CoarseTimePoint deadline) {
+      PgSessionGuard& guard, size_t request_serial_no, CoarseTimePoint deadline) {
     return request_sequencer_.RegisterForProcessing(guard, request_serial_no, deadline);
   }
 
@@ -498,7 +519,10 @@ class LockablePgClientSession {
     return CoarseMonoClock::now() + lifetime_;
   }
 
+  const std::weak_ptr<LockablePgClientSession> shared_this_;
+  rpc::Messenger& messenger_;
   std::mutex mutex_;
+  PgSessionGuardState guard_state_;
   PgSessionSharedMemoryManager shared_mem_manager_;
   PgClientSession session_;
   std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
@@ -530,14 +554,15 @@ class SessionInfo {
   template <class... Args>
   static auto Make(
       rw_spinlock& txn_assignment_mutex, CoarseDuration lifetime, const TransactionBuilder& builder,
-      Args&&... args) {
+      rpc::Messenger& messenger, Args&&... args) {
     auto session_info = std::make_shared<SessionInfo>(txn_assignment_mutex, PrivateTag{});
     session_info->session_.emplace(
         lifetime,
+        session_info,
+        messenger,
         [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
           return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
         },
-        session_info,
         std::forward<Args>(args)...);
     return session_info;
   }
@@ -653,14 +678,14 @@ class ApplyToValue {
 
 class PgClientSessionLocker {
  public:
-  PgClientSessionLocker(std::shared_ptr<PgClientSession>&& session, SessionGuard&& guard)
+  PgClientSessionLocker(std::shared_ptr<PgClientSession>&& session, PgSessionGuard&& guard)
       : session_(std::move(session)), guard_(std::move(guard)) {}
 
   [[nodiscard]] PgClientSession* operator->() const { return session_.get(); }
 
  private:
   std::shared_ptr<PgClientSession> session_;
-  SessionGuard guard_;
+  PgSessionGuard guard_;
 };
 
 class SessionAccessor {
@@ -698,7 +723,7 @@ class SessionAccessor {
 
  private:
   explicit SessionAccessor(
-      LockablePgClientSessionPtr&& lockable, SessionGuard&& guard,
+      LockablePgClientSessionPtr&& lockable, PgSessionGuard&& guard,
       std::optional<uint64_t> request_serial_no)
       : lockable_(std::move(lockable)), guard_(std::move(guard)),
         request_serial_no_(request_serial_no) {
@@ -714,7 +739,7 @@ class SessionAccessor {
   DEBUG_ONLY([[nodiscard]] bool DEBUG_IsValid() const { return lockable_ != nullptr; });
 
   LockablePgClientSessionPtr lockable_;
-  SessionGuard guard_;
+  PgSessionGuard guard_;
   std::optional<uint64_t> request_serial_no_;
 };
 
@@ -961,9 +986,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     auto session_id = ++session_serial_no_;
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
-        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
+        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, messenger_, client(),
         session_context_, session_id, req.pid(), lease_epoch(),
-        tablet_server_.ts_local_lock_manager(), messenger_.scheduler());
+        tablet_server_.ts_local_lock_manager());
     resp->set_session_id(session_id);
     if (const auto v = tablet_server_.cluster_config_version(); req.cluster_config_version() < v) {
       auto &cluster_config_pb = *resp->mutable_cluster_config();
