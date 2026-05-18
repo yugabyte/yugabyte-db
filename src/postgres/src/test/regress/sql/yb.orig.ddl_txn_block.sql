@@ -355,6 +355,7 @@ CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
 ALTER TABLE int4_table ALTER c1 TYPE int8;
 INSERT INTO int4_table(c1) VALUES (2 ^ 40);
 ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+ROLLBACK;
 
 -- Test rollback of in-place index pg_attribute update during ALTER TYPE.
 CREATE TABLE test_idx_rollback (val varchar(10));

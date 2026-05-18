@@ -526,6 +526,7 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  integer out of range
+ROLLBACK;
 -- Test rollback of in-place index pg_attribute update during ALTER TYPE.
 CREATE TABLE test_idx_rollback (val varchar(10));
 CREATE INDEX idx_rollback ON test_idx_rollback(val);
