@@ -1015,9 +1015,6 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("has_faulty_drive");
         jw.Bool(desc->has_faulty_drive());
 
-        jw.String("start_time_us");
-        jw.Uint64(desc->start_time_us());
-
         jw.String("ram_used");
         jw.String(HumanizeBytes(desc->total_memory_usage()));
         jw.String("ram_used_bytes");
