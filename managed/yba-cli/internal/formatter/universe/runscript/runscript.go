@@ -145,10 +145,7 @@ func NewSummaryContext() *SummaryContext {
 
 // AllSucceeded fetches whether all nodes succeeded
 func (c *SummaryContext) AllSucceeded() string {
-	if c.s.GetAllSucceeded() {
-		return formatter.Colorize("true", formatter.GreenColor)
-	}
-	return formatter.Colorize("false", formatter.RedColor)
+	return fmt.Sprintf("%t", c.s.GetAllSucceeded())
 }
 
 // TotalNodes fetches total node count
@@ -163,12 +160,7 @@ func (c *SummaryContext) SuccessfulNodes() string {
 
 // FailedNodes fetches failed node count
 func (c *SummaryContext) FailedNodes() string {
-	count := c.s.GetFailedNodes()
-	text := fmt.Sprintf("%d", count)
-	if count > 0 {
-		return formatter.Colorize(text, formatter.RedColor)
-	}
-	return text
+	return fmt.Sprintf("%d", c.s.GetFailedNodes())
 }
 
 // ExecutionTimeMs fetches execution time
@@ -213,20 +205,12 @@ func (c *ResultContext) NodeAddress() string {
 
 // ExitCode fetches exit code
 func (c *ResultContext) ExitCode() string {
-	code := c.r.GetExitCode()
-	text := fmt.Sprintf("%d", code)
-	if code != 0 {
-		return formatter.Colorize(text, formatter.RedColor)
-	}
-	return formatter.Colorize(text, formatter.GreenColor)
+	return fmt.Sprintf("%d", c.r.GetExitCode())
 }
 
 // Success fetches success status
 func (c *ResultContext) Success() string {
-	if c.r.GetSuccess() {
-		return formatter.Colorize("true", formatter.GreenColor)
-	}
-	return formatter.Colorize("false", formatter.RedColor)
+	return fmt.Sprintf("%t", c.r.GetSuccess())
 }
 
 // ExecutionTimeMs fetches per-node execution time
