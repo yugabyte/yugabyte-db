@@ -165,6 +165,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   bool use_fast_backward_scan_ = false;
 
   DeadlineInfo deadline_info_;
+
+  EncodedDocHybridTime max_seen_ht_checkpoint_{DocHybridTime::kMin};
 };
 
 }  // namespace docdb
