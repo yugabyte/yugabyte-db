@@ -902,6 +902,20 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.info();
   }
 
+  Result<PgClient::DbColocationInfo> IsDatabaseColocated(uint32_t oid) {
+    tserver::PgIsDatabaseColocatedRequestPB req;
+    req.set_database_oid(oid);
+
+    tserver::PgIsDatabaseColocatedResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::IsDatabaseColocated, req, resp, PggateRPC::kIsDatabaseColocated));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return PgClient::DbColocationInfo{
+        .colocated = resp.colocated(),
+        .legacy_colocated_database = resp.legacy_colocated_database()};
+  }
+
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
     tserver::PgPollVectorIndexReadyRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
@@ -2083,6 +2097,10 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid d
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);
+}
+
+Result<PgClient::DbColocationInfo> PgClient::IsDatabaseColocated(uint32_t oid) {
+  return impl_->IsDatabaseColocated(oid);
 }
 
 Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {

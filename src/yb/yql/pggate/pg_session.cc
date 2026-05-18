@@ -553,12 +553,9 @@ PgSession::~PgSession() = default;
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
-  auto resp = VERIFY_RESULT(pg_client_.GetDatabaseInfo(database_oid));
-  *colocated = resp.colocated();
-  if (resp.has_legacy_colocated_database())
-    *legacy_colocated_database = resp.legacy_colocated_database();
-  else
-    *legacy_colocated_database = true;
+  auto info = VERIFY_RESULT(pg_client_.IsDatabaseColocated(database_oid));
+  *colocated = info.colocated;
+  *legacy_colocated_database = info.legacy_colocated_database;
   return Status::OK();
 }
 

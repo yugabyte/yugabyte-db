@@ -64,6 +64,7 @@ class TserverXClusterContextIf;
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (IsDatabaseColocated) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
