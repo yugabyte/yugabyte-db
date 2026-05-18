@@ -1394,18 +1394,26 @@ Result<ReadRestartData> IntentAwareIterator::GetReadRestartData() const {
   }
   auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_data_.max_seen_ht.Decode());
   VLOG(4) << "Restart read: " << decoded_max_seen_ht.hybrid_time() << ", original: " << read_time_;
-  return ReadRestartData{decoded_max_seen_ht.hybrid_time(), max_seen_ht_data_.max_seen_ht_key};
+  return ReadRestartData{
+      decoded_max_seen_ht.hybrid_time(),
+      max_seen_ht_data_.max_seen_ht_key};
 }
 
-MaxSeenHtData IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
-  return max_seen_ht_data_;
+EncodedDocHybridTime IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
+  return max_seen_ht_data_.max_seen_ht;
 }
 
-void IntentAwareIterator::RollbackMaxSeenHt(MaxSeenHtData checkpoint) {
+void IntentAwareIterator::RollbackMaxSeenHt(const EncodedDocHybridTime& checkpoint) {
   if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
     return;
   }
-  max_seen_ht_data_ = checkpoint;
+  max_seen_ht_data_.max_seen_ht = checkpoint;
+  // The key is only recorded once HT crosses read_time. If the rolled-back HT
+  // is back at or below read_time, the observation that produced the key is
+  // being undone, drop it.
+  if (checkpoint <= encoded_read_time_.read) {
+    max_seen_ht_data_.max_seen_ht_key.Clear();
+  }
 }
 
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
@@ -1465,7 +1473,7 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key) {
+void IntentAwareIterator::UpdateMaxSeenHt(const EncodedDocHybridTime& seen_ht, Slice key) {
   if (max_seen_ht_data_.max_seen_ht >= seen_ht) {
     return;
   }
@@ -1475,7 +1483,7 @@ void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice ke
   // Pick the first offending key.
   if (max_seen_ht_data_.max_seen_ht > encoded_read_time_.read
       && max_seen_ht_data_.max_seen_ht_key.empty()) {
-    max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
+    max_seen_ht_data_.max_seen_ht_key = key;
   }
 }
 

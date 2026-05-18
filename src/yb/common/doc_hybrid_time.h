@@ -19,6 +19,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/compare_util.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -217,7 +218,7 @@ inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {
 
 struct MaxSeenHtData {
   EncodedDocHybridTime max_seen_ht{DocHybridTime::kMin};
-  std::string max_seen_ht_key;
+  KeyBuffer max_seen_ht_key;
 };
 
 }  // namespace yb
