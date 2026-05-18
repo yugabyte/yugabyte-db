@@ -51,15 +51,6 @@ bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr) {
       (!current_scan_target_.empty() && curr.starts_with(current_scan_target_));
 }
 
-bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIteratorIf* iter) {
-  if (CurrentTargetMatchesKey(curr)) {
-    // Read restart logic: Match found => update checkpoint to latest.
-    max_seen_ht_checkpoint_ = iter->ObtainMaxSeenHtCheckpoint();
-    return true;
-  }
-  return false;
-}
-
 HybridScanChoices::HybridScanChoices(
     const Schema& schema,
     const KeyBytes& lower_doc_key,
@@ -820,9 +811,10 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 }
 
 Result<bool> HybridScanChoices::InterestedInRow(
-    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) {
+    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter,
+    const EncodedDocHybridTime& max_seen_ht_checkpoint) {
   auto row = row_key->AsSlice();
-  if (CurrentTargetMatchesKey(row, iter)) {
+  if (CurrentTargetMatchesKey(row)) {
     return true;
   }
   // We must have seeked past the target key we are looking for (no result) so we can safely
@@ -847,12 +839,12 @@ Result<bool> HybridScanChoices::InterestedInRow(
 
   // We updated scan target above, if it goes past the row_key_ we will seek again, and
   // process the found key in the next loop.
-  if (CurrentTargetMatchesKey(row, iter)) {
+  if (CurrentTargetMatchesKey(row)) {
     return true;
   }
 
   // Not interested in the row => Rollback to last seen ht checkpoint.
-  iter->RollbackMaxSeenHt(max_seen_ht_checkpoint_);
+  iter->RollbackMaxSeenHt(max_seen_ht_checkpoint);
 
   SeekToCurrentTarget(iter);
   return false;
@@ -862,7 +854,7 @@ Result<bool> HybridScanChoices::AdvanceToNextRow(
     dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter, bool current_fetched_row_skipped) {
 
   if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped)) ||
-      CurrentTargetMatchesKey(row_key->AsSlice(), iter)) {
+      CurrentTargetMatchesKey(row_key->AsSlice())) {
     return false;
   }
   SeekToCurrentTarget(iter);
@@ -907,7 +899,9 @@ class EmptyScanChoices : public ScanChoices {
     return false;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override {
+  Result<bool> InterestedInRow(
+      dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter,
+      const EncodedDocHybridTime& max_seen_ht_checkpoint) override {
     return true;
   }
 

@@ -5127,6 +5127,63 @@ TEST_F(PgLibPqTest, InconsistentIndexRead) {
   thread_holder.WaitAndStop(std::chrono::seconds(30));
 }
 
+// Test case for GitHub issue #28628. The IN-list is on a non-prefix range column so the
+// variable bloom filter (which is keyed on the prefix range column) does not bypass scan
+// choices' intermediate seeks, allowing the rollback-of-max_seen_ht bug to surface. A
+// third range column `sub_id` is added so the planner cannot form full ybctids and must
+// exercise HybridScanChoices on the non-prefix `id` column.
+TEST_F(PgLibPqTest, InconsistentUpdateReadNonPrefixKey) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE bank_accounts (type VARCHAR(50), id INT, sub_id INT, balance INT, "
+      "PRIMARY KEY(type ASC, id ASC, sub_id ASC)) "
+      "SPLIT AT VALUES (('savings', 5, 0))"));
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO bank_accounts (type, id, sub_id, balance) "
+        "VALUES ('savings', $0, 0, 100)", i));
+  }
+
+  // Verify initial balances of (3, 7, 10): 3 and 7 exist, 10 does not.
+  auto initial_balances = ASSERT_RESULT(conn.FetchRows<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id IN (3, 7, 10)"));
+  auto initial_sum = std::accumulate(initial_balances.begin(), initial_balances.end(), 0);
+  ASSERT_EQ(initial_sum, 200);
+
+  auto s_sum = ASSERT_RESULT(Connect());
+  auto s_update = ASSERT_RESULT(Connect());
+
+  // s_sum: read from first tablet to set local_limit there only.
+  ASSERT_OK(s_sum.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto balance3 = ASSERT_RESULT(s_sum.FetchRow<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id = 3 AND sub_id = 0"));
+  ASSERT_EQ(balance3, 100);
+
+  // s_update: cross-tablet update transferring 10 from id=3 (tablet 1) to id=7 (tablet 2).
+  // Only atomicity is needed -- a default-isolation transaction is sufficient.
+  ASSERT_OK(s_update.Execute("BEGIN"));
+  ASSERT_OK(s_update.Execute(
+      "UPDATE bank_accounts SET balance = balance - 10 "
+      "WHERE type = 'savings' AND id = 3 AND sub_id = 0"));
+  ASSERT_OK(s_update.Execute(
+      "UPDATE bank_accounts SET balance = balance + 10 "
+      "WHERE type = 'savings' AND id = 7 AND sub_id = 0"));
+  ASSERT_OK(s_update.Execute("COMMIT"));
+
+  // Re-read with IN-list on the non-prefix key. The variable bloom filter remains enabled
+  // (prefix `type` is fixed), but the IN-list on `id` still drives scan choices, so the
+  // read must observe the conflicting update and require a restart.
+  ASSERT_OK(s_sum.Execute("SET yb_debug_log_docdb_requests=true"));
+  auto updated_balances_result = s_sum.FetchRows<int32_t>(
+      "SELECT balance FROM bank_accounts WHERE type = 'savings' AND id IN (3, 7, 9)");
+  ASSERT_NOK(updated_balances_result);
+  ASSERT_STR_CONTAINS(updated_balances_result.status().ToString(), "Restart read required");
+
+  ASSERT_OK(s_sum.RollbackTransaction());
+}
+
 // Test aborting concurrent ANALYZEs doesn't cause the connection to FATAL.
 // During execution of ANALYZE, when analyzing each table, CurrentUserId is switched to the table
 // owner's userid and SecurityRestrictionContext is set to indicate security-restricted operations.

@@ -173,6 +173,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   DeadlineInfo deadline_info_;
 
   SeekFilter seek_filter_ = SeekFilter::kAll;
+
+  EncodedDocHybridTime max_seen_ht_checkpoint_{DocHybridTime::kMin};
 };
 
 }  // namespace docdb
