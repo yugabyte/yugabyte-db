@@ -270,7 +270,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 2,
              "The maximum number of threads allowed for full_compaction_pool_. This "
              "pool is used to run full compactions on tablets, either on a scheduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
