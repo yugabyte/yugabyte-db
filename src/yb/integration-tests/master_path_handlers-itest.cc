@@ -107,6 +107,8 @@ namespace yb::integration_tests {
 
 using namespace std::literals;
 
+static MonoDelta kTabletServerRegistrationTimeout = 60s;
+
 const std::string kKeyspaceName("my_keyspace");
 const client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
 const uint kNumMasters(3);
@@ -823,6 +825,15 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
       opts_.replication_factor = 3;
     }
 
+    // The tservers are started with --placement_uuid=live, but the cluster config's live
+    // placement UUID stays empty until ModifyPlacementInfo runs below. If cluster_->Start()
+    // waits for tservers to accept YSQL connections in that window, system.transactions
+    // creation is blocked by a placement-UUID mismatch in GetTsDescsFromPlacementInfo and YSQL
+    // never becomes ready. Defer the YSQL-ready wait until after ModifyPlacementInfo.
+    const bool defer_ysql_wait =
+        opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections;
+    opts_.wait_for_tservers_to_accept_ysql_connections = false;
+
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
@@ -838,6 +849,11 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     }
     ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, opts_.replication_factor,
         kLivePlacementUuid));
+
+    if (defer_ysql_wait) {
+      ASSERT_OK(cluster_->WaitForTabletServersToAcceptYSQLConnection(
+          MonoTime::Now() + kTabletServerRegistrationTimeout));
+    }
   }
 
   Status AddTabletServer(
@@ -1915,23 +1931,7 @@ TEST_F_EX(
     MasterPathHandlersVectorIndexItest) {
   constexpr int kNumTablets = 2;
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-  // The request may fail as the system.transactions table may need more time
-  // to be created and become ready. Retry until it succeeds or times out.
-  ASSERT_OK(WaitFor(
-      [&conn]() -> Result<bool> {
-        auto s = conn.Execute("CREATE EXTENSION vector");
-        if (s.ok()) {
-          return true;
-        }
-
-        // The expected error is "OBJECT_NOT_FOUND", but let's weaken the check
-        // to allow other errors to pass through. Example:
-        // [ Transaction request failed: Not found (yb/master/catalog_manager.cc:6265):
-        //   Table system.transactions not found: OBJECT_NOT_FOUND (master error 3) ].
-        LOG(INFO) << "CREATE EXTENSION vector failed: " << s.ToString();
-        return false;
-      },
-      60s * kTimeMultiplier, "Wait for CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1)) SPLIT INTO 2 TABLETS",
       kNumTablets));

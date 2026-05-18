@@ -848,22 +848,21 @@ TEST_F(GlobalTransactionTableCreationTest, CreateGlobalTransactionTableAfterFail
   // transaction table. After failover we fix the cluster config which unblocks the attempt to
   // create the global transaction able.
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
-  // Sanity check that we cannot create a table yet.
-  std::string stmt = "CREATE TABLE test_table (k INT PRIMARY KEY, v INT)";
-  auto pgconn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
-  ASSERT_NOK(pgconn.ExecuteFormat(stmt));
+  // Sanity check that YSQL is not ready yet - without system.transactions, postgres backend
+  // startup FATALs in YbInitPostgres and the libpq connect fails.
+  ASSERT_NOK(cluster_->ConnectToDB("yugabyte"));
   master::MasterClusterClient cluster_client(
       cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
   auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
   config.mutable_replication_info()->mutable_live_replicas()->set_placement_uuid(placement_uuid_);
   ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
 
-  // Now try to create a table. Table creation through pg will fail unless the transaction table
-  // already exists.
-  ASSERT_OK(WaitFor([&pgconn, &stmt]() -> Result<bool> {
-        return pgconn.ExecuteFormat(stmt).ok();
-      },
-      MonoDelta::FromSeconds(60), "Could not create table"));
+  // Now that the cluster config carries the live placement UUID, the catalog manager's retry
+  // loop can create system.transactions and YSQL backends can come up.
+  ASSERT_OK(cluster_->WaitForTabletServersToAcceptYSQLConnection(
+      MonoTime::Now() + 60s * kTimeMultiplier));
+  auto pgconn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(pgconn.Execute("CREATE TABLE test_table (k INT PRIMARY KEY, v INT)"));
 }
 
 void GlobalTransactionTableCreationTest::SetUp() {
@@ -872,11 +871,21 @@ void GlobalTransactionTableCreationTest::SetUp() {
   opts.num_masters = 3;
   opts.num_tablet_servers = 3;
   opts.enable_ysql = true;
+  // The cluster is intentionally brought up in an inconsistent state - tservers carry a
+  // --placement_uuid that the master's cluster config doesn't yet have. This blocks
+  // system.transactions creation, which in turn makes postgres backend startup fail in
+  // YbInitPostgres. Defer the in-Start YSQL-ready wait so the cluster comes up; the test fixes
+  // the cluster config and then waits for YSQL explicitly.
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_tserver_flags = {
       Format("--placement_uuid=$0", placement_uuid_),
-      // TODO(#27854): We get stuck with object locking when there is no system.transactions
-      // table. Disabling it for now until we fix the underlying issue.
-      "--enable_object_locking_for_table_locks=false",
+      // Force object locking on so the postgres backend FATALs in YbInitPostgres when
+      // system.transactions is missing. The default for this flag is build-mode dependent
+      // (true in release, false in debug/fastdebug per common_flags.cc), which would make the
+      // ConnectToDB sanity check below pass in release but spuriously succeed in debug.
+      // enable_object_locking_for_table_locks requires ysql_yb_ddl_transaction_block_enabled.
+      "--ysql_yb_ddl_transaction_block_enabled=true",
+      "--enable_object_locking_for_table_locks=true",
   };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
