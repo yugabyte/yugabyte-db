@@ -616,6 +616,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
           std::nullopt);
 
+  Status VerifyOriginIdOnAllRecords(
+      const GetChangesResponsePB& resp, uint32_t expected_origin_id);
+
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
   Status StepDownLeader(size_t new_leader_index, const TabletId tablet_id);

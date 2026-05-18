@@ -2546,6 +2546,30 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
       MonoDelta::FromSeconds(60), timeout_msg));
 }
 
+Status CDCSDKYsqlTest::VerifyOriginIdOnAllRecords(
+    const GetChangesResponsePB& resp, uint32_t expected_origin_id) {
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    auto op = record.row_message().op();
+    if (op != RowMessage::BEGIN && op != RowMessage::INSERT && op != RowMessage::UPDATE &&
+        op != RowMessage::DELETE && op != RowMessage::COMMIT) {
+      continue;
+    }
+    if (expected_origin_id != 0) {
+      SCHECK(
+          record.row_message().has_xrepl_origin_id(), IllegalState,
+          Format("Missing xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+      SCHECK_EQ(
+          record.row_message().xrepl_origin_id(), expected_origin_id, IllegalState,
+          Format("Wrong xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+    } else {
+      SCHECK(
+          !record.row_message().has_xrepl_origin_id(), IllegalState,
+          Format("Expected no xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+    }
+  }
+  return Status::OK();
+}
+
 Status CDCSDKYsqlTest::ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id) {
   CHECK(!FLAGS_enable_load_balancing);
 

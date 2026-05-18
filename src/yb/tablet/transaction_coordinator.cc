@@ -605,7 +605,8 @@ class TransactionState {
                  .transaction = id_,
                  .aborted = GetAbortedSubtxnInfo()->pb(),
                  .commit_time = commit_time_,
-                 .sealed = status_ == TransactionStatus::SEALED});
+                 .sealed = status_ == TransactionStatus::SEALED,
+                 .xrepl_origin_id = xrepl_origin_id_});
           }
         }
       }
