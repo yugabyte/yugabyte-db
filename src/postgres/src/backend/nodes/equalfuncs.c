@@ -3311,6 +3311,55 @@ _equalYbUpdateAffectedEntities(const YbUpdateAffectedEntities *a,
 }
 
 /*
+ * Plan trees are not compared by equal(), but ybComparePlanShapesAndMethods
+ * calls equal() on IndexScan/IndexOnlyScan yb_merge_scan_info, which walks
+ * stream_cols.  derived is compared too: merge=on vs merge=off can keep
+ * the same index and still differ in whether a stream key's SAOP was
+ * derived.
+ */
+static bool
+_equalYbMergeScanStreamColInfo(const YbMergeScanStreamColInfo *a,
+							 const YbMergeScanStreamColInfo *b)
+{
+	COMPARE_NODE_FIELD(clause);
+	COMPARE_SCALAR_FIELD(indexcol);
+	COMPARE_SCALAR_FIELD(num_elems);
+	COMPARE_SCALAR_FIELD(derived);
+
+	return true;
+}
+
+static bool
+_equalYbSortInfo(const YbSortInfo *a, const YbSortInfo *b)
+{
+	COMPARE_SCALAR_FIELD(numCols);
+	if (memcmp(a->sortColIdx, b->sortColIdx,
+			   a->numCols * sizeof(AttrNumber)) != 0)
+		return false;
+	if (memcmp(a->sortOperators, b->sortOperators,
+			   a->numCols * sizeof(Oid)) != 0)
+		return false;
+	if (memcmp(a->collations, b->collations,
+			   a->numCols * sizeof(Oid)) != 0)
+		return false;
+	if (memcmp(a->nullsFirst, b->nullsFirst,
+			   a->numCols * sizeof(bool)) != 0)
+		return false;
+
+	return true;
+}
+
+static bool
+_equalYbMergeScanInfo(const YbMergeScanInfo *a,
+					  const YbMergeScanInfo *b)
+{
+	COMPARE_NODE_FIELD(stream_cols);
+	COMPARE_NODE_FIELD(sort_cols);
+
+	return true;
+}
+
+/*
  * equal
  *	  returns whether two nodes are equal
  */
@@ -4116,6 +4165,18 @@ equal(const void *a, const void *b)
 
 		case T_YbUpdateAffectedEntities:
 			retval = _equalYbUpdateAffectedEntities(a, b);
+			break;
+
+		case T_YbMergeScanInfo:
+			retval = _equalYbMergeScanInfo(a, b);
+			break;
+
+		case T_YbMergeScanStreamColInfo:
+			retval = _equalYbMergeScanStreamColInfo(a, b);
+			break;
+
+		case T_YbSortInfo:
+			retval = _equalYbSortInfo(a, b);
 			break;
 
 		default:

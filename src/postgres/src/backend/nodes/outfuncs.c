@@ -387,6 +387,7 @@ _outScanInfo(StringInfo str, const Scan *node)
 
 	/* YB */
 	WRITE_STRING_FIELD(ybScannedObjectName);
+	WRITE_NODE_FIELD(ybOptions);
 }
 
 /*

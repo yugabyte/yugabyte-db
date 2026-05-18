@@ -6631,7 +6631,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "to 0 to disable."),
 		},
 		&yb_max_merge_scan_streams,
-		64, 0, 1024,
+		YB_DEFAULT_MERGE_SCAN_MAX_STREAMS, 0, 1024,
 		NULL, NULL, NULL
 	},
 
