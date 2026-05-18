@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/doc_hybrid_time.h"
+
 #include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/dockv/doc_key.h"
@@ -41,9 +43,16 @@ class ScanChoices {
   // Returns false if there are still target keys we need to scan, and true if we are done.
   virtual bool Finished() const = 0;
 
-  // Check whether scan choices is interested in specified row.
-  // Seek on specified iterator to the next row of interest.
-  virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) = 0;
+  // Returns true iff any of the scan choices is interested in specified row.
+  // Returns non empty Status on unexpected error such as corruption.
+  // Seeks on specified iterator to the next row of interest.
+  // Rollbacks to max_seen_ht_checkpoint if not interested in the row before the Seek.
+  virtual Result<bool> InterestedInRow(
+      dockv::KeyBytes* row_key, IntentAwareIterator& iter,
+      const EncodedDocHybridTime& max_seen_ht_checkpoint) = 0;
+  // Call when done with the current row.
+  // Advances iterator to the next row that is potentially of interest.
+  // Returns false if the current scan choice is still looking for more rows.
   virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
                                         IntentAwareIterator& iter,
                                         bool current_fetched_row_skipped) = 0;

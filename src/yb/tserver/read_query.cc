@@ -16,6 +16,8 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -134,7 +136,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
  private:
   struct ReadRestartInfo {
     ReadHybridTime restart_time;
-    std::string key;
+    KeyBuffer key;
   };
 
   Status DoPerform();
@@ -566,7 +568,7 @@ Status ReadQuery::Complete() {
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
       tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
-      resp_->dup_restart_read_key(result.key);
+      resp_->dup_restart_read_key(dockv::SubDocKey::DebugSliceToString(result.key.AsSlice()));
       break;
     }
 

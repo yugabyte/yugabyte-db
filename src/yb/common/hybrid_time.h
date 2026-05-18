@@ -38,6 +38,7 @@
 #include <string>
 
 #include "yb/util/faststring.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_fwd.h"
@@ -303,7 +304,7 @@ using hybrid_time_literals::operator""_usec_ht;
 
 struct ReadRestartData {
   HybridTime restart_time;
-  std::string key;
+  KeyBuffer key;
 
   bool is_valid() const {
     return restart_time.is_valid();

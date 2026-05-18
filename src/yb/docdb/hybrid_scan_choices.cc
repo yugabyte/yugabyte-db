@@ -207,20 +207,12 @@ bool ScanTarget::IsExtremal(size_t column_idx) const {
   return columns_[column_idx].extremal;
 }
 
-bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter) {
+bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr) {
   VLOG_WITH_FUNC(3) << "Checking if acceptable ? "
           << (scan_target_.Match(curr) ? "YEP" : "NOPE")
           << ": " << DocKey::DebugSliceToString(curr) << " vs "
           << scan_target_.ToString();
-  if (!is_trivial_filter_ && !scan_target_.Match(curr)) {
-    return false;
-  }
-
-  // Read restart logic: Match found => update checkpoint to latest.
-  if (iter) {
-    max_seen_ht_checkpoint_ = iter->ObtainMaxSeenHtCheckpoint();
-  }
-  return true;
+  return is_trivial_filter_ || scan_target_.Match(curr);
 }
 
 HybridScanChoices::HybridScanChoices(
@@ -924,9 +916,10 @@ Result<bool> HybridScanChoices::PrepareIterator(IntentAwareIterator& iter, Slice
 }
 
 Result<bool> HybridScanChoices::InterestedInRow(
-    dockv::KeyBytes* row_key, IntentAwareIterator& iter) {
+    dockv::KeyBytes* row_key, IntentAwareIterator& iter,
+    const EncodedDocHybridTime& max_seen_ht_checkpoint) {
   auto row = row_key->AsSlice();
-  if (CurrentTargetMatchesKey(row, &iter)) {
+  if (CurrentTargetMatchesKey(row)) {
     return true;
   }
   // We must have seeked past the target key we are looking for (no result) so we can safely
@@ -951,12 +944,12 @@ Result<bool> HybridScanChoices::InterestedInRow(
 
   // We updated scan target above, if it goes past the row_key_ we will seek again, and
   // process the found key in the next loop.
-  if (CurrentTargetMatchesKey(row, &iter)) {
+  if (CurrentTargetMatchesKey(row)) {
     return true;
   }
 
   // Not interested in the row => Rollback to last seen ht checkpoint.
-  iter.RollbackMaxSeenHt(max_seen_ht_checkpoint_);
+  iter.RollbackMaxSeenHt(max_seen_ht_checkpoint);
 
   SeekToCurrentTarget(iter);
   return false;
@@ -980,7 +973,7 @@ Result<bool> HybridScanChoices::AdvanceToNextRow(
       return false;
     }
   } else if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped, false)) ||
-             CurrentTargetMatchesKey(row_key->AsSlice(), &iter)) {
+             CurrentTargetMatchesKey(row_key->AsSlice())) {
     return false;
   }
   SeekToCurrentTarget(iter);
