@@ -21,17 +21,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
+import org.yb.util.RequiresReleaseBuild;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.lang.reflect.Modifier;
 
 public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
 
+  // TODO(#31675): Replace shouldRunTests() and custom runner subclasses with annotation-based
+  // filtering (like @RequiresReleaseBuild) so that build-type and platform conditions can be
+  // expressed per-method without needing a new runner class per condition.
   protected boolean shouldRunTests() {
     return true;
+  }
+
+  private Stream<FrameworkMethod> getFilteredChildren() {
+    List<FrameworkMethod> methods = super.getChildren();
+    if (TestUtils.isReleaseBuild()) {
+      return methods.stream();
+    }
+    return methods.stream()
+        .filter(m -> m.getAnnotation(RequiresReleaseBuild.class) == null);
   }
 
   public YBTestRunner(Class<?> klass) throws InitializationError {
@@ -44,7 +59,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
       return;
     }
     if (ConfForTesting.onlyCollectingTests()) {
-      for (FrameworkMethod method : super.getChildren()) {
+      getFilteredChildren().forEach(method -> {
         Class declaringClass = method.getDeclaringClass();
         final String declaringClassName = declaringClass.getName();
         final String methodName = method.getMethod().getName();
@@ -58,7 +73,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
           );
         }
         TestUtils.reportCollectedTest(specifiedClassName, methodName);
-      }
+      });
     }
   }
 
@@ -67,7 +82,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
     if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
       return Collections.emptyList();
     }
-    return super.getChildren();
+    return getFilteredChildren().collect(Collectors.toList());
   }
 
 }
