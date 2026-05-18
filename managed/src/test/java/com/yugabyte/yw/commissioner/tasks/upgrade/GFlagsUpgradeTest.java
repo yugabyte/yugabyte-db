@@ -274,7 +274,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(0)).nodeCommand(any(), commandParams.capture());
-    verify(mockClient, times(3)).flushTablets(any(), eq(9100), any());
+    verify(mockClient, times(0)).flushTablets(any(), eq(9100), any());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)

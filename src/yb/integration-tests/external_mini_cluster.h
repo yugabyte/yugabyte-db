@@ -735,11 +735,20 @@ YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 // Utility class for waiting for logging events. There can only be one LogWaiter at a time.
 class LogWaiter : public ExternalDaemon::StringListener {
  public:
-  LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);
-  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait);
+  LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait)
+      : LogWaiter(std::vector{daemon}, std::vector{string_to_wait}) {}
+
+  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait)
+      : LogWaiter(daemons, std::vector{string_to_wait}) {}
+
+  LogWaiter(ExternalDaemon* daemon, std::vector<std::string> string_to_wait)
+      : LogWaiter(std::vector{daemon}, std::vector{string_to_wait}) {}
+
+  LogWaiter(std::vector<ExternalDaemon*> daemons, std::vector<std::string> string_to_wait);
 
   Status WaitFor(MonoDelta timeout);
   bool IsEventOccurred() { return event_occurred_; }
+  std::string matched_log_line() const;
 
   ~LogWaiter();
 
@@ -748,7 +757,10 @@ class LogWaiter : public ExternalDaemon::StringListener {
 
   std::vector<ExternalDaemon*> daemons_;
   std::atomic<bool> event_occurred_{false};
-  const std::string string_to_wait_;
+  const std::vector<std::string> strings_to_wait_;
+
+  mutable std::mutex mutex_;
+  std::string matched_log_line_ GUARDED_BY(mutex_);
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon

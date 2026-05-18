@@ -97,7 +97,6 @@ DECLARE_double(auto_compact_percent_obsolete);
 
 DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
-DECLARE_int32(full_compaction_pool_max_queue_size);
 DECLARE_int32(full_compaction_pool_max_threads);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(replication_factor);
@@ -786,8 +785,8 @@ TEST_F(CompactionTest, UpdateLastFullCompactionTimeForTableWithoutWrites) {
 }
 
 namespace {
-  // Make the queue size twice as big as the number of tablets so that by default, we will
-  // not overfill the queue.
+  // Used below to size the test workload (number of tablets); chosen to comfortably exceed
+  // kPoolMaxThreads so several tablets must wait their turn in the unbounded compaction queue.
   constexpr auto kQueueSize = kDefaultNumTablets * 2;
   constexpr auto kPoolMaxThreads = 1;
 }  // namespace
@@ -795,9 +794,6 @@ namespace {
 class ScheduledFullCompactionsTest : public CompactionTest {
  public:
   void SetUp() override {
-    // Before cluster setup, set the full compaction queue size to be greater than
-    // the number of tablets.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_queue_size) = kQueueSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads)
         = kPoolMaxThreads;
     // Set the check interval to 0, to ensure there is no conflict with the background

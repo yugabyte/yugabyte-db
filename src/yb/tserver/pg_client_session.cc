@@ -4317,10 +4317,11 @@ class PgClientSession::Impl {
 };
 
 PgClientSession::PgClientSession(
-    TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
-    client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+    SharedThisSource shared_this_source, rpc::Scheduler& scheduler,
+    TransactionBuilder&& transaction_builder, client::YBClient& client,
+    std::reference_wrapper<const PgClientSessionContext> context,
     uint64_t id, pid_t pid, uint64_t lease_epoch,
-    tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
+    tserver::TSLocalLockManagerPtr ts_local_lock_manager)
     : impl_(new Impl(
           std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
           id, pid, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}

@@ -40,6 +40,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/json_document.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -74,6 +75,7 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
+DECLARE_uint64(arena_warn_threshold_bytes);
 
 namespace yb {
 
@@ -1458,6 +1460,41 @@ TEST_F(CqlTest, SelectAggregateFunctions) {
   }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Exercises the aggregate-private arena recycling path in DocExprExecutor by
+// scanning many rows whose column values would grow the arena far past the
+// arena-warn threshold if the recycling logic were not in place.
+TEST_F(CqlTest, AggregateArenaReset) {
+  constexpr int kNumRows = 1000;
+  constexpr size_t kValueLen = 1000;
+
+  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
+  // through a single arena and trip this warning. With recycling, each arena
+  // generation stays well below the threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE tbl (k INT PRIMARY KEY, v TEXT) WITH tablets = 1"));
+
+  std::string expected_min;
+  for (int i = 0; i < kNumRows; ++i) {
+    auto v = RandomHumanReadableString(kValueLen);
+    if (expected_min.empty() || v < expected_min) {
+      expected_min = v;
+    }
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v)));
+  }
+
+  CassandraStatement stmt("SELECT min(v) FROM tbl");
+  stmt.SetPageSize(100);
+  auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+  ASSERT_EQ(expected_min, res.RenderToString());
+
+  ASSERT_EQ(arena_warning_sink.GetEventCount(), 0);
 }
 
 TEST_F(CqlTest, CheckStateAfterDrop) {

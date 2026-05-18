@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <shared_mutex>
 #include <utility>
 
 #include "yb/rocksdb/util/heap.h"
@@ -37,8 +38,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
-    RETURN_NOT_OK(impl().DoInsert(vector_id, v));
-    return Status::OK();
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::unique_lock lock(TEST_search_exact_mutex_);
+      return impl().DoInsert(vector_id, v);
+    }
+    return impl().DoInsert(vector_id, v);
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
@@ -60,6 +64,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       const Vector& query_vector, const SearchOptions& options)
       const override {
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::shared_lock lock(TEST_search_exact_mutex_);
       return SearchExact(query_vector, options);
     }
     return impl().DoSearch(query_vector, options);
@@ -99,6 +104,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
+  mutable std::shared_mutex TEST_search_exact_mutex_;
 };
 
 template <typename Vector, typename IteratorImpl>

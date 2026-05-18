@@ -3634,6 +3634,20 @@ OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 
+Status RaftConsensus::CheckReadyAsRbsSource() {
+  OpId pending_split_op_id;
+  {
+    auto lock = state_->LockForRead();
+    pending_split_op_id = state_->GetPendingSplitOpIdUnlocked();
+  }
+  if (pending_split_op_id.empty()) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      TryAgain, "Replica can not be used as RBS source due to pending split operation $0",
+      pending_split_op_id);
+}
+
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
   LOG_WITH_PREFIX(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
   mark_dirty_clbk_.Run(context);

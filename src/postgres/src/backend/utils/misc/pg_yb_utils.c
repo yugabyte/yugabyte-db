@@ -2203,7 +2203,7 @@ bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
 bool		yb_enable_update_reltuples_after_create_index = false;
-bool		yb_enable_index_backfill_column_projection = false;
+bool		yb_enable_index_backfill_scan_optimization = false;
 int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
 bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
@@ -2213,6 +2213,7 @@ int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
+bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
@@ -2253,7 +2254,8 @@ YbQpmConfiguration yb_qpm_configuration = {
 	.track_catalog_queries = true,
 	.plan_format = EXPLAIN_FORMAT_JSON,
 	.verbose_plans = false,
-	.compress_text = true
+	.compress_text = true,
+	.show_max_exec_params = false
 };
 
 bool		yb_speculatively_execute_pl_statements = false;

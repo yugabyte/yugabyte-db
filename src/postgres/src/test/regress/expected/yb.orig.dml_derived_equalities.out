@@ -22,9 +22,8 @@ CREATE TABLE orders (
 );
 -- Secondary index with expression (not generated column)
 CREATE INDEX orders_created_idx ON orders((yb_hash_code(created_at) % 3) ASC, created_at ASC);
-INSERT INTO orders VALUES
-    (1, 100, '2024-01-01'::timestamptz),
-    (2, 100, '2024-01-02'::timestamptz);
+INSERT INTO orders SELECT i, 100, '2024-01-01'::timestamptz + ((i-1)::text||' days')::interval
+    FROM generate_series(1, 100) i;
 ANALYZE orders;
 -- Multi-column bucket (bucket depends on user_id AND order_id)
 \set query ':P SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;'

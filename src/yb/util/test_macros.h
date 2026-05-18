@@ -106,6 +106,9 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
+#define ASSERT_BETWEEN(val, lower_bound, upper_bound) \
+  do { ASSERT_GE(val, lower_bound); ASSERT_LE(val, upper_bound); } while (false)
+
 #define ASSERT_OK_PREPEND(status, msg) do { \
   auto&& _assert_status = (status); \
   if (_assert_status.ok()) { \

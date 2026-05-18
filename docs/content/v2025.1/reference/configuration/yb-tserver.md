@@ -1937,16 +1937,6 @@ Default: `1`
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
 
-##### --full_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}
-
-
-Default: `500`
-{{% /tags/wrap %}}
-
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}

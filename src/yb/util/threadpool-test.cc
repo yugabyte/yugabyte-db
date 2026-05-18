@@ -277,7 +277,7 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   MonoDelta idle_timeout = MonoDelta::FromMilliseconds(1);
   std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
-      .set_min_threads(1).set_max_threads(4).set_max_queue_size(1)
+      .set_min_threads(1).set_max_threads(4)
       .set_idle_timeout(idle_timeout).Build(&thread_pool));
   // There is 1 thread to start with.
   ASSERT_EQ(1, thread_pool->NumWorkers());
@@ -292,12 +292,10 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   ASSERT_EQ(3, thread_pool->NumWorkers());
   ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->NumWorkers());
-  // The 5th piece of work gets queued.
+  // Additional work gets queued without spawning more threads.
   ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->NumWorkers());
-  // The 6th piece of work gets rejected.
-  // TODO(thread_pool) Do we need max queue size option?
-  // ASSERT_NOK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->NumWorkers());
   // Finish all work
   latch.CountDown();
@@ -307,63 +305,13 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   ASSERT_EQ(0, thread_pool->NumWorkers());
 }
 
-TEST_F(TestThreadPool, TestMaxQueueSize) {
-  std::unique_ptr<ThreadPool> thread_pool;
-  ASSERT_OK(ThreadPoolBuilder("test")
-      .set_min_threads(1).set_max_threads(1)
-      .set_max_queue_size(1).Build(&thread_pool));
-
-  CountDownLatch latch(1);
-  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
-  Status s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
-  // We race against the worker thread to re-enqueue.
-  // If we get there first, we fail on the 2nd Submit().
-  // If the worker dequeues first, we fail on the 3rd.
-  if (s.ok()) {
-    s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
-  }
-  // TODO(thread_pool) Do we need max queue size option?
-  // CHECK(s.IsServiceUnavailable()) << "Expected failure due to queue blowout:" << s.ToString();
-  latch.CountDown();
-  thread_pool->Wait();
-  thread_pool->Shutdown();
-}
-
-void TestQueueSizeZero(int max_threads) {
-  std::unique_ptr<ThreadPool> thread_pool;
-  ASSERT_OK(ThreadPoolBuilder("test")
-                .set_min_threads(0).set_max_threads(max_threads)
-                .set_max_queue_size(0).Build(&thread_pool));
-
-  CountDownLatch latch(1);
-  for (int i = 0; i < max_threads; i++) {
-    ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
-  }
-  Status s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
-  // TODO(thread_pool) Do we need max queue size option?
-  // ASSERT_TRUE(s.IsServiceUnavailable()) << "Expected failure due to queue blowout:" << s;
-  latch.CountDown();
-  thread_pool->Wait();
-  thread_pool->Shutdown();
-}
-
-TEST_F(TestThreadPool, TestMaxQueueZero) {
-  TestQueueSizeZero(1);
-  TestQueueSizeZero(5);
-}
-
-
-TEST_F(TestThreadPool, DISABLED_TestMaxQueueZeroNoThreads) {
-  TestQueueSizeZero(0);
-}
-
 // Test that setting a promise from another thread yields
 // a value on the current thread.
 TEST_F(TestThreadPool, TestPromises) {
   std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
       .set_min_threads(1).set_max_threads(1)
-      .set_max_queue_size(1).Build(&thread_pool));
+      .Build(&thread_pool));
 
   Promise<int> my_promise;
   ASSERT_OK(thread_pool->SubmitClosure(
@@ -667,28 +615,6 @@ TEST_F(TestThreadPool, TestFuzz) {
   if (r.Next() % 2 == 0) {
     thread_pool->Shutdown();
   }
-}
-
-TEST_P(TestThreadPoolTokenTypes, TestTokenSubmissionsAdhereToMaxQueueSize) {
-  std::unique_ptr<ThreadPool> thread_pool;
-  ASSERT_OK(ThreadPoolBuilder("test")
-                .set_min_threads(1)
-                .set_max_threads(1)
-                .set_max_queue_size(1)
-                .Build(&thread_pool));
-
-  CountDownLatch latch(1);
-  unique_ptr<ThreadPoolToken> t = thread_pool->NewToken(GetParam());
-  auto se = ScopeExit([&latch] {
-                     latch.CountDown();
-    });
-  // We will be able to submit two tasks: one for max_threads == 1 and one for
-  // max_queue_size == 1.
-  ASSERT_OK(t->Submit(SlowTask::NewSlowTask(&latch)));
-  ASSERT_OK(t->Submit(SlowTask::NewSlowTask(&latch)));
-  Status s = t->Submit(SlowTask::NewSlowTask(&latch));
-  // TODO(thread_pool) Do we need max queue size option?
-  // ASSERT_TRUE(s.IsServiceUnavailable());
 }
 
 TEST_F(TestThreadPool, TestTokenConcurrency) {

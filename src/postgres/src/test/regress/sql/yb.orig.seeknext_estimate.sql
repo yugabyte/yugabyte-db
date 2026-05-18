@@ -54,7 +54,7 @@ where x.qid is not null and q.qid is not null;
 
 update explain_query_options set with_analyze = true;
 
--- 24 queries still fail until https://phorge.dev.yugabyte.com/D45097 lands
+-- should not return any row.
 select * from check_seeknext_estimates
 where "Seek Estimates" <> 'passed' or "Next/Prev Estimates" <> 'passed'
 order by qid, nid;

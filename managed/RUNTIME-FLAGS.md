@@ -169,6 +169,7 @@
 | "Wait( in milliseconds ) between each retries on UNAVAILABLE status" | "ybc.client_settings.wait_each_unavailable_retry_ms" | "GLOBAL" | "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE status" | "Integer" |
 | "Wait( in milliseconds ) for YB-Controller RPC response" | "ybc.client_settings.deadline_ms" | "GLOBAL" | "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side DEADLINE_EXCEEDED" | "Integer" |
 | "Enable RBAC for Groups" | "yb.security.group_mapping_rbac_support" | "GLOBAL" | "Map LDAP/OIDC groups to custom roles defined by RBAC." | "Boolean" |
+| "Allow SuperAdmin in LDAP/OIDC group and user role mappings" | "yb.security.allow_superadmin_user_group_mapping" | "GLOBAL" | "When true, a SuperAdmin may assign the SuperAdmin system role via role bindings (including to LDAP/OIDC users) and may include SuperAdmin in LDAP/OIDC group mappings. When false, those operations are rejected." | "Boolean" |
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Node Agent Enabler Run Installer" | "yb.node_agent.enabler.run_installer" | "GLOBAL" | "Enable or disable the background installer in node agent enabler" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |

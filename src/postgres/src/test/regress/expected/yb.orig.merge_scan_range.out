@@ -23,25 +23,25 @@
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
+         Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
 (8 rows)
 
-                           QUERY PLAN                            
------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
+         Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
@@ -3642,25 +3642,25 @@ SPLIT AT VALUES (
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
 (8 rows)
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
@@ -3868,6 +3868,9 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index scan VS merge PK scan
+-- Expected secondary index scan; merge PK scan likely wins due to missing
+-- merge-scan-specific cost model overhead/savings, expected to be fixed by
+-- https://github.com/yugabyte/yugabyte-db/issues/29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5;'
 \i :iter_P2
 \set _echo_P :ECHO
@@ -4189,25 +4192,25 @@ SPLIT AT VALUES (
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
 (8 rows)
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
@@ -4388,6 +4391,7 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index only scan VS merge PK scan
+-- Expected secondary index-only scan; merge PK scan is expected to be fixed by #29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5;'
 \i :iter_P2
 \set _echo_P :ECHO
@@ -4410,8 +4414,8 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 487
 (14 rows)
 
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, n, r1
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -4419,14 +4423,17 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Only Scan using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, n, r1
-               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
-               Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
-(14 rows)
+               Index Cond: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
+               Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
+               Merge Stream Key: r5n.r1
+               Merge Streams: 5
+               Merge Cond: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 25
+(17 rows)
 
  r2 | r3 | r4 |   n   | r1 
 ----+----+----+-------+----
@@ -5119,25 +5126,25 @@ SPLIT AT VALUES (
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21
 (8 rows)
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 21

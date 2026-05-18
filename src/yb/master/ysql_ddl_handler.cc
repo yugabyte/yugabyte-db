@@ -828,16 +828,25 @@ void CatalogManager::RemoveDdlRollbackToSubTxnStateUnlocked(
 
   LOG(INFO) << "Removing " << table_id << " from DDL rollback to sub-transaction state for "
             << txn_id;
+
+  auto& indexes_skipped_due_to_base_table_deletion =
+      iter->second.indexes_skipped_due_to_base_table_deletion;
+  if (indexes_skipped_due_to_base_table_deletion.erase(table_id) > 0) {
+    VLOG(1) << "Removed " << table_id << " from indexes_skipped_due_to_base_table_deletion for "
+            << txn_id;
+  }
+
   auto& tables = iter->second.tables;
   const auto num_tables = std::erase_if(
       tables, [&table_id](const TableInfoPtr& table) { return table->id() == table_id; });
   DCHECK_LE(num_tables, 1);
-  if (tables.empty()) {
+  if (tables.empty() && indexes_skipped_due_to_base_table_deletion.empty()) {
     LOG(INFO) << "Erasing DDL rollback to sub-transaction state " << txn_id;
     ysql_ddl_txn_undergoing_subtransaction_rollback_map_.erase(iter);
   } else {
     VLOG(1) << "DDL rollback to sub-transaction for " << txn_id << " has " << tables.size()
-            << " tables remaining";
+            << " tables and " << indexes_skipped_due_to_base_table_deletion.size()
+            << " indexes skipped due to base table deletion remaining";
   }
 }
 

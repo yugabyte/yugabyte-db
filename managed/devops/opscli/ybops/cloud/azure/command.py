@@ -19,8 +19,8 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzureQueryCurrentHostMethod, AzureQueryDeviceNames
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
     InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessDeleteKeyMethod, \
-    TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    RebootInstancesMethod, RunHooks, WaitForConnection, ManageOtelCollector
+    TransferXClusterCerts, VerifySSHConnection, RebootInstancesMethod, RunHooks, \
+    WaitForConnection, ManageOtelCollector
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -49,8 +49,6 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(AzureChangeInstanceTypeMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
-        self.add_method(AddAuthorizedKey(self))
-        self.add_method(RemoveAuthorizedKey(self))
         self.add_method(AzurePauseInstancesMethod(self))
         self.add_method(AzureResumeInstancesMethod(self))
         self.add_method(RebootInstancesMethod(self))

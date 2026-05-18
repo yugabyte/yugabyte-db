@@ -3278,7 +3278,7 @@ TEST_F_EX(
       ASSERT_OK(cluster_->WaitForAllIntentsApplied(ts, 15s * kTimeMultiplier));
       ASSERT_OK(ts->FlushTablets({source_tablet_id}));
       // Prevent leader changes.
-      ASSERT_OK(cluster_->SetFlag(ts, "enable_leader_failure_detection", "false"));
+      ASSERT_OK(cluster_->SetFlag(ts, "TEST_do_not_start_election_test_only", "true"));
     }
   }
 
@@ -3304,9 +3304,14 @@ TEST_F_EX(
   // Delaying RBS WAL downloading to start after leader marked SPLIT_OP as Raft-committed.
   // By the time RBS starts to download WAL, RocksDB is already downloaded, so flushed op ID will
   // be less than SPLIT_OP ID, so it will be replayed by server_to_bootstrap.
+  // It is also correct and expected to get an error "Tablet ... is not ready as RBS source"
+  // after https://github.com/yugabyte/yugabyte-db/issues/27056 is fixed.
   LogWaiter log_waiter(
-      server_to_bootstrap,
-      source_tablet_id + ": Pausing due to flag TEST_pause_rbs_before_download_wal");
+    server_to_bootstrap,
+    {
+      source_tablet_id + ": Pausing due to flag TEST_pause_rbs_before_download_wal",
+      Format("Tablet $0 is not ready as RBS source", source_tablet_id)
+    });
   ASSERT_OK(server_to_bootstrap->Restart(
       ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       {std::make_pair("TEST_pause_rbs_before_download_wal", "true")}));
@@ -3323,16 +3328,36 @@ TEST_F_EX(
   ASSERT_OK(cluster_->SetFlag(
       server_to_bootstrap, "TEST_pause_rbs_before_download_wal", "false"));
 
-  // Wait until RBS replays SPLIT_OP.
-  ASSERT_OK(WaitForTabletsExcept(2, server_to_bootstrap_idx, source_tablet_id));
+  // Wait until server_to_bootstrap has parent replica fully opened and split-completed, regardless
+  // of whether SPLIT_OP was replayed locally after RBS or was already reflected in the downloaded
+  // superblock.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        const auto tablets = VERIFY_RESULT(cluster_->ListTablets(server_to_bootstrap));
+        for (const auto& tablet : tablets.status_and_schema()) {
+          const auto& status = tablet.tablet_status();
+          if (status.tablet_id() == source_tablet_id &&
+              status.state() == tablet::RaftGroupStatePB::RUNNING &&
+              status.tablet_data_state() == tablet::TABLET_DATA_SPLIT_COMPLETED) {
+            return true;
+          }
+        }
+        return false;
+      },
+      15s * kTimeMultiplier,
+      Format(
+          "Waiting for parent tablet $0 to become split-completed on server $1", source_tablet_id,
+          server_to_bootstrap->uuid())));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_do_not_start_election_test_only", "false"));
+
+  // Wait for child tablets to be ready on server_to_bootstrap.
   ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, kWaitForTabletsRunningTimeout));
 
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, kWaitForTabletsRunningTimeout));
 
   ASSERT_OK(WaitForTabletsExcept(2, other_follower_idx, source_tablet_id));
   ASSERT_OK(cluster_->WaitForTabletsRunning(other_follower, kWaitForTabletsRunningTimeout));
-
-  ASSERT_OK(cluster_->SetFlagOnTServers("enable_leader_failure_detection", "true"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return WriteRows().ok();
@@ -4114,6 +4139,79 @@ Status CheckFollowerLag(
   return Status::OK();
 }
 
+// AddServer RPC only returns when CONFIG_CHANGE_OP is majority replicated, so we do it async to
+// avoid deadlock inside test.
+class AddServerForTabletAsyncHelper {
+ public:
+  AddServerForTabletAsyncHelper(
+      const TabletId& tablet_id, const itest::TServerDetails& leader,
+      const itest::TServerDetails& replica_to_add, const MonoDelta& timeout) {
+    thread_holder_.AddThreadFunctor(
+        [leader = &leader, tablet_id, replica_to_add = &replica_to_add, timeout, this] {
+          auto status = itest::AddServer(
+              leader, tablet_id, replica_to_add, consensus::PeerMemberType::PRE_VOTER,
+              std::nullopt, timeout);
+          ERROR_NOT_OK(status, "AddServer error: ");
+          status_ = status;
+        });
+  }
+
+  Status Wait() {
+    thread_holder_.JoinAll();
+    auto status = status_;
+    status_ = Status::OK();
+    return status;
+  }
+
+  ~AddServerForTabletAsyncHelper() { CHECK_OK(Wait()); }
+
+ private:
+  Status status_;
+  TestThreadHolder thread_holder_;
+};
+
+Status WaitForRbsCompletionAndCheckFollowerLag(
+    ExternalMiniCluster& cluster, const itest::TabletServerMap& ts_map,
+    const TabletId& parent_tablet_id, const client::YBTableInfo& table,
+    ExternalTabletServer& added_tserver, const MonoDelta& timeout) {
+  RETURN_NOT_OK(cluster.SetFlag(&added_tserver, "TEST_pause_rbs_before_download_wal", "false"));
+  RETURN_NOT_OK(WaitUntilTabletRunning(
+      ts_map.find(added_tserver.uuid())->second.get(), parent_tablet_id, timeout));
+  LOG(INFO) << "Parent tablet peer on added tserver has completed bootstrap";
+
+  RETURN_NOT_OK(CheckFollowerLag(cluster, ts_map, parent_tablet_id, "Parent tablet"));
+
+  {
+    const auto tablets_resp = VERIFY_RESULT(cluster.ListTablets(&added_tserver));
+    for (const auto& status_and_schema : tablets_resp.status_and_schema()) {
+      const auto& tablet_status = status_and_schema.tablet_status();
+      const auto& tablet_id = tablet_status.tablet_id();
+      if (tablet_status.table_id() != table.table_id) {
+        continue;
+      }
+      if (tablet_id == parent_tablet_id) {
+        continue;
+      }
+      return STATUS_FORMAT(
+          InternalError, "We don't expect child tablets at added tserver but got: $0", tablet_id);
+    }
+  }
+
+  SleepFor((kMaxAcceptableFollowerLagMs + 100) * 1ms);
+
+  master::GetTableLocationsResponsePB resp;
+  RETURN_NOT_OK(itest::GetTableLocations(
+      &cluster, table.table_name, timeout, RequireTabletsRunning::kFalse, &resp));
+
+  for (const auto& tablet_loc : resp.tablet_locations()) {
+    const auto& tablet_id = tablet_loc.tablet_id();
+    RETURN_NOT_OK(CheckFollowerLag(
+        cluster, ts_map, tablet_id,
+        std::string(tablet_id == parent_tablet_id ? "Parent" : "Child") + " tablet"));
+  }
+  return Status::OK();
+}
+
 } // namespace
 
 TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniClusterITest) {
@@ -4125,8 +4223,8 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(4, kTimeout));
   auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
-  auto* added_tserver = cluster_->tablet_server(3);
-  const auto added_tserver_id = added_tserver->uuid();
+  auto& added_tserver = *cluster_->tablet_server(3);
+  const auto added_tserver_id = added_tserver.uuid();
 
   ASSERT_OK(WriteRowsAndFlush());
   const auto parent_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
@@ -4156,19 +4254,11 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
       kTimeout, {parent_leader_tserver_details}, parent_tablet_id, last_logged_op_id.index + 1,
       /* actual_index = */ nullptr, itest::MustBeCommitted::kFalse));
 
-  ASSERT_OK(cluster_->SetFlag(added_tserver, "TEST_pause_rbs_before_download_wal", "true"));
+  ASSERT_OK(cluster_->SetFlag(&added_tserver, "TEST_pause_rbs_before_download_wal", "true"));
 
   LOG(INFO) << "Adding server " << added_tserver_id << " for parent tablet " << parent_tablet_id;
-  // AddServer RPC only returns when CONFIG_CHANGE_OP is majority replicated, so we do it async to
-  // avoid deadlock inside test.
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&, added_tserver_details = ts_map[added_tserver_id].get()]() {
-    auto status = itest::AddServer(
-        parent_leader_tserver_details, parent_tablet_id, added_tserver_details,
-        consensus::PeerMemberType::PRE_VOTER, std::nullopt, kTimeout);
-    ERROR_NOT_OK(status, "AddServer error: ");
-    ASSERT_OK(status);
-  });
+  AddServerForTabletAsyncHelper add_server_helper(
+      parent_tablet_id, *parent_leader_tserver_details, *ts_map[added_tserver_id], kTimeout);
 
   // Give some time for RBS to start and reach downloading WAL files. We can't wait for this event
   // explicitly because with the fix RBS won't happen.
@@ -4178,8 +4268,7 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
   ASSERT_OK(
       cluster_->SetFlag(parent_leader_tserver, "TEST_pause_update_majority_replicated", "false"));
 
-  thread_holder.JoinAll();
-  NO_PENDING_FATALS();
+  ASSERT_OK(add_server_helper.Wait());
 
   ASSERT_OK(WaitFor([&] -> Result<bool> {
     const auto parent_leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(parent_tablet_id));
@@ -4197,46 +4286,111 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
     return cstate.config().peers_size() == 4;
   }, kTimeout, "Wait for parent tablet peer to have committed Raft config with 4 peers"));
 
-  ASSERT_OK(cluster_->SetFlag(added_tserver, "TEST_pause_rbs_before_download_wal", "false"));
-  ASSERT_OK(WaitUntilTabletRunning(ts_map[added_tserver_id].get(), parent_tablet_id, kTimeout));
-  LOG(INFO) << "Parent tablet peer on added tserver has completed bootstrap";
+  const auto table_info = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName));
+  ASSERT_OK(WaitForRbsCompletionAndCheckFollowerLag(
+      *cluster_, ts_map, parent_tablet_id, table_info, added_tserver, kTimeout));
+}
 
-  ASSERT_OK(CheckFollowerLag(*cluster_, ts_map, parent_tablet_id, "Parent tablet"));
-
-  const auto test_table_id = ASSERT_RESULT(GetTestTableId());
-  std::vector<TabletId> child_tablet_ids;
-  ASSERT_OK(WaitFor(
-      [&] -> Result<bool> {
-        auto tablets_resp = VERIFY_RESULT(cluster_->ListTablets(added_tserver));
-        for (const auto& status_and_schema : tablets_resp.status_and_schema()) {
-          const auto& tablet_status = status_and_schema.tablet_status();
-          if (tablet_status.table_id() != test_table_id) {
-            continue;
-          }
-          if (tablet_status.tablet_id() == parent_tablet_id) {
-            continue;
-          }
-          // Child tablet
-          return tablet_status.state() == tablet::RaftGroupStatePB::RUNNING;
-        }
-        return true;
-      },
-      kTimeout,
-      "Wait for child tablets to become either running or deleted (won't be listed by ListTablets) "
-      "on added tserver"));
-
-  SleepFor((kMaxAcceptableFollowerLagMs + 100) * 1ms);
-
-  master::GetTableLocationsResponsePB resp;
-  ASSERT_OK(itest::GetTableLocations(
-      cluster_.get(), table_->name(), kTimeout, RequireTabletsRunning::kFalse, &resp));
-
-  for (const auto& tablet_loc : resp.tablet_locations()) {
-    const auto& tablet_id = tablet_loc.tablet_id();
-    ASSERT_OK(CheckFollowerLag(
-        *cluster_, ts_map, tablet_id,
-        std::string(tablet_id == parent_tablet_id ? "Parent" : "Child") + " tablet"));
+class MultiZoneTabletSplitExternalMiniClusterITest : public TabletSplitExternalMiniClusterITest {
+ public:
+  void SetFlags() override {
+    TabletSplitExternalMiniClusterITest::SetFlags();
+    mini_cluster_opt_.extra_tserver_flags.push_back("--placement_zone=z${index}");
   }
+};
+
+TEST_F_EX(
+    TabletSplitITest, SplitWithParentTabletRbsFromFollower,
+    MultiZoneTabletSplitExternalMiniClusterITest) {
+  constexpr auto kTimeout = 15s * kTimeMultiplier;
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_deleting_split_tablets", "true"));
+
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  auto* ts3 = cluster_->tablet_server(2);
+
+  CreateSingleTablet();
+  const auto parent_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
+  LOG(INFO) << "Parent tablet id: " << parent_tablet_id;
+
+  // Make sure leader is ts-1 (in z0).
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  ASSERT_OK(
+      itest::WaitForAllPeersToCatchup(parent_tablet_id, TServerDetailsVector(ts_map), kTimeout));
+  {
+    const auto parent_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(parent_tablet_id));
+    if (parent_leader_idx != 0) {
+      ASSERT_OK(LeaderStepDown(
+          ts_map[cluster_->tablet_server(parent_leader_idx)->uuid()].get(), parent_tablet_id,
+          ts_map[ts1->uuid()].get(), kTimeout));
+      ASSERT_OK(WaitUntilLeader(
+          ts_map[ts1->uuid()].get(), parent_tablet_id, kTimeout,
+          consensus::LeaderLeaseCheckMode::DONT_NEED_LEASE));
+    }
+  }
+
+  ASSERT_OK(WriteRowsAndFlush());
+
+  // We want SPLIT_OP to be added to Raft log but not yet applied on followers.
+  for (auto* ts : {ts2, ts3}) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_pause_apply_tablet_split", "true"));
+  }
+
+  {
+    LogWaiter log_waiter({ts2, ts3}, "Pausing due to flag TEST_pause_apply_tablet_split");
+    ASSERT_OK(SplitTablet(parent_tablet_id));
+    ASSERT_OK(log_waiter.WaitFor(kTimeout));
+  }
+
+  ASSERT_OK(cluster_->AddTabletServer(true, {"--placement_zone=z2"}));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, kTimeout));
+  auto& added_tserver = *cluster_->tablet_server(3);
+  const auto added_tserver_id = added_tserver.uuid();
+  ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+
+  ASSERT_OK(cluster_->SetFlag(&added_tserver, "TEST_pause_rbs_before_download_wal", "true"));
+
+  LOG(INFO) << "Adding server " << added_tserver_id << " for parent tablet " << parent_tablet_id;
+  AddServerForTabletAsyncHelper add_server_helper(
+      parent_tablet_id, *ts_map[ts1->uuid()], *ts_map[added_tserver_id], kTimeout);
+
+  LogWaiter log_waiter(
+      &added_tserver,
+      parent_tablet_id + ": Pausing due to flag TEST_pause_rbs_before_download_wal");
+
+  // Unpause applying SPLIT_OP on followers.
+  for (auto* ts : {ts2, ts3}) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_pause_apply_tablet_split", "false"));
+  }
+
+  ASSERT_OK(log_waiter.WaitFor(kTimeout));
+
+  ASSERT_OK(add_server_helper.Wait());
+
+  ASSERT_OK(WaitFor([&] -> Result<bool> {
+    for (auto ts_idx = 0; ts_idx < 3; ++ts_idx) {
+      const auto ts_uuid = cluster_->tablet_server(ts_idx)->uuid();
+
+      consensus::ConsensusStatePB cstate;
+      auto status = itest::GetConsensusState(
+          ts_map[ts_uuid].get(), parent_tablet_id, consensus::CONSENSUS_CONFIG_COMMITTED,
+          kRpcTimeout, &cstate);
+
+      if (!status.ok()) {
+        return false;
+      }
+
+      if (cstate.config().peers_size() != 4) {
+        return false;
+      }
+    }
+    return true;
+  }, kTimeout, "Wait for parent tablet peers to have committed Raft config with 4 peers"));
+
+  const auto table_info = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName));
+  ASSERT_OK(WaitForRbsCompletionAndCheckFollowerLag(
+      *cluster_, ts_map, parent_tablet_id, table_info, added_tserver, kTimeout));
 }
 
 }  // namespace yb

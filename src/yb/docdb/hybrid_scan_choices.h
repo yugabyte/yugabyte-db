@@ -312,9 +312,10 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
-  // Updates the bloom filter key and the upper bound to the current scan target when using
-  // variable bloom filter.
-  Status UpdateUpperBound(IntentAwareIterator* iterator);
+  // Publishes the current scan_target_ to the iterator by updating its bloom filter key and
+  // upper bound. No-op outside of variable bloom filter mode. Should be called after any
+  // mutation of scan_target_ that leaves it in a valid state.
+  Status SyncIteratorToScanTarget(IntentAwareIterator* iterator);
 
   const bool is_forward_scan_;
   ScanTarget scan_target_;
@@ -366,6 +367,7 @@ class HybridScanChoices : public ScanChoices {
   docdb::BloomFilterOptions bloom_filter_options_;
 
   KeyBytes upper_bound_;
+  const char* bloom_filter_start_ = nullptr;
   std::optional<IntentAwareIteratorUpperboundScope> iterator_bound_scope_;
 
   ArenaPtr arena_;

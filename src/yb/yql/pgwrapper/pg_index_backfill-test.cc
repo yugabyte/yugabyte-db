@@ -3147,31 +3147,8 @@ TEST_P(PgIndexBackfillIgnoreApplyTest, Backward) {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillIgnoreApplyTest, ::testing::Bool());
 
-// Tests index backfill column projection optimization across various index types.
-//
-// The optimization reduces RPCs by fetching only columns needed for the index
-// rather than entire rows. We validate this by creating tables with ~5KB rows but small
-// indexed columns, then measuring RPCs with a 1KB fetch limit. With projection enabled,
-// many rows fit per RPC; without it, each row requires its own RPC.
-//
-// Backfill workers run in separate backends, so GUCs must be set cluster-wide via
-// ysql_pg_conf_csv to affect them. The test parameter controls whether projection is enabled.
-class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
+class PgIndexBackfillRpcStatsTest : public PgIndexBackfillTest {
  protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    const bool projection_enabled = GetParam();
-    options->extra_tserver_flags.push_back(Format(
-        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
-        "yb_fetch_size_limit=$0,"
-        "yb_enable_index_backfill_column_projection=$1",
-        kFetchSizeLimit, projection_enabled ? "true" : "false"));
-  }
-
-  void SetUp() override {
-    PgIndexBackfillTest::SetUp();
-  }
-
   Result<int64_t> GetBackfillReadRpcs() {
     return conn_->FetchRow<int64_t>(
         "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
@@ -3184,6 +3161,59 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
         "FROM pg_stat_statements(true) "
         "WHERE query LIKE 'CREATE INDEX%'");
+  }
+
+  Result<int64_t> BuildIndexAndGetRpcs(
+      const std::string& create_index_sql, bool use_backfill_rpcs = true) {
+    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
+    RETURN_NOT_OK(conn_->Execute(create_index_sql));
+    return use_backfill_rpcs ? GetBackfillReadRpcs() : GetCreateIndexReadRpcs();
+  }
+
+  // Verifies that RPCs are below max_enabled_rpcs when the optimization is enabled, and above
+  // min_disabled_rpcs when it is disabled.
+  Status ValidateRpcs(
+      int64_t rpcs, bool optimization_enabled, int64_t max_enabled_rpcs,
+      int64_t min_disabled_rpcs, const std::string& optimization_name) {
+    if (rpcs == 0) {
+      return STATUS(RuntimeError, "Expected some RPCs during backfill");
+    }
+
+    if (optimization_enabled && rpcs >= max_enabled_rpcs) {
+      return STATUS_FORMAT(
+          RuntimeError, "Expected < $0 RPCs with $1 enabled, got $2",
+          max_enabled_rpcs, optimization_name, rpcs);
+    }
+
+    if (!optimization_enabled && rpcs <= min_disabled_rpcs) {
+      return STATUS_FORMAT(
+          RuntimeError, "Expected > $0 RPCs with $1 disabled, got $2",
+          min_disabled_rpcs, optimization_name, rpcs);
+    }
+
+    return Status::OK();
+  }
+};
+
+// Tests index backfill column projection optimization across various index types.
+//
+// The optimization reduces RPCs by fetching only columns needed for the index
+// rather than entire rows. We validate this by creating tables with ~5KB rows but small
+// indexed columns, then measuring RPCs with a 1KB fetch limit. With projection enabled,
+// many rows fit per RPC; without it, each row requires its own RPC.
+//
+// Backfill workers run in separate backends, so GUCs must be set cluster-wide via
+// ysql_pg_conf_csv to affect them. The test parameter controls whether projection is enabled.
+class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillRpcStatsTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillRpcStatsTest::UpdateMiniClusterOptions(options);
+    const bool projection_enabled = GetParam();
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
+        "yb_fetch_size_limit=$0,"
+        "yb_enable_index_backfill_scan_optimization=$1",
+        kFetchSizeLimit, projection_enabled ? "true" : "false"));
   }
 
   Status CreateWideTable(const std::string& table_name, const std::string& pk_def = "id") {
@@ -3206,31 +3236,9 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         table_name, kPaddingSize, num_rows);
   }
 
-  Result<int64_t> BuildIndexAndGetRpcs(
-      const std::string& create_index_sql, bool use_backfill_rpcs = true) {
-    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
-    RETURN_NOT_OK(conn_->Execute(create_index_sql));
-    return use_backfill_rpcs ? GetBackfillReadRpcs() : GetCreateIndexReadRpcs();
-  }
-
   Status ValidateRpcs(int64_t rpcs) {
-    const bool projection_enabled = GetParam();
-    if (rpcs == 0) {
-      return STATUS(RuntimeError, "Expected some RPCs during backfill");
-    }
-    if (projection_enabled) {
-      if (rpcs >= kMaxProjectedRpcs) {
-        return STATUS_FORMAT(
-            RuntimeError, "Expected < $0 RPCs with projection, got $1", kMaxProjectedRpcs, rpcs);
-      }
-    } else {
-      if (rpcs <= kMinUnprojectedRpcs) {
-        return STATUS_FORMAT(
-            RuntimeError, "Expected > $0 RPCs without projection, got $1",
-            kMinUnprojectedRpcs, rpcs);
-      }
-    }
-    return Status::OK();
+    return PgIndexBackfillRpcStatsTest::ValidateRpcs(
+        rpcs, GetParam(), kMaxProjectedRpcs, kMinUnprojectedRpcs, "column projection");
   }
 
   static constexpr int kFetchSizeLimit = 1000;
@@ -3377,6 +3385,156 @@ TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1, col2)", /* use_backfill_rpcs */ false));
   ASSERT_OK(ValidateRpcs(rpcs));
+}
+
+// Tests to validate that pushing the index predicate down to the base table scan during backfill
+// reduces the number of read RPCs.
+class PgIndexBackfillPredicatePushdownTest : public PgIndexBackfillRpcStatsTest {
+ protected:
+  // Use a single tserver so that pg_stat_statements always captures backfill RPC stats on the same
+  // node as the test connection.
+  int GetNumTabletServers() const override { return 1; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillRpcStatsTest::UpdateMiniClusterOptions(options);
+    const auto predicate_pushdown_enabled = GetParam() ? "true" : "false";
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
+        "yb_fetch_row_limit=$0,"
+        "yb_enable_index_backfill_scan_optimization=$1",
+        kFetchRowLimit, predicate_pushdown_enabled));
+  }
+
+  void SetUp() override {
+    PgIndexBackfillRpcStatsTest::SetUp();
+    ASSERT_OK(CreateTable(kTableName));
+    ASSERT_OK(InsertTestData(kTableName));
+  }
+
+  Status CreateTable(const std::string& table_name) {
+    return conn_->ExecuteFormat(
+        "CREATE TABLE $0 ("
+        "  id SERIAL,"
+        "  col1 INT,"
+        "  col2 TEXT,"
+        "  PRIMARY KEY (id)"
+        ") SPLIT INTO 1 TABLETS",
+        table_name);
+  }
+
+  Status InsertTestData(const std::string& table_name) {
+    return conn_->ExecuteFormat(
+        "INSERT INTO $0 (col1, col2) (SELECT i, 'text_' || i FROM generate_series(1, $1) AS i)",
+        table_name, kNumRows);
+  }
+
+  Status ValidateRpcs(int64_t rpcs) {
+    return PgIndexBackfillRpcStatsTest::ValidateRpcs(
+        rpcs, GetParam(), kMaxPushdownRpcs, kMinNoPushdownRpcs, "predicate pushdown");
+  }
+
+  // Predicate col1 > 400 matches rows 401-500 (100 rows).
+  // With kFetchRowLimit=10, each RPC returns exactly 10 rows:
+  //  - Pushdown enabled:  100 matching rows / 10 = 10 RPCs
+  //  - Pushdown disabled: 500 total rows    / 10 = 50 RPCs
+  static constexpr int kFetchRowLimit = 10;
+  static constexpr int kNumRows = 500;
+  static constexpr int kMaxPushdownRpcs = 10 + 1;
+  static constexpr int kMinNoPushdownRpcs = 50 - 1;
+  static constexpr int kExactNoPushdownRpcs = kNumRows / kFetchRowLimit;
+  static constexpr auto kTableName = "test_predicate_pushdown";
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillPredicatePushdownTest, ::testing::Bool());
+
+// Partial hash index: predicate column is the same as the indexed column.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialHashSameColumn) {
+  auto rpcs = ASSERT_RESULT(
+      BuildIndexAndGetRpcs(Format(
+          "CREATE INDEX idx ON $0 (col1 HASH) SPLIT INTO 1 TABLETS WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial range index: predicate column is the same as the indexed column.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialRangeSameColumn) {
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index where the predicate column differs from the indexed column.
+// The index is on col2, but the predicate filters on col1 (20% selectivity).
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexDifferentPredicateColumn) {
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col2 ASC) WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate contains a zero-argument volatile function.
+// Postgres optimizes the predicate to a one-time evaluation since the function contains no column
+// references. This one-time evaluation is inlined, and therefore the CREATE INDEX command allows
+// this predicate even though it is marked as volatile.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVolatilePredicateZeroArg) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION volatile_const() RETURNS INT VOLATILE "
+      "AS $$ SELECT 400 $$ LANGUAGE SQL"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE col1 > volatile_const()", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate contains a volatile function with a column argument.
+// The presence of the column arguments forces this function to be evaluated per-row.
+// Postgres executes the function as an inlined expression, and therefore the CREATE INDEX command
+// allows this predicate even though it is marked as volatile.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVolatilePredicate) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION identity_volatile(x INT) RETURNS INT VOLATILE "
+      "AS $$ SELECT x $$ LANGUAGE SQL"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE identity_volatile(col1) > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate invokes an immutable variadic function. Execution of variadic
+// functions are not supported for expression pushdown, nor can it be inlined. This test validates
+// that the predicate pushdown optimization is not applied to this case.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVariadicPredicate) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION identity_variadic(VARIADIC args INT[]) RETURNS INT IMMUTABLE "
+      "AS $$ SELECT args[1] $$ LANGUAGE SQL"));
+
+  // Index 1: predicate is an unpushable variadic function call.
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx1 ON $0 (col1 ASC) WHERE identity_variadic(VARIADIC ARRAY[col1]) > 400",
+      kTableName)));
+  ASSERT_EQ(rpcs, kExactNoPushdownRpcs);
+  ASSERT_OK(CheckIndexConsistency("idx1"));
+
+  // Index 2: predicate is <unpushable OR pushable>. The unpushable sub-expression makes the entire
+  // OR expression unpushable, so the predicate pushdown optimization is not applied.
+  rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx2 ON $0 (col1 ASC) "
+      "WHERE identity_variadic(VARIADIC ARRAY[col1]) > 400 OR col1 > 450",
+      kTableName)));
+  ASSERT_EQ(rpcs, kExactNoPushdownRpcs);
+  ASSERT_OK(CheckIndexConsistency("idx2"));
+
+  // Index 3: predicate is <pushable AND unpushable>. Unlike OR, the optimizer can extract the
+  // pushable sub-expression from an AND clause and push only that part to DocDB. So col1 > 400 is
+  // pushed, filtering to 100 rows before the local check.
+  rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx3 ON $0 (col1 ASC) "
+      "WHERE col1 > 400 AND identity_variadic(VARIADIC ARRAY[col1]) > 400",
+      kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx3"));
 }
 
 // Test to validate concurrent updates to non-key columns of a covering index during index backfill.

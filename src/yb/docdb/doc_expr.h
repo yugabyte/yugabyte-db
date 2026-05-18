@@ -85,7 +85,17 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
   Status EvalParametricToJson(
       const PB& operand, const qlexpr::QLTableRow& table_row, const Schema *schema, Val* value);
 
+  // Ensures aggr_result_ contains `size` entries bound to an aggregate-private arena.
+  // If that arena's memory footprint has grown beyond a fixed threshold, the running
+  // aggregate values are migrated to a fresh arena and the old one is dropped. This
+  // bounds peak memory usage while iterating over many rows (e.g. SUM/MIN/MAX over
+  // millions of rows with string/decimal/varint columns), where each row's column
+  // read otherwise accumulates on the long-lived request arena.
+  void PrepareAggregateResults(size_t size);
+
+  ThreadSafeArenaPtr aggr_result_arena_;
   std::vector<qlexpr::LWExprResult> aggr_result_;
+  size_t aggr_invocations_since_reset_ = 0;
 };
 
 } // namespace docdb

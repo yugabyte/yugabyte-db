@@ -262,10 +262,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_threads, 128,
              "to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
 
-DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
-             "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
-             "is used to run multiple read operations, that are part of the same tablet rpc, "
-             "in parallel.");
+DEPRECATE_FLAG(int32, read_pool_max_queue_size, "05_2026");
 
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
@@ -276,11 +273,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
 
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
-             "The maximum number of tasks that can be held in the pool for "
-             "full_compaction_pool_. This pool is used to run full compactions on tablets "
-             "on a scheduled basis or after they have been split and still contain irrelevant data "
-             "from the tablet they were sourced from.");
+DEPRECATE_FLAG(int32, full_compaction_pool_max_queue_size, "05_2026");
 
 DEPRECATE_FLAG(int32, scheduled_full_compaction_check_interval_min, "02_2024");
 
@@ -576,7 +569,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       .run_time_us_stats = METRIC_op_read_run_time.Instantiate(server_->metric_entity())};
   CHECK_OK(ThreadPoolBuilder("read-parallel")
                .set_max_threads(FLAGS_read_pool_max_threads)
-               .set_max_queue_size(FLAGS_read_pool_max_queue_size)
                .set_metrics(std::move(read_metrics))
                .Build(&read_pool_));
   CHECK_OK(ThreadPoolBuilder("admin-compaction")
@@ -586,7 +578,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .Build(&admin_triggered_compaction_pool_));
   CHECK_OK(ThreadPoolBuilder("full-compaction")
               .set_max_threads(FLAGS_full_compaction_pool_max_threads)
-              .set_max_queue_size(FLAGS_full_compaction_pool_max_queue_size)
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), full_compaction_pool))
               .Build(&full_compaction_pool_));

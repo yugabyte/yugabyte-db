@@ -3290,7 +3290,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // The table info objects of the tables affected by this rollback to sub-transaction operation.
     std::vector<TableInfoPtr> tables;
     // Set of index tables whose deletion due to rollback to sub-transaction operation was skipped
-    // since its base table.
+    // since its base table is also being deleted.
     std::unordered_set<TableId> indexes_skipped_due_to_base_table_deletion;
   };
 

@@ -329,6 +329,7 @@ static SlruCtlData NotifyCtlData;
 #define NotifyCtl					(&NotifyCtlData)
 #define QUEUE_PAGESIZE				BLCKSZ
 #define QUEUE_FULL_WARN_INTERVAL	5000	/* warn at most once every 5s */
+#define YB_SIGKILL_TIMEOUT_MS		10000	/* escalate SIGTERM to SIGKILL */
 
 /*
  * Use segments 0000 through FFFF.  Each contains SLRU_PAGES_PER_SEGMENT pages
@@ -689,7 +690,10 @@ static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
 static void ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record);
-static bool ybTerminateSlowestListener(void);
+static int32 ybTerminateSlowestListener(void);
+static int32 ybEvictSlowestListener(TimestampTz *sigtermTime);
+static bool ybIsListenerPid(int32 pid);
+static bool ybPollEviction(int32 sigtermPid, TimestampTz sigtermTime);
 static void ybNotifsPollerAddPendingEntriesToQueue(void);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
@@ -3320,34 +3324,20 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
  * Find the slowest listener (the one furthest behind in the queue) and
  * terminate it so the queue tail can advance.
  *
- * Only terminate if some other listener has fully caught up (position ==
- * QUEUE_HEAD). If every listener still has scanning to do, killing the
- * slowest one would not help the others and would just disrupt a session
- * unnecessarily. This also naturally prevents termination when there is only a
- * single listener.
+ * Caller must hold NotifyQueueLock in EXCLUSIVE mode.
  *
- * Returns true if SIGTERM was sent, false otherwise.
- *
- * Caller must hold NotifyQueueLock in at least SHARED mode.
+ * Returns the PID that was signaled, or InvalidPid if no slow listener found.
  */
-static bool
+static int32
 ybTerminateSlowestListener(void)
 {
 	QueuePosition minPos = QUEUE_HEAD;
 	int32		minPid = InvalidPid;
-	bool		hasCaughtUpListener = false;
 
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
 	{
 		Assert(QUEUE_BACKEND_PID(i) != InvalidPid);
 
-		if (QUEUE_POS_EQUAL(QUEUE_BACKEND_POS(i), QUEUE_HEAD))
-		{
-			hasCaughtUpListener = true;
-			continue;
-		}
-
-		/* This listener is behind; track the furthest-behind one. */
 		QueuePosition newMin = QUEUE_POS_MIN(minPos, QUEUE_BACKEND_POS(i));
 
 		if (!QUEUE_POS_EQUAL(newMin, minPos))
@@ -3357,14 +3347,88 @@ ybTerminateSlowestListener(void)
 		}
 	}
 
-	if (minPid == InvalidPid || !hasCaughtUpListener)
-		return false;
+	if (minPid == InvalidPid)
+		return InvalidPid;
 
 	elog(WARNING,
 		 "NOTIFY queue is full, terminating slowest listener (PID %d)",
 		 minPid);
 	kill(minPid, SIGTERM);
-	return true;
+	return minPid;
+}
+
+/*
+ * Signal listening backends to catch up and, if the queue is still full,
+ * SIGTERM the slowest listener.
+ *
+ * Called with NotifyQueueLock not held.
+ * Returns the PID that was sent SIGTERM, or InvalidPid.
+ */
+static int32
+ybEvictSlowestListener(TimestampTz *sigtermTime)
+{
+	int32		pid = InvalidPid;
+
+	SignalBackends();
+	CHECK_FOR_INTERRUPTS();
+	pg_usleep(500000L);
+	asyncQueueAdvanceTail();
+
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	if (asyncQueueIsFull())
+	{
+		pid = ybTerminateSlowestListener();
+		if (pid != InvalidPid)
+			*sigtermTime = GetCurrentTimestamp();
+	}
+	LWLockRelease(NotifyQueueLock);
+	return pid;
+}
+
+/* Must be called with NotifyQueueLock in EXCLUSIVE mode. */
+static bool
+ybIsListenerPid(int32 pid)
+{
+	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+	{
+		if (QUEUE_BACKEND_PID(i) == pid)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Poll whether a previously SIGTERM'd listener has exited. If the target is
+ * no longer a listener, returns true. If the SIGKILL timeout has elapsed and
+ * the target is still a listener, escalates to SIGKILL and returns true.
+ * Otherwise returns false (caller should retry).
+ */
+static bool
+ybPollEviction(int32 sigtermPid, TimestampTz sigtermTime)
+{
+	bool		terminated = false;
+
+	CHECK_FOR_INTERRUPTS();
+	pg_usleep(500000L);
+	asyncQueueAdvanceTail();
+
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	if (!ybIsListenerPid(sigtermPid))
+	{
+		terminated = true;
+	}
+	else if (TimestampDifferenceExceeds(sigtermTime, GetCurrentTimestamp(),
+										YB_SIGKILL_TIMEOUT_MS))
+	{
+		elog(WARNING,
+			 "NOTIFY queue is full, SIGTERM did not terminate "
+			 "PID %d within %d ms, escalating to SIGKILL",
+			 sigtermPid, YB_SIGKILL_TIMEOUT_MS);
+		kill(sigtermPid, SIGKILL);
+		terminated = true;
+	}
+	LWLockRelease(NotifyQueueLock);
+	return terminated;
 }
 
 /*
@@ -3375,7 +3439,8 @@ static void
 ybNotifsPollerAddPendingEntriesToQueue(void)
 {
 	ListCell   *nextQueueEntry = list_head(ybNotifsPollerPendingEntries);
-	bool		sigtermSent = false;
+	int32		sigtermPid = InvalidPid;
+	TimestampTz sigtermTime = 0;
 
 	while (nextQueueEntry != NULL)
 	{
@@ -3384,29 +3449,15 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 		if (asyncQueueIsFull())
 		{
-			/*
-			 * After sending SIGTERM, suppress further signals until the queue
-			 * drains.
-			 */
-			if (!sigtermSent)
-				sigtermSent = ybTerminateSlowestListener();
 			LWLockRelease(NotifyQueueLock);
-
-			/*
-			 * The queue can become full in the middle of writing notifications
-			 * of a transaction. Signal the backends so the fast listeners, if
-			 * any, can read till the end of the queue and the slowest listener
-			 * can be terminated in the next call to
-			 * ybTerminateSlowestListener().
-			 */
-			if (!sigtermSent)
-				SignalBackends();
-			CHECK_FOR_INTERRUPTS();
-			pg_usleep(sigtermSent ? 500000L : 10000L);
-			asyncQueueAdvanceTail();
+			if (sigtermPid == InvalidPid)
+				sigtermPid = ybEvictSlowestListener(&sigtermTime);
+			else if (ybPollEviction(sigtermPid, sigtermTime))
+				sigtermPid = InvalidPid;
 			continue;
 		}
-		sigtermSent = false;
+
+		sigtermPid = InvalidPid;
 		nextQueueEntry = asyncQueueAddEntries(nextQueueEntry);
 		LWLockRelease(NotifyQueueLock);
 	}

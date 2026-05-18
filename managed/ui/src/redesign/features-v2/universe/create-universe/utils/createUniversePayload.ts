@@ -189,7 +189,7 @@ export const mapCreateUniversePayload = (
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
         enable_ipv6: securitySettings.enableIPV6 ?? false,
-        ...(otherAdvancedSettings?.enableExposingService && {
+        ...(securitySettings?.enableExposingService && {
           enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
         })
       },
@@ -225,7 +225,7 @@ export const mapCreateUniversePayload = (
           }),
           networking_spec: {
             enable_lb: true,
-            enable_exposing_service: otherAdvancedSettings?.enableExposingService
+            enable_exposing_service: securitySettings?.enableExposingService
               ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
               : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
             ...(proxySettings.enableProxyServer

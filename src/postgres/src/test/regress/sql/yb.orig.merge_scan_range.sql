@@ -354,6 +354,9 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Secondary index scan VS merge PK scan
+-- Expected secondary index scan; merge PK scan likely wins due to missing
+-- merge-scan-specific cost model overhead/savings, expected to be fixed by
+-- https://github.com/yugabyte/yugabyte-db/issues/29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5;'
 \i :iter_P2
 
@@ -530,6 +533,7 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Secondary index only scan VS merge PK scan
+-- Expected secondary index-only scan; merge PK scan is expected to be fixed by #29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5;'
 \i :iter_P2
 

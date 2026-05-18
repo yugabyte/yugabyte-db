@@ -229,7 +229,8 @@ public class GroupMappingController extends AuthenticatedController {
 
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
-      throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can update group mappings!");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Only SuperAdmin can update group mappings!");
     }
 
     data.getOidcGroupToYbaRolesPairs()
@@ -338,7 +339,8 @@ public class GroupMappingController extends AuthenticatedController {
   public Result deleteOidcGroupMapping(UUID customerUUID, String groupName, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
-      throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can delete group mappings!");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Only SuperAdmin can delete group mappings!");
     }
     GroupMappingInfo entity =
         GroupMappingInfo.find
@@ -349,7 +351,8 @@ public class GroupMappingController extends AuthenticatedController {
             .ieq("identifier", groupName)
             .findOne();
     if (entity == null) {
-      throw new PlatformServiceException(NOT_FOUND, "No OIDC group found with name: " + groupName);
+      throw new PlatformServiceException(
+          Http.Status.NOT_FOUND, "No OIDC group found with name: " + groupName);
     }
     entity.delete();
     log.info("Deleted OIDC group with name: " + groupName);

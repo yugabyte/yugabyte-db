@@ -2,7 +2,14 @@ import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
-import { AssignPublicIPField, EARField, EITField, K8EITField, IPV6Field } from '../../fields';
+import {
+  AssignPublicIPField,
+  EARField,
+  EITField,
+  K8EITField,
+  IPV6Field,
+  NetworkAcessField
+} from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import {
   CreateUniverseContext,
@@ -25,7 +32,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { securitySettings, generalSettings },
     { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const provider = generalSettings?.providerConfiguration;
 
@@ -77,14 +84,15 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
         <StyledPanel>
           <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
-          <StyledContent>
-            {provider?.code !== CloudType.kubernetes && (
+          <StyledContent sx={{ gap: '16px' }}>
+            {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
               <AssignPublicIPField
                 disabled={false}
                 providerCode={generalSettings?.providerConfiguration?.code ?? ''}
               />
             )}
             {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
+            {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
           </StyledContent>
         </StyledPanel>
         <StyledPanel>

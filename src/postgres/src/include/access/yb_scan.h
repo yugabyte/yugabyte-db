@@ -265,7 +265,8 @@ extern void ybc_heap_endscan(TableScanDesc scanDesc);
  */
 extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
 														Snapshot snapshot,
-														struct IndexInfo *indexInfo);
+														struct IndexInfo *indexInfo,
+														YbPushdownExprs *yb_pushdown);
 
 
 extern void YbBindDatumToColumn(YbcPgStatement stmt,

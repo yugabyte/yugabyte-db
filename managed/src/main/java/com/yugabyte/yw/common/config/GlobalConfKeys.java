@@ -1620,6 +1620,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Map LDAP/OIDC groups to custom roles defined by RBAC.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowSuperadminUserGroupMapping =
+      new ConfKeyInfo<>(
+          "yb.security.allow_superadmin_user_group_mapping",
+          ScopeType.GLOBAL,
+          "Allow SuperAdmin in LDAP/OIDC group and user role mappings",
+          "When true, a SuperAdmin may assign the SuperAdmin system role"
+              + " via role bindings (including to LDAP/OIDC users) and may"
+              + " include SuperAdmin in LDAP/OIDC group mappings. When false,"
+              + " those operations are rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverPollerInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.poller_interval",

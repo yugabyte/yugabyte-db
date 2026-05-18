@@ -3116,11 +3116,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
-  if (aggr_result_.empty()) {
-    while (aggr_result_.size() < request_.targets().size()) {
-      aggr_result_.emplace_back(&request_.arena());
-    }
-  }
+  PrepareAggregateResults(request_.targets().size());
 
   int aggr_index = 0;
   for (const auto& expr : request_.targets()) {

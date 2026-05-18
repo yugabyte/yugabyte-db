@@ -27,4 +27,5 @@ export interface SecuritySettingsProps {
   enableClientToNodeEncryption?: boolean;
   rootCToNCertificate?: string;
   certTypeCToN?: CertType;
+  enableExposingService: boolean;
 }

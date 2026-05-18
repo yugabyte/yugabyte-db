@@ -3441,14 +3441,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_index_backfill_column_projection", PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Enables index backfill column projection optimization. "
-						 "If true, index build/backfill only reads columns needed for the index, "
-						 "rather than all columns from the base table."),
+		{"yb_enable_index_backfill_scan_optimization", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables index backfill scan optimizations. "
+						 "If true, index build/backfill reads only the columns needed for the "
+						 "index and pushes partial index predicates down to the base table scan."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_enable_index_backfill_column_projection,
+		&yb_enable_index_backfill_scan_optimization,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3460,6 +3460,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
+						 "when types mismatch."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_batched_docdb_lookup_when_types_mismatch,
 		true,
 		NULL, NULL, NULL
 	},
@@ -4043,6 +4055,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&yb_enable_mage,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_show_max_exec_params", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Show QPM maximum execution time parameter values."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.show_max_exec_params,
 		false,
 		NULL, NULL, NULL
 	},
@@ -7980,6 +8003,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
 	"yb_test_make_all_ddl_statements_incrementing",
+	"yb_pg_stat_plans_show_max_exec_params",
 };
 
 
