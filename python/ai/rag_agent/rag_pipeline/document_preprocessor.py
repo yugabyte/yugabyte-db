@@ -356,8 +356,15 @@ class DocumentPreprocessor(TaskProcessor):
                         self.logger.error(f"Error retrieving RAG index name: {str(e)}")
                         raise
 
+                    trace_id = (
+                        transform_span.trace_id
+                        if transform_span and hasattr(transform_span, "trace_id")
+                        else None
+                    )
                     self.source_document_tracking.update_document_status(
-                        document_id=document_id, status="PROCESSING"
+                        document_id=document_id,
+                        status="PROCESSING",
+                        trace_id=trace_id,
                     )
 
                     # Start processing

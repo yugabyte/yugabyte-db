@@ -89,7 +89,10 @@ CREATE TABLE dist_rag.documents (
   document_type TEXT,
 
   -- Current state
-  status dist_rag.document_processing_status_enum NOT NULL DEFAULT 'QUEUED'
+  status dist_rag.document_processing_status_enum NOT NULL DEFAULT 'QUEUED',
+
+  -- Extensible details (e.g. observability trace references)
+  document_details JSONB
 
 );
 
@@ -585,6 +588,8 @@ SELECT
     d.document_uri,
     d.document_checksum,
     d.status as document_status,
+    d.document_type,
+    d.document_details,
     pd.pipeline_id,
     pd.status as pipeline_status,
     pd.chunks_processed,

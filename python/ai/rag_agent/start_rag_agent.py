@@ -179,6 +179,7 @@ def polling_worker():
 
     try:
         poller = Poller()
+        idle_since = None
 
         while polling_active:
             try:
@@ -195,6 +196,7 @@ def polling_worker():
                 )
 
                 if task:
+                    idle_since = None
                     logger.info(
                         f"Acquired task: id={task.id}, "
                         f"type={task.task_type}, "
@@ -204,11 +206,13 @@ def polling_worker():
                 else:
                     # No task available, sleep briefly before polling again
                     sleep_duration = POLL_IDLE_SLEEP
+                    if idle_since is None:
+                        idle_since = time.time()
+                        logger.info(
+                            f"No tasks available, entering idle polling every "
+                            f"{sleep_duration} seconds"
+                        )
                     time.sleep(sleep_duration)
-                    logger.info(
-                        f"No task available, sleeping for "
-                        f"{sleep_duration} seconds before polling again"
-                    )
 
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
