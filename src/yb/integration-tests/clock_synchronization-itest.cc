@@ -37,6 +37,7 @@
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_string(time_source);
 
@@ -115,6 +116,18 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   virtual void SetupFlags() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = "mock";
+    // MockClock returns a frozen physical time, so the HybridClock's logical component is the only
+    // thing advancing across Now() calls. After 4096 calls within the same physical microsecond,
+    // HandleLogicalComponentOverflow() bumps last_usec by 1, which then trips the
+    // "clock went backwards" branch in NowWithError and triggers a FATAL when
+    // fail_on_out_of_range_clock_skew is true (the default) and clock_skew_control is enabled by
+    // any transactional tablet in the mini-cluster. Under ASAN the slower test execution gives
+    // background pollers enough wall-clock time to reach the 4096-call threshold before the test
+    // body completes, causing ~97% flakiness on alma9-clang21-asan (issue #31467). This crash is
+    // an artifact of the mock clock interacting with the skew detector and is not the behavior
+    // this test is designed to exercise, so disable the FATAL the same way transaction-test.cc and
+    // snapshot-txn-test.cc do.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
   }
 
   std::unique_ptr<client::YBClient> client_;
