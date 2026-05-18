@@ -12,19 +12,17 @@
 //
 package org.yb.pgsql;
 
-import static org.junit.Assume.assumeTrue;
-
 import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresReleaseBuild;
 
 /**
  * Runs pg_regress tests covering planner/optimizer estimates.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressPlannerEstimates extends BasePgRegressTest {
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     protected Map<String, String> getTServerFlags() {
@@ -33,13 +31,12 @@ public class TestPgRegressPlannerEstimates extends BasePgRegressTest {
         return flagMap;
     }
 
+    // EXPLAIN ANALYZE RocksDB seek/next metrics are unstable in sanitizer and
+    // fastdebug builds (see #22052 and #30842), making these estimate checks
+    // unreliable there.
     @Test
+    @RequiresReleaseBuild
     public void schedule() throws Exception {
-        // EXPLAIN ANALYZE RocksDB seek/next metrics are unstable in sanitizer and
-        // fastdebug builds (see #22052 and #30842), making these estimate checks
-        // unreliable there.
-        assumeTrue("Skipping planner estimate checks on sanitizer/fastdebug builds",
-            !BuildTypeUtil.isSanitizerBuild() && !BuildTypeUtil.isFastDebug());
         runPgRegressTest("yb_planner_estimates_schedule");
     }
 }
