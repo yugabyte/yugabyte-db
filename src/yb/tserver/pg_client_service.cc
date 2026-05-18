@@ -69,6 +69,7 @@
 
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_client_session.h"
+#include "yb/tserver/pg_db_cache.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_session_guard.h"
@@ -863,8 +864,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionManagerProvider transaction_manager_provider,
-      TransactionPoolProvider transaction_pool_provider,
-      rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
+      TransactionPoolProvider transaction_pool_provider, rpc::Messenger* messenger,
+      const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions& tablet_server_opts)
@@ -875,6 +876,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future_),
+        db_cache_(client_future_),
         check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
@@ -895,15 +897,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .shared_mem_pool = shared_mem_pool_,
             .metrics = PgClientSessionMetrics{metric_entity},
             .instance_uuid = instance_id_,
-            .lock_owner_registry =
-                tablet_server_.ObjectLockSharedStateManager()
-                    ? &tablet_server_.ObjectLockSharedStateManager()->registry()
-                    : nullptr,
+            .lock_owner_registry = tablet_server_.ObjectLockSharedStateManager()
+                                       ? &tablet_server_.ObjectLockSharedStateManager()->registry()
+                                       : nullptr,
             .transaction_manager_provider = transaction_manager_provider_,
 #ifdef __linux__
             .cgroup_manager = tablet_server_.cgroup_manager(),
 #endif
-            },
+        },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -1078,6 +1079,15 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
     return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
+  }
+
+  Status IsDatabaseColocated(
+      const PgIsDatabaseColocatedRequestPB& req, PgIsDatabaseColocatedResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto info = VERIFY_RESULT(db_cache_.GetColocationInfo(req.database_oid()));
+    resp->set_colocated(info.colocated);
+    resp->set_legacy_colocated_database(info.legacy_colocated_database);
+    return Status::OK();
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
@@ -2612,12 +2622,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   void InvalidateTableCache() {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
+    db_cache_.Clear();
   }
 
   void InvalidateTableCache(
       const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
       const std::unordered_set<uint32_t>& db_oids_deleted) {
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
+    db_cache_.Invalidate(db_oids_deleted);
   }
 
   void CleanupSessions(
@@ -3209,6 +3221,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   TransactionPoolProvider transaction_pool_provider_;
   rpc::Messenger& messenger_;
   PgTableCache table_cache_;
+  PgDbCache db_cache_;
   rw_spinlock mutex_;
 
   struct OidPrefetchChunk {
