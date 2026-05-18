@@ -1,6 +1,5 @@
 package org.yb.pgsql;
 
-import static org.junit.Assume.assumeTrue;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_AND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
@@ -22,10 +21,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
-import org.yb.client.TestUtils;
 import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
+import org.yb.util.RequiresReleaseBuild;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
@@ -741,8 +740,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   }
 
   @Test
+  @RequiresReleaseBuild // BitmapScan has much fewer nexts in fastdebug (#22052)
   public void testSeekNextEstimationBitmapScan() throws Exception {
-    assumeTrue("BitmapScan has much fewer nexts in fastdebug (#22052)", TestUtils.isReleaseBuild());
 
     // (DB-12674) Allow tests to run in round-robin allocation mode when
     // using a pool of warmed up connections to allow for deterministic results.
