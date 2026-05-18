@@ -834,6 +834,11 @@ extern bool yb_enable_inplace_index_update;
 extern bool yb_enable_advisory_locks;
 
 /*
+ * Toggle support for concurrent DDLs. (DEPRECATED)
+ */
+extern bool yb_enable_concurrent_ddl;
+
+/*
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;

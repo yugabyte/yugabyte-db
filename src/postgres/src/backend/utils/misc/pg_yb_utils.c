@@ -2391,6 +2391,9 @@ bool		yb_enable_negative_catcache_entries = false;
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
 
+/* DEPRECATED */
+bool		yb_enable_concurrent_ddl = false;
+
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
