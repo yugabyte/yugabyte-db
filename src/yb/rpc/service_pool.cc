@@ -45,6 +45,7 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/inbound_call.h"
@@ -472,21 +473,29 @@ class ServicePoolImpl final : public InboundCallHandler {
     scoped_refptr<Counter> overflow;
   };
 
+  // The hot (steady-state) lookup path does a heterogeneous std::string_view lookup
+  // against per_method_counters_ under a SharedLock, so it does not allocate. We only
+  // materialize a std::string when we are about to insert a new entry (i.e. the first
+  // time we see a given method name on this service pool). See TransparentStringMap
+  // alias below.
+  //
   // TODO(#31673): once Abseil containers are available we should migrate
-  // per_method_counters_ to absl::flat_hash_map with a transparent string hash, which
-  // would let the hot lookup path skip the per-call Slice->std::string allocation
-  // performed below.
+  // per_method_counters_ to absl::flat_hash_map; the transparent-hash lookup story is
+  // already solved, so #31673 is now a cache-locality / open-addressing improvement
+  // rather than a fix for any per-call allocation.
   PerMethodCounters* GetPerMethodCounters(Slice method_name) EXCLUDES(per_method_mutex_) {
-    auto method_str = method_name.ToBuffer();
+    const std::string_view method_sv = method_name.AsStringView();
     {
       SharedLock<std::shared_mutex> lock(per_method_mutex_);
-      auto it = per_method_counters_.find(method_str);
+      auto it = per_method_counters_.find(method_sv);
       if (PREDICT_TRUE(it != per_method_counters_.end())) {
         return &it->second;
       }
     }
     std::lock_guard lock(per_method_mutex_);
-    auto it = per_method_counters_.find(method_str);
+    // Double-check after upgrading to the exclusive lock; someone else may have inserted
+    // this method's entry between the shared-lock release and the exclusive-lock acquire.
+    auto it = per_method_counters_.find(method_sv);
     if (it != per_method_counters_.end()) {
       return &it->second;
     }
@@ -496,11 +505,12 @@ class ServicePoolImpl final : public InboundCallHandler {
       YB_LOG_EVERY_N_SECS(WARNING, 60)
           << LogPrefix()
           << "Reached the per-service-pool cap of " << kMaxPerMethodMetrics
-          << " distinct RPC method names; new method '" << method_str
+          << " distinct RPC method names; new method '" << method_sv
           << "' will not get its own per-method metrics. Aggregate counters are unaffected.";
       return nullptr;
     }
-    auto [new_it, inserted] = per_method_counters_.try_emplace(std::move(method_str));
+    // Miss path: allocate the std::string only now, for use as the map key.
+    auto [new_it, inserted] = per_method_counters_.try_emplace(std::string(method_sv));
     if (inserted) {
       new_it->second = MakePerMethodCounters(new_it->first);
     }
@@ -548,7 +558,10 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_started_processing_;
   scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
   std::shared_mutex per_method_mutex_;
-  std::unordered_map<std::string, PerMethodCounters> per_method_counters_
+  // UnorderedStringMap pairs StringHash (with is_transparent) and std::equal_to<void>
+  // so that the steady-state .find() call can accept a std::string_view without
+  // synthesizing a temporary std::string. See GetPerMethodCounters().
+  UnorderedStringMap<std::string, PerMethodCounters> per_method_counters_
       GUARDED_BY(per_method_mutex_);
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
