@@ -95,9 +95,13 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
       int stats_update_interval_ms) throws Exception {
     JsonObject pool;
 
+    // In the first fetch, it is possible that the stats are not updated and so
+    // the pool doesn't exist. In thi case, we take the avg_wait_time to be 0
     pool = getPool(db_name, user_name);
-    assertNotNull(pool);
-    int avgWaitTimeNs1 = pool.get("avg_wait_time_ns").getAsInt();
+    int avgWaitTimeNs1 = 0;
+    if (pool != null)
+      pool.get("avg_wait_time_ns").getAsInt();
+
     Thread.sleep(stats_update_interval_ms);
     pool = getPool(db_name, user_name);
     assertNotNull(pool);
