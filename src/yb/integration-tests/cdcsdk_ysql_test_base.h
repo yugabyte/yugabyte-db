@@ -647,6 +647,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool include_catalog_tables = false,
       const std::string& timeout_msg = "Stream metadata doesn't match the expected state");
 
+  Status VerifyOriginIdOnAllRecords(
+      const GetChangesResponsePB& resp, uint32_t expected_origin_id);
+
   void VerifyTabletIdsInCdcStateForStream(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TabletId>& expected_tablet_ids,

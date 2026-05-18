@@ -2705,6 +2705,30 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
       MonoDelta::FromSeconds(30), timeout_msg));
 }
 
+Status CDCSDKYsqlTest::VerifyOriginIdOnAllRecords(
+    const GetChangesResponsePB& resp, uint32_t expected_origin_id) {
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    auto op = record.row_message().op();
+    if (op != RowMessage::BEGIN && op != RowMessage::INSERT && op != RowMessage::UPDATE &&
+        op != RowMessage::DELETE && op != RowMessage::COMMIT) {
+      continue;
+    }
+    if (expected_origin_id != 0) {
+      SCHECK(
+          record.row_message().has_xrepl_origin_id(), IllegalState,
+          Format("Missing xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+      SCHECK_EQ(
+          record.row_message().xrepl_origin_id(), expected_origin_id, IllegalState,
+          Format("Wrong xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+    } else {
+      SCHECK(
+          !record.row_message().has_xrepl_origin_id(), IllegalState,
+          Format("Expected no xrepl_origin_id on op=$0", RowMessage::Op_Name(op)));
+    }
+  }
+  return Status::OK();
+}
+
 void CDCSDKYsqlTest::VerifyTabletIdsInCdcStateForStream(
     const xrepl::StreamId& stream_id,
     const std::unordered_set<TabletId>& expected_tablet_ids,
