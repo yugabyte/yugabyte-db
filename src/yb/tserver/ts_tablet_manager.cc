@@ -1180,7 +1180,24 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
   s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
   if (!s.ok()) {
-    LOG(DFATAL) << Format("Failed to schedule opening tablet $0: $1", meta->table_id(), s);
+    s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->table_id()));
+    if (s.IsServiceUnavailable()) {
+      // open_tablet_pool_ is shut down by StartShutdown() before the manager state transitions
+      // from MANAGER_STARTED_QUIESCING to MANAGER_QUIESCING, so the deferred apply task that
+      // brought us here (submitted by ApplyTabletSplit / DoApplyCloneTablet onto apply_pool_)
+      // can legitimately land in this branch during tserver shutdown.
+      //
+      // This is safe and not a data-loss path: the new tablet's RaftGroupMetadata was already
+      // flushed in TABLET_DATA_READY state, the parent was flushed in TABLET_DATA_SPLIT_COMPLETED
+      // (for SPLIT_OP), and the SPLIT_OP / CLONE_OP itself was committed via Raft before we got
+      // here. On the next tserver start, the bootstrap path will discover the on-disk metadata
+      // and open the new tablet normally.
+      LOG_WITH_PREFIX(WARNING)
+          << s << "; this can happen during tserver shutdown and is not a data-loss path: "
+                  "the new tablet's metadata is persisted and will be opened on restart.";
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << s;
+    }
     return;
   }
 }
