@@ -660,7 +660,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
   if (is_options_done_ && bloom_filter_options_.mode() == BloomFilterMode::kVariable) {
     finished_ = true;
   }
-  RETURN_NOT_OK(UpdateUpperBound(nullptr));
+  RETURN_NOT_OK(SyncIteratorToScanTarget(nullptr));
   return true;
 }
 
@@ -839,7 +839,7 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped, 
   }
 
   if (result) {
-    RETURN_NOT_OK(UpdateUpperBound(nullptr));
+    RETURN_NOT_OK(SyncIteratorToScanTarget(nullptr));
   }
 
   VLOG_WITH_FUNC(3)
@@ -903,7 +903,7 @@ Result<bool> HybridScanChoices::PrepareIterator(IntentAwareIterator& iter, Slice
   }
 
   VLOG_WITH_FUNC(3) << "current_scan_target: " << scan_target_.ToString();
-  RETURN_NOT_OK(UpdateUpperBound(&iter));
+  RETURN_NOT_OK(SyncIteratorToScanTarget(&iter));
   return true;
 }
 
@@ -972,7 +972,7 @@ Result<bool> HybridScanChoices::AdvanceToNextRow(
   return true;
 }
 
-Status HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
+Status HybridScanChoices::SyncIteratorToScanTarget(IntentAwareIterator* iter) {
   if (finished_) {
     return Status::OK();
   }
@@ -990,8 +990,14 @@ Status HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
              scan_target_.num_columns(), num_bloom_filter_cols_));
   auto bloom_filter_key = scan_target_.SliceUpToColumn(num_bloom_filter_cols_ - 1);
 
+  // Bloom filter and upper bound updates are required in the following cases:
+  // 1) It is the first call, so update is required as a part of initialization
+  // 2) scan_target_ was relocated, so all references to it was invalidated.
+  // 3) bloom filter key actually changed.
   auto need_update =
-      !iterator_bound_scope_ || bloom_filter_key != upper_bound_.AsSlice().WithoutSuffix(1);
+      !iterator_bound_scope_ ||
+      bloom_filter_start_ != scan_target_.AsSlice().cdata() ||
+      bloom_filter_key != upper_bound_.AsSlice().WithoutSuffix(1);
 
   VLOG_WITH_FUNC(4)
       << "has iter: " << (iter != nullptr) << ", current_scan_target: "
@@ -1003,6 +1009,7 @@ Status HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
   }
 
   iter->UpdateFilterKey(scan_target_.AsSlice(), scan_target_.AsSlice());
+  bloom_filter_start_ = scan_target_.AsSlice().cdata();
   upper_bound_.Reset(bloom_filter_key);
   upper_bound_.AppendKeyEntryType(KeyEntryType::kHighest);
   if (iterator_bound_scope_) {
