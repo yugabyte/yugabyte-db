@@ -947,6 +947,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsUserIndex(const ReadLock& lock) const;
   bool HasUserSpecifiedPrimaryKey(const ReadLock& lock) const;
 
+  void SetExcludeAbortingTransactionId(const TransactionId& txn_id) {
+    std::lock_guard l(lock_);
+    exclude_aborting_transaction_id_ = txn_id;
+  }
+
+  TransactionId GetExcludeAbortingTransactionId() const {
+    SharedLock l(lock_);
+    return exclude_aborting_transaction_id_;
+  }
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -984,6 +994,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  TransactionId exclude_aborting_transaction_id_ GUARDED_BY(lock_) {TransactionId::Nil()};
 
   std::atomic<bool> is_system_{false};
 

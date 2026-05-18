@@ -551,6 +551,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // NOTE: This function must only be called when we know that the table is being deleted i.e. it
   // assumes that the table is being deleted.
   bool IsTableDeletionDueToRollbackToSubTxn(const TableInfo* table, TransactionId& txn_id);
+  template <class LockType>
+  bool IsTableDeletionDueToRollbackToSubTxnWithLock(
+      const TableInfo* table, const LockType& l, TransactionId& txn_id);
 
   // Rollback all the DDL state changes made by the YSQL transaction from the end till
   // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
