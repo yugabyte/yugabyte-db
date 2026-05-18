@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,11 +56,12 @@ class YqlTest : public pgwrapper::PgMiniTestBase {
   }
 
   // Clean up resources
-  void Cleanup() {
+  void DoTearDown() override {
     if (ycql_server_) {
       ycql_server_->Shutdown();
-      ycql_server_.reset();
     }
+
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   std::unique_ptr<cqlserver::CQLServer> ycql_server_;
