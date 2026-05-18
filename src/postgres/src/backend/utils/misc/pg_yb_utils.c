@@ -355,6 +355,7 @@ int			ybc_disable_pg_locking = -1;
 static void YBCInstallTxnDdlHook();
 
 bool		yb_enable_docdb_tracing = false;
+bool		yb_enable_spi_dist_tracing = true;
 bool		yb_read_from_followers = false;
 bool		yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t		yb_follower_read_staleness_ms = 0;
