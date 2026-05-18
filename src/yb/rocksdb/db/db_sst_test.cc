@@ -1053,7 +1053,7 @@ TEST_F_EX(DBTest, SstTailZerosCheckCompaction, SstTailZerosCheckTest) {
 }
 
 TEST_F_EX(DBTest, SstTailZerosCheckCompactionRetries, SstTailZerosCheckTest) {
-  FLAGS_rocksdb_max_sst_write_retries = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_sst_write_retries) = 1;
 
   auto options = GetOptions();
 

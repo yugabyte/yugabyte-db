@@ -91,7 +91,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    FLAGS_TEST_use_custom_varz = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
     itest::SetupQuickSplit(1_KB);
     PgMiniTestBase::SetUp();
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;

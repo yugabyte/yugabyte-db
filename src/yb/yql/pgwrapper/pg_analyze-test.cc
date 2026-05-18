@@ -673,7 +673,7 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
     const auto kYsqlSamplingAlgorithm = YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING;
     const auto kBlocksSamplingMethod = DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3;
 
-    FLAGS_TEST_refresh_partitions_after_fetched_sample_blocks = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_refresh_partitions_after_fetched_sample_blocks) = true;
     RETURN_NOT_OK(RestartPostgres());
 
     const auto table_name_prefix = GetTableNamePrefix(partitioning);

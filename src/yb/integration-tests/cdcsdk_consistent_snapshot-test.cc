@@ -40,7 +40,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
       enable_replication_commands;
 
   // Disable running UpdatePeersAndMetrics for this test
-  FLAGS_enable_log_retention_by_op_idx = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
@@ -257,7 +257,7 @@ TEST_F(
 // for the slowest consumer
 TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   // Disable running UpdatePeersAndMetrics for this test
-  FLAGS_enable_log_retention_by_op_idx = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
@@ -1257,8 +1257,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-  FLAGS_cdc_snapshot_batch_size = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 

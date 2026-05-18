@@ -315,7 +315,7 @@ TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
   ASSERT_EQ(tablets_in_wrong_placement->value(), 0);
 
   // Prevent moves so we can reliably read the metric and get a non-zero value.
-  FLAGS_load_balancer_max_concurrent_adds = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_adds) = 0;
 
   unsigned int peers_on_ts = 0;
   auto ts_uuid = mini_cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
@@ -362,7 +362,7 @@ TEST_F(LoadBalancerMiniClusterTest, BlacklistedLeadersMetric) {
   ASSERT_EQ(blacklisted_leaders->value(), 0);
 
   // Prevent leader moves so we can reliably read the metric and get a non-zero value.
-  FLAGS_load_balancer_max_concurrent_moves = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 0;
 
   // Leader blacklist first tserver.
   ASSERT_OK(AddTserverToBlacklist(0 /* idx */, true /* leader_blacklist */));
@@ -685,7 +685,7 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
 
 TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
   // Make sure that deleting tablet task is failed/times out.
-  FLAGS_TEST_fail_async_delete_replica_task = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_async_delete_replica_task) = true;
   // Delete the table, async. The sync call will fail since the table will not get deleted.
   DeleteTableAsync();
   // This sleep currently functions to wait until all DeleteTablet RPCs have been sent out and have

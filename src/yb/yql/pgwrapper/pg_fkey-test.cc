@@ -80,9 +80,9 @@ struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCou
 class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_enable_automatic_tablet_splitting = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
-    FLAGS_pg_client_use_shared_memory = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -641,7 +641,7 @@ class PgFKeyFKCacheLimitTest : public PgFKeyTest {
 
   void SetUp() override {
     AppendPgConfOption(FKReferenceCacheLimitPgConfOption(kDefaultRefCacheLimit));
-    FLAGS_ysql_session_max_batch_size = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_session_max_batch_size) = 1;
     PgFKeyTest::SetUp();
   }
 
