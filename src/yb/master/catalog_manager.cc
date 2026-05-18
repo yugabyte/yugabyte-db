@@ -7394,6 +7394,13 @@ Status CatalogManager::DeleteTableInMemory(
   // Determine if we have to remove from the name map here before we change the table state.
   data.remove_from_name_map = l.data().table_type() != PGSQL_TABLE_TYPE && !l->started_hiding();
 
+  if (!hide_only && FLAGS_ysql_yb_enable_ddl_savepoint_support) {
+    TransactionId txn_id_on_table = TransactionId::Nil();
+    if (IsTableDeletionDueToRollbackToSubTxnWithLock(table.get(), l, txn_id_on_table)) {
+      table->SetExcludeAbortingTransactionId(txn_id_on_table);
+    }
+  }
+
   TRACE("Updating metadata on disk");
   // Update the metadata for the on-disk state.
   if (hide_only) {
@@ -11266,8 +11273,11 @@ Status CatalogManager::DeleteOrHideTabletsOfTable(
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
 
-  TransactionId exclude_abort_txn_id = TransactionId::Nil();
-  if (FLAGS_ysql_yb_enable_ddl_savepoint_support) {
+  // If the table was marked for deletion due to a subtransaction rollback, the DDL transaction ID
+  // is already stored in TableInfo. If we successfully retrieved it, we can skip the redundant
+  // check. Otherwise, we fall back to checking IsTableDeletionDueToRollbackToSubTxn.
+  TransactionId exclude_abort_txn_id = table_info.GetExcludeAbortingTransactionId();
+  if (exclude_abort_txn_id.IsNil() && FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     TransactionId txn_id_on_table = TransactionId::Nil();
     if (IsTableDeletionDueToRollbackToSubTxn(&table_info, txn_id_on_table)) {
       exclude_abort_txn_id = txn_id_on_table;
@@ -11436,9 +11446,16 @@ std::shared_ptr<AsyncDeleteReplica> CatalogManager::MakeDeleteReplicaTask(
     tablet::TabletDataState delete_type,
     std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
     const std::string& reason) {
-  return std::make_shared<AsyncDeleteReplica>(
+  auto task = std::make_shared<AsyncDeleteReplica>(
       master_, AsyncTaskPool(), peer_uuid, table, tablet_id, delete_type,
       cas_config_opid_index_less_or_equal, epoch, GetDeleteReplicaTaskThrottler(peer_uuid), reason);
+  if (table) {
+    auto exclude_txn_id = table->GetExcludeAbortingTransactionId();
+    if (!exclude_txn_id.IsNil()) {
+      task->set_exclude_aborting_transaction_id(exclude_txn_id);
+    }
+  }
+  return task;
 }
 
 void CatalogManager::SetTabletReplicaLocations(
