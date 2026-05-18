@@ -1674,6 +1674,14 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	es->yb_commit = false;
 
 	/*
+	 * Indicate that constants should be masked. This means that constants
+	 * will not appear in the plan text, and the constants values are
+	 * not stored. (The exception in QPM is max. exec. time param. values,
+	 * which are stored.).
+	 */
+	es->ybMaskConstants = true;
+
+	/*
 	 * Save and set the instrumentation pointers to NULL
 	 * so we do not inadvertently update any values while
 	 * generating the plan text.
