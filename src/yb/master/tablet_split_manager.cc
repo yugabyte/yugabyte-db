@@ -58,7 +58,7 @@ DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
     "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
     "value is set to 0.");
 
-DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 1,
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 3,
     "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
     "if this value is set to 0.");
 
