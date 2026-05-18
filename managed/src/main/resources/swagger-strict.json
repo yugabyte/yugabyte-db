@@ -972,7 +972,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
@@ -1162,7 +1165,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
@@ -1448,7 +1454,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
