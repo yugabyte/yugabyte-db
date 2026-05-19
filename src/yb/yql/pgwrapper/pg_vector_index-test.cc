@@ -1108,7 +1108,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
 
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
-      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      ASSERT_OK(conn.ExecuteFormat("SET hnsw.ef_search = $0", ef));
       ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
       auto valid = RowsMatch(conn, "", ExpectedRows(1));
       ASSERT_TRUE(valid || ef == kSmallEf);
