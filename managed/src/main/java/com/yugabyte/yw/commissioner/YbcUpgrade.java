@@ -180,10 +180,6 @@ public class YbcUpgrade {
     return ybcUpgradeUniverseSetOnK8s.contains(universeUUID);
   }
 
-  public synchronized void addFailedYBCUpgradeUniverseOnK8s(UUID universeUUID) {
-    failedYBCUpgradeUniverseSetOnK8s.add(universeUUID);
-  }
-
   void scheduleRunner() {
     log.info("Running YBC Upgrade schedule");
     try {
@@ -334,11 +330,6 @@ public class YbcUpgrade {
     }
 
     for (NodeDetails node : universe.getNodes()) {
-      // YBC is only co-located with tservers; dedicated master nodes do not
-      // run YBC and must be skipped.
-      if (!node.isTserver) {
-        continue;
-      }
       try {
         upgradeYbcOnNode(universe, node, ybcVersion);
       } catch (Exception e) {
@@ -435,7 +426,7 @@ public class YbcUpgrade {
     try {
       Universe universe = Universe.getOrBadRequest(universeUUID);
       ybcManager.waitForYbc(universe, new HashSet<NodeDetails>(universe.getTServers()));
-      if (pollUpgradeTaskResult(universeUUID, ybcVersion)) {
+      if (pollUpgradeTaskResult(universeUUID, ybcVersion, true /* verbose */)) {
         updateUniverseYBCVersion(universeUUID, ybcVersion);
         if (isK8s) {
           removeYBCUpgradeProcessOnK8s(universeUUID);
@@ -522,7 +513,8 @@ public class YbcUpgrade {
     return params;
   }
 
-  public synchronized boolean pollUpgradeTaskResult(UUID universeUUID, String ybcVersion) {
+  public synchronized boolean pollUpgradeTaskResult(
+      UUID universeUUID, String ybcVersion, boolean verbose) {
     try {
       Universe universe = Universe.getOrBadRequest(universeUUID);
       UpgradeResultRequest request =
@@ -531,17 +523,13 @@ public class YbcUpgrade {
       String certFile = universe.getCertificateNodetoNode();
       boolean success = true;
       for (NodeDetails node : universe.getNodes()) {
-        if (!node.isTserver) {
-          log.debug("skipping non-tserver node: {}", node.nodeName);
-          continue;
-        }
         String nodeIp = node.cloudInfo.private_ip;
         YbcClient client = null;
         try {
           client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
           UpgradeResultResponse resp = client.UpgradeResult(request);
           if (resp == null) {
-            throw new RuntimeException("YBC Upgrade failed on " + nodeIp + " as response is null");
+            success = false;
           } else {
             log.info(
                 "Found ybc version: {} on node: {}",
@@ -558,8 +546,11 @@ public class YbcUpgrade {
           }
         } catch (Exception e) {
           success = false;
-          log.error("Upgrade ybc task failed due to error: {}", e);
-          break;
+          if (verbose) {
+            log.error("Upgrade ybc task failed due to error: {}", e);
+          } else {
+            break;
+          }
         } finally {
           ybcClientService.closeClient(client);
         }
@@ -567,11 +558,6 @@ public class YbcUpgrade {
       if (!success
           || (unreachableNodes.getOrDefault(universeUUID, new HashSet<>()) != null
               && unreachableNodes.getOrDefault(universeUUID, new HashSet<>()).size() > 0)) {
-        log.error(
-            "YBC upgrade failed on universe {} with success: '{}'' and unreachable nodes: '{}'",
-            universeUUID,
-            success,
-            unreachableNodes.getOrDefault(universeUUID, new HashSet<>()));
         return false;
       }
       log.info(
@@ -628,9 +614,6 @@ public class YbcUpgrade {
   public List<String> getUniverseNodeYbcVersions(Universe universe, boolean onlyLive) {
     List<String> ybcVersions =
         universe.getNodes().stream()
-            // YBC only runs alongside tservers; master-only nodes (K8s master
-            // pods or dedicated VM masters) have no YBC to query.
-            .filter(node -> node.isTserver)
             .map(
                 node -> {
                   YbcClient client = null;
