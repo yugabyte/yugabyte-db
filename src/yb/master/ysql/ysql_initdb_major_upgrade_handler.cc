@@ -48,6 +48,15 @@ DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
+DEFINE_test_flag(int32, master_min_live_tservers_before_initdb, 0,
+    "If positive, the master waits for at least this many tablet servers to "
+    "register before launching initdb in RunNewClusterGlobalInitDB. Used by "
+    "MiniYBCluster to avoid a startup race in which the postgres bootstrap "
+    "inside initdb calls CreateTable on the master before any tablet servers "
+    "are registered, which causes the bootstrap to fail with "
+    "\"Not enough live tablet servers ...\" and the master to LOG(FATAL) in "
+    "SetInitDbDone. Production code path is unchanged at the default value 0.");
+
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
 
@@ -330,6 +339,18 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunOperationAsync(std::function<void()>
 }
 
 void YsqlInitDBAndMajorUpgradeHandler::RunNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
+  if (FLAGS_TEST_master_min_live_tservers_before_initdb > 0) {
+    const size_t required =
+        static_cast<size_t>(FLAGS_TEST_master_min_live_tservers_before_initdb);
+    LOG(INFO) << "TEST_master_min_live_tservers_before_initdb=" << required
+              << ": waiting for tablet servers to register before running initdb";
+    while (master_.ts_manager()->NumLiveDescriptors() < required) {
+      SleepFor(MonoDelta::FromMilliseconds(100));
+    }
+    LOG(INFO) << master_.ts_manager()->NumLiveDescriptors()
+              << " live tablet servers registered, proceeding with initdb";
+  }
+
   auto status =
       InitDBAndSnapshotSysCatalog(/*db_name_to_oid_list=*/{}, /*is_major_upgrade=*/false, epoch);
   ERROR_NOT_OK(
