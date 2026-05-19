@@ -578,6 +578,12 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
     // to start exactly that many tservers immediately after, and (b) the master's RF
     // requirement is min(num_tablet_servers, FLAGS_replication_factor), so any test that
     // survives the bootstrap eventually needs all of them anyway.
+    //
+    // Add the flag to --undefok so that upgrade tests (which boot older yb-master binaries
+    // from build/db-upgrade/) silently ignore it. Older masters never had this race in
+    // upgrade scenarios -- they load a pre-baked sys-catalog snapshot and bypass initdb
+    // altogether -- so being able to skip the flag is safe.
+    AppendCsvFlagValue(flags, "undefok", "TEST_master_min_live_tservers_before_initdb");
     flags.push_back(Format(
         "--TEST_master_min_live_tservers_before_initdb=$0", opts_.num_tablet_servers));
     if (opts_.enable_ysql_auth) {
