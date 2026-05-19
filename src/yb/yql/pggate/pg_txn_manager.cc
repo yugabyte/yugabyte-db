@@ -1055,8 +1055,15 @@ Status PgTxnManager::AcquireObjectLock(
     std::optional<PgTablespaceOid> tablespace_oid) {
   const auto is_local_object_lock_op =
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
-  // No CalculateIsolation call here. Lock acquisition picks no read time, does no DML,
-  // and does not change isolation level. The subsequent statement runs its own setup.
+  // Global object locks go through yb-master via a distributed YBTransaction. Creating that
+  // distributed txn requires the isolation level, so CalculateIsolation must run. Local-fastpath
+  // object lock acquisition picks no read time, does no DML, and does not change isolation level
+  // — the subsequent statement runs its own setup.
+  if (!is_local_object_lock_op) {
+    RETURN_NOT_OK(CalculateIsolation(
+        false /* read_only, doesn't matter */,
+        GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
+  }
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(
       tag, &options, /*read_time_action=*/{}, is_local_object_lock_op));
