@@ -1,95 +1,7 @@
--- Test row count estimates
+-- Test cardinality estimates in different optimizer modes
+-- DEPENDENCY: yb.orig.cardinality_estimate_setup
 
-set client_min_messages = 'warning';
-drop function if exists check_estimated_rows, get_estimated_rows;
-
--- following plpgsql functions borrowed from vanilla pg tests
-
--- from gin.sql, removed guc settings and ANALYZE option
-create function explain_query_json(query_sql text)
-returns table (explain_line json)
-language plpgsql as
-$$
-begin
-  return query execute 'EXPLAIN (FORMAT json) ' || query_sql;
-end;
-$$;
-
--- from stats_ext.sql, removed the analyze option.
--- check the number of estimated/actual rows in the top node
-create function check_estimated_rows(text) returns table (estimated int, actual int)
-language plpgsql as
-$$
-declare
-    ln text;
-    tmp text[];
-    first_row bool := true;
-begin
-    for ln in
-        execute format('explain analyze %s', $1)
-    loop
-        if first_row then
-            first_row := false;
-            tmp := regexp_match(ln, 'rows=(\d*) .* rows=(\d*)');
-            return query select tmp[1]::int, tmp[2]::int;
-        end if;
-    end loop;
-end;
-$$;
-
--- modified the above to return estimates only
-create function get_estimated_rows(text) returns table (estimated int)
-language plpgsql as
-$$
-declare
-    ln text;
-    tmp text[];
-    first_row bool := true;
-begin
-    for ln in
-        execute format('explain %s', $1)
-    loop
-        if first_row then
-            first_row := false;
-            tmp := regexp_match(ln, 'rows=(\d*)');
-            return query select tmp[1]::int;
-        end if;
-    end loop;
-end;
-$$;
-
-
--- create and populate the test tables with uniformly distributed values
--- to make the estimates predictable.
-drop table if exists r, s;
-create table r (pk int, a int, b int, c char(10), d int, e int, bl bool, v char(666), primary key (pk asc));
-create table s (x int, y int, z char(10));
-create index i_r_a on r (a asc);
-create index i_r_a_ge_1k on r (a asc) where a >= 1000;
-create unique index i_r_b on r (b asc);
-create index i_r_c on r (c asc);
-create index i_r_bl on r (bl hash);
-
-insert into r
-  select
-    i, i / 10, i,
-    -- 'aaa', 'aab', 'aac', ...
-    concat(chr((((i-1)/26/26) % 26) + ascii('a')),
-           chr((((i-1)/26) % 26) + ascii('a')),
-           chr(((i-1) % 26) + ascii('a'))),
-    i, i / 10,
-    i % 2 = 1,
-    sha512(('x'||i)::bytea)::bpchar||lpad(sha512((i||'y')::bytea)::bpchar, 536, '#')
-  from generate_series(1, 12345) i;
-
-insert into s
-  select
-    i / 3, i,
-    concat(chr((((i-1)/26/26) % 26) + ascii('a')),
-           chr((((i-1)/26) % 26) + ascii('a')),
-           chr(((i-1) % 26) + ascii('a')))
-  from generate_series(1, 123) i;
-
+set client_min_messages to warning;
 
 -- store test queries in a table
 drop table if exists queries;
@@ -204,7 +116,9 @@ drop table if exists legacy_before_analyze, legacy_after_analyze;
 drop table if exists legacy_stats_before_analyze, legacy_stats_after_analyze;
 drop table if exists cbo_estimates;
 
--- save the estimates before analyze
+-- save the estimates without stats
+select yb_reset_analyze_statistics('r'::regclass);
+select yb_reset_analyze_statistics('s'::regclass);
 
 set yb_enable_cbo = off;
 create temporary table off_before_analyze as
@@ -231,7 +145,8 @@ create temporary table legacy_stats_before_analyze as
 
 create statistics r_a_e on a, e from r;
 create statistics r_bmod5 on (b % 5) from r;
-analyze r, s;
+analyze r;
+analyze s;
 
 
 -- save the estimates after analyze
@@ -391,6 +306,16 @@ where abs(rows[1] - rows[2]) > 2
   and abs(rows[1] - rows[2])/least(rows[1], rows[2])::float > 0.005;
 
 
+drop table off_before_analyze, off_after_analyze;
+drop table on_before_analyze, on_after_analyze;
+drop table legacy_before_analyze, legacy_after_analyze;
+drop table legacy_stats_before_analyze, legacy_stats_after_analyze;
+drop table cbo_estimates;
+drop table queries;
+drop statistics r_a_e;
+drop statistics r_bmod5;
+
+
 --
 -- test yb_ignore_bool_cond_for_legacy_estimate
 --
@@ -421,28 +346,3 @@ set local enable_seqscan = off;
 explain (costs on, summary off)
 select * from r where not bl;
 rollback;
-
---
--- test selectivity estimates
---
-analyze r, s;
-
-set yb_enable_cbo = on;
-set yb_enable_bitmapscan = on;
-set enable_bitmapscan = on;
-
--- parameterized filter condition in Bitmap Table Scan.
--- the selectivity should be close to DEFAULT_INEQ_SEL (0.3333333333333333).
-select
-  bts->'Node Type' bmts,
-  bts->'Storage Filter' bmts_filter,
-  round((bts->'Plan Rows')::text::numeric / (bts->'Plans'->0->'Plan Rows')::text::numeric, 2) sel
-from
-  explain_query_json($$/*+ Leading((s r)) NestLoop(s r) BitmapScan(r) Set(yb_bnl_batch_size 1) */select * from r, s where (a = x or b <= 300) and a + b >= y$$) js,
-  lateral to_json(js.explain_line->0->'Plan'->'Plans'->1) bts;
-
-explain (costs off)
-/*+ Leading((s r)) NestLoop(s r) BitmapScan(r) Set(yb_bnl_batch_size 1) */select * from r, s where (a = x or b <= 300) and a + b >= y;
-
-
-drop table if exists r, s, queries;

@@ -1,227 +1,641 @@
 set client_min_messages = 'warning';
-drop database if exists colocateddb;
+drop database if exists colocateddb with (force);
 create database colocateddb with colocation = on;
 alter database colocateddb set yb_enable_cbo = on;
 alter database colocateddb set yb_enable_bitmapscan = on;
+alter database colocateddb set yb_enable_primary_key_decode_from_index = on;
+-- Lower the size limit to encourage colocated index scan over bitmap
+alter database colocateddb set yb_fetch_size_limit = '256kB';
 alter database colocateddb set yb_fetch_row_limit = 0;
-alter database colocateddb set yb_fetch_size_limit = '1MB';
 -- Disable parallelization until bitmap parallel scan is supported
 alter database colocateddb set yb_parallel_range_rows = 0;
 \c colocateddb
--- Create procedures and functions, store test queries in a table
--- so we can reuse them in multiple setups.
-create procedure create_tables(modifier text)
-language plpgsql as
-$$
-begin
-  -- Create a table with unique columns and non-unique columns whose values are
-  -- uncorrelated one another.
-  execute
-    'create table r (pk int, a int, b int, c int, d int, v char(666),'||
-    ' primary key (pk asc))' || modifier;
-  create index nonconcurrently r_a on r (a asc);
-  create index nonconcurrently r_b on r (b asc);
-  create index nonconcurrently r_c on r (c asc);
-  create index nonconcurrently r_d on r (d asc);
-
-  -- pk, a: unique
-  -- b, c, d: frequency of each distinct value is exactly the same in each column
-  -- the values in these columns are not correlated one another.
-  insert into r
-    select
-      i * 500 + j,
-      i * 500 + j,
-      (i % 100) + 1,
-      (j % 250) + 1,
-      ((i # x'7FF'::int) % 100) + 1,
-      sha512(('x'||i)::bytea)::bpchar||lpad(sha512((j||'y')::bytea)::bpchar, 536, '#')
-    from
-      generate_series(0, 999) i, generate_series(1, 500) j;
-end;
-$$;
-create function explain(text) returns setof text
+-- Run the same set of queries against both uncolocated and colocated tables.
+-- To keep the tests maintainable, avoid duplicating lines by executing the
+-- EXPLAIN command through a stored procedure, with the queries stored in
+-- a table.
+create function explain(setting_id int, query text, expected text[])
+returns setof text
 language plpgsql as
 $$
 declare
     n int := 0;
     ln text;
+    found bool := false;
 begin
-    return next $1;
+    return next format('%s  -- expected: %s', query, expected[setting_id]);
     return next '----------------';
     for ln in
-        execute format('explain (costs off, summary off) %s', $1)
+        execute format('explain (costs off, summary off) %s', query)
     loop
+        if regexp_replace(ln, ' *-> *', '') ~* format('^%s', expected[setting_id]) then
+            found = true;
+        end if;
         return next ln;
         n := n + 1;
     end loop;
     return next format('(%s rows)', n);
     return next '';
+    if not found then
+        return next format('*** failed!  expected: %s', expected[setting_id]);
+    end if;
 end;
 $$;
-create table queries (id serial, query text, primary key (id asc));
+create table r (
+  pk int,
+  a int,        -- = pk; used only as covering payload
+  b int,        -- 100 distinct values (1..100), 2,000 rows / value (1%)
+  c int,        -- 250 distinct values (1..250), 800 rows / value (0.4%)
+  d int,        -- 100 distinct values (1..100), 2,000 rows / value (1%)
+  v char(666),  -- pads each row so heap fetches dominate index lookups
+  primary key (pk asc)
+)
+with (colocation = off);
+create index nonconcurrently on r (a asc);
+create index nonconcurrently on r (b asc);
+create index nonconcurrently on r (c asc);
+create index nonconcurrently on r (d asc);
+-- Covering index for setting [1].
+create index nonconcurrently on r (b asc) include (a, c, d);
+-- Coprime multipliers spread b/c/d uniformly and uncorrelated with pk.
+-- Removing pk-correlation keeps the optimizer from estimating that
+-- index-range heap fetches are mostly sequential, which keeps the cost
+-- gap between single index scans and bitmap intersections wide enough
+-- to be insensitive to small estimate noise.
+insert into r
+  select
+    i,
+    i,
+    ((i * 31) % 100) + 1,
+    ((i * 47) % 250) + 1,
+    ((i * 71) % 100) + 1,
+    sha512(('x'||i)::bytea)::bpchar
+      ||lpad(sha512(((i*7)||'y')::bytea)::bpchar, 536, '#')
+  from
+    generate_series(1, 200000) i;
+create table rc (like r including indexes) with (colocation = on);
+insert into rc select * from r;
+create table s (x int, y int);
+insert into s
+  select
+    i / 3, i
+  from generate_series(1, 12) i;
+-- Statistics target 700 yields a full-table sample at 200,000 rows
+-- (sample size = min(rows, 300 * statistics_target)), so MCV
+-- frequencies are exact and stable across runs.
+alter table r alter column b set statistics 700;
+alter table r alter column c set statistics 700;
+alter table r alter column d set statistics 700;
+alter table rc alter column b set statistics 700;
+alter table rc alter column c set statistics 700;
+alter table rc alter column d set statistics 700;
+analyze r;
+analyze rc;
+analyze s;
+-- The queries below exercise the optimizer's plan choice across three
+-- settings, with the "expected" array holding the expected plan for each:
+--
+-- [1] covering index present.
+-- [2] covering index dropped.
+-- [3] also lower work_mem.  YB bitmap plans don't support lossy
+--     intermediates; instead, when the planner estimates that the
+--     bitmap's ybctid set would overflow work_mem, it adds the cost
+--     of a seq-scan fallback to the bitmap plan.  That penalty pushes
+--     Q1/Q3 from bitmap to a single index scan and Q5 to a seq scan.
+--
+-- We also exercise the colocation effect.  A bitmap scan -- a
+-- BitmapIndexScan feeding a YbBitmapTableScan -- always sends ybctids
+-- back to PG before the table fetch, no matter which index it uses
+-- (including the PK and colocated indexes).  A plain index scan on the
+-- PK or a colocated non-PK index, by contrast, fetches the heap row
+-- locally next to the index lookup, with no such round trip.  On the
+-- boundary, that saving tips the colocated plan from bitmap to a plain
+-- index scan.
+--
+-- Bitmap shape coverage: Q1, Q3, Q6 exercise BitmapAnd; Q4, Q5, Q7
+-- exercise BitmapOr.  Q2 sits on the cost crossover between an
+-- index-only scan on the wide covering index and a plain index scan
+-- on the narrow c index, where the colo/uncolo ybctid back-transfer
+-- saving alone is enough to tip the planner from one to the other.
+--
+-- Per-query story:
+--
+--   Q1 (b IN, c IN):
+--       [1] both pick the covering index (index-only).
+--       [2] uncolo picks bitmap-AND on b and c; colo picks single
+--           c-scan to skip the bitmap ybctid round trip.
+--       [3] bitmap is cost-penalized for the seq-scan fallback (its
+--           intermediate would overflow work_mem); both flip to single
+--           c-scan.
+--
+--   Q2 (b range, c IN):
+--       [1] uncolo picks index-only via covering (covering avoids the
+--           single-c-scan's ybctid back-transfer).  Colo picks single
+--           c-scan instead -- without that back-transfer cost, the
+--           narrower c-index beats reading the wider covering index.
+--       [2,3] both pick single c-scan.
+--
+--   Q3 (b range, c IN, d range; covering disqualified by the wider
+--       b range):
+--       [1,2] both pick bitmap-AND on c and d.
+--       [3] same flip to single c-scan as Q1.
+--
+--   Q4 (c IN OR c range):
+--       bitmap-OR on c is the only sensible plan in any setting.
+--
+--   Q5 (b range AND (c IN OR c range) AND d range, sizeable result):
+--       [1] index-only via covering wins on the wide output.
+--       [2] bitmap-OR over c on top of the heap fetch wins.
+--       [3] same seq-scan-fallback penalty on the bitmap plan; seq
+--           scan wins outright.
+--
+--   Q6 (join, inner "b = x AND c = y"):
+--       [1] index-only via covering.
+--       [2,3] uncolo picks bitmap-AND per inner iteration; colo picks
+--             single c-scan (same colocation flip as Q1).
+--
+--   Q7 (join, inner "b = x OR b = y"):
+--       bitmap-OR per inner iteration in any setting.
+create table queries (id serial, query text, expected text[], primary key (id asc));
 insert into queries values
-    (DEFAULT, 'select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)'),
-    (DEFAULT, 'select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)'),
-    (DEFAULT, 'select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2'),
-    (DEFAULT, 'select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5');
+    -- Q1: AND of two narrow IN-lists on b and c.
+    (DEFAULT,
+        'select b, c from r where b in (1, 2, 3, 4, 5) '||
+        'and c in (50, 60, 70, 80, 90, 100)',
+        '{"index only", "bitmap/colo:index scan", "index scan"}'::text[]
+        ),
+    -- Q2: range on b combined with an IN-list on c.
+    (DEFAULT,
+        'select b, c from r where b <= 15 '||
+        'and c in (50, 60, 70, 80, 90, 100)',
+        '{"index only/colo:index scan", "index scan", "index scan"}'::text[]
+        ),
+    -- Q3: wider b range (disqualifies covering) AND IN on c AND range on d.
+    (DEFAULT,
+        'select b, c from r where b <= 90 '||
+        'and c in (50, 60, 70, 80, 90, 100) and d <= 4',
+        '{"bitmap", "bitmap", "index scan"}'::text[]
+        ),
+    -- Q4: pure OR on c.
+    (DEFAULT,
+        'select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5',
+        '{"bitmap", "bitmap", "bitmap"}'::text[]
+        ),
+    -- Q5: b range AND (c IN OR c range) AND d range, sizeable result.
+    (DEFAULT,
+        'select b, c from r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) '||
+        'or c >= 200) and d <= 80',
+        '{"index only", "bitmap", "seq scan"}'::text[]
+        ),
+    -- Q6: join with inner predicate "b = x AND c = y".
+    (DEFAULT,
+        '/*+ Leading((s r)) */'||
+        'select b, c from r, s where b = x and c = y',
+        '{"index only", "bitmap/colo:index scan", "bitmap/colo:index scan"}'::text[]
+        ),
+    -- Q7: join with inner predicate "b = x OR b = y".
+    (DEFAULT,
+        '/*+ Leading((s r)) */'||
+        'select b, c from r, s where b = x or b = y',
+        '{"bitmap", "bitmap", "bitmap"}'::text[]
+        );
+-- Insert similar queries against colocated table and split up expected outcome
+-- for uncolocated and colocated ones if they differ.
+\set offset 1000
+insert into queries (query, expected)
+    select
+        regexp_replace(query, ' r(, s)* ', ' rC r\1 '),
+        expected
+    from queries;
+insert into queries
+    select id + :offset, query, array_agg(expected order by rn)::text[]
+    from (
+        select id, query,
+            case when query ~* '.* rC *.*'
+            then regexp_replace(e, '.*/colo:(.*)', '\1')
+            else regexp_replace(e, '(.*)/colo:.*', '\1')
+            end expected,
+            row_number() over () rn
+        from (select id, query, unnest(expected) e from queries) v
+    ) vv
+    group by id, query
+    order by id;
+delete from queries where id < :offset;
+update queries set id = id - :offset;
+-- Now get the plans for the queries
 \pset footer off
---
--- Non-colocated tables
---
-call create_tables('with (colocation = off)');
-analyze r;
-select explain(query) from queries order by id;
-                                     explain                                      
-----------------------------------------------------------------------------------
- select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+select explain(1, query, expected) from queries order by id;
+                                                          explain                                                          
+---------------------------------------------------------------------------------------------------------------------------
+ select b, c from r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index only
  ----------------
- Index Scan using r_b on r
-   Index Cond: (b = 1)
+ Index Only Scan using r_b_a_c_d_idx on r
+   Index Cond: (b = ANY ('{1,2,3,4,5}'::integer[]))
    Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
  (3 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ select b, c from r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index only
  ----------------
- Index Scan using r_c on r
-   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-   Storage Filter: (b <= 500)
+ Index Only Scan using r_b_a_c_d_idx on r
+   Index Cond: (b <= 15)
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
  (3 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ select b, c from r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: bitmap
  ----------------
- Index Scan using r_d on r
-   Index Cond: (d <= 2)
-   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
- (3 rows)
+ YB Bitmap Table Scan on r
+   Storage Filter: (b <= 90)
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on r_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_d_idx
+               Index Cond: (d <= 4)
+ (7 rows)
  
- select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
  ----------------
  YB Bitmap Table Scan on r
    ->  BitmapOr
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c <= 5)
  (6 rows)
+ 
+ select b, c from r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: index only
+ ----------------
+ Index Only Scan using r_b_a_c_d_idx on r
+   Index Cond: (b <= 90)
+   Storage Filter: ((d <= 80) AND ((c = ANY ('{50,60,70,80,90,100}'::integer[])) OR (c >= 200)))
+ (3 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x and c = y  -- expected: index only
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Only Scan using r_b_a_c_d_idx on r
+         Index Cond: (b = s.x)
+         Storage Filter: (s.y = c)
+ (5 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on r_b_a_c_d_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on r_b_a_c_d_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
+ 
+ select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index only
+ ----------------
+ Index Only Scan using rc_b_a_c_d_idx on rc r
+   Index Cond: (b = ANY ('{1,2,3,4,5}'::integer[]))
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+ (3 rows)
+ 
+ select b, c from rC r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
+ ----------------
+ Index Scan using rc_c_idx on rc r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 15)
+ (3 rows)
+ 
+ select b, c from rC r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
+   Storage Filter: (b <= 90)
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_d_idx
+               Index Cond: (d <= 4)
+ (7 rows)
+ 
+ select b, c from rC r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+ select b, c from rC r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: index only
+ ----------------
+ Index Only Scan using rc_b_a_c_d_idx on rc r
+   Index Cond: (b <= 90)
+   Storage Filter: ((d <= 80) AND ((c = ANY ('{50,60,70,80,90,100}'::integer[])) OR (c >= 200)))
+ (3 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x and c = y  -- expected: index only
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Only Scan using rc_b_a_c_d_idx on rc r
+         Index Cond: (b = s.x)
+         Storage Filter: (s.y = c)
+ (5 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on rc r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on rc_b_a_c_d_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on rc_b_a_c_d_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
  
 
--- try again with additional index
-create index nonconcurrently i_r_b_acd on r (b asc) include (a, c, d);
-analyze r;
-select explain(query) from queries order by id;
-                                     explain                                      
-----------------------------------------------------------------------------------
- select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+-- Try without covering indexes
+drop index r_b_a_c_d_idx;
+drop index rc_b_a_c_d_idx;
+select explain(2, query, expected) from queries order by id;
+                                                        explain                                                        
+-----------------------------------------------------------------------------------------------------------------------
+ select b, c from r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: bitmap
  ----------------
- Index Only Scan using i_r_b_acd on r
-   Index Cond: (b = 1)
-   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
- (3 rows)
+ YB Bitmap Table Scan on r
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on r_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_b_idx
+               Index Cond: (b = ANY ('{1,2,3,4,5}'::integer[]))
+ (6 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ select b, c from r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
  ----------------
- Index Scan using r_c on r
+ Index Scan using r_c_idx on r
    Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-   Storage Filter: (b <= 500)
+   Storage Filter: (b <= 15)
  (3 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ select b, c from r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: bitmap
  ----------------
- Index Scan using r_d on r
-   Index Cond: (d <= 2)
-   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
- (3 rows)
+ YB Bitmap Table Scan on r
+   Storage Filter: (b <= 90)
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on r_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_d_idx
+               Index Cond: (d <= 4)
+ (7 rows)
  
- select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
  ----------------
  YB Bitmap Table Scan on r
    ->  BitmapOr
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c <= 5)
  (6 rows)
+ 
+ select b, c from r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on r
+   Storage Filter: ((b <= 90) AND (d <= 80))
+   ->  BitmapOr
+         ->  Bitmap Index Scan on r_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_c_idx
+               Index Cond: (c >= 200)
+ (7 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x and c = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((c = s.y) AND (b = s.x))
+         ->  BitmapAnd
+               ->  Bitmap Index Scan on r_c_idx
+                     Index Cond: (c = s.y)
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.x)
+ (9 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
+ 
+ select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
+ ----------------
+ Index Scan using rc_c_idx on rc r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b = ANY ('{1,2,3,4,5}'::integer[]))
+ (3 rows)
+ 
+ select b, c from rC r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
+ ----------------
+ Index Scan using rc_c_idx on rc r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 15)
+ (3 rows)
+ 
+ select b, c from rC r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
+   Storage Filter: (b <= 90)
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_d_idx
+               Index Cond: (d <= 4)
+ (7 rows)
+ 
+ select b, c from rC r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+ select b, c from rC r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
+   Storage Filter: ((b <= 90) AND (d <= 80))
+   ->  BitmapOr
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c >= 200)
+ (7 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x and c = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using rc_c_idx on rc r
+         Index Cond: (c = s.y)
+         Storage Filter: (s.x = b)
+ (5 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on rc r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on rc_b_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on rc_b_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
  
 
---
--- Colocated tables
---
-drop table r;
-call create_tables('with (colocation = on)');
-analyze r;
-select explain(query) from queries order by id;
-                                     explain                                      
-----------------------------------------------------------------------------------
- select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+-- Lower work_mem.  When the bitmap plan's estimated ybctid intermediate
+-- would overflow work_mem, the planner inflates the bitmap cost by the
+-- cost of a seq-scan fallback (no lossy bitmap in YB), pushing Q1/Q3 to
+-- a single c-scan and Q5 to a seq scan.
+set work_mem = '256kB';
+select explain(3, query, expected) from queries order by id;
+                                                         explain                                                         
+-------------------------------------------------------------------------------------------------------------------------
+ select b, c from r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
  ----------------
- Index Scan using r_b on r
-   Index Cond: (b = 1)
-   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
- (3 rows)
- 
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
- ----------------
- Index Scan using r_c on r
+ Index Scan using r_c_idx on r
    Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-   Storage Filter: (b <= 500)
+   Storage Filter: (b = ANY ('{1,2,3,4,5}'::integer[]))
  (3 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ select b, c from r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
  ----------------
- Index Scan using r_d on r
-   Index Cond: (d <= 2)
-   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ Index Scan using r_c_idx on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 15)
  (3 rows)
  
- select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ select b, c from r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: index scan
+ ----------------
+ Index Scan using r_c_idx on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: ((b <= 90) AND (d <= 4))
+ (3 rows)
+ 
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
  ----------------
  YB Bitmap Table Scan on r
    ->  BitmapOr
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on r_c_idx
                Index Cond: (c <= 5)
  (6 rows)
  
-
--- try again with additional index
-create index nonconcurrently i_r_b_acd on r (b asc) include (a, c, d);
-analyze r;
-select explain(query) from queries order by id;
-                                     explain                                      
-----------------------------------------------------------------------------------
- select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+ select b, c from r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: seq scan
  ----------------
- Index Only Scan using i_r_b_acd on r
-   Index Cond: (b = 1)
-   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
- (3 rows)
+ Seq Scan on r
+   Storage Filter: ((b <= 90) AND (d <= 80) AND ((c = ANY ('{50,60,70,80,90,100}'::integer[])) OR (c >= 200)))
+ (2 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ /*+ Leading((s r)) */select b, c from r, s where b = x and c = y  -- expected: bitmap
  ----------------
- Index Scan using r_c on r
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((c = s.y) AND (b = s.x))
+         ->  BitmapAnd
+               ->  Bitmap Index Scan on r_c_idx
+                     Index Cond: (c = s.y)
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.x)
+ (9 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on r_b_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
+ 
+ select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
+ ----------------
+ Index Scan using rc_c_idx on rc r
    Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-   Storage Filter: (b <= 500)
+   Storage Filter: (b = ANY ('{1,2,3,4,5}'::integer[]))
  (3 rows)
  
- select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ select b, c from rC r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
  ----------------
- Index Scan using r_d on r
-   Index Cond: (d <= 2)
-   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ Index Scan using rc_c_idx on rc r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 15)
  (3 rows)
  
- select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ select b, c from rC r where b <= 90 and c in (50, 60, 70, 80, 90, 100) and d <= 4  -- expected: index scan
  ----------------
- YB Bitmap Table Scan on r
+ Index Scan using rc_c_idx on rc r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: ((b <= 90) AND (d <= 4))
+ (3 rows)
+ 
+ select b, c from rC r where c in (50, 60, 70, 80, 90, 100) or c <= 5  -- expected: bitmap
+ ----------------
+ YB Bitmap Table Scan on rc r
    ->  BitmapOr
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on rc_c_idx
                Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-         ->  Bitmap Index Scan on r_c
+         ->  Bitmap Index Scan on rc_c_idx
                Index Cond: (c <= 5)
  (6 rows)
+ 
+ select b, c from rC r where b <= 90 and (c in (50, 60, 70, 80, 90, 100) or c >= 200) and d <= 80  -- expected: seq scan
+ ----------------
+ Seq Scan on rc r
+   Storage Filter: ((b <= 90) AND (d <= 80) AND ((c = ANY ('{50,60,70,80,90,100}'::integer[])) OR (c >= 200)))
+ (2 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x and c = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using rc_c_idx on rc r
+         Index Cond: (c = s.y)
+         Storage Filter: (s.x = b)
+ (5 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on rc r
+         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on rc_b_idx
+                     Index Cond: (b = s.x)
+               ->  Bitmap Index Scan on rc_b_idx
+                     Index Cond: (b = s.y)
+ (9 rows)
  
 
 \pset footer on
 \c yugabyte
-drop database colocateddb with (force);

@@ -1,0 +1,212 @@
+-- Test cardinality estimate consistency
+-- DEPENDENCY: yb.orig.cardinality_estimate_setup
+set client_min_messages to warning;
+analyze r;
+analyze s;
+set yb_enable_cbo = on;
+set yb_enable_bitmapscan = on;
+set enable_bitmapscan = on;
+--
+-- Index Scan node row count estimates
+--
+set enable_seqscan = off;
+drop function if exists non_pushable cascade;
+create function non_pushable(v bigint)
+returns bigint
+language plpgsql immutable as
+$$
+begin
+  return v + 1;
+end;
+$$;
+drop table if exists queries;
+create table queries (qid serial, query text, primary key (qid ASC));
+insert into queries values
+    (DEFAULT, $$select pk from r where pk <= 500$$),
+    (DEFAULT, $$select pk from r where pk <= 500 and pk % 100 <= 33$$),
+    (DEFAULT, $$select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500$$),
+    (DEFAULT, $$select pk from r where b <= 500$$),
+    (DEFAULT, $$select pk from r where b <= 500 and b % 100 <= 33$$),
+    (DEFAULT, $$select pk from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    (DEFAULT, $$select b from r where b <= 500$$),
+    (DEFAULT, $$select b from r where b <= 500 and b % 100 <= 33$$),
+    (DEFAULT, $$select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    (DEFAULT, $$select pk from r where pk <= 500 or b <= 500$$),
+    (DEFAULT, $$select pk from r where pk <= 500 and pk % 100 <= 33 or b <= 500 and b % 100 <= 33$$),
+    (DEFAULT, $$select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 50
+         or b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where pk <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where pk <= 500 and pk % 100 <= 33$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where b <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where b <= 500 and b % 100 <= 33$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select b from r where b <= 500$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select b from r where b <= 500 and b % 100 <= 33$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$)
+;
+drop type if exists index_plan_rows cascade;
+create type index_plan_rows as (
+    "Node Type" text,
+    "Index Name" text,
+    "Index Cond" text,
+    "Storage Index Filter" text,
+    "Storage Filter" text,
+    "Filter" text,
+    "Plan Rows" bigint,
+    "Total Cost" float8
+);
+select * from queries order by qid;
+ qid |                                          query                                          
+-----+-----------------------------------------------------------------------------------------
+   1 | select pk from r where pk <= 500
+   2 | select pk from r where pk <= 500 and pk % 100 <= 33
+   3 | select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500
+   4 | select pk from r where b <= 500
+   5 | select pk from r where b <= 500 and b % 100 <= 33
+   6 | select pk from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+   7 | select b from r where b <= 500
+   8 | select b from r where b <= 500 and b % 100 <= 33
+   9 | select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+  10 | select pk from r where pk <= 500 or b <= 500
+  11 | select pk from r where pk <= 500 and pk % 100 <= 33 or b <= 500 and b % 100 <= 33
+  12 | select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 50         +
+     |          or b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+  13 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where pk <= 500
+  14 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where pk <= 500 and pk % 100 <= 33
+  15 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500
+  16 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where b <= 500
+  17 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where b <= 500 and b % 100 <= 33
+  18 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+  19 | /*+ BitmapScan(r) */                                                                   +
+     |         select b from r where b <= 500
+  20 | /*+ BitmapScan(r) */                                                                   +
+     |         select b from r where b <= 500 and b % 100 <= 33
+  21 | /*+ BitmapScan(r) */                                                                   +
+     |         select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+(21 rows)
+
+select
+    "Index Cond",
+    "Index Filter",
+    "Filter",
+    "Plan Rows",
+    rank() over (
+        partition by
+            regexp_replace("Index Cond", 'pk', 'b'),
+            regexp_replace("Index Filter", 'pk', 'b'),
+            regexp_replace("Filter", 'pk', 'b')
+        order by "Total Cost"
+    ) cost_rank,
+    "Node Type",
+    "Index Name",
+    qid,
+    nid
+from (
+    select
+        qid,
+        row_number() over (partition by qid) nid,
+        "Node Type",
+        "Index Name",
+        "Index Cond",
+        coalesce("Storage Index Filter", "Storage Filter") as "Index Filter",
+        "Filter",
+        "Plan Rows",
+        "Total Cost"
+    from
+      queries,
+      lateral explain_query_json(query) js,
+      lateral jsonb_path_query(
+        js.explain_line::jsonb,
+        'strict $.** ? (@."Node Type" like_regex "Index.* Scan")'
+      ) pln,
+      lateral jsonb_populate_record(null::index_plan_rows, pln) rec
+) v
+order by
+    regexp_replace("Index Cond", 'pk', 'b'),
+    regexp_replace("Index Filter", 'pk', 'b'),
+    regexp_replace("Filter", 'pk', 'b'),
+    "Plan Rows",
+    cost_rank,
+    "Index Name",
+    "Node Type",
+    qid,
+    nid;
+ Index Cond  |    Index Filter    |               Filter                | Plan Rows | cost_rank |     Node Type     | Index Name | qid | nid 
+-------------+--------------------+-------------------------------------+-----------+-----------+-------------------+------------+-----+-----
+ (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         1 | Index Only Scan   | i_r_b      |   9 |   1
+ (pk <= 500) | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 500) |        56 |         1 | Index Scan        | r_pkey     |   3 |   1
+ (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         3 | Index Scan        | i_r_b      |   6 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         1 | Bitmap Index Scan | r_pkey     |  11 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         2 | Index Only Scan   | i_r_b      |   8 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         2 | Index Scan        | r_pkey     |   2 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan | r_pkey     |  14 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan | r_pkey     |  15 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  17 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  18 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  20 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  21 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan | i_r_b      |  11 |   2
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan | i_r_b      |  12 |   2
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |        12 | Bitmap Index Scan | r_pkey     |  12 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        13 | Index Scan        | i_r_b      |   5 |   1
+ (pk <= 500) |                    |                                     |       500 |         1 | Bitmap Index Scan | r_pkey     |  10 |   1
+ (b <= 500)  |                    |                                     |       500 |         2 | Index Only Scan   | i_r_b      |   7 |   1
+ (pk <= 500) |                    |                                     |       500 |         3 | Index Scan        | r_pkey     |   1 |   1
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  16 |   1
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  19 |   1
+ (b <= 500)  |                    |                                     |       500 |         6 | Bitmap Index Scan | i_r_b      |  10 |   2
+ (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan | r_pkey     |  13 |   1
+ (b <= 500)  |                    |                                     |       500 |         8 | Index Scan        | i_r_b      |   4 |   1
+(24 rows)
+
+drop function non_pushable cascade;
+drop type index_plan_rows cascade;
+drop table queries;
+--
+-- parameterized filter condition in Bitmap Table Scan.
+-- the selectivity should be close to DEFAULT_INEQ_SEL (0.3333333333333333).
+--
+select
+  bts->'Node Type' bmts,
+  bts->'Storage Filter' bmts_filter,
+  round((bts->'Plan Rows')::text::numeric / (bts->'Plans'->0->'Plan Rows')::text::numeric, 2) sel
+from
+  explain_query_json($$/*+ Leading((s r)) NestLoop(s r) BitmapScan(r) Set(yb_bnl_batch_size 1) */select * from r, s where (a = x or b <= 300) and a + b >= y$$) js,
+  lateral to_json(js.explain_line->0->'Plan'->'Plans'->1) bts;
+          bmts          |    bmts_filter     | sel  
+------------------------+--------------------+------
+ "YB Bitmap Table Scan" | "((a + b) >= s.y)" | 0.33
+(1 row)
+
+explain (costs off)
+/*+ Leading((s r)) NestLoop(s r) BitmapScan(r) Set(yb_bnl_batch_size 1) */select * from r, s where (a = x or b <= 300) and a + b >= y;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((a = s.x) OR (b <= 300))
+         Storage Filter: ((a + b) >= s.y)
+         ->  BitmapOr
+               ->  Bitmap Index Scan on i_r_a
+                     Index Cond: (a = s.x)
+               ->  Bitmap Index Scan on i_r_b
+                     Index Cond: (b <= 300)
+(10 rows)
+

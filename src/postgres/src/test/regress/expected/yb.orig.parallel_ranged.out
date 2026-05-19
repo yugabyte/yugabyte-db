@@ -568,7 +568,7 @@ SELECT * FROM
                Hash Cond: (pctest4.c = pctest1.b)
                ->  Gather
                      Workers Planned: 2
-                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
+                     ->  Parallel Seq Scan on pctest2 pctest4
                ->  Hash
                      ->  Merge Join
                            Merge Cond: (pctest1.k = pctest2.k)

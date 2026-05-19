@@ -156,35 +156,11 @@ where x.qid is not null and q.qid is not null;
 (1 row)
 
 update explain_query_options set with_analyze = true;
--- 24 queries still fail until https://phorge.dev.yugabyte.com/D45097 lands
+-- should not return any row.
 select * from check_seeknext_estimates
 where "Seek Estimates" <> 'passed' or "Next/Prev Estimates" <> 'passed'
 order by qid, nid;
-  qid  |                           query                           | nid |      Node Type      | Index Name  | Index Cond  | Storage Index Filter | Storage Filter | Filter | Seek Estimates | Next/Prev Estimates 
--------+-----------------------------------------------------------+-----+---------------------+-------------+-------------+----------------------+----------------+--------+----------------+---------------------
- 11002 | select v, f1 from r where f1 = 1                          |   1 | Index Scan          | r_f1_idx    | (f1 = 1)    |                      |                |        | failed         | passed
- 11003 | select v, f2 from r where f2 = 1                          |   1 | Index Scan          | r_f2_idx    | (f2 = 1)    |                      |                |        | failed         | passed
- 11004 | select v, f3 from r where f3 = 1                          |   1 | Index Scan          | r_f3_idx    | (f3 = 1)    |                      |                |        | failed         | passed
- 11005 | select v, f4 from r where f4 = 1                          |   1 | Index Scan          | r_f4_idx    | (f4 = 1)    |                      |                |        | failed         | passed
- 11006 | select v, f5 from r where f5 = 1                          |   1 | Index Scan          | r_f5_idx    | (f5 = 1)    |                      |                |        | failed         | passed
- 11007 | select v, f10 from r where f10 = 1                        |   1 | Index Scan          | r_f10_idx   | (f10 = 1)   |                      |                |        | failed         | passed
- 11011 | select v, skw1 from r where skw1 = 1                      |   1 | Index Scan          | r_skw1_idx  | (skw1 = 1)  |                      |                |        | failed         | passed
- 11012 | select v, skw2 from r where skw2 = 1                      |   1 | Index Scan          | r_skw2_idx  | (skw2 = 1)  |                      |                |        | failed         | passed
- 11013 | select v, skw3 from r where skw3 = 1                      |   1 | Index Scan          | r_skw3_idx  | (skw3 = 1)  |                      |                |        | failed         | passed
- 13002 | select v, f1 from r where f1 <= 1 order by f1 desc        |   1 | Index Scan Backward | r_f1_idx    | (f1 <= 1)   |                      |                |        | failed         | passed
- 13003 | select v, f2 from r where f2 <= 1 order by f2 desc        |   1 | Index Scan Backward | r_f2_idx    | (f2 <= 1)   |                      |                |        | failed         | passed
- 13004 | select v, f3 from r where f3 <= 1 order by f3 desc        |   1 | Index Scan Backward | r_f3_idx    | (f3 <= 1)   |                      |                |        | failed         | passed
- 13005 | select v, f4 from r where f4 <= 1 order by f4 desc        |   1 | Index Scan Backward | r_f4_idx    | (f4 <= 1)   |                      |                |        | failed         | passed
- 13006 | select v, f5 from r where f5 <= 1 order by f5 desc        |   1 | Index Scan Backward | r_f5_idx    | (f5 <= 1)   |                      |                |        | failed         | passed
- 13007 | select v, f10 from r where f10 <= 1 order by f10 desc     |   1 | Index Scan Backward | r_f10_idx   | (f10 <= 1)  |                      |                |        | failed         | passed
- 13011 | select v, skw1 from r where skw1 <= 1 order by skw1 desc  |   1 | Index Scan Backward | r_skw1_idx  | (skw1 <= 1) |                      |                |        | failed         | passed
- 13012 | select v, skw2 from r where skw2 <= 1 order by skw2 desc  |   1 | Index Scan Backward | r_skw2_idx  | (skw2 <= 1) |                      |                |        | failed         | passed
- 13013 | select v, skw3 from r where skw3 <= 1 order by skw3 desc  |   1 | Index Scan Backward | r_skw3_idx  | (skw3 <= 1) |                      |                |        | failed         | passed
- 23003 | select v, f2 from rC where f2 <= 1 order by f2 desc       |   1 | Index Scan Backward | rc_f2_idx   | (f2 <= 1)   |                      |                |        | failed         | passed
- 23004 | select v, f3 from rC where f3 <= 1 order by f3 desc       |   1 | Index Scan Backward | rc_f3_idx   | (f3 <= 1)   |                      |                |        | failed         | passed
- 23005 | select v, f4 from rC where f4 <= 1 order by f4 desc       |   1 | Index Scan Backward | rc_f4_idx   | (f4 <= 1)   |                      |                |        | failed         | passed
- 23006 | select v, f5 from rC where f5 <= 1 order by f5 desc       |   1 | Index Scan Backward | rc_f5_idx   | (f5 <= 1)   |                      |                |        | failed         | passed
- 23007 | select v, f10 from rC where f10 <= 1 order by f10 desc    |   1 | Index Scan Backward | rc_f10_idx  | (f10 <= 1)  |                      |                |        | failed         | passed
- 23012 | select v, skw2 from rC where skw2 <= 1 order by skw2 desc |   1 | Index Scan Backward | rc_skw2_idx | (skw2 <= 1) |                      |                |        | failed         | passed
-(24 rows)
+ qid | query | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter | Seek Estimates | Next/Prev Estimates 
+-----+-------+-----+-----------+------------+------------+----------------------+----------------+--------+----------------+---------------------
+(0 rows)
 
