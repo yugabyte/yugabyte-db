@@ -3028,14 +3028,14 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
       //    - trying the SELECT requires getting the table schema, but it will be a cache miss since
       //      the whole cache was invalidated, so we get the up-to-date table schema and succeed
       // 2. tserver doesn't get updated catalog version before SELECT (common)
-      //    - trying the SELECT causes catalog version mismatch
+      //    - trying the SELECT causes schema version mismatch
       if (res.ok()) {
         LOG(WARNING) << "SELECT was ok";
         num_successes++;
         continue;
       }
       auto msg = res.status().message().ToBuffer();
-      ASSERT_TRUE(msg.find("Catalog Version Mismatch") != std::string::npos) << res.status();
+      ASSERT_TRUE(msg.find("schema version mismatch") != std::string::npos) << res.status();
     } else {
       // Ensure that the request is successful (thanks to retry).
       if (!res.ok()) {

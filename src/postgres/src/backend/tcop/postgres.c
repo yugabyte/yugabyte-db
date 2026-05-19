@@ -4960,7 +4960,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	*/
 	uint64_t	catalog_master_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-	if (!yb_non_ddl_txn_for_sys_tables_allowed)
+	if (!yb_non_ddl_txn_for_sys_tables_allowed && YBCIsLegacyModeForCatalogOps())
 	{
 		YbInvalidateCatalogSnapshot();
 		catalog_master_version = YbGetMasterCatalogVersion();
@@ -5070,24 +5070,6 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
 			{
 				edata->sqlerrcode = ERRCODE_T_R_SERIALIZATION_FAILURE;
-			}
-			/*
-			 * Report the original error, but add a context mentioning that a
-			 * possibly-conflicting, concurrent DDL transaction happened.
-			 */
-			if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
-			{
-				const char *ddl_error_context =
-					"Catalog Version Mismatch: "
-					"A DDL occurred while processing this query. "
-					"Try again.";
-				MemoryContext oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-				if (edata->context)
-					edata->context = psprintf("%s; %s", edata->context, ddl_error_context);
-				else
-					edata->context = pstrdup(ddl_error_context);
-				MemoryContextSwitchTo(oldcontext);
 			}
 			ThrowErrorData(edata);
 		}
