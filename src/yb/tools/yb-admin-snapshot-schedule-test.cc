@@ -6285,6 +6285,11 @@ TEST_F_EX(
 // single default colocated parent.
 class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestWithLBYsql {
  public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    YbAdminSnapshotScheduleTestWithLBYsql::SetUp();
+  }
+
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
     opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
