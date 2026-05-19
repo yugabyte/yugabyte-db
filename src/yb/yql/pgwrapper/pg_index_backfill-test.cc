@@ -965,28 +965,29 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       const std::string relation_already_exists_msg = Format(
           "relation \"$0\" already exists", kIndexName);
       const auto allowed_msgs = {
-        "Catalog Version Mismatch"sv,
-        SerializeAccessErrorMessageSubstring(),
-        "Restart read required"sv,
-        "Transaction aborted"sv,
-        "Transaction metadata missing"sv,
-        "Unknown transaction, could be recently aborted"sv,
-        std::string_view(relation_already_exists_msg),
+          "canceling statement due to lock timeout"sv,
+          SerializeAccessErrorMessageSubstring(),
+          "Restart read required"sv,
+          "Transaction aborted"sv,
+          "Transaction metadata missing"sv,
+          "Unknown transaction, could be recently aborted"sv,
+          std::string_view(relation_already_exists_msg),
       };
       ASSERT_TRUE(HasSubstring(msg, allowed_msgs)) << status;
       LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
       if (msg.find("Restart read required") == std::string::npos &&
           msg.find(relation_already_exists_msg) == std::string::npos &&
-          (!EnableTableLocks() || msg.find("Catalog Version Mismatch") == std::string::npos)) {
+          (!EnableTableLocks() ||
+           msg.find("canceling statement due to lock timeout") == std::string::npos)) {
         // Failed index creations do two schema changes:
         // - add index with INDEX_PERM_WRITE_AND_DELETE
         // - remove index because of DDL transaction rollback ("Table transaction failed, deleting")
         expected_schema_version += 2;
       } else {
         // If the DocDB index was never created in the first place, it incurs no schema changes.
-        // When table locks are enabled, if the backend observes a catalog version mismatch, it
-        // implies that that backend failed to acquire the relevant locks in the first phase itself,
-        // and that other index creation went through.
+        // When table locks are enabled, if the backend hits the lock timeout, it implies that the
+        // backend failed to acquire the relevant locks in the first phase itself, and that another
+        // index creation went through.
       }
     }
   }

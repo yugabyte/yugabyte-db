@@ -9,6 +9,16 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = 10000,
     last_breaking_version = 10000 WHERE db_oid = :db_oid;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
+-- Wait for the master->tserver heartbeat (and the tserver's shared-memory update) so this
+-- backend picks up the new version on its next query. The in-backend cache-refresh fallback
+-- still handles this race, but the sleep avoids the noisy "catalog snapshot used for this
+-- transaction has been invalidated" retry round-trip that would otherwise occur.
+SELECT pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 -- Build a SQL query that works with per-database catalog version mode enabled
 -- or disabled.
 \set display_catalog_version 'SELECT current_version, last_breaking_version FROM pg_yb_catalog_version WHERE db_oid = :db_oid'

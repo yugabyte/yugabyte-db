@@ -673,7 +673,12 @@ TEST_P(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) 
   static const auto kRetryableErrors = {
       "Try again",
       "Snapshot too old",
-      "Restart read required"
+      "Restart read required",
+      // Concurrent colocated DDLs can conflict on pg_yb_catalog_version, and a CREATE TABLE that
+      // races with another backend's catalog bump can leave this backend's local cache stale
+      // until the next refresh, surfacing as "relation does not exist" on the following INSERT.
+      "could not serialize access due to concurrent update",
+      "does not exist",
   };
   const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
     while (true) {
