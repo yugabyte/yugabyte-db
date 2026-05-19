@@ -71,6 +71,8 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_int32(leader_lease_duration_ms);
 
 using namespace std::literals;
 
@@ -1351,6 +1353,13 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   ASSERT_OK(setup_conn.Fetch(Format(
       "SELECT * From foo WHERE k IN ($0) FOR UPDATE", JoinStrings(contended_keys, ","))));
 
+  // Prevent leadership churn during the test. The 20+ PG connections all go through TS-0 which
+  // can get stressed enough to cause missed heartbeats, triggering leader elections. When status
+  // tablet leaders become unavailable, wait-queue requests time out, and after the blocker commits,
+  // transactions resume at different tablets in different orders -- leading to spurious deadlocks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 60000;
+
   // Create update_conns here since this is somewhat slow, and the loop below has timing-based
   // waits and assertions.
   std::vector<PGConn> update_conns;
@@ -1434,11 +1443,11 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, MultiTabletFairness) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_SANITIZERS(MultiTabletFairness)) {
   TestMultiTabletFairness();
 }
 
-TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_SANITIZERS(MultiTabletFairness)) {
   TestMultiTabletFairness();
 }
 
