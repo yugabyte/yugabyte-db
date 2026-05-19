@@ -3608,7 +3608,8 @@ void CDCServiceImpl::CDCMasterBgTask() {
     }
 
     if (FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries &&
-        FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+        FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup &&
+        !FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
       WARN_NOT_OK(
           CleanupExpiredTables(expired_tables_map),
           "Failed to remove an expired table entry from stream");
