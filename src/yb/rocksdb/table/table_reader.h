@@ -41,7 +41,6 @@ class GetContext;
 class InternalIterator;
 class Iterator;
 class RandomAccessFileReader;
-class WritableFile;
 
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
