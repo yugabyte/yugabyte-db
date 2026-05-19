@@ -624,9 +624,11 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestSimple)) {
 }
 
 TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestRPCDelayed)) {
+  const auto kTransactionTimeoutMs = static_cast<uint32_t>(
+      FLAGS_transaction_heartbeat_usec * FLAGS_transaction_max_missed_heartbeat_periods / 1000);
   // Commit will timeout due to it taking too long to send the transaction status moved RPCs.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms) = static_cast<uint32_t>(
-      2 * FLAGS_transaction_rpc_timeout_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms) =
+      2 * kTransactionTimeoutMs;
   CheckSimplePromotion(0 /* txn_end_delay */, TestTransactionType::kAbort,
                        TestTransactionSuccess::kTrue);
   CheckSimplePromotion(0 /* txn_end_delay */, TestTransactionType::kCommit,
