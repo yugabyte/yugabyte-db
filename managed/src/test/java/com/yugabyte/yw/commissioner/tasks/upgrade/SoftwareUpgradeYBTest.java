@@ -30,6 +30,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -43,6 +45,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
+import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -980,7 +983,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
                   serversUpdated.add(ip)
                       ? Optional.of(oldVersion)
                       : Optional.of(taskParams.ybSoftwareVersion);
-              NodeDetails node = defaultUniverse.getNodeByPrivateIP(ip);
               return result;
             });
 
@@ -1255,6 +1257,139 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     taskInfo = waitForTask(resumedUUID);
 
     assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.PreFinalize,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertPreFinalizeClearsSoftwareUpgradeTaskTracking(defaultUniverse);
+  }
+
+  @Test
+  public void testCanaryResumeClearsPausedAfterMastersImmediately() throws Exception {
+    String baseVersion = "2024.2.2.0-b1";
+    String targetVersion = "2025.1.0.0-b1";
+    this.ysqlMajorUpgrade = true;
+    updateDefaultUniverseTo5Nodes(true);
+    TestHelper.updateUniverseVersion(defaultUniverse, baseVersion);
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(targetVersion)
+            .withFilePath("yugabyte-" + targetVersion + "-centos-x86_64" + ".tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(anyString()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = targetVersion;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    taskParams.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    mockDBServerVersion(
+        baseVersion,
+        targetVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertEquals(CanaryPauseState.PAUSED_AFTER_MASTERS, prev.getCanaryPauseState());
+    assertTrue("Masters phase should be completed before pause", allMasterAzsCompleted(prev));
+
+    mockDBServerVersion(
+        baseVersion,
+        targetVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    TaskInfo.deleteChildrenAfterMaxSuccessPosition(taskUUID);
+    Set<UUID> preResumeSubTaskUUIDs =
+        TaskInfo.getOrBadRequest(taskUUID).getSubTasks().stream()
+            .map(TaskInfo::getUuid)
+            .collect(Collectors.toSet());
+    UUID resumedUUID = resumeCanaryTask(taskUUID);
+    taskInfo = waitForTask(resumedUUID);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = TaskInfo.getOrBadRequest(resumedUUID).getSubTasks();
+    int upgradingStatePosition = Integer.MAX_VALUE;
+    int firstNotPausedSavePosition = Integer.MAX_VALUE;
+    int catalogPosition = Integer.MAX_VALUE;
+    int firstAnsiblePosition = Integer.MAX_VALUE;
+    for (TaskInfo subTask : subTasks) {
+      if (preResumeSubTaskUUIDs.contains(subTask.getUuid())) {
+        continue;
+      }
+      int position = subTask.getPosition();
+      if (subTask.getTaskType() == TaskType.UpdateUniverseState) {
+        UpdateUniverseSoftwareUpgradeState.Params stateParams =
+            play.libs.Json.fromJson(
+                subTask.getTaskParams(), UpdateUniverseSoftwareUpgradeState.Params.class);
+        if (stateParams.state == SoftwareUpgradeState.Upgrading
+            && position < upgradingStatePosition) {
+          upgradingStatePosition = position;
+        }
+      } else if (subTask.getTaskType() == TaskType.SaveSoftwareUpgradeProgress) {
+        SaveSoftwareUpgradeProgress.Params progressParams =
+            play.libs.Json.fromJson(
+                subTask.getTaskParams(), SaveSoftwareUpgradeProgress.Params.class);
+        if (progressParams.canaryPauseState == CanaryPauseState.NOT_PAUSED
+            && position < firstNotPausedSavePosition) {
+          firstNotPausedSavePosition = position;
+        }
+      } else if (subTask.getTaskType() == TaskType.RunYsqlMajorVersionCatalogUpgrade) {
+        catalogPosition = Math.min(catalogPosition, position);
+      } else if (subTask.getTaskType() == TaskType.AnsibleConfigureServers) {
+        NodeTaskParams nodeParams =
+            play.libs.Json.fromJson(subTask.getTaskParams(), NodeTaskParams.class);
+        if (nodeParams.isTserver) {
+          firstAnsiblePosition = Math.min(firstAnsiblePosition, position);
+        }
+      }
+    }
+    assertTrue(
+        "Resume should transition universe to Upgrading before catalog/tserver work",
+        upgradingStatePosition < Integer.MAX_VALUE);
+    assertTrue(
+        "Upgrading state update should run before YSQL catalog upgrade",
+        upgradingStatePosition < catalogPosition);
+    assertTrue(
+        "Upgrading state update should run before first tserver AnsibleConfigureServers",
+        upgradingStatePosition < firstAnsiblePosition);
+    assertTrue(
+        "Resume should enqueue NOT_PAUSED progress before catalog/tserver work",
+        firstNotPausedSavePosition < Integer.MAX_VALUE);
+    assertTrue(
+        "Upgrading state update should run before NOT_PAUSED progress save",
+        upgradingStatePosition < firstNotPausedSavePosition);
+    assertTrue(
+        "NOT_PAUSED save should run before YSQL catalog upgrade",
+        firstNotPausedSavePosition < catalogPosition);
+    assertTrue(
+        "NOT_PAUSED save should run before first tserver AnsibleConfigureServers",
+        firstNotPausedSavePosition < firstAnsiblePosition);
+
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.PreFinalize,

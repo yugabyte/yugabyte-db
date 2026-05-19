@@ -1402,17 +1402,24 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   /** Creates only the remaining subtask groups for a canary resume. */
   private void runCanaryResume(Universe universe) {
-    UniverseDefinitionTaskParams.SoftwareUpgradeState entryState =
-        universe.getUniverseDetails().softwareUpgradeState;
     UpgradeTaskCreationContext ctx = buildContext(universe, true);
     final boolean requireAdditionalSuperUserForCatalogUpgrade =
         ctx.requireAdditionalSuperUserForCatalogUpgrade;
     runUpgrade(
         () -> {
-          if (entryState == UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed) {
-            createUpdateUniverseSoftwareUpgradeStateTask(
-                UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
-                true /* isSoftwareRollbackAllowed */);
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
+              true /* isSoftwareRollbackAllowed */);
+          PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+          if (prev != null
+              && prev.getCanaryPauseState() != null
+              && prev.getCanaryPauseState() != CanaryPauseState.NOT_PAUSED) {
+            createSaveSoftwareUpgradeProgressTask(
+                true /* isCanaryUpgrade */,
+                CanaryPauseState.NOT_PAUSED,
+                prev.getMasterAZUpgradeStatesList(),
+                prev.getTserverAZUpgradeStatesList(),
+                false /* pauseAfter */);
           }
           createUpgradeSubtasks(universe, ctx);
         },
