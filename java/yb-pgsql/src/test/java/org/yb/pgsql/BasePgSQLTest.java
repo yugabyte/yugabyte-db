@@ -188,6 +188,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "due to which catalog cache hits occur for the same query executed on different logical " +
       "connections";
 
+  protected static final String RELCACHE_INIT_NEEDS_NEW_BACKEND =
+      "The test expects every client connection to create a backend and initialize relcache. " +
+      "With Connection Manager and auth passthrough, client connections may not map to new " +
+      "backend relcache initialization, so the main assertion is not meaningful.";
+
   protected static final String GUC_REPLAY_AFFECTS_CONN_STATE =
       "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
         "variables at the beginning of transaction boundaries, causing erroneous results in " +

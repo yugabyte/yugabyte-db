@@ -626,6 +626,7 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
 
   @Test
   public void testRelcacheInitConnectionStress() throws Exception {
+    skipYsqlConnMgr(BasePgSQLTest.RELCACHE_INIT_NEEDS_NEW_BACKEND);
     boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
     // Number of databases and connections per DB.
     final int NUM_DATABASES = 10;
