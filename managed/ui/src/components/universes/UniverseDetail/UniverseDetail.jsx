@@ -1673,7 +1673,8 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {!universePaused &&
+                    {isPerformanceTabEnabled &&
+                      !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       !universePaRegistrationStatus?.data?.advancedObservability && (
                         <RbacValidator
