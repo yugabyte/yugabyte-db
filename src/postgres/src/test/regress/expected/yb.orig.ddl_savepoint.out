@@ -135,6 +135,7 @@ SELECT project_name FROM projects WHERE id = 101;
  Project Phoenix
 (1 row)
 
+ROLLBACK;
 -- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
 CREATE TABLE departments (
     dept_id INT PRIMARY KEY,
@@ -149,7 +150,6 @@ CREATE TABLE employees (
 INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Sales');
 INSERT INTO employees VALUES (101, 'Alice', 1), (102, 'Bob', 2);
 BEGIN;
-WARNING:  there is already a transaction in progress
 SAVEPOINT sp_initial_state;
 UPDATE employees SET department_id = 2 WHERE emp_name = 'Alice';
 CREATE INDEX idx_emp_dept ON employees(department_id);
