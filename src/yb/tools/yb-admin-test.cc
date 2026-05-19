@@ -547,7 +547,20 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
   out = ASSERT_RESULT(CallAdmin("list_tablet_servers", tablet_id));
   const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
-  ASSERT_OK(CallAdmin("leader_stepdown", tablet_id, tserver_id));
+
+  // On a freshly-started cluster the chosen follower may not yet be caught up to the leader,
+  // in which case leader_stepdown returns "Suggested peer is not caught up yet". Retry until
+  // the follower catches up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto result = CallAdmin("leader_stepdown", tablet_id, tserver_id);
+    if (result.ok()) {
+      return true;
+    }
+    if (result.status().ToString().find("not caught up") != std::string::npos) {
+      return false;
+    }
+    return result.status();
+  }, 10s, "Leader stepdown call succeeds"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     out = VERIFY_RESULT(CallAdmin("list_tablet_servers", tablet_id));
