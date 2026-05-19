@@ -1073,7 +1073,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
     .frontiers = &frontiers,
     .chunk_size = num_vectors,
   }));
-  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm, 20s * kTimeMultiplier));
 
   // Snapshot tracker consumption while the in-memory chunk is fully built but before the flush
   // turns it into a serialized (or YbHnsw) chunk that uses a different memory layout. The
