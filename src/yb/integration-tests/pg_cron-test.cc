@@ -323,8 +323,10 @@ TEST_F(PgCronTest, JobOnDifferentDB) {
     LOG(INFO) << Format("Creating table $0", i);
     auto status = new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i);
     if (!status.ok()) {
-      if (status.message().Contains("Catalog Version Mismatch")) {
-        LOG(INFO) << Format("Ignoring Catalog Version Mismatch: $0", status.ToString());
+      // The cron worker's drop_all_tables() races this CREATE TABLE on the per-DB catalog
+      // version row; either side can lose the race and surface a 40001 to its caller.
+      if (status.message().Contains("could not serialize access due to concurrent update")) {
+        LOG(INFO) << Format("Ignoring concurrent catalog-version conflict: $0", status.ToString());
         SleepFor(200ms);
         continue;
       }

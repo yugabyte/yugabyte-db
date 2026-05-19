@@ -4974,7 +4974,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	*/
 	uint64_t	catalog_master_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-	if (!yb_non_ddl_txn_for_sys_tables_allowed)
+	if (!yb_non_ddl_txn_for_sys_tables_allowed && YBCIsLegacyModeForCatalogOps())
 	{
 		YbInvalidateCatalogSnapshot();
 		catalog_master_version = YbGetMasterCatalogVersion();
@@ -5085,18 +5085,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			{
 				edata->sqlerrcode = ERRCODE_T_R_SERIALIZATION_FAILURE;
 			}
-			/*
-			 * Report the original error, but add a context mentioning that a
-			 * possibly-conflicting, concurrent DDL transaction happened.
-			 */
-			ereport(edata->elevel,
-					(errcode(edata->sqlerrcode),
-					 errmsg("%s", edata->message),
-					 edata->detail ? errdetail("%s", edata->detail) : 0,
-					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
-					 (errcontext("Catalog Version Mismatch: A DDL occurred "
-								 "while processing this query. Try again.")) : 0));
+			ThrowErrorData(edata);
 		}
 		else
 		{
