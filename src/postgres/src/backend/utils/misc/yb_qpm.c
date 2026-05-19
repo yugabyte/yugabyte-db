@@ -213,6 +213,8 @@ static void qpmConstructEntryInfo(YbQpmInfoEntry *infoEntry, YbQpmHashEntry *ent
 static long qpmGetAllEntries(YbQpmInfoEntry entries[]);
 static void removeHintDelimiters(char *hintStr);
 static void walkPlanState(PlanState *ps, bool save, List **pspList, int *pos);
+static void qpmRedactWorstParamText(char *str, StringInfoData *buf);
+static int qpmCountParams(char *str);
 
 /*
  * Calculate the size of the LRU clock.
@@ -1755,6 +1757,51 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(inserted);	/* true if new entry */
 }
 
+static int
+qpmCountParams(char *str)
+{
+	int paramCnt = 0;
+	bool in_quote = false;
+
+	for (int i = 0; str[i] != '\0'; i++)
+	{
+		if (in_quote)
+		{
+			if (str[i] == '\'')
+			{
+				/* SQL escape: two consecutive single quotes inside a literal */
+				if (str[i + 1] == '\'')
+				i++;    /* skip the second quote, stay in_quote */
+				else
+				in_quote = false;
+			}
+
+			/* everything else inside quotes: skip */
+		}
+		else if (str[i] == '\'')
+		{
+			in_quote = true;
+		}
+		else if (str[i] == '$' && isdigit((unsigned char)str[i + 1]))
+		{
+			/* $N outside a quoted value: real parameter reference */
+			paramCnt++;
+			while (isdigit((unsigned char)str[i + 1]))
+				i++;
+		}
+	}
+
+	return paramCnt;
+}
+
+static void
+qpmRedactWorstParamText(char *str, StringInfoData *buf)
+{
+	int paramCnt = qpmCountParams(str);
+	for (int i = 1; i <= paramCnt; i++)
+		appendStringInfo(buf, "%s$%d = '?'", i > 1 ? ", " : "", i);
+}
+
 /*
  * Retrieve all of the QPM entries.
  */
@@ -1845,6 +1892,17 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 			values[8] = psprintf("%.0lf", -1.0);
 			values[9] = psprintf("%.0lf", -1.0);
 			values[11] = psprintf("%.0lf", -1.0);
+		}
+
+		if (!yb_qpm_configuration.show_max_exec_params &&
+			currentEntry->worstParamText != NULL)
+		{
+			Assert(strlen(currentEntry->worstParamText) > 0);
+			StringInfoData buf;
+			initStringInfo(&buf);
+			qpmRedactWorstParamText(currentEntry->worstParamText, &buf);
+			pfree(currentEntry->worstParamText);
+			currentEntry->worstParamText = buf.data;
 		}
 
 		values[10] = currentEntry->worstParamText;

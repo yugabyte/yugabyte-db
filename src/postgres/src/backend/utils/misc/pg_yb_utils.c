@@ -2408,7 +2408,8 @@ YbQpmConfiguration yb_qpm_configuration = {
 	.track_catalog_queries = true,
 	.plan_format = EXPLAIN_FORMAT_JSON,
 	.verbose_plans = false,
-	.compress_text = true
+	.compress_text = true,
+	.show_max_exec_params = false
 };
 
 bool		yb_speculatively_execute_pl_statements = false;
