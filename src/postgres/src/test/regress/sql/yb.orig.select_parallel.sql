@@ -283,14 +283,10 @@ ROLLBACK TO SAVEPOINT settings;
 
 -- provoke error in worker
 -- (make the error message long enough to require multiple bufferloads)
--- Flaky test due to GHI #30040
--- Error message is either "invalid input syntax for type smallint" or
--- "lost connection to parallel worker".
--- TODO: uncomment after GHI #30040 is fixed.
--- SAVEPOINT settings;
--- SET LOCAL force_parallel_mode = 1;
--- select (stringu1 || repeat('abcd', 5000))::int2 from tenk1 where unique1 = 1;
--- ROLLBACK TO SAVEPOINT settings;
+SAVEPOINT settings;
+SET LOCAL force_parallel_mode = 1;
+select (stringu1 || repeat('abcd', 5000))::int2 from tenk1 where unique1 = 1;
+ROLLBACK TO SAVEPOINT settings;
 
 -- test interaction with set-returning functions
 SAVEPOINT settings;
