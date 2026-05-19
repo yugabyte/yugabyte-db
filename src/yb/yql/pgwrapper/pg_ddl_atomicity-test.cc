@@ -1319,7 +1319,7 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
   HybridTime hybrid_time_before_rollback = HybridTime::FromMicros(current_time.ToInt64());
 
   // Ensure that at least one snapshot is taken.
-  SleepFor(snapshot_interval_secs * 5s);
+  SleepFor(snapshot_interval_secs * 5s * kTimeMultiplier);
 
   // Verify that rollback for Alter and Create has indeed not happened yet.
   VerifyTableExists(client.get(), kDatabase, kCreateTable, 10);
@@ -1372,7 +1372,7 @@ Status PgDdlAtomicitySnapshotTest::ListSnapshotTest(DdlErrorInjection inject_err
   Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
   HybridTime hybrid_time_before_rollback = HybridTime::FromMicros(current_time.ToInt64());
 
-  SleepFor(snapshot_interval_secs * 5s);
+  SleepFor(snapshot_interval_secs * 5s * kTimeMultiplier);
   auto snapshot_id =
       VERIFY_RESULT(snapshot_util_->PickSuitableSnapshot(schedule_id, hybrid_time_before_rollback));
 
