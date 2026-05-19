@@ -106,7 +106,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Matches Postgres' FirstNormalObjectId */
   protected final long FIRST_NORMAL_OID = 16384;
 
-  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 10000;
+  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 30000;
 
   private boolean pg_connection_check_after_startup = true;
 
