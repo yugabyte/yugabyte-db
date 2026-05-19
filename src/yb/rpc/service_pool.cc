@@ -256,7 +256,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   void Handle(InboundCallPtr incoming) override {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
-    if (GetAtomicFlag(&FLAGS_TEST_ash_debug_aux) && incoming->wait_state()) {
+    if (FLAGS_TEST_ash_debug_aux && incoming->wait_state()) {
       incoming->wait_state()->UpdateAuxInfo(
           ash::AshAuxInfo{.method = incoming->method_name().ToBuffer()});
     }
@@ -296,7 +296,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     CoarseTimePoint last_backpressure_at(last_backpressure_at_.load(std::memory_order_acquire));
 
     // For testing purposes.
-    if (GetAtomicFlag(&FLAGS_TEST_enable_backpressure_mode_for_testing)) {
+    if (FLAGS_TEST_enable_backpressure_mode_for_testing) {
       last_backpressure_at = CoarseMonoClock::Now();
     }
 

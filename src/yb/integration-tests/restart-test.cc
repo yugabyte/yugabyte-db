@@ -178,7 +178,7 @@ class PersistRetryableRequestsTest : public RestartTest {
   Status RollLog(tablet::TabletPeerPtr peer) {
     // Rollover the log to persist retryable requests.
     RETURN_NOT_OK(peer->log()->AllocateSegmentAndRollOver());
-    if (!GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    if (!FLAGS_enable_flush_retryable_requests) {
       return Status::OK();
     }
     return WaitFor([&] {
@@ -214,7 +214,7 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     ASSERT_OK(RollLog(tablet_peer));
 
     // Don't flush newer versions to disk.
-    SetAtomicFlag(false, &FLAGS_enable_flush_retryable_requests);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = false;
     PutKeyValue("key_1", "value_1");
     new_index++;
     ASSERT_OK(WaitFor(
@@ -229,7 +229,7 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     // Sleep for enough time to make the persisted file old enough.
     // it shouldn't replay from the op id that is covered by the persisted file.
     SleepFor((FLAGS_retryable_request_timeout_secs + 1) * 1s);
-    SetAtomicFlag(true, &FLAGS_enable_flush_retryable_requests);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
 
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {

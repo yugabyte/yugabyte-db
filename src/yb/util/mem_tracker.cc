@@ -608,7 +608,7 @@ void MemTracker::Release(int64_t bytes) {
 
   bool do_force_update_consumption = false;
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
-                    GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
+                    FLAGS_mem_tracker_tcmalloc_gc_release_bytes)) {
     // Force updating consumption to reflect real consumption if GC happened.
     do_force_update_consumption = GcTcmallocIfNeeded();
   }

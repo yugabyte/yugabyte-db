@@ -45,7 +45,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-#include "yb/util/atomic.h" // For GetAtomicFlag
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
@@ -70,8 +70,8 @@ DECLARE_int32(tracing_level);
 
 #define VTRACE_TO(level, trace, format, substitutions...) \
   do { \
-    if ((trace) && level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
-      const bool use_fine_ts = GetAtomicFlag(&FLAGS_use_monotime_for_traces); \
+    if ((trace) && level <= FLAGS_tracing_level) { \
+      const bool use_fine_ts = FLAGS_use_monotime_for_traces; \
       auto time = (use_fine_ts ? ToCoarse(MonoTime::Now()) : CoarseMonoClock::Now()); \
       TRACE_TO_WITH_TIME(trace, time, format, ##substitutions); \
     } \

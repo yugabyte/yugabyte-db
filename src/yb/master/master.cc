@@ -184,7 +184,7 @@ Master::Master(const MasterOptions& opts)
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
+      FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 
   // Set higher timeout to avoid test flakiness.
   if (FLAGS_TEST_running_test) {

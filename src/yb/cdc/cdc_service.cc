@@ -882,7 +882,7 @@ CDCServiceImpl::CDCServiceImpl(
       server_metrics_(std::make_shared<xrepl::CDCServerMetrics>(metric_entity_server)),
       get_changes_rpc_sem_(get_changes_concurrency),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-          GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
+          FLAGS_xcluster_get_changes_max_send_rate_mbps * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)),
       client_future_(client_future),
       get_update_peers_interval_(get_update_peers_interval) {
@@ -1284,7 +1284,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
     // CDC will keep sending log init failure until FLAGS_TEST_cdc_log_init_failure_timeout_seconds
     // is expired.
     auto cdc_log_init_failure_timeout_seconds =
-        GetAtomicFlag(&FLAGS_TEST_cdc_log_init_failure_timeout_seconds);
+        FLAGS_TEST_cdc_log_init_failure_timeout_seconds;
     if (cdc_log_init_failure_timeout_seconds > 0) {
       if (test_expire_time_cdc_log_init_failure == MonoTime::kUninitialized) {
         test_expire_time_cdc_log_init_failure =
@@ -2355,10 +2355,10 @@ void CDCServiceImpl::UpdateMetrics() {
       // Update the expiry time of for the tablet_id and stream_id combination.
       if (!entry.active_time) {
         tablet_metric->cdcsdk_expiry_time_ms->set_value(
-            GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+            FLAGS_cdc_intent_retention_ms);
       } else {
         int64_t expiry_time =
-            *entry.active_time + 1000 * (GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+            *entry.active_time + 1000 * (FLAGS_cdc_intent_retention_ms);
         auto now = GetCurrentTimeMicros();
         int64_t remaining_expiry_time_ms = 0;
         if (now < expiry_time) {
@@ -2496,7 +2496,7 @@ void CDCServiceImpl::UpdateMetrics() {
 
 bool CDCServiceImpl::ShouldUpdateMetrics(MonoTime time_of_last_update_metrics) {
   // Only update metrics if cdc is enabled, which means we have a valid replication stream.
-  if (!GetAtomicFlag(&FLAGS_enable_collect_cdc_metrics)) {
+  if (!FLAGS_enable_collect_cdc_metrics) {
     return false;
   }
   if (time_of_last_update_metrics == MonoTime::kUninitialized) {
@@ -2504,7 +2504,7 @@ bool CDCServiceImpl::ShouldUpdateMetrics(MonoTime time_of_last_update_metrics) {
   }
 
   const auto delta_since_last_update = MonoTime::Now() - time_of_last_update_metrics;
-  const auto update_interval_ms = GetAtomicFlag(&FLAGS_update_metrics_interval_ms);
+  const auto update_interval_ms = FLAGS_update_metrics_interval_ms;
   // Only log warning message if it has been more than 4 times the metrics update interval.
   // By default, this is 15s * 4 = 1 minute.
   if (delta_since_last_update >= update_interval_ms * 4ms) {
@@ -2771,7 +2771,7 @@ Status CDCServiceImpl::SetInitialCheckPoint(
   SetMinCDCSDKSafeTime(cdc_sdk_safe_time, &tablet_op_id.cdc_sdk_safe_time);
   SetMinCDCSDKCheckpoint(checkpoint, &tablet_op_id.cdc_sdk_op_id);
   tablet_op_id.cdc_sdk_op_id_expiration =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
   RETURN_NOT_OK_SET_CODE(
@@ -3177,8 +3177,7 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
 
 void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
     TabletIdCDCCheckpointMap* tablet_min_checkpoint_map) {
-  auto enable_update_local_peer_min_index =
-      GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
+  auto enable_update_local_peer_min_index = FLAGS_enable_update_local_peer_min_index;
 
   for (auto& [tablet_id, tablet_info] : *tablet_min_checkpoint_map) {
     auto s =
@@ -3411,7 +3410,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
   // Returns false if the CDC service has been stopped.
   auto sleep_while_not_stopped = [this]() {
-    int min_sleep_ms = std::min(100, GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
+    int min_sleep_ms = std::min(100, FLAGS_update_metrics_interval_ms);
     auto sleep_period = MonoDelta::FromMilliseconds(min_sleep_ms);
     if (shutting_down_) {
       return false;
@@ -3432,7 +3431,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     }
 
     const auto& update_peers_interval = MonoDelta::FromSeconds(get_update_peers_interval_());
-    if (!GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) ||
+    if (!FLAGS_enable_log_retention_by_op_idx ||
         (time_since_update_peers != MonoTime::kUninitialized &&
          MonoTime::Now() - time_since_update_peers < update_peers_interval)) {
       continue;
@@ -3485,8 +3484,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
         DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, slot_entries_to_be_deleted),
         "Unable to cleanup CDC State table metadata");
 
-    if (GetAtomicFlag(&FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) &&
-        GetAtomicFlag(&FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup)) {
+    if (FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries &&
+        FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
       WARN_NOT_OK(
           CleanupExpiredTables(expired_tables_map),
           "Failed to remove an expired table entry from stream");
@@ -3573,8 +3572,7 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
     }
 
     for (const auto& stream_id : streams) {
-      if (num_cleanup_requests >=
-          GetAtomicFlag(&FLAGS_cdcsdk_max_expired_tables_to_clean_per_run)) {
+      if (num_cleanup_requests >= FLAGS_cdcsdk_max_expired_tables_to_clean_per_run) {
         return Status::OK();
       }
 
@@ -3625,7 +3623,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
       master::IncludeDeleted::kFalse,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback,
-      GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) && use_cache
+      FLAGS_enable_cdc_client_tablet_caching && use_cache
           ? client::UseCache::kTrue
           : client::UseCache::kFalse);
   future.wait();
@@ -3891,7 +3889,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
   if (req->has_tablet_id() && req->has_replicated_index()) {
     Status s = UpdateCdcReplicatedIndexEntry(
         req->tablet_id(), req->replicated_index(), OpId::Max(),
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+        MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
         &rollback_tablet_id_map, HybridTime::FromPB(req->cdc_sdk_safe_time()));
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
     rollback_tablet_id_map.clear();
@@ -3923,7 +3921,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
                                  ? OpId::Max()
                                  : OpId::FromPB(req->cdc_sdk_consumed_ops(i));
     const MonoDelta cdc_sdk_op_id_expiration = MonoDelta::FromMilliseconds(
-        req->cdc_sdk_ops_expiration_ms().empty() ? GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)
+        req->cdc_sdk_ops_expiration_ms().empty() ? FLAGS_cdc_intent_retention_ms
                                                  : req->cdc_sdk_ops_expiration_ms(i));
 
     Status s = UpdateCdcReplicatedIndexEntry(
@@ -3989,7 +3987,7 @@ void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
       (**tablet_peer)
           .SetCDCSDKRetainOpIdAndTime(
               rollback_checkpoint_info.second,
-              MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+              MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
               HybridTime::kInvalid),
       "Unable to update op id and expiration time for tablet $0 " + tablet_id);
 }
@@ -4164,7 +4162,7 @@ Status CDCServiceImpl::CheckStreamActive(
 
   auto now = GetCurrentTimeMicros();
   int64_t intent_retention_duration =
-      static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      static_cast<int64_t>(1000 * FLAGS_cdc_intent_retention_ms);
   if (now < last_active_time + intent_retention_duration) {
     VLOG(1) << "Tablet: " << producer_tablet.ToString()
             << " found in CDCState table/ cache with active time: " << last_active_time
@@ -4211,7 +4209,7 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
     return Status::OK();
   }
 
-  int64_t limit_flag = GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs);
+  int64_t limit_flag = FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs;
   auto limit = limit_flag * 1000 * 1000;
   if (deletion_check) {
     // Add a little bit more to the timeout limit to determine if the cdc_state table
@@ -4467,7 +4465,7 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
 
   const auto cdc_sdk_proto_records_size = resp.cdc_sdk_proto_records_size();
   tablet_metric->cdcsdk_change_event_count->IncrementBy(throughput_metrics.records_sent);
-  tablet_metric->cdcsdk_expiry_time_ms->set_value(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  tablet_metric->cdcsdk_expiry_time_ms->set_value(FLAGS_cdc_intent_retention_ms);
   if (cdc_sdk_proto_records_size <= 0) {
     auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
     tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_replicated_micros);
@@ -4937,12 +4935,12 @@ void CDCServiceImpl::CheckReplicationDrain(
   // Rate limiting.
   int num_retry = 0;
   auto sleep_while_unfinished = [&]() {
-    if ((++num_retry) >= GetAtomicFlag(&FLAGS_wait_replication_drain_tserver_max_retry) ||
+    if ((++num_retry) >= FLAGS_wait_replication_drain_tserver_max_retry ||
         stream_tablet_to_check.empty()) {
       return false;
     }
     SleepFor(MonoDelta::FromMilliseconds(
-        GetAtomicFlag(&FLAGS_wait_replication_drain_tserver_retry_interval_ms)));
+        FLAGS_wait_replication_drain_tserver_retry_interval_ms));
     return true;
   };
 

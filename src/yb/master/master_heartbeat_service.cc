@@ -259,7 +259,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
     const UniverseUuid& tserver_universe_uuid,
     const UniverseUuid& master_universe_uuid) {
-  if (!GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+  if (!FLAGS_master_enable_universe_uuid_heartbeat_check) {
     return Status::OK();
   }
 
@@ -597,7 +597,7 @@ std::pair<MasterHeartbeatServiceImpl::ReportedTablets, std::vector<TabletId>>
 
 void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
     const TabletId& tablet_id, const LeaderEpoch& epoch, const TSDescriptorPtr& ts_desc) {
-  if (GetAtomicFlag(&FLAGS_master_enable_deletion_check_for_orphaned_tablets) &&
+  if (FLAGS_master_enable_deletion_check_for_orphaned_tablets &&
       !catalog_manager_->IsDeletedTabletLoadedFromSysCatalog(tablet_id)) {
     // See the comment in deleted_tablets_loaded_from_sys_catalog_ declaration for an
     // explanation of this logic.
@@ -1140,7 +1140,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
               << ", prev state term: " << prev_cstate.current_term()
               << ", prev state has_leader_uuid: " << prev_cstate.has_leader_uuid()
               << ". Consensus state: " << cstate.ShortDebugString();
-    if (GetAtomicFlag(&FLAGS_enable_register_ts_from_raft) &&
+    if (FLAGS_enable_register_ts_from_raft &&
         ReplicaMapDiffersFromConsensusState(tablet, cstate)) {
       LOG(INFO) << Format("Tablet replica map differs from reported consensus state. Replica map: "
           "$0. Reported consensus state: $1.", *tablet->GetReplicaLocations(),
@@ -1266,7 +1266,7 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     }
     auto ts_desc_result = master_->ts_manager()->LookupTSByUUID(peer.permanent_uuid());
     if (!ts_desc_result.ok()) {
-      if (!GetAtomicFlag(&FLAGS_enable_register_ts_from_raft)) {
+      if (!FLAGS_enable_register_ts_from_raft) {
         LOG(WARNING) << "Tablet server has never reported in. "
                     << "Not including in replica locations map yet. Peer: "
                     << peer.ShortDebugString()
@@ -1374,7 +1374,7 @@ bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
   const auto now_usec = boost::posix_time::microseconds(now);
   const auto ht_lease_exp_usec = boost::posix_time::microseconds(ht_lease_exp);
   return (now_usec - ht_lease_exp_usec).total_seconds() >
-      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
+      FLAGS_maximum_tablet_leader_lease_expired_secs;
 }
 
 void MasterHeartbeatServiceImpl::ProcessTabletMetadata(

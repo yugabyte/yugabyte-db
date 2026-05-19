@@ -144,7 +144,7 @@ Status YsqlLeasePoller::Poll() {
   }
 
   auto timeout =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms));
+      MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms);
   if (!proxy_) {
     proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterDdlProxy>(timeout));
   }
@@ -163,7 +163,7 @@ Status YsqlLeasePoller::Poll() {
   master::RefreshYsqlLeaseResponsePB resp;
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
-          GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
+          FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob)) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));

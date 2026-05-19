@@ -154,7 +154,7 @@ Status PopulateWriteRecord(
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());
         transaction_state->add_tablets(context.tablet_peer->tablet_id());
-        if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation) &&
+        if (FLAGS_xcluster_enable_subtxn_abort_propagation &&
             batch.subtransaction().has_subtransaction_id()) {
           record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
         }
@@ -189,7 +189,7 @@ Status PopulateTransactionRecord(
 
   record->set_operation(CDCRecordPB::APPLY);
   txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
-  if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation)) {
+  if (FLAGS_xcluster_enable_subtxn_abort_propagation) {
     auto aborted_subtransactions =
         VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());

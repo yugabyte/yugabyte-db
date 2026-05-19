@@ -396,7 +396,7 @@ class PgOperationBuffer::Impl {
     const auto& table_relfilenode_id = table.relfilenode_id();
 
     const size_t payload = write_request.SerializedSize();
-    const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+    const size_t max_size = FLAGS_rpc_max_message_size *
                             FLAGS_max_buffer_size_to_rpc_limit_ratio;
     const bool need_flush_context = yb_debug_log_docdb_requests;
 

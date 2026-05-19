@@ -33,7 +33,7 @@ DEFINE_test_flag(bool, allow_stop_writes, true,
 namespace rocksdb {
 
 std::unique_ptr<WriteControllerToken> WriteController::GetStopToken() {
-  CHECK(yb::GetAtomicFlag(&FLAGS_TEST_allow_stop_writes));
+  CHECK(FLAGS_TEST_allow_stop_writes);
   ++total_stopped_;
   return std::unique_ptr<WriteControllerToken>(new StopWriteToken(this));
 }

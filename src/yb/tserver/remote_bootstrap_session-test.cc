@@ -136,7 +136,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       MemTracker::FindOrCreateTracker(tablet_id),
       "");
   retryable_requests.SetServerClock(clock());
-  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+  retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
   ASSERT_OK(tablet_peer_->SetBootstrapping());
   ASSERT_OK(tablet_peer_->InitTabletPeer(
       tablet(),

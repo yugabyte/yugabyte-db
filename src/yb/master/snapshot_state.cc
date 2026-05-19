@@ -207,7 +207,7 @@ void SnapshotState::SetVersion(int value) {
 bool SnapshotState::NeedCleanup() const {
   return initial_state() == SysSnapshotEntryPB::DELETING &&
          PassedSinceCompletion(
-            GetAtomicFlag(&FLAGS_snapshot_coordinator_cleanup_delay_ms) * 1ms) &&
+            FLAGS_snapshot_coordinator_cleanup_delay_ms * 1ms) &&
          !cleanup_tracker_.Started();
 }
 

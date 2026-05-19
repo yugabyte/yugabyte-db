@@ -93,7 +93,7 @@ Status CheckLeadership(
     return l->first_failed_status();
   }
   if (catalog_manager->TimeSinceElectedLeader() <
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms))) {
+      MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms)) {
     return SetupError(
         resp->mutable_error(),
         STATUS(

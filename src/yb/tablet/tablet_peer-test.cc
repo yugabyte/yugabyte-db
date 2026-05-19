@@ -216,7 +216,7 @@ class TabletPeerTest : public YBTabletTest {
         MemTracker::FindOrCreateTracker(tablet()->tablet_id()),
         "");
     retryable_requests.SetServerClock(clock());
-    retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {

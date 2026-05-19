@@ -55,12 +55,11 @@ Result<PhysicalTime> CheckClockSyncError(PhysicalTime time) {
 class WallClockImpl : public PhysicalClock {
   Result<PhysicalTime> Now() override {
     return CheckClockSyncError(
-        { static_cast<MicrosTime>(GetCurrentTimeMicros()),
-          GetAtomicFlag(&FLAGS_max_clock_skew_usec) });
+        { static_cast<MicrosTime>(GetCurrentTimeMicros()), FLAGS_max_clock_skew_usec });
   }
 
   MicrosTime MaxGlobalTime(PhysicalTime time) override {
-    return time.time_point + GetAtomicFlag(&FLAGS_max_clock_skew_usec);
+    return time.time_point + FLAGS_max_clock_skew_usec;
   }
 };
 
@@ -113,7 +112,7 @@ class AdjTimeClockImpl : public PhysicalClock {
   }
 
   MicrosTime MaxGlobalTime(PhysicalTime time) override {
-    return time.time_point + GetAtomicFlag(&FLAGS_max_clock_skew_usec);
+    return time.time_point + FLAGS_max_clock_skew_usec;
   }
 };
 

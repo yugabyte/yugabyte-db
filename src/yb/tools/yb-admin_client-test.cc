@@ -244,7 +244,7 @@ TEST_F(
     CreateSnapshotAfterMultiNamespaceCreateIssuedWithSameName) {
   std::string db_name = "test_pgsql";
   TestThreadHolder threads;
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   auto create_database = [this, &db_name] {
     auto conn = ASSERT_RESULT(PgConnect());
@@ -260,7 +260,7 @@ TEST_F(
   threads.AddThreadFunctor(create_database);
   threads.Stop();
 
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
   ASSERT_OK(WaitFor([this, &db_name]() -> Result<bool> {
     bool create_in_progress = true;

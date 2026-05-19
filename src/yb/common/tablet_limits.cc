@@ -42,8 +42,8 @@ std::optional<int64_t> PositiveOrNullopt(int64_t n) {
 
 TabletReplicaPerResourceLimits GetTabletReplicaPerResourceLimits() {
   return TabletReplicaPerResourceLimits{
-      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_gib_limit)),
-      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_core_limit))};
+      .per_gib = PositiveOrNullopt(FLAGS_tablet_replicas_per_gib_limit),
+      .per_core = PositiveOrNullopt(FLAGS_tablet_replicas_per_core_limit)};
 }
 
 int64_t ComputeTabletReplicaLimit(

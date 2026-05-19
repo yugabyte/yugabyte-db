@@ -1292,7 +1292,7 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
 
 int64_t MetaCache::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
   SharedLock lock(mutex_);
-  if (GetAtomicFlag(&FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc)) {
+  if (FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc) {
     return RemoteTablet::kUnknownOpIdIndex;
   }
   auto remote_tablet = FindPtrOrNull(tablets_by_id_, tablet_id);

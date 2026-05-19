@@ -2568,7 +2568,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Wait until the leader is sure that the old leader's lease is over.
   ASSERT_OK(WaitUntilLeader(final_leader, tablet_id_,
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_leader_lease_duration_ms))));
+      MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms)));
 
   // Do one last operation on the new leader: an insert.
   ASSERT_OK(WriteSimpleTestRow(final_leader, tablet_id_,

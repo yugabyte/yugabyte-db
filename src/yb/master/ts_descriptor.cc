@@ -497,7 +497,7 @@ std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTim
   SharedLock<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
-          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+          FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     return std::move(proto_lock);
   }
