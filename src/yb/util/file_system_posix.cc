@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <sys/uio.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -26,15 +27,18 @@
 #include <sys/syscall.h>
 #endif // __linux__
 
+#include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
+#include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/stack_trace_tracker.h"
 #include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -70,6 +74,10 @@ DEFINE_RUNTIME_uint64(rocksdb_check_sst_file_tail_for_zeros, 0,
 TAG_FLAG(rocksdb_check_sst_file_tail_for_zeros, advanced);
 
 DECLARE_bool(never_fsync);
+DECLARE_bool(writable_file_use_fsync);
+DECLARE_bool(TEST_simulate_fs_without_fallocate);
+DECLARE_int64(TEST_simulate_free_space_bytes);
+DECLARE_bool(TEST_skip_file_close);
 
 namespace {
 
@@ -82,6 +90,41 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
   return 0;  // simply do nothing.
 #endif
 }
+
+#if defined(__APPLE__)
+// Simulates Linux's fallocate(mode=0) file preallocation on OS X. Only mode=0 is supported.
+int fallocate(int fd, int mode, off_t offset, off_t len) {
+  CHECK_EQ(mode, 0);
+  off_t size = offset + len;
+
+  struct stat stat;
+  int ret = fstat(fd, &stat);
+  if (ret < 0) {
+    return ret;
+  }
+
+  if (stat.st_blocks * 512 < size) {
+    auto store = fstore_t{
+        .fst_flags = F_ALLOCATECONTIG,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = size,
+        .fst_bytesalloc = 0};
+    if (fcntl(fd, F_PREALLOCATE, &store) < 0) {
+      store.fst_flags = F_ALLOCATEALL;
+      ret = fcntl(fd, F_PREALLOCATE, &store);
+      if (ret < 0) {
+        return ret;
+      }
+    }
+  }
+
+  if (stat.st_size < size) {
+    return ftruncate(fd, size);
+  }
+  return 0;
+}
+#endif
 
 #define STATUS_IO_ERROR(context, err_number) \
     STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(context, err_number)
@@ -343,42 +386,94 @@ void PosixRandomAccessFile::Readahead(size_t offset, size_t length) {
 #endif
 }
 
-} // namespace yb
+Status DoSync(int fd, const std::string& filename) {
+  ThreadRestrictions::AssertIOAllowed();
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
+  if (FLAGS_writable_file_use_fsync) {
+    if (fsync(fd) < 0) {
+      return STATUS_IO_ERROR(filename, errno);
+    }
+  } else {
+    if (fdatasync(fd) < 0) {
+      return STATUS_IO_ERROR(filename, errno);
+    }
+  }
+  return Status::OK();
+}
 
-namespace rocksdb {
+Result<uint64_t> GetLogicalFileSize(int fd, const std::string& filename) {
+  ThreadRestrictions::AssertIOAllowed();
+  struct stat st;
+  if (fstat(fd, &st) == -1) {
+    return STATUS_IO_ERROR(filename, errno);
+  }
+  return st.st_size;
+}
 
 PosixWritableFile::PosixWritableFile(const std::string& fname, int fd,
-                                     const FileSystemOptions& options)
-    : filename_(fname), fd_(fd), filesize_(0) {
+                                     const FileSystemOptions& options,
+                                     uint64_t initial_size, bool sync_on_close)
+    : filename_(fname),
+      fd_(fd),
+      sync_on_close_(sync_on_close),
+      filesize_(initial_size),
+      pre_allocated_size_(0),
+      pending_sync_(false) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   allow_fallocate_ = options.allow_fallocate;
   fallocate_with_keep_size_ = options.fallocate_with_keep_size;
 #endif
-  assert(!options.use_mmap_writes);
 }
 
 PosixWritableFile::~PosixWritableFile() {
   if (fd_ >= 0) {
-    WARN_NOT_OK(PosixWritableFile::Close(), "Failed to close posix writable file");
+    WARN_NOT_OK(PosixWritableFile::Close(), "Failed to close " + filename_);
   }
 }
 
 Status PosixWritableFile::Append(const Slice& data) {
-  const char* src = data.cdata();
-  size_t left = data.size();
-  while (left != 0) {
-    ssize_t done = write(fd_, src, left);
-    if (done < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
+  return AppendSlices(&data, 1);
+}
+
+Status PosixWritableFile::AppendSlices(const Slice* slices, size_t num) {
+  ThreadRestrictions::AssertIOAllowed();
+  static const size_t kIovMaxElements = IOV_MAX;
+
+  Status s;
+  for (size_t i = 0; i < num && s.ok(); i += kIovMaxElements) {
+    size_t n = std::min(num - i, kIovMaxElements);
+    s = DoWritev(slices + i, n);
+  }
+
+  pending_sync_ = true;
+  return s;
+}
+
+Status PosixWritableFile::PreAllocate(uint64_t size) {
+  TRACE_EVENT1("io", "PosixWritableFile::PreAllocate", "path", filename_);
+  ThreadRestrictions::AssertIOAllowed();
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_fs_without_fallocate)) {
+    YB_LOG_FIRST_N(WARNING, 1) << "Simulating a filesystem without fallocate() support";
+    return Status::OK();
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0 &&
+                    static_cast<uint64_t>(FLAGS_TEST_simulate_free_space_bytes) < size)) {
+    return STATUS_IO_ERROR(filename_, ENOSPC);
+  }
+  const uint64_t offset = std::max(filesize_, pre_allocated_size_);
+  if (fallocate(fd_, 0, offset, size) < 0) {
+    if (errno == EOPNOTSUPP) {
+      YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
+    } else if (errno == ENOSYS) {
+      YB_LOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
+    } else {
       return STATUS_IO_ERROR(filename_, errno);
     }
-    yb::TrackStackTrace(yb::StackTraceTrackingGroup::kWriteIO, done);
-    left -= done;
-    src += done;
+    return Status::OK();
   }
-  filesize_ += data.size();
+  pre_allocated_size_ = offset + size;
   return Status::OK();
 }
 
@@ -387,64 +482,97 @@ Status PosixWritableFile::Truncate(uint64_t size) {
 }
 
 Status PosixWritableFile::Close() {
+  TRACE_EVENT1("io", "PosixWritableFile::Close", "path", filename_);
+  ThreadRestrictions::AssertIOAllowed();
+  if (FLAGS_TEST_skip_file_close) {
+    return Status::OK();
+  }
   Status s;
 
+  // If we've allocated more space than we used, truncate to the actual size of the file.
+  off_t size_on_disk = lseek(fd_, 0, SEEK_END);
+  if (size_on_disk < 0) {
+    return STATUS_IO_ERROR(filename_, errno);
+  }
+  if (filesize_ < static_cast<uint64_t>(size_on_disk)) {
+    if (ftruncate(fd_, filesize_) < 0) {
+      s = STATUS_IO_ERROR(filename_, errno);
+      pending_sync_ = true;
+    }
+  }
+
+  // Punch the unused tail of any block-level preallocation done via PrepareWrite/Allocate.
+#ifdef ROCKSDB_FALLOCATE_PRESENT
   size_t block_size;
   size_t last_allocated_block;
   GetPreallocationStatus(&block_size, &last_allocated_block);
-  if (last_allocated_block > 0) {
-    // trim the extra space preallocated at the end of the file
-    // NOTE(ljin): we probably don't want to surface failure as an IOError,
-    // but it will be nice to log these errors.
+  if (last_allocated_block > 0 && allow_fallocate_ &&
+      block_size * last_allocated_block > filesize_) {
     if (FLAGS_rocksdb_check_sst_file_tail_for_zeros > 0) {
       LOG(INFO) << filename_ << " block_size: " << block_size
                 << " last_allocated_block: " << last_allocated_block
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-                << " allow_fallocate_: " << allow_fallocate_
-#endif  // ROCKSDB_FALLOCATE_PRESENT
                 << " filesize_: " << filesize_;
     }
-    if (ftruncate(fd_, filesize_) != 0) {
-      LOG(WARNING) << STATUS_IO_ERROR(filename_, errno) << " filesize_: " << filesize_;
-    }
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-    // in some file systems, ftruncate only trims trailing space if the
-    // new file size is smaller than the current size. Calling fallocate
-    // with FALLOC_FL_PUNCH_HOLE flag to explicitly release these unused
-    // blocks. FALLOC_FL_PUNCH_HOLE is supported on at least the following
-    // filesystems:
-    //   XFS (since Linux 2.6.38)
-    //   ext4 (since Linux 3.0)
-    //   Btrfs (since Linux 3.7)
-    //   tmpfs (since Linux 3.5)
-    // We ignore error since failure of this operation does not affect
-    // correctness.
     IOSTATS_TIMER_GUARD(allocate_nanos);
-    if (allow_fallocate_) {
-      if (fallocate(
-              fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
-              block_size * last_allocated_block - filesize_) != 0) {
-        LOG(WARNING) << STATUS_IO_ERROR(filename_, errno) << " block_size: " << block_size
-                     << " last_allocated_block: " << last_allocated_block
-                     << " filesize_: " << filesize_;
+    if (fallocate(
+            fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
+            block_size * last_allocated_block - filesize_) != 0) {
+      LOG(WARNING) << STATUS_IO_ERROR(filename_, errno) << " block_size: " << block_size
+                   << " last_allocated_block: " << last_allocated_block
+                   << " filesize_: " << filesize_;
+    }
+  }
+#endif
+
+  if (sync_on_close_) {
+    Status sync_status = Sync();
+    if (!sync_status.ok()) {
+      LOG(WARNING) << "Unable to Sync " << filename_ << ": " << sync_status;
+      if (s.ok()) {
+        s = sync_status;
       }
     }
-#endif
   }
 
   if (close(fd_) < 0) {
-    s = STATUS_IO_ERROR(filename_, errno);
+    if (s.ok()) {
+      s = STATUS_IO_ERROR(filename_, errno);
+    }
   }
   fd_ = -1;
   return s;
 }
 
-// write out the cached data to the OS cache
-Status PosixWritableFile::Flush() { return Status::OK(); }
+Status PosixWritableFile::Flush(FlushMode mode) {
+  TRACE_EVENT1("io", "PosixWritableFile::Flush", "path", filename_);
+  ThreadRestrictions::AssertIOAllowed();
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
+#if defined(__linux__)
+  int flags = SYNC_FILE_RANGE_WRITE;
+  if (mode == FLUSH_SYNC) {
+    flags |= SYNC_FILE_RANGE_WAIT_AFTER;
+  }
+  if (sync_file_range(fd_, 0, 0, flags) < 0) {
+    return STATUS_IO_ERROR(filename_, errno);
+  }
+#else
+  if (fsync(fd_) < 0) {
+    return STATUS_IO_ERROR(filename_, errno);
+  }
+#endif
+  return Status::OK();
+}
 
 Status PosixWritableFile::Sync() {
-  if (fdatasync(fd_) < 0) {
-    return STATUS_IO_ERROR(filename_, errno);
+  TRACE_EVENT1("io", "PosixWritableFile::Sync", "path", filename_);
+  ThreadRestrictions::AssertIOAllowed();
+  LOG_SLOW_EXECUTION(WARNING, 1000, strings::Substitute("sync call for $0", filename_)) {
+    if (pending_sync_) {
+      pending_sync_ = false;
+      RETURN_NOT_OK(DoSync(fd_, filename_));
+    }
   }
   return Status::OK();
 }
@@ -456,24 +584,86 @@ Status PosixWritableFile::Fsync() {
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
+  pending_sync_ = false;
   return Status::OK();
 }
 
 bool PosixWritableFile::IsSyncThreadSafe() const { return true; }
 
-uint64_t PosixWritableFile::GetFileSize() { return filesize_; }
+Result<uint64_t> PosixWritableFile::SizeOnDisk() const {
+  TRACE_EVENT1("io", "PosixWritableFile::SizeOnDisk", "path", filename_);
+  return GetLogicalFileSize(fd_, filename_);
+}
 
 Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
 #ifndef __linux__
   return Status::OK();
 #else
-  // free OS pages
   int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
   if (ret == 0) {
     return Status::OK();
   }
   return STATUS_IO_ERROR(filename_, errno);
 #endif
+}
+
+Status PosixWritableFile::DoWritev(const Slice* slices, size_t n) {
+  ThreadRestrictions::AssertIOAllowed();
+  DCHECK_LE(n, IOV_MAX);
+
+  struct iovec iov[n];
+  ssize_t nbytes = 0;
+
+  for (size_t i = 0; i < n; ++i) {
+    const Slice& data = slices[i];
+    iov[i].iov_base = const_cast<uint8_t*>(data.data());
+    iov[i].iov_len = data.size();
+    nbytes += data.size();
+  }
+
+  struct iovec* remaining_iov = iov;
+  int remaining_count = static_cast<int>(n);
+  ssize_t total_written = 0;
+
+  while (remaining_count > 0) {
+    ssize_t written = writev(fd_, remaining_iov, remaining_count);
+    if (PREDICT_FALSE(written == -1)) {
+      if (errno == EINTR || errno == EAGAIN) {
+        continue;
+      }
+      return STATUS_IO_ERROR(filename_, errno);
+    }
+
+    TrackStackTrace(StackTraceTrackingGroup::kWriteIO, written);
+    UnwrittenRemaining(&remaining_iov, written, &remaining_count);
+    total_written += written;
+  }
+
+  filesize_ += total_written;
+
+  if (PREDICT_FALSE(total_written != nbytes)) {
+    return STATUS_FORMAT(
+        IOError, "writev error: expected to write $0 bytes, wrote $1 bytes instead",
+        nbytes, total_written);
+  }
+  return Status::OK();
+}
+
+void PosixWritableFile::UnwrittenRemaining(
+    struct iovec** remaining_iov, ssize_t written, int* remaining_count) {
+  size_t bytes_to_consume = written;
+  do {
+    if (bytes_to_consume >= (*remaining_iov)->iov_len) {
+      bytes_to_consume -= (*remaining_iov)->iov_len;
+      (*remaining_iov)++;
+      (*remaining_count)--;
+    } else {
+      (*remaining_iov)->iov_len -= bytes_to_consume;
+      (*remaining_iov)->iov_base =
+          static_cast<uint8_t*>((*remaining_iov)->iov_base) + bytes_to_consume;
+      bytes_to_consume = 0;
+    }
+  } while (bytes_to_consume > 0);
 }
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
@@ -507,8 +697,8 @@ Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
 }
 
 size_t PosixWritableFile::GetUniqueId(char* id) const {
-  return yb::GetUniqueIdFromFile(fd_, pointer_cast<uint8_t*>(id));
+  return GetUniqueIdFromFile(fd_, pointer_cast<uint8_t*>(id));
 }
 #endif
 
-} // namespace rocksdb
+} // namespace yb

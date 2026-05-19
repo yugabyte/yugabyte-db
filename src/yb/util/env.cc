@@ -44,13 +44,6 @@ Status EnvWrapper::Env::CreateDirs(const std::string& dirname) {
 RandomAccessFile::~RandomAccessFile() {
 }
 
-Status WritableFile::AppendVector(const std::vector<Slice>& data_vector) {
-  return AppendSlices(data_vector.data(), data_vector.size());
-}
-
-WritableFile::~WritableFile() {
-}
-
 RWFile::~RWFile() {
 }
 
@@ -212,36 +205,8 @@ Status FileFactoryWrapper::NewRWFile(const RWFileOptions& opts,
   return target_->NewRWFile(opts, fname, result);
 }
 
-Status WritableFile::AppendSlices(const Slice* begin, const Slice* end) {
-  return AppendSlices(begin, end - begin);
-}
-
 Result<uint64_t> FileFactoryWrapper::GetFileSize(const std::string& fname) {
   return target_->GetFileSize(fname);
-}
-
-Status WritableFileWrapper::PreAllocate(uint64_t size) {
-  return target_->PreAllocate(size);
-}
-
-Status WritableFileWrapper::Append(const Slice& data) {
-  return target_->Append(data);
-}
-
-Status WritableFileWrapper::AppendSlices(const Slice* slices, size_t num) {
-  return target_->AppendSlices(slices, num);
-}
-
-Status WritableFileWrapper::Close() {
-  return target_->Close();
-}
-
-Status WritableFileWrapper::Flush(FlushMode mode) {
-  return target_->Flush(mode);
-}
-
-Status WritableFileWrapper::Sync() {
-  return target_->Sync();
 }
 
 Status EnvWrapper::NewSequentialFile(const std::string& f,

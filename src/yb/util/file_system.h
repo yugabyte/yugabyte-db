@@ -189,21 +189,16 @@ class RandomAccessFile : public FileWithNameAndUniqueId {
   virtual void Readahead(size_t offset, size_t length) {}
 };
 
-} // namespace yb
-
-namespace rocksdb {
-
-// TODO(unify_env): remove `using` statement once filesystem classes are fully merged into yb
-// namespace:
-using yb::FileWithNameAndUniqueId;
-using yb::Status;
-using yb::IOPriority;
-
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
 class WritableFile : public FileWithNameAndUniqueId {
  public:
+  enum FlushMode {
+    FLUSH_SYNC,
+    FLUSH_ASYNC
+  };
+
   WritableFile()
       : last_preallocated_block_(0),
         preallocation_block_size_(0),
@@ -224,7 +219,27 @@ class WritableFile : public FileWithNameAndUniqueId {
     return c_DefaultPageSize;
   }
 
+  // Pre-allocates 'size' bytes for the file in the underlying filesystem.
+  // size bytes are added to the current pre-allocated size or to the current
+  // offset, whichever is bigger. In no case is the file truncated by this
+  // operation. Default implementation is a no-op for backends that do not
+  // support preallocation.
+  virtual Status PreAllocate(uint64_t size) { return Status::OK(); }
+
   virtual Status Append(const Slice& data) = 0;
+
+  // If possible, uses scatter-gather I/O to efficiently append
+  // multiple buffers to a file. Otherwise, falls back to regular I/O.
+  // Default implementation calls Append for each slice.
+  virtual Status AppendSlices(const Slice* slices, size_t num);
+
+  Status AppendSlices(const Slice* begin, const Slice* end) {
+    return AppendSlices(begin, end - begin);
+  }
+
+  Status AppendVector(const std::vector<Slice>& data_vector) {
+    return AppendSlices(data_vector.data(), data_vector.size());
+  }
 
   // Positioned write for unbuffered access default forward
   // to simple append as most of the tests are buffered by default
@@ -236,7 +251,17 @@ class WritableFile : public FileWithNameAndUniqueId {
   // with other writes to follow.
   virtual Status Truncate(uint64_t size);
   virtual Status Close() = 0;
-  virtual Status Flush() = 0;
+
+  // Flush dirty data (not metadata) to disk.
+  //
+  // If the flush mode is synchronous, will wait for flush to finish before
+  // returning. Note that this is cheaper than Sync(): on Linux it uses
+  // sync_file_range without metadata fsync, so it is not crash-safe by itself.
+  virtual Status Flush(FlushMode mode) = 0;
+
+  // Convenience wrapper for asynchronous flush.
+  Status Flush() { return Flush(FLUSH_ASYNC); }
+
   virtual Status Sync() = 0; // sync data
 
   /*
@@ -267,12 +292,14 @@ class WritableFile : public FileWithNameAndUniqueId {
 
   virtual IOPriority GetIOPriority() { return io_priority_; }
 
-  /*
-   * Get the size of valid data in the file.
-   */
-  virtual uint64_t GetFileSize() {
-    return 0;
-  }
+  // Get the size of valid data in the file.
+  virtual uint64_t Size() const = 0;
+
+  // Get the logical file size visible to the users. Default returns Size().
+  virtual Result<uint64_t> SizeOnDisk() const { return Size(); }
+
+  // Transitional alias for the historical rocksdb name. Prefer Size().
+  uint64_t GetFileSize() const { return Size(); }
 
   /*
    * Get and set the default pre-allocation block size for writes to
@@ -338,10 +365,6 @@ class WritableFile : public FileWithNameAndUniqueId {
   IOPriority io_priority_;
 };
 
-} // namespace rocksdb
-
-namespace yb {
-
 class SequentialFileWrapper : public SequentialFile {
  public:
   explicit SequentialFileWrapper(std::unique_ptr<SequentialFile> t) : target_(std::move(t)) {}
@@ -397,10 +420,6 @@ class RandomAccessFileWrapper : public RandomAccessFile {
   std::unique_ptr<RandomAccessFile> target_;
 };
 
-} // namespace yb
-
-namespace rocksdb {
-
 // An implementation of WritableFile that forwards all calls to another
 // WritableFile. May be useful to clients who wish to override just part of the
 // functionality of another WritableFile.
@@ -410,11 +429,18 @@ class WritableFileWrapper : public WritableFile {
  public:
   explicit WritableFileWrapper(std::unique_ptr<WritableFile> t) : target_(std::move(t)) { }
 
+  // Return the target to which this WritableFile forwards all calls.
+  WritableFile* target() const { return target_.get(); }
+
+  using WritableFile::Flush;  // expose the no-arg overload alongside Flush(FlushMode).
+
+  Status PreAllocate(uint64_t size) override { return target_->PreAllocate(size); }
   Status Append(const Slice& data) override;
+  Status AppendSlices(const Slice* slices, size_t num) override;
   Status PositionedAppend(const Slice& data, uint64_t offset) override;
   Status Truncate(uint64_t size) override;
   Status Close() override;
-  Status Flush() override;
+  Status Flush(FlushMode mode) override;
   Status Sync() override;
   Status Fsync() override;
   bool IsSyncThreadSafe() const override { return target_->IsSyncThreadSafe(); }
@@ -422,7 +448,8 @@ class WritableFileWrapper : public WritableFile {
     target_->SetIOPriority(pri);
   }
   IOPriority GetIOPriority() override { return target_->GetIOPriority(); }
-  uint64_t GetFileSize() override { return target_->GetFileSize(); }
+  uint64_t Size() const override { return target_->Size(); }
+  Result<uint64_t> SizeOnDisk() const override { return target_->SizeOnDisk(); }
   void GetPreallocationStatus(size_t* block_size,
                               size_t* last_allocated_block) override {
     target_->GetPreallocationStatus(block_size, last_allocated_block);
@@ -441,5 +468,30 @@ class WritableFileWrapper : public WritableFile {
  private:
   std::unique_ptr<WritableFile> target_;
 };
+
+// Identifies a locked file.
+class FileLock {
+ public:
+  FileLock() { }
+  virtual ~FileLock();
+ private:
+  // No copying allowed
+  FileLock(const FileLock&);
+  void operator=(const FileLock&);
+};
+
+} // namespace yb
+
+namespace rocksdb {
+
+// TODO(unify_env): remove these `using` statements once filesystem callers are migrated to the
+// yb namespace.
+using yb::FileLock;
+using yb::FileWithNameAndUniqueId;
+using yb::IOPriority;
+using yb::Slice;
+using yb::Status;
+using yb::WritableFile;
+using yb::WritableFileWrapper;
 
 } // namespace rocksdb

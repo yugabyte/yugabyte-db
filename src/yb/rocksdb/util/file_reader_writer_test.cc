@@ -58,11 +58,11 @@ TEST_F(WritableFileWriterTest, RangeSync) {
       EXPECT_GT(size_, 10 * kMb);
       return Status::OK();
     }
-    Status Flush() override { return Status::OK(); }
+    Status Flush(FlushMode mode) override { return Status::OK(); }
     Status Sync() override { return Status::OK(); }
     Status Fsync() override { return Status::OK(); }
     void SetIOPriority(yb::IOPriority pri) override {}
-    uint64_t GetFileSize() override { return size_; }
+    uint64_t Size() const override { return size_; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {}
     size_t GetUniqueId(char* id) const override { return 0; }
@@ -129,8 +129,9 @@ TEST_F(WritableFileWriterTest, AppendStatusReturn) {
       return Status::OK();
     }
     Status Close() override { return Status::OK(); }
-    Status Flush() override { return Status::OK(); }
+    Status Flush(FlushMode mode) override { return Status::OK(); }
     Status Sync() override { return Status::OK(); }
+    uint64_t Size() const override { return 0; }
     void SetUseOSBuffer(bool val) { use_os_buffer_ = val; }
     void SetIOError(bool val) { io_error_ = val; }
     const std::string& filename() const override { return kFakeWfFilename; }

@@ -253,7 +253,7 @@ class StringSink: public WritableFile {
     return Status::OK();
   }
   virtual Status Close() override { return Status::OK(); }
-  virtual Status Flush() override {
+  virtual Status Flush(FlushMode mode) override {
     if (reader_contents_ != nullptr) {
       assert(reader_contents_->size() <= last_flush_);
       size_t offset = last_flush_ - reader_contents_->size();
@@ -270,6 +270,7 @@ class StringSink: public WritableFile {
     contents_.append(slice.cdata(), slice.size());
     return Status::OK();
   }
+  uint64_t Size() const override { return contents_.size(); }
   void Drop(size_t bytes) {
     if (reader_contents_ != nullptr) {
       contents_.resize(contents_.size() - bytes);
@@ -514,12 +515,13 @@ class StringEnv : public EnvWrapper {
       return Status::OK();
     }
     virtual Status Close() override { return Status::OK(); }
-    virtual Status Flush() override { return Status::OK(); }
+    virtual Status Flush(FlushMode mode) override { return Status::OK(); }
     virtual Status Sync() override { return Status::OK(); }
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
     }
+    uint64_t Size() const override { return contents_->size(); }
 
     const std::string& filename() const override {
       static const std::string kFilename = "StringSink";
