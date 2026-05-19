@@ -1729,8 +1729,9 @@ class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 

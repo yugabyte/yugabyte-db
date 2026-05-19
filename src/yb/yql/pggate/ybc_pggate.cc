@@ -84,6 +84,8 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
+DECLARE_bool(ysql_enable_concurrent_ddl);
+
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
 DEFINE_RUNTIME_PG_FLAG(
@@ -2051,8 +2053,9 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
-      || YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+  return !YBCIsObjectLockingEnabled() || !FLAGS_ysql_enable_concurrent_ddl ||
+      YBCIsInitDbModeEnvVarSet() || YBCIsSysTablePrefetchingStarted() ||
+      pgapi->IsParallelWorker();
 }
 
 //------------------------------------------------------------------------------------------------

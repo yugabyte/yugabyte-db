@@ -13,8 +13,10 @@
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
+import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import com.yugabyte.core.TransactionState;
 import com.yugabyte.util.PSQLException;
 import com.yugabyte.util.PSQLState;
@@ -23,7 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
-import org.yb.YBTestRunner;
+import org.yb.YBParameterizedTestRunner;
 
 import java.sql.Array;
 import java.sql.Connection;
@@ -47,10 +49,25 @@ import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgTransactions extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
+  private final boolean objectLockingEnabled;
+  private final boolean concurrentDDLEnabled;
+
+  public TestPgTransactions(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
+    this.objectLockingEnabled = objectLockingEnabled;
+    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  }
+
+  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  public static List<Object[]> parameters() {
+    return Arrays.asList(
+        new Object[]{false, false},
+        new Object[]{true, false},
+        new Object[]{true, true});
+  }
 
   private static boolean isYBTransactionError(PSQLException ex) {
     // TODO: Refactor the function to check for specific error codes instead of checking multiple
@@ -82,6 +99,10 @@ public class TestPgTransactions extends BasePgSQLTest {
     appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
     // Auto Analyze makes testSerializableReadDelayWrite time out on a few build.
     flags.put("ysql_enable_auto_analyze", "false");
+    flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
+    flags.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
+    flags.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
     return flags;
   }
 
@@ -197,11 +218,15 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testSnapshotReadDelayWrite() throws Exception {
+    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
+                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.REPEATABLE_READ);
   }
 
   @Test
   public void testSerializableReadDelayWrite() throws Exception {
+    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
+                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.SERIALIZABLE);
   }
 
@@ -1312,6 +1337,8 @@ public class TestPgTransactions extends BasePgSQLTest {
   // Test for #30739.
   @Test
   public void testCatalogSnapshotDoesNotCorruptReadPoint() throws Exception {
+    Assume.assumeFalse("This test requires concurrent DDL to be off", concurrentDDLEnabled);
+
     try (Statement setup = connection.createStatement()) {
       setup.execute("CREATE TYPE test_mood AS ENUM ('sad', 'ok', 'happy')");
       setup.execute("CREATE TABLE test (id INT PRIMARY KEY, val INT, " +
@@ -1340,8 +1367,6 @@ public class TestPgTransactions extends BasePgSQLTest {
     try {
       try (Connection rConn = getConnectionBuilder().connect();
            Statement rStmt = rConn.createStatement()) {
-        // The issue only occurs if yb_enable_concurrent_ddl=false.
-        rStmt.execute("SET yb_enable_concurrent_ddl = false");
         for (int attempt = 0; attempt < 20; attempt++) {
           ResultSet rs = rStmt.executeQuery(
               "SELECT t.val AS val_before, " +

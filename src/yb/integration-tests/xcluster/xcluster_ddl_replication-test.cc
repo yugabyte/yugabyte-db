@@ -38,6 +38,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
@@ -57,6 +58,9 @@ DECLARE_bool(xcluster_target_manual_override);
 DECLARE_string(ysql_cron_database_name);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
@@ -148,22 +152,28 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
-                                                public ::testing::WithParamInterface<bool> {
+class XClusterDDLReplicationConcurrentDDLTest
+    : public XClusterDDLReplicationTest,
+      public ::testing::WithParamInterface<std::pair<bool, bool>> {
  public:
   void SetUp() override {
-    auto original_value = FLAGS_ysql_pg_conf_csv;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "$0$1yb_enable_concurrent_ddl=$2", original_value,
-        original_value.empty() ? "" : ",", GetParam());
+    auto [object_locking, concurrent_ddl] = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = object_locking;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = object_locking;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(false, false)));
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+    ObjLockOn_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(true, false)));
+INSTANTIATE_TEST_CASE_P(
+    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(true, true)));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());

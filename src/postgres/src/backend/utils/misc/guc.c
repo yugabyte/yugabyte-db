@@ -3832,27 +3832,6 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-	/*
-	 * TODOs:
-	 *
-	 * (1) Flush the catalog cache when changing from legacy to the new mode since the legacy mode
-	 * could have stale catalog information but the new mode relies on the fact that no catalog
-	 * information in the cache is stale.
-	 *
-	 * (2) Disallow setting this GUC in the middle of a transaction.
-	 */
-	{
-		{"yb_enable_concurrent_ddl", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
-				"support.] Use this flag to toggle support for concurrent DDLs. If object locking is disabled (i.e., "
-				"the gflag enable_object_locking_for_table_locks is set to false), concurrent DDLs are not supported."),
-			NULL
-		},
-		&yb_enable_concurrent_ddl,
-		false,
-		NULL, NULL, NULL
-	},
-
 	{
 		{"yb_ignore_bool_cond_for_legacy_estimate", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Ignore boolean condition for row count estimate in legacy cost model."),
