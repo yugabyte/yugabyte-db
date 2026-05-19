@@ -219,8 +219,23 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
     }
   }
 
+  // Sets ROUND_ROBIN warmup mode and re-runs setUp() if Connection Manager is active.
+  // All the tests that use this method have following flow of queries:
+  // ROUND_ROBIN routes statements across backends in order: original query -> B1,
+  // pg_stat_statements read -> B2, verifyMetrics JDBC startup SET extra_float_digits
+  // -> B3, SET application_name -> B1, EXPLAIN ANALYZE -> B2. EXPLAIN runs on B2,
+  // a different backend from the original query (B1), so it has no prior DocDB activity
+  // for this query and the seek/next/prev counts reflect only the EXPLAIN execution.
+  private void setUpConnMgrRoundRobinMode() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+    if (isTestRunningWithConnectionManager()) {
+      setUp();
+    }
+  }
+
   @Test
   public void testSelectRpcStats() throws Exception {
+    setUpConnMgrRoundRobinMode();
     try (Statement stmt = connection.createStatement()) {
       String selectQuery = String.format("SELECT * FROM %s_%%d WHERE " +
           "c1 < 100 AND c4 = CONCAT('ab', 'c')", TABLE_NAME);
@@ -284,6 +299,7 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertRpcStats() throws Exception {
+    setUpConnMgrRoundRobinMode();
     try (Connection conn = getConnectionBuilder().connect();
          Statement stmt = conn.createStatement()) {
       String insertQuery = String.format("INSERT INTO %s_%%d VALUES " +
@@ -345,6 +361,7 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testUpdateRpcStats() throws Exception {
+    setUpConnMgrRoundRobinMode();
     try (Statement stmt = connection.createStatement()) {
       String updateQuery = String.format("UPDATE %s_%%d SET " +
           "c1 = c1 * 10 WHERE c1 < 100 AND c4 = CONCAT('ab', 'c')", TABLE_NAME);
@@ -416,6 +433,7 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testDeleteRpcStats() throws Exception {
+    setUpConnMgrRoundRobinMode();
     try (Statement stmt = connection.createStatement()) {
       String deleteQuery = String.format("DELETE FROM %s_%%d WHERE " +
           "c1 > 100 AND c4 = CONCAT('ab', 'c')", TABLE_NAME);
