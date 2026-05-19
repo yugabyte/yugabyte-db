@@ -5462,7 +5462,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000 * kTimeMultiplier;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -5511,7 +5511,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
         }
         return result;
       },
-      MonoDelta::FromSeconds(60), "Timed out waiting for hidden tables to be deleted"));
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Timed out waiting for hidden tables to be deleted"));
   CheckTabletsInCDCStateTable(
     {kCDCSDKSlotEntryTabletId}, test_client(), stream_id, {} /* expected_colocated_table_ids */,
     "Tablets in cdc_state for the stream doesnt match the expected set" /* timeout_msg */,
