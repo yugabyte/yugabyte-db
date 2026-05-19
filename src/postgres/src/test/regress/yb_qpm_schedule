@@ -4,3 +4,4 @@
 # This includes tests for QPM
 ####################################################################################################
 test: yb.orig.qpm_plan_normalization
+test: yb.orig.qpm
