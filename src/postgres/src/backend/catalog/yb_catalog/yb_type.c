@@ -1634,11 +1634,7 @@ static const YbcPgTypeEntity YbTypeEntityTable[] = {
 
 	{BSONOID, YB_YQL_DATA_TYPE_BSON, true, -1, false,
 		(YbcPgDatumToData) YbDatumToBinary,
-	(YbcPgDatumFromData) YbBinaryToDatum},
-
-	{GRAPHIDOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YbcPgDatumToData) YbDatumToInt64,
-	(YbcPgDatumFromData) YbInt64ToDatum}
+	(YbcPgDatumFromData) YbBinaryToDatum}
 };
 
 /*
