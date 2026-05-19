@@ -131,6 +131,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   local_cloud_info_ = std::move(local_cloud_info);
   proxy_cache_ = proxy_cache;
 
+  // Once a tserver is marked as faulty it remains that way until it reregisters here.
+  // If it is still faulty, it will be marked again as part of UpdateTSMetadataFromHeartbeat.
+  has_faulty_drive_ = false;
   return std::move(l);
 }
 

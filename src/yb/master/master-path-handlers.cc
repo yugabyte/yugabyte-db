@@ -504,6 +504,10 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
           color = color == "Green" ? kYBOrange : color;
           status += "</br>Leader Blacklisted";
         }
+        if (desc->has_faulty_drive()) {
+          color = color == "Green" ? kYBOrange : color;
+          status += "</br>Faulty Drive";
+        }
       }
 
       *output << Format("    <td style=\"color:$0\">$1</td>", color, status);
@@ -880,6 +884,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.String("uptime_seconds");
           jw.Uint(0);
         }
+
+        jw.String("has_faulty_drive");
+        jw.Bool(desc->has_faulty_drive());
 
         jw.String("ram_used");
         jw.String(HumanizeBytes(desc->total_memory_usage()));
