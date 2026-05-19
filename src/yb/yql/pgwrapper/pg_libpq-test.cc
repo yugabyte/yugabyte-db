@@ -5435,12 +5435,27 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   }
 };
 
+// Widens the read-restart uncertainty window and warms PG catalog caches at connect time so
+// the InconsistentUpdateReadNonPrefixKey test is not derailed by sanitizer-amplified per-backend
+// catalog warm-up: under SAN the first DML on a fresh connection pays 100s of ms loading
+// bank_accounts metadata, which would push the conflicting UPDATE past the default 500ms
+// max_clock_skew_usec and leave it outside s_sum's uncertainty window (no read restart fires).
+class PgLibPqInconsistentReadTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back("--max_clock_skew_usec=10000000");
+    options->extra_master_flags.emplace_back("--max_clock_skew_usec=10000000");
+    options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_additional_tables=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
 // Test case for GitHub issue #28628. The IN-list is on a non-prefix range column so the
 // variable bloom filter (which is keyed on the prefix range column) does not bypass scan
 // choices' intermediate seeks, allowing the rollback-of-max_seen_ht bug to surface. A
 // third range column `sub_id` is added so the planner cannot form full ybctids and must
 // exercise HybridScanChoices on the non-prefix `id` column.
-TEST_F(PgLibPqTest, InconsistentUpdateReadNonPrefixKey) {
+TEST_F_EX(PgLibPqTest, InconsistentUpdateReadNonPrefixKey, PgLibPqInconsistentReadTest) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(
