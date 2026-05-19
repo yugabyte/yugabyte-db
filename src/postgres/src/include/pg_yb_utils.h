@@ -636,6 +636,12 @@ extern int	yb_insert_on_conflict_read_batch_size;
 extern bool yb_enable_fkey_catcache;
 
 /*
+ * Enable batched DocDB lookup for foreign key constraint check when types
+ * mismatch. The batch size is controlled by ysql_session_max_batch_size.
+ */
+extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
+
+/*
  * Enable the nop alter role statement optimization.
  */
 extern bool yb_enable_nop_alter_role_optimization;
