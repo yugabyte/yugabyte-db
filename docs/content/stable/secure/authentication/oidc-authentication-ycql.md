@@ -12,6 +12,14 @@ menu:
     weight: 733
 type: docs
 ---
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../oidc-authentication-ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
 The OIDC authentication method is similar to the [password](../password-authentication/) method, except that instead of a user-configured password, the JSON Web Token (JWT) received from an external identity provider (IdP) is used as the password. Therefore, before OIDC can be used for authentication, the user must already exist in the database (and have appropriate permissions). Moreover, the external IdP must be configured.
 
