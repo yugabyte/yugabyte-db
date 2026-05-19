@@ -304,12 +304,6 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'),
                                      remote_tmp_dir=args.remote_tmp_dir)
             results["SSH Connection"] = scp_result == 0
-            sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
-            self.extra_vars['sudo_pass_file'] = sudo_pass_file
-            ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
-                                                                self.extra_vars, host_info,
-                                                                print_output=False)
-            results["Try Ansible Command"] = ansible_status == 0
             ports_to_check = ",".join([str(p) for p in [args.master_http_port,
                                                         args.master_rpc_port,
                                                         args.tserver_http_port,
@@ -325,10 +319,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                         args.node_exporter_http_port]
                                       if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-                "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
+                "--ports_to_check {} --tmp_dir {} --cleanup".format(
                     args.remote_tmp_dir, args.precheck_type, args.yb_home_dir,
                     self.cloud.get_mount_points_csv(args),
-                    ports_to_check, sudo_pass_file, args.remote_tmp_dir)
+                    ports_to_check, args.remote_tmp_dir)
             if args.install_node_exporter:
                 cmd += " --install_node_exporter"
             if args.air_gap:
