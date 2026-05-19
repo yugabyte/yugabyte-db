@@ -87,6 +87,13 @@ YbHnswInit(void)
 							&ybhnsw_ef_search,
 							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
 	MarkGUCPrefixReserved("hnsw");
+	/*
+	 * YB: Keep the ybhnsw prefix reserved (even though we no longer define any
+	 * ybhnsw.* GUCs) so that lingering 'SET ybhnsw.ef_search = ...' or
+	 * ysql_pg_conf_csv entries from before the removal produce a clear error
+	 * / startup warning instead of silently being accepted as no-op placeholders.
+	 */
+	MarkGUCPrefixReserved("ybhnsw");
 }
 
 /*
