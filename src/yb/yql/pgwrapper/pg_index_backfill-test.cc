@@ -810,7 +810,12 @@ class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
   }
 
  protected:
-  const int kBackfillRpcDeadlineSmallMs = 10000;
+  // Scale by kTimeMultiplier so that under sanitizers, where a freshly forked PG backend can take
+  // an extra second or two to reach ReadyForQuery (catalog cache list build, AcquireObjectLock
+  // chain, etc.), the first backfill RPC on a fresh tserver does not blow this deadline and force
+  // the test's avg_rpc_latency assertion to fail. The test still validates that backfill RPCs
+  // respect a small deadline relative to the total backfill workload.
+  const int kBackfillRpcDeadlineSmallMs = 10000 * kTimeMultiplier;
   const int kBackfillRateRowsPerSec = 100;
   const int kNumConcurrentBackfills = 1;
   const int kTabletsPerServer = 1;
