@@ -2353,17 +2353,32 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   bool ShouldIgnoreCall(
       const PgActiveSessionHistoryRequestPB& req, const rpc::RpcCallInProgressPB& call) {
-    return (
-        !call.has_wait_state() ||
-        // Ignore log-appenders which are just Idle
-        call.wait_state().wait_state_code() == std::to_underlying(ash::WaitStateCode::kIdle) ||
-        // Ignore ActiveSessionHistory/Perform calls, if desired.
-        (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
-         call.wait_state().aux_info().has_method() &&
-         (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
-          call.wait_state().aux_info().method() == "Perform" ||
-          call.wait_state().aux_info().method() == "AcquireAdvisoryLock")));
+    if (!call.has_wait_state()) {
+      return true;
+    }
 
+    const auto& wait_state = call.wait_state();
+
+    // Ignore log-appenders which are just Idle.
+    if (wait_state.wait_state_code() == std::to_underlying(ash::WaitStateCode::kIdle)) {
+      return true;
+    }
+
+    // Ignore ActiveSessionHistory/Perform/AcquireAdvisoryLock calls, if desired.
+    if (req.ignore_ash_and_perform_calls() && wait_state.has_aux_info() &&
+        wait_state.aux_info().has_method()) {
+      const auto& method = wait_state.aux_info().method();
+      if (method == "ActiveSessionHistory" || method == "AcquireAdvisoryLock") {
+        return true;
+      }
+      // Ignore Perform calls unless waiting for xCluster safe time.
+      if (method == "Perform" && wait_state.wait_state_code() !=
+              std::to_underlying(ash::WaitStateCode::kXCluster_WaitForSafeTime)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void MaybeIncludeSample(

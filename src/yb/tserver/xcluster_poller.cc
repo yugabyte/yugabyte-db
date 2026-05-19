@@ -441,9 +441,8 @@ void XClusterPoller::DoPoll() {
                 std::make_shared<cdc::GetChangesResponsePB>(std::move(resp))));
       });
 
-  SetHandleAndSendRpc(handle);
-
   SET_WAIT_STATUS(XCluster_WaitingForGetChanges);
+  SetHandleAndSendRpc(handle);
 }
 
 Status XClusterPoller::DoPausePoller() {

@@ -3436,6 +3436,7 @@ class PgClientSession::Impl {
     }
 
     // If read_point is set to a time ahead of the xcluster safe time then we wait.
+    SCOPED_WAIT_STATUS(XCluster_WaitForSafeTime);
     return WaitFor(
         [&requested_read_time, &namespace_id, this]() -> Result<bool> {
           auto safe_time = VERIFY_RESULT(xcluster_context()->GetSafeTime(namespace_id));
