@@ -133,6 +133,30 @@ sudo dpkg -i gettext-base.deb gettext.deb libpopt0.deb rsync.deb
 popd
 ```
 
+## Build Prerequisites for Cursor agents
+
+When invoking `yb_build.sh` (or any long subprocess pipeline that includes `build_postgres` / `rsync` / postgres `initdb`) via the Cursor agent's `Shell` tool, two quirks of the agent's environment break the build and must be worked around together — fixing only one still fails further along.
+
+1. **Pass `required_permissions: ["all"]` on the `Shell` call.**
+
+   Without it, the command runs inside the `cursor_sandbox` AppArmor profile (the default for `Shell`). The postgres-source mirror step (`rsync -avz` in `python/yugabyte/build_postgres.py`) deadlocks deterministically inside the profile: all three rsync workers go to sleep in `pselect6`, `postgres_build/` stays at 2 files indefinitely, and ninja halts the moment a target needs the postgres step. The profile also blocks signal delivery from outside the sandbox (`sudo kill` returns `EACCES`), so the only ways to clean up wedged processes are `sudo nsenter -t <pid> -a kill -9 -1` (entering the sandbox's user namespace) or a reboot. With `required_permissions: ["all"]`, the entire spawned tree (`bash` → `ninja` → `python3` → `rsync`) inherits `unconfined`, and the same rsync completes in ~300 ms.
+
+2. **Unset `CARGO_TARGET_DIR` for the `yb_build.sh` invocation** — e.g. `env -u CARGO_TARGET_DIR ./yb_build.sh ...`.
+
+   The Cursor agent shell exports `CARGO_TARGET_DIR=/tmp/cursor-sandbox-cache/<hash>/cargo-target` so cargo's build cache is shared across sessions. The third-party DocumentDB extension's pgrx setup runs `cargo build --package cargo-pgrx --release && target/release/cargo-pgrx pgrx init ...`: cargo writes the binary to `$CARGO_TARGET_DIR/release/cargo-pgrx`, but the very next shell step looks for `target/release/cargo-pgrx` relative to the pgrx source dir. The build fails with `/bin/sh: ...: target/release/cargo-pgrx: not found` → `make[2]: *** [cargo-pgrx-exists] Error 127` → `install-documentdb Error 2`. Unsetting the var makes cargo write to the relative path the Makefile expects. Each new `Shell` call inherits the parent env fresh, so `unset CARGO_TARGET_DIR` typed in an earlier `Shell` call does not persist — the unset (or `env -u`) must be on the same call that spawns `yb_build.sh`.
+
+After spawning the build, sanity-check that the build process is unconfined and free of `CARGO_TARGET_DIR` so future regressions surface immediately instead of after 25 minutes:
+```bash
+build_pid=$(pgrep -f '[y]b_build.sh|[n]inja -j' | head -1)
+if [ -n "$build_pid" ]; then
+  cat /proc/$build_pid/attr/current                                # expect: unconfined
+  readlink /proc/$build_pid/ns/user                                # expect: user:[4026531837] (host)
+  tr '\0' '\n' < /proc/$build_pid/environ | grep CARGO_TARGET_DIR  # expect: no output
+fi
+```
+
+This only affects how the agent invokes the build via `Shell` — humans running `./yb_build.sh` from their own terminal are already unconfined and typically don't have `CARGO_TARGET_DIR` set.
+
 ## Build System
 
 The primary build entry point is `yb_build.sh` at the repository root.
