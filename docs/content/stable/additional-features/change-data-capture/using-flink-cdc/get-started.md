@@ -14,25 +14,25 @@ menu:
 type: docs
 ---
 
-This tutorial walks through deploying a YugabyteDB-to-PostgreSQL change data capture pipeline using Docker Compose and the Flink SQL Client. By the end you will have a running Flink job that captures INSERT, UPDATE, and DELETE events from a YugabyteDB table and applies them to a PostgreSQL sink table in real time.
+This tutorial walks through deploying a YugabyteDB-to-PostgreSQL change data capture pipeline using Docker Compose and the Flink SQL Client. You should have a running Flink job that captures INSERT, UPDATE, and DELETE events from a YugabyteDB table and applies them to a PostgreSQL sink table in real time.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following:
 
-- **Apache Flink 1.20.x** cluster (validated version) with the `postgres-cdc` and JDBC sink connector JARs placed in `/opt/flink/lib/`.
+- Apache Flink 1.20.x cluster (validated version) with the `postgres-cdc` and JDBC sink connector JARs placed in `/opt/flink/lib/`.
 
     Pre-built JARs for YugabyteDB are published on the [Yugabyte Flink CDC Releases page](https://github.com/yugabyte/flink-cdc/releases). The Docker image used in this tutorial bundles them automatically.
 
-- **YugabyteDB universe** with YSQL logical replication enabled and network connectivity to your Flink cluster.
+- YugabyteDB cluster with [YSQL logical replication enabled](../../../../explore/change-data-capture/#set-up-pg-recvlogical) and network connectivity to your Flink cluster.
 
-    Note the IP address of a tserver node that is reachable from the Flink containers.
+    Note the IP address of a YB-TServer node that is reachable from the Flink containers.
 
-- **Docker and Docker Compose** installed and running.
+- Docker and Docker Compose installed and running.
 
-- A **sink PostgreSQL database** accessible from the Flink containers.
+- A sink PostgreSQL database accessible from the Flink containers.
 
-## Step 1. Prepare YugabyteDB
+## Configure the source
 
 Connect to your YugabyteDB cluster using `ysqlsh` and run the following SQL to create the source table, publication, and replication slot:
 
@@ -58,7 +58,7 @@ SELECT * FROM pg_create_logical_replication_slot('flink', 'pgoutput');
 Assign a unique `slot.name` to each Flink pipeline. Using the same slot name in multiple pipelines causes errors about active PIDs on the same slot.
 {{< /note >}}
 
-## Step 2. Prepare the sink database
+## Initialize the target database
 
 Connect to your PostgreSQL sink database and create the target table:
 
@@ -72,19 +72,17 @@ CREATE TABLE shipments (
 );
 ```
 
-## Step 3. Configure Docker Compose
+## Configure Docker Compose
 
 Create a `docker-compose.yaml` file with the following content. Replace the environment variable placeholders with your actual values.
 
 ```yaml
 services:
   jobmanager:
-    image: quay.io/yugabyte/ybdb-flink-cdc:fl.3.5.yb.2025.2.0-SNAPSHOT.1
+    image: <Docker Image>
     container_name: flink-jobmanager
     hostname: jobmanager
-    ports:
-      - "8081:8081"
-      - "6123:6123"
+    ports: ["8081:8081", "6123:6123"]
     command: jobmanager
     volumes:
       - ./checkpoints:/opt/flink/checkpoints
@@ -101,7 +99,7 @@ services:
       - "yb-ysql:${YB_YSQL_HOST}"
 
   taskmanager:
-    image: quay.io/yugabyte/ybdb-flink-cdc:fl.3.5.yb.2025.2.0-SNAPSHOT.1
+    image: <Docker Image>
     container_name: flink-taskmanager
     hostname: taskmanager
     depends_on: [jobmanager]
@@ -139,9 +137,9 @@ docker compose up -d
 
 Verify that both containers are running and the Flink Web UI is accessible at `http://localhost:8081`.
 
-## Step 4. Submit the streaming job
+## Initiate the streaming job
 
-Open the Flink SQL Client inside the jobmanager container:
+Start the Flink SQL Client inside the jobmanager container:
 
 ```sh
 docker compose exec jobmanager ./bin/sql-client.sh
@@ -201,7 +199,7 @@ INSERT INTO pg_shipments SELECT * FROM yb_shipments;
 Always set `decoding.plugin.name` to `pgoutput`. YugabyteDB does not support the `decoderbufs` plugin that Flink CDC uses by default.
 {{< /note >}}
 
-## Step 5. Validate end-to-end propagation
+## Validate end-to-end propagation
 
 After the job starts, perform some DML operations on the YugabyteDB source table using `ysqlsh` and verify that the changes are reflected in the PostgreSQL sink:
 
@@ -219,15 +217,6 @@ DELETE FROM shipments WHERE shipment_id = 1003;
 Query the sink table in PostgreSQL to confirm that the changes have propagated.
 
 Monitor the Flink job status, throughput, and checkpoint health at `http://localhost:8081`.
-
-## Connectivity reference
-
-| Parameter | Value |
-| :--- | :--- |
-| Host | tserver IP reachable from Flink |
-| Port | `5433` (YSQL) |
-| `decoding.plugin.name` | `pgoutput` |
-| SSL mode | `require` (recommended) |
 
 ## Disable the pipeline
 

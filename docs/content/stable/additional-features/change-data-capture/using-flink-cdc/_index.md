@@ -27,7 +27,39 @@ showRightNav: true
 
 Flink CDC uses the Debezium PostgreSQL connector internally to capture row-level changes from YugabyteDB's logical replication stream. The key difference from a standalone Debezium connector is that Flink CDC converts change records into a continuous Flink stream, allowing you to process data using the Flink Table API or Flink SQL before routing it to any downstream Flink integration (for example, Kafka, Iceberg, or a JDBC sink).
 
-The Yugabyte fork of Flink CDC is maintained at [github.com/yugabyte/flink-cdc](https://github.com/yugabyte/flink-cdc). Pre-built connector JARs are published on the repository's [Releases page](https://github.com/yugabyte/flink-cdc/releases).
+Yugabyte maintains a [Flink CDC build for YugabyteDB](https://github.com/yugabyte/flink-cdc) as a GitHub repository with pre-built connector JARs published on the [Releases page](https://github.com/yugabyte/flink-cdc/releases).
+
+## Enable and disable the feature
+
+To enable Flink CDC (which is {{<tags/feature/tp idea="2658">}}), do the following:
+
+1. Prepare YugabyteDB: Create a publication and logical replication slot, and tune CDC WAL retention so the slot can survive expected consumer downtime (see [Best practices](#best-practices)).
+1. Deploy connector JARs: Install the `postgres-cdc` and JDBC connector JARs on your Flink cluster (see [Get started](./get-started/) for an example layout).
+1. Submit the Flink job: Define source and sink tables in the Flink SQL Client and run a streaming `INSERT INTO … SELECT …` job.
+
+Disabling the feature means canceling the Flink job. Optionally, drop the publication and replication slot when you no longer need change capture on the database.
+
+## Required YugabyteDB SQL setup
+
+After you create source tables in YugabyteDB, run the following in `ysqlsh` to create the publication and logical replication slot used by the Flink `postgres-cdc` connector:
+
+```sql
+CREATE PUBLICATION dbz_publication FOR ALL TABLES;
+SELECT * FROM pg_create_logical_replication_slot('flink', 'pgoutput');
+```
+
+Use a unique slot name for each Flink pipeline. The [Get started](./get-started/) tutorial shows a full example, including sample source tables and connector configuration.
+
+## Steps
+
+At a high level, a YugabyteDB-to-downstream Flink CDC pipeline looks like this:
+
+1. Start a YugabyteDB cluster and note the IP address of a YB-TServer node that Flink can reach.
+1. Create source tables, then create the publication and logical replication slot (see [Required YugabyteDB SQL setup](#required-yugabytedb-sql-setup)).
+1. Deploy a Flink cluster with the `postgres-cdc` and JDBC connector JARs (see [Get started](./get-started/)).
+1. Open the Flink SQL Client and define a `postgres-cdc` source table and a sink table.
+1. Submit the streaming job: `INSERT INTO <sink> SELECT * FROM <yb_source>;`.
+1. Validate that INSERT, UPDATE, and DELETE operations propagate end-to-end, and monitor the job at the Flink Web UI (for example, `http://localhost:8081`).
 
 ## Get started
 
@@ -41,35 +73,37 @@ Deploy a YugabyteDB-to-PostgreSQL pipeline using Docker Compose and the Flink SQ
 
 The Flink CDC integration involves a three-stage streaming pipeline:
 
-1. **Change capture (source)** — The Flink `postgres-cdc` connector reads raw change records from YugabyteDB via a logical replication slot using the `pgoutput` decoding plugin.
-1. **Stream processing (Flink)** — The connector converts the incoming change records (Debezium format internally) into an unbounded Flink dynamic table. This stream can be processed, filtered, or transformed using Flink SQL or the DataStream API.
-1. **Data sink (destination)** — The processed Flink stream is written continuously to a downstream system using a Flink sink connector (for example, a JDBC sink, Kafka topic, or Iceberg table).
+1. Change capture (source): The Flink `postgres-cdc` connector reads raw change records from YugabyteDB via a logical replication slot using the `pgoutput` decoding plugin.
+1. Stream processing (Flink): The connector converts the incoming change records (Debezium format internally) into an unbounded Flink dynamic table. This stream can be processed, filtered, or transformed using Flink SQL or the DataStream API.
+1. Data sink (destination): The processed Flink stream is written continuously to a downstream system using a Flink sink connector (for example, a JDBC sink, Kafka topic, or Iceberg table).
+
+<!-- <Diagram to do> -->
 
 ## Best practices
 
 - Always define primary keys on source tables; choose distributed keys to avoid write hotspots.
 - Use a unique `slot.name` value for every pipeline to prevent conflicts on active replication slots.
 - Set `decoding.plugin.name` to `pgoutput`. YugabyteDB does not support the default `decoderbufs` plugin.
-- Do **not** enable `scan.incremental.snapshot.enabled` — incremental snapshots are not supported with YugabyteDB.
+- Do **not** enable `scan.incremental.snapshot.enabled`. YugabyteDB does not support Incremental snapshots.
 - Tune YugabyteDB CDC WAL retention flags (`cdc_wal_retention_time_secs`, `cdc_intent_retention_ms`) to exceed the maximum expected consumer downtime.
 - Configure checkpointing together with a forgiving `fixed-delay` restart strategy (see [Unsupported scenarios](#unsupported-scenarios)).
 - Monitor CDC lag, retention headroom, and checkpoint health as SLO signals.
 
 ## Unsupported scenarios
 
-| Scenario | Details |
-| :--- | :--- |
-| Incremental snapshots | YugabyteDB does not currently support incremental snapshots. Keep `scan.incremental.snapshot.enabled` at its default `false`. Because checkpointing is unavailable during initial snapshots, long-running snapshot processes may encounter timeouts. Set `execution.checkpointing.interval` to `10min`, `execution.checkpointing.tolerable-failed-checkpoints` to `100`, and use `restart-strategy: fixed-delay` with `restart-strategy.fixed-delay.attempts: 2147483647`. |
-| Transactional atomicity | Default configurations do not guarantee cross-table consistency during end-to-end propagation. |
-| Schema evolution | DDL changes are not mirrored automatically and must be managed through manual intervention. |
-| Exactly-once processing | The `postgres-cdc` source supports exactly-once, but end-to-end delivery depends on a transactional sink. Standard JDBC sinks provide at-least-once delivery. |
-| PK-less tables | Tables without primary keys are not recommended. The common workaround using `scan.incremental.snapshot.chunk.key-column` relies on unsupported incremental snapshotting. |
-| Shared replication slots | A replication slot must be consumed by at most one Flink pipeline at a time. Assign a unique `slot.name` to every pipeline. |
+- Incremental snapshots. YugabyteDB does not currently support incremental snapshots. Keep `scan.incremental.snapshot.enabled` at its default `false` setiing. Because checkpointing is unavailable during initial snapshots, long-running snapshot processes may encounter timeouts. Recommended mitigation parameters include:
+  - Set `execution.checkpointing.interval` to `10min`
+  - Set`execution.checkpointing.tolerable-failed-checkpoints` to `100`
+  - Use `restart-strategy: fixed-delay` with `restart-strategy.fixed-delay.attempts: 2147483647`.
+- Transactional atomicity. Default configurations do not guarantee cross-table consistency during end-to-end propagation.
+- Schema evolution. DDL changes are not mirrored automatically and must be managed through manual intervention.
+- Exactly-once processing. The `postgres-cdc` source supports exactly-once, but end-to-end delivery depends on a transactional sink. Standard JDBC sinks provide at-least-once delivery.
+- Primary key requirement. Tables without primary keys are not recommended. The common workaround using `scan.incremental.snapshot.chunk.key-column` relies on unsupported incremental snapshotting.
+- Slot name conflicts. Assign a unique `slot.name` to every pipeline to prevent errors regarding active PIDs on the same slot.
 
 ## Related articles
 
 - [Flink CDC `postgres-cdc` connector (v3.5)](https://nightlies.apache.org/flink/flink-cdc-docs-release-3.5/docs/connectors/flink-sources/postgres-cdc/)
-- [Flink CDC on GitHub](https://github.com/apache/flink-cdc)
-- [Yugabyte fork of Flink CDC](https://github.com/yugabyte/flink-cdc)
+- [Flink CDC](https://github.com/apache/flink-cdc)
 - [CDC using PostgreSQL Replication Protocol](../using-logical-replication/)
 - [YugabyteDB CDC architecture](../../../architecture/docdb-replication/change-data-capture/)
