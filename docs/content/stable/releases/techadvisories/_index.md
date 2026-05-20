@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 24007>}}
+| Warning gap for index rewrites during ALTER TABLE .. ALTER COLUMN TYPE
+| {{<product "ysql">}}
+| {{<release "2024.1.0.0">}}+
+| {{<nobreak "13 May 2026">}}
+|
 | {{<ta 30772>}}
 | Potential database inconsistency with very large transactions
 | {{<product "ysql">}}
