@@ -33,11 +33,13 @@ import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil;
 import org.yb.util.ProcessUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgYbStat extends BasePgSQLTest {
   private static final Integer MAX_PG_STAT_RETRIES = 20;
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);

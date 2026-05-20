@@ -20,10 +20,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a test method to only run on release builds. On non-release builds, the method is excluded
- * from the test run by YBTestRunner.
+ * Marks a test class or method to only run on release builds. On non-release builds, the class or
+ * method is excluded from the test run by YBTestRunner.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.METHOD)
+@Target({ElementType.METHOD, ElementType.TYPE})
 public @interface RequiresReleaseBuild {
 }

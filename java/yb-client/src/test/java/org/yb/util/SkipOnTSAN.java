@@ -14,17 +14,15 @@
  */
 package org.yb.util;
 
-import org.yb.YBParameterizedTestRunner;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-public class YBParameterizedTestRunnerNonTsanOnly extends YBParameterizedTestRunner {
-
-  public YBParameterizedTestRunnerNonTsanOnly(Class<?> klass) throws Throwable {
-    super(klass);
-  }
-
-  @Override
-  public boolean shouldRunTests() {
-    return !BuildTypeUtil.isTSAN();
-  }
-
+/**
+ * Skips the annotated test class or method on TSAN builds.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface SkipOnTSAN {
 }

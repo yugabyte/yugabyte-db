@@ -69,7 +69,8 @@ import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.CatchingThread;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * For now, this test covers creation of system and shared system relations that should be created
@@ -81,7 +82,8 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * <p>
  * NOTE: Each test in this suite leaves garbage tables in system catalogs!
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestYsqlUpgrade extends BasePgSQLTest {
   @FunctionalInterface
   private interface TableInfoSqlFormatter {

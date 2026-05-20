@@ -16,12 +16,14 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Runs the pg_regress test suite for DDL savepoint support.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestDdlSavepoints extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {

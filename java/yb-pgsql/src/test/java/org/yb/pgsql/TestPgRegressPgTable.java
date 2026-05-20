@@ -19,12 +19,14 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.yb.util.YBParameterizedTestRunnerNonTsanOnly;
+import org.yb.YBParameterizedTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value = YBParameterizedTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgRegressPgTable extends BasePgRegressTestPorted {
   private final boolean objectLockingEnabled;
   private final boolean concurrentDDLEnabled;

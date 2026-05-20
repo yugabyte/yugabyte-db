@@ -26,9 +26,11 @@ import org.junit.Assume;
 import org.junit.runner.RunWith;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.SystemUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbPgStatActivity extends BasePgSQLTest {
   private final class MemoryStats {
     final Long allocatedMem;

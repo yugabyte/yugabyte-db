@@ -3,14 +3,16 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import java.io.File;
 import java.sql.Statement;
 
 import java.util.Map;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {

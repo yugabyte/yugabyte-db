@@ -18,13 +18,15 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressColocatedTablesWithTablespaces extends BasePgRegressTest {
   private List<Map<String, String>> perTserverZonePlacementFlags =
       Arrays.asList(ImmutableMap.of("placement_cloud", "cloud1", "placement_region", "region1",

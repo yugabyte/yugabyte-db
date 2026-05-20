@@ -29,11 +29,13 @@ import com.datastax.driver.core.ConsistencyLevel;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgViewYCQLStats extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgViewYCQLStats.class);
