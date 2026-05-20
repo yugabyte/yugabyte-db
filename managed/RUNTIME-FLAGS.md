@@ -64,6 +64,7 @@
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
+| "OIDC Callback Mode" | "yb.security.oidc_callback_mode" | "GLOBAL" | "Controls whether OIDC callback URLs use the default query parameter style or path parameter style. Possible values are: query, path." | "OidcCallbackMode" |
 | "Enable SSH2" | "yb.security.ssh2_enabled" | "GLOBAL" | "Flag for enabling ssh2 on YBA" | "Boolean" |
 | "Enable Custom Hooks" | "yb.security.custom_hooks.enable_custom_hooks" | "GLOBAL" | "Flag for enabling custom hooks on YBA" | "Boolean" |
 | "Enable SUDO" | "yb.security.custom_hooks.enable_sudo" | "GLOBAL" | "Flag for enabling sudo access while running custom hooks" | "Boolean" |

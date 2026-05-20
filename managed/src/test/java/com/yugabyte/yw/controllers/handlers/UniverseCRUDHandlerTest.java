@@ -287,8 +287,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
       boolean expectError,
       String expectedFragment) {
     if (!expectError) {
-      UniverseCRUDHandler.validateMultiTenancyApiConfig(
-          enableYSQL, enableYCQL, skipYcqlPrecheck);
+      UniverseCRUDHandler.validateMultiTenancyApiConfig(enableYSQL, enableYCQL, skipYcqlPrecheck);
       return;
     }
     PlatformServiceException ex =
@@ -299,7 +298,10 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
                     enableYSQL, enableYCQL, skipYcqlPrecheck));
     assertEquals(BAD_REQUEST, ex.getHttpStatus());
     assertTrue(
-        "Expected message to contain '" + expectedFragment + "', got: " + ex.getUserVisibleMessage(),
+        "Expected message to contain '"
+            + expectedFragment
+            + "', got: "
+            + ex.getUserVisibleMessage(),
         ex.getUserVisibleMessage().contains(expectedFragment));
   }
 
