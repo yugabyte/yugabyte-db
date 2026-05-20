@@ -290,4 +290,4 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased memory consumption from the extra tablets
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
-If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and if creating the clone will lead to exceeding the limit, the clone operation will fail in order to respect the tablet limits.
+If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and creating the clone would lead to exceeding the limit, the clone operation will fail to respect the tablet limits.
