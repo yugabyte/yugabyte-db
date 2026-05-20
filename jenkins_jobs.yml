@@ -31,14 +31,14 @@ jobs:
     release_artifact: true
 
   - os: mac14
-    compiler: clang
+    compiler: clang21
     build_type: release
     architecture: arm64
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
   - os: mac14
-    compiler: clang
+    compiler: clang21
     build_type: release
     architecture: x86_64
     test_opts: YB_COMPILE_ONLY=1
