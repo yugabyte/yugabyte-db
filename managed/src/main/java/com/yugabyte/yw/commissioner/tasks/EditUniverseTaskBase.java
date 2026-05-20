@@ -149,7 +149,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
-    createCheckSshConnectionTasks(liveNodes);
+    createCheckNodeCommandExecutionTasks(liveNodes);
 
     long checkServiceLivenessTimeoutMs =
         confGetter
