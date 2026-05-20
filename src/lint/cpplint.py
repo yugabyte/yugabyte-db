@@ -5971,7 +5971,7 @@ def CheckStdThread(filename, clean_lines, linenum, error):
     linenum: The number of the line to check.
     error: The function to call with any errors found.
   """
-  if "thread" not in filename and "test" not in filename:
+  if "thread" not in filename and "test" not in filename and "/tools/" not in filename:
     line = clean_lines.elided[linenum]
     match = _RE_PATTERN_STD_THREAD.search(line)
     if match:
