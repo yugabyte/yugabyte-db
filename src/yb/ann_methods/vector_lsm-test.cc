@@ -410,13 +410,13 @@ Status VectorLSMTest::InsertRandomAndFlush(
 
 Status VectorLSMTest::WaitForBackgroundInsertsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout * kTimeMultiplier,
       "Background inserts done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
 Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout * kTimeMultiplier,
       "Compactions done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
