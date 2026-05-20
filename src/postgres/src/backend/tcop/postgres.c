@@ -5916,15 +5916,6 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 
 	YbIncrementRetryCount(txn_error_kind);
 
-	/*
-	 * If in parallel mode, destroy parallel contexts.
-	 * It is important to do before portal's the resource owners cleanup,
-	 * because they free DSM blocks they own, leaving dangling references
-	 * in the parallel contexts.
-	 */
-	if (IsInParallelMode())
-		YbClearParallelContexts();
-
 	Portal		portal = portal_name ? GetPortalByName(portal_name) : NULL;
 
 	if (portal)
@@ -6029,6 +6020,8 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 	PG_CATCH();
 	{
 		YBResetOperationsBuffering();
+		if (IsInParallelMode())
+			YbClearParallelContexts();
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);
 	}
 	PG_END_TRY();
