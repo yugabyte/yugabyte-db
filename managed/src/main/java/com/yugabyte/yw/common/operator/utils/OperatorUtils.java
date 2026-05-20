@@ -549,18 +549,29 @@ public class OperatorUtils {
           .forEach(
               azUUID -> {
                 DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
+                DeviceInfo newTsDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, false);
+                log.debug(
+                    "Comparing tserver device info for AZ {}: old {}, new {}",
+                    azUUID,
+                    Json.toJson(tsDeviceInfo),
+                    Json.toJson(newTsDeviceInfo));
                 deviceInfoChanged.set(
-                    deviceInfoChanged.get()
-                        || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
+                    deviceInfoChanged.get() || !tsDeviceInfo.equals(newTsDeviceInfo));
 
                 if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
                       curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
+                  DeviceInfo newMasterDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, true);
+                  log.debug(
+                      "Comparing master device info for AZ {}: old {}, new {}",
+                      azUUID,
+                      Json.toJson(masterDeviceInfo),
+                      Json.toJson(newMasterDeviceInfo));
                   deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !masterDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, true)));
+                      deviceInfoChanged.get() || !masterDeviceInfo.equals(newMasterDeviceInfo));
                 }
               });
+      log.debug("Device info changed: {}", deviceInfoChanged.get());
       return deviceInfoChanged.get();
     } else {
       boolean tserverSizeChanged =
