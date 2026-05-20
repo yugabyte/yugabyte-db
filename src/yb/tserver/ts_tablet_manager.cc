@@ -1181,7 +1181,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
   if (!s.ok()) {
     s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->raft_group_id()));
-    if (s.IsServiceUnavailable()) {
+    if (s.IsShutdownInProgress()) {
       // open_tablet_pool_ is shut down by StartShutdown() before the manager state transitions
       // from MANAGER_STARTED_QUIESCING to MANAGER_QUIESCING, so the deferred apply task that
       // brought us here (submitted by ApplyTabletSplit / DoApplyCloneTablet onto apply_pool_)

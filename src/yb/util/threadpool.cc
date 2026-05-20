@@ -99,8 +99,14 @@ Status ThreadPool::DoSubmit(const F& f) {
     enqueued = underlying_->EnqueueFunctor(f);
   }
 
+  // NOTE: `enqueued == false` only implies "pool is shutting down" because the only other
+  // `false`-return path in `YBThreadPool::Impl::Enqueue` (a `TryStartNewWorker` failure under
+  // `kUnlimitedWorkersWithoutQueue`) is not reachable from this wrapper -- `ThreadPoolBuilder`
+  // never selects that mode. Revisit if `YBThreadPool::Enqueue` grows new failure modes. A
+  // targeted fix would be to expose a `YBThreadPool::IsClosing()` accessor and disambiguate
+  // here instead of inferring shutdown from the `bool`.
   return PREDICT_TRUE(enqueued)
-      ? Status::OK() : STATUS(ServiceUnavailable, "The pool has been shut down.");
+      ? Status::OK() : STATUS(ShutdownInProgress, "The pool has been shut down.");
 }
 
 template <class Impl>
@@ -126,7 +132,9 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
     if (impl_.EnqueueFunctor(std::move(f))) {
       return Status::OK();
     }
-    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
+    // Mirrors `DoSubmit`: a `false` return from a strand / sub-pool here means the token is
+    // shutting down. See the note in `DoSubmit` about this assumption.
+    return STATUS(ShutdownInProgress, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
   }
 
   void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) override {
