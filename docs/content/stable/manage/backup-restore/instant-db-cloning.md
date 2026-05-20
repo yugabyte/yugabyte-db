@@ -79,7 +79,24 @@ In this example, `clonedb2` is created as a clone of `originaldb1` as of 1715275
 
 ### Check the clone status
 
-To check the status of clone operations performed on a database, use the yb-admin `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
+To check the status of clone operations performed on a YSQL database, you can use the YSQL function `yb_database_clones()`, which provides details about the clone operations performed on the cluster.
+
+For example:
+
+```sql
+SELECT * FROM yb_database_clones();
+```
+
+```output
+ db_oid |  db_name   | parent_db_oid | parent_db_name |  state   |          as_of_time           | failure_reason 
+--------+------------+---------------+----------------+----------+-------------------------------+----------------
+  16386 | staging_db |         16384 | src_db         | COMPLETE | 2026-05-12 21:10:19.191239+00 | 
+(1 row)
+```
+
+This shows that a new database named `staging_db` with db_oid 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
+
+To check the status of clone operations performed on a database using [yb-admin](../../../admin/yb-admin/), use the `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000
@@ -273,8 +290,4 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased memory consumption from the extra tablets
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
-If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and you are at or have exceeded the limit, you cannot create clones. If you hit or exceed the limit due to tablets that a clone is creating, then operations on the clone will fail. See issue {{<issue 22338>}}.
-
-## Limitations
-
-- Cloning to a time before dropping Materialized views is not currently supported. See issue {{<issue 23740>}}.
+If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and if creating the clone will lead to exceeding the limit, the clone operation will fail in order to respect the tablet limits.
