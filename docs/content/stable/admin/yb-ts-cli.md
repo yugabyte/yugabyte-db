@@ -74,27 +74,29 @@ yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
 
 ### compact_all_tablets
 
-Compact all tablets on the tablet server.
+Compact all tablets on the tablet server. By default, compaction also includes all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on each tablet. Vector index compaction can be significantly heavier than RocksDB compaction for a tablet of the same size; use [--exclude_vector_indexes](#exclude-vector-indexes) to skip vector indexes.
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_all_tablets
+yb-ts-cli [ --server_address=<host>:<port> ] [ --exclude_vector_indexes ] compact_all_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* [--exclude_vector_indexes](#exclude-vector-indexes): Optional. Exclude vector indexes from compaction.
 
 ### compact_tablet
 
-Compact the specified tablet on the tablet server.
+Compact the specified tablet on the tablet server. By default, compaction also includes all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on the tablet. Vector index compaction can be significantly heavier than RocksDB compaction for a tablet of the same size; use [--exclude_vector_indexes](#exclude-vector-indexes) to skip vector indexes. To compact only vector indexes, use [compact_vector_index](#compact-vector-index).
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet-id>
+yb-ts-cli [ --server_address=<host>:<port> ] [ --exclude_vector_indexes ] compact_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* [--exclude_vector_indexes](#exclude-vector-indexes): Optional. Exclude vector indexes from compaction.
 * *tablet-id*: The identifier of the tablet to compact.
 
 ### compact_vector_index
@@ -186,6 +188,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet-id>
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * *tablet-id*: The identifier of the tablet to flush.
+
+### flush_vector_index
+
+Trigger a flush of [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on a specific tablet. Use this for tablet-level vector index flush when you need to flush only vector indexes on a given tablet (for example, after bulk loads or for maintenance).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] flush_vector_index <tablet-id> [<vector-index-id1> <vector-index-id2> ...]
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet that contains the vector index(es).
+* *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to flush. If omitted, all vector indexes on the tablet are flushed.
 
 ### list_tablets
 
@@ -283,6 +299,12 @@ yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
 ## Flags
 
 The following flags can be used, when specified, with the commands above.
+
+### --exclude_vector_indexes
+
+Use with [compact_tablet](#compact_tablet) or [compact_all_tablets](#compact_all_tablets) to compact only the tablet's RocksDB data and skip vector indexes on the tablet. Not valid for flush commands.
+
+Default: `false` (vector indexes are included in compaction)
 
 ### --force
 
