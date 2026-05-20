@@ -591,8 +591,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void VerifyCatCacheRefreshMetricsHelper(
       int num_full_refreshes, int num_delta_refreshes,
-      std::pair<bool, bool> at_least = {false, false}) {
-    auto json_metrics = GetJsonMetrics();
+      std::pair<bool, bool> at_least = {false, false},
+      size_t ts_idx = 0) {
+    auto json_metrics = GetJsonMetrics(ts_idx);
 
     int count = 0;
     for (const auto& metric : json_metrics) {
@@ -621,8 +622,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(count, 2);
   }
 
-  int64_t GetInt64MetricsHelper(const string& metric_name) {
-    auto json_metrics = GetJsonMetrics();
+  int64_t GetInt64MetricsHelper(const string& metric_name, size_t ts_idx = 0) {
+    auto json_metrics = GetJsonMetrics(ts_idx);
 
     for (const auto& metric : json_metrics) {
       if (metric.name.find(metric_name) != std::string::npos) {
@@ -2400,6 +2401,62 @@ TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
 
   // Since the message queue overflowed, we will see a full catalog cache refresh on conn2.
   VerifyCatCacheRefreshMetricsHelper(1 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_yb_ddl_transaction_block_enabled=true"});
+  auto conn_same_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
+  auto conn_other_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
+  ASSERT_OK(conn_same_node.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn_other_node.Execute("SET log_min_messages = DEBUG1"));
+
+  auto query = "SELECT 1"s;
+  auto result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Execute a DDL block that generates > 4096 messages, but < 8192.
+  // Each CREATE TABLE generates ~24 messages. 200 * 24 = 4800 messages.
+  ASSERT_OK(conn_same_node.Execute(
+      "DO $$ "
+      "BEGIN "
+      "  FOR i IN 1..200 LOOP "
+      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT)'; "
+      "  END LOOP; "
+      "END $$;"));
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_same_node, kYugabyteDatabase));
+  auto msg_length_result = ASSERT_RESULT(conn_same_node.FetchRow<int32_t>(
+      Format("SELECT length(messages) FROM pg_yb_invalidation_messages "
+             "WHERE db_oid = $0 ORDER BY current_version DESC LIMIT 1", yugabyte_db_oid)));
+
+  // Verify we generated more than 4096 messages (4096 * 24 bytes = 98304 bytes)
+  // The size of SharedInvalidationMessage is hardcoded to 24 bytes in PostgreSQL.
+  // There is a static_assert in src/postgres/src/backend/utils/cache/inval.c:
+  // static_assert(sizeof(SharedInvalidationMessage) == 24, "size mismatch");
+  const int kSharedInvalidationMessageSize = 24;
+  ASSERT_GT(msg_length_result, 4096 * kSharedInvalidationMessageSize);
+  // Verify we stayed under 8192 messages (8192 * 24 bytes = 196608 bytes)
+  ASSERT_LT(msg_length_result, 8192 * kSharedInvalidationMessageSize);
+
+  // Since the number of messages is > 4096 but < 8192, we should see an incremental refresh
+  // on conn_other_node (ts_idx = 1), NOT a full refresh.
+  VerifyCatCacheRefreshMetricsHelper(
+      0 /* num_full_refreshes */, 1 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
+
+  // But on the same node (ts_idx = 0), we will see a full refresh because the local shared
+  // memory buffer overflowed (it has a hardcoded limit of 4096 messages).
+  auto conn_same_node_2 = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
+  ASSERT_OK(conn_same_node_2.Execute("SET log_min_messages = DEBUG1"));
+  result = ASSERT_RESULT(conn_same_node_2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  VerifyCatCacheRefreshMetricsHelper(
+      1 /* num_full_refreshes */, 0 /* num_delta_refreshes */, {true, true}, 0 /* ts_idx */);
 }
 
 TEST_F(PgCatalogVersionTest, WaitForSharedCatalogVersionToCatchup) {
