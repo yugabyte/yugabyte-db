@@ -416,13 +416,13 @@ Status VectorLSMTest::InsertRandomAndFlush(
 
 Status VectorLSMTest::WaitForBackgroundInsertsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout * kTimeMultiplier,
       "Background inserts done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
 Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout * kTimeMultiplier,
       "Compactions done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
@@ -1073,7 +1073,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
     .frontiers = &frontiers,
     .chunk_size = num_vectors,
   }));
-  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm, 120s));
 
   // Snapshot tracker consumption while the in-memory chunk is fully built but before the flush
   // turns it into a serialized (or YbHnsw) chunk that uses a different memory layout. The
