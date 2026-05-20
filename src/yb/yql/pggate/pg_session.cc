@@ -78,7 +78,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "that messages survive long enough for every TServer to receive them "
                        "via heartbeats.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
                        "If a DDL statement generates more than this number of invalidation "
                        "messages we do not associate the messages with the new catalog version "
                        "caused by this DDL statement. This effetively turns off incremental "
