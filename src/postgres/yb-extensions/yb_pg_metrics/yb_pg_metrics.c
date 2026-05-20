@@ -1447,6 +1447,16 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		else
 			type = Other;
 
+		/*
+		 * Compute DDL mode before executing the statement. A CALL/DO
+		 * containing ROLLBACK will trigger AtAbort_Portals which frees
+		 * the outermost portal's cached plan, making pstmt a dangling
+		 * pointer by the time the hook's post-processing runs.
+		 */
+		bool		requires_autonomous_transaction = false;
+		YbDdlModeOptional ddl_mode =
+			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
+
 		INSTR_TIME_SET_CURRENT(start);
 
 		IncBlockNestingLevel();
@@ -1469,10 +1479,6 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_SUBTRACT(end, start);
-
-		bool		requires_autonomous_transaction = false;
-		YbDdlModeOptional ddl_mode =
-			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
 
 		if (ddl_mode.has_value)
 			ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
