@@ -85,24 +85,17 @@ The following are examples of possible rules:
 
 To use OIDC authentication on a new universe without identity mapping:
 
-1. Start YB-TServer with OIDC-related flags.
+1. Start the YugabyteDB cluster with OIDC-related flags.
 
-    For example, with Microsoft Entra ID (Azure AD), use the following configuration to start a YugabyteDB universe.
-
-    ```sh
-    --use_cassandra_authentication=true \
-    --ycql_use_jwt_auth=true \
-    --ycql_jwt_conf='jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discovery/v2.0/keys jwt_audiences=<client_id> jwt_issuers=https://login.microsoftonline.com/<tenant_id>/v2.0 jwt_matching_claim_key=preferred_username' \
-    --ycql_jwt_users_to_skip_csv=cassandra
-    ```
-
-    The `--ycql_jwt_users_to_skip_csv=cassandra` flag allows access to the user `cassandra` with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the OIDC users.
-
-1. Start the YugabyteDB cluster using the following command:
+    For example, with Microsoft Entra ID (Azure AD), use the following command to start a YugabyteDB universe:
 
     ```sh
-    ./bin/yugabyted start
+    ./bin/yugabyted start \
+      --use_cassandra_authentication=true \
+      --tserver_flags="ycql_use_jwt_auth=true,ycql_jwt_conf={jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discovery/v2.0/keys jwt_audiences=<client_id> jwt_issuers=https://login.microsoftonline.com/<tenant_id>/v2.0 jwt_matching_claim_key=preferred_username},ycql_jwt_users_to_skip_csv=cassandra"
     ```
+
+    The `ycql_jwt_users_to_skip_csv=cassandra` flag allows access to the user `cassandra` with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the OIDC users.
 
 1. Start ycqlsh as `cassandra` and enter the default password when prompted.
 
@@ -142,29 +135,21 @@ To use OIDC authentication on a new universe without identity mapping:
 
 To use OIDC authentication with role-based usernames on a new universe, follow these steps:
 
-1. Start YB-TServer with JWT options, `jwt_matching_claim_key=roles`, and `ycql_ident_conf_csv` for mapping.
+1. Start the YugabyteDB cluster with OIDC-related flags and identity mapping.
 
-    For example, the following maps values such as `eng@company.com` to the YCQL user `eng` by stripping the domain:
-
-    ```sh
-    --use_cassandra_authentication=true \
-    --ycql_use_jwt_auth=true \
-    --ycql_jwt_conf='jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discovery/v2.0/keys jwt_audiences=<client_id> jwt_issuers=https://login.microsoftonline.com/<tenant_id>/v2.0 jwt_matching_claim_key=roles' \
-    --ycql_jwt_users_to_skip_csv=cassandra \
-    --ycql_ident_conf_csv='/^(.*)@company\.com$ \1'
-    ```
-
-    With `jwt_matching_claim_key=roles`, YCQL reads identities from the `roles` claim. The `--ycql_ident_conf_csv` rule maps each matching role string to the local part before `@company.com`, which must match an existing YCQL role name.
-
-    The `--ycql_jwt_users_to_skip_csv=cassandra` flag allows access to the user cassandra with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the OIDC users.
-
-    The `--ycql_ident_conf_csv="/^(.*)@company\.com$ \1"` flag configures a single identity mapping rule. It extracts the part before the "@company.com" from the IdP username (configured to be present in the `roles` claim) as the expected YCQL username.
-
-1. Start the YugabyteDB cluster using the following command:
+    For example, the following command maps values such as `eng@company.com` to the YCQL user `eng` by stripping the domain:
 
     ```sh
-    ./bin/yugabyted start
+    ./bin/yugabyted start \
+      --use_cassandra_authentication=true \
+      --tserver_flags="ycql_use_jwt_auth=true,ycql_jwt_conf={jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discovery/v2.0/keys jwt_audiences=<client_id> jwt_issuers=https://login.microsoftonline.com/<tenant_id>/v2.0 jwt_matching_claim_key=roles},ycql_jwt_users_to_skip_csv=cassandra,ycql_ident_conf_csv={/^(.*)@company\.com$ \1}"
     ```
+
+    With `jwt_matching_claim_key=roles`, YCQL reads identities from the `roles` claim. The `ycql_ident_conf_csv` rule maps each matching role string to the local part before `@company.com`, which must match an existing YCQL role name.
+
+    The `ycql_jwt_users_to_skip_csv=cassandra` flag allows access to the user `cassandra` with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the OIDC users.
+
+    The `ycql_ident_conf_csv={/^(.*)@company\.com$ \1}` flag configures a single identity mapping rule. It extracts the part before the `@company.com` from the IdP username (configured to be present in the `roles` claim) as the expected YCQL username.
 
 1. Start ycqlsh as `cassandra` and enter the default password when prompted.
 
@@ -179,7 +164,7 @@ To use OIDC authentication with role-based usernames on a new universe, follow t
     cassandra@ycqlsh>
     ```
 
-1. Create a YCQL role that corresponds to the mapped name—for example, a shared role `eng` for everyone who has the IdP role `eng@company.com`:
+1. Create a YCQL role that corresponds to the mapped name. For example, a shared role `eng` for everyone who has the IdP role `eng@company.com`:
 
     ```sql
     cassandra@ycqlsh> create role eng with login=true;
