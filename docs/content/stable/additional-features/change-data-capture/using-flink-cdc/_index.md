@@ -91,7 +91,7 @@ The Flink CDC integration involves a three-stage streaming pipeline:
 
 ## Unsupported scenarios
 
-- Incremental snapshots. YugabyteDB does not currently support incremental snapshots. Keep `scan.incremental.snapshot.enabled` at its default `false` setiing. Because checkpointing is unavailable during initial snapshots, long-running snapshot processes may encounter timeouts. Recommended mitigation parameters include:
+- Incremental snapshots. YugabyteDB does not currently support incremental snapshots. Keep `scan.incremental.snapshot.enabled` at its default `false` setting. Because checkpointing is unavailable during initial snapshots, long-running snapshot processes may encounter timeouts. Recommended mitigation parameters include:
   - Set `execution.checkpointing.interval` to `10min`
   - Set`execution.checkpointing.tolerable-failed-checkpoints` to `100`
   - Use `restart-strategy: fixed-delay` with `restart-strategy.fixed-delay.attempts: 2147483647`.
