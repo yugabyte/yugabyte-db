@@ -58,6 +58,7 @@ DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
@@ -67,7 +68,6 @@ DECLARE_int32(yb_client_admin_rpc_timeout_sec);
 
 DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
-DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
@@ -433,10 +433,27 @@ TEST_F(CqlTest, TestTruncateTable) {
 }
 
 TEST_F(CqlTest, TestTruncateTableWithIndexes) {
+#ifdef __APPLE__
+  // On macOS, truncating 161 tablets (table + 5 indexes x 32 tablets) replays
+  // synchronous RocksDB destroy+reopen on the consensus apply thread, which
+  // takes ~14 s per UpdateConsensus and ~33 s end-to-end. Raise the consensus
+  // RPC timeout above the apply time so the leader-lease cascade doesn't
+  // trigger, and pass a matching per-statement timeout for the TRUNCATE so
+  // the CQL driver's default 20 s deadline doesn't fire before the server
+  // finishes. Linux apply stays under 3 s, so no override is needed there.
+  FLAGS_consensus_rpc_timeout_ms = 60'000;
+  constexpr uint32_t kTruncateTimeoutMs = 60'000;
+#else
+  // Use driver default.
+  constexpr uint32_t kTruncateTimeoutMs = 0;
+#endif
+
   master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
       cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  auto cql = [&](const string& query, uint32_t timeout_ms = 0) {
+    ASSERT_OK(session.ExecuteQuery(query, timeout_ms));
+  };
 
   cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
       "with transactions = {'enabled' : true} and tablets = 1");
@@ -481,7 +498,7 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
   };
 
   check_table_and_indexes("Check tasks before TRUNCATE tbl");
-  cql("truncate table tbl");
+  cql("truncate table tbl", kTruncateTimeoutMs);
   check_table_and_indexes("Check tasks after TRUNCATE tbl");
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
