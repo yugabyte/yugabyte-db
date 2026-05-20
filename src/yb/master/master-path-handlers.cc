@@ -608,6 +608,10 @@ void MasterPathHandlers::TServerDisplay(
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
       tserver_info.status += "</br>Leader Blacklisted";
     }
+    if (desc->has_faulty_drive()) {
+      tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
+      tserver_info.status += "</br>Faulty Drive";
+    }
 
     html_row.AddColumn(
         Format("<font color=\"$0\">$1</font>", tserver_info.color, tserver_info.status));
@@ -1008,6 +1012,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.String("uptime_seconds");
           jw.Uint(0);
         }
+
+        jw.String("has_faulty_drive");
+        jw.Bool(desc->has_faulty_drive());
 
         jw.String("ram_used");
         jw.String(HumanizeBytes(desc->total_memory_usage()));
