@@ -303,7 +303,6 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
 static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
-static bool check_yb_enable_concurrent_ddl(bool *newval, void **extra, GucSource source);
 static bool check_yb_dist_tracecontext(char **newval, void **extra, GucSource source);
 static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 
@@ -3534,17 +3533,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_advisory_locks,
 		true,
 		check_yb_enable_advisory_locks, NULL, NULL
-	},
-
-	{
-		{"yb_enable_concurrent_ddl", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("DEPRECATED - Please see the documentation for the correct flag"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_enable_concurrent_ddl,
-		false,
-		check_yb_enable_concurrent_ddl, NULL, NULL
 	},
 
 	{
@@ -17344,16 +17332,6 @@ check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
 	ereport(WARNING,
 			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
 					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
-	return true;				/* still allow usage, but warn */
-}
-
-static bool
-check_yb_enable_concurrent_ddl(bool *newval, void **extra, GucSource source)
-{
-	ereport(WARNING,
-			(errmsg("the parameter \"yb_enable_concurrent_ddl\" is deprecated "
-					"and has no effect."),
-			 errhint("Please check the documentation for the correct flag.")));
 	return true;				/* still allow usage, but warn */
 }
 
