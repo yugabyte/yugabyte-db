@@ -83,8 +83,10 @@ SELECT * FROM pctest1 WHERE c = 10;
 SELECT * FROM pctest1 WHERE c = 10;
 
 --secondary index
+/*+ Parallel(pctest1 2 hard) IndexScan(pctest1) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+/*+ Parallel(pctest1 2 hard) IndexScan(pctest1) */
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
 
 -- with aggregates

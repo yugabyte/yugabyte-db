@@ -58,9 +58,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 
-EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
 
-/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+-- Try forcing right join.  Should choose Hash/Merge RIGHT or BNL LEFT.
+/*+ Leading((t3 (t1 t2))) YbBatchedNL(t1 t2) YbBatchedNL(t1 t2 t3) */
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
 
 -- anti join--
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
@@ -132,7 +134,8 @@ INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
 
 CREATE TABLE t12 (c4 int, c2 int, y int);
 INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
-ANALYZE;
+ANALYZE t11;
+ANALYZE t12;
 
 EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
 
@@ -143,12 +146,14 @@ DROP TABLE t12;
 CREATE TABLE s1(r1 int, r2 int, r3 int);
 CREATE TABLE s2(r1 int, r2 int, r3 int);
 CREATE TABLE s3(r1 int, r2 int);
-CREATE INDEX ON s3 (r1 asc, r2 asc);
+CREATE INDEX ON s3 ((r1, r2) hash);
 
 INSERT INTO s1 select i,i,i from generate_series(1,10) i;
 INSERT INTO s2 select i,i,i from generate_series(1,10) i;
 INSERT INTO s3 select i,i from generate_series(1,100) i;
-ANALYZE;
+ANALYZE s1;
+ANALYZE s2;
+ANALYZE s3;
 explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
 
 DROP TABLE s3;
@@ -162,7 +167,9 @@ create table s3(a int, primary key (a asc));
 insert into s1 select generate_series(1,10);
 insert into s2 select generate_series(1,10);
 insert into s3 select generate_series(1,10);
-ANALYZE;
+ANALYZE s1;
+ANALYZE s2;
+ANALYZE s3;
 
 explain (costs off) /*+Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
 on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
@@ -175,7 +182,9 @@ create table test2 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp 
 insert into test2 values (1,0, 2,0,1), (2,0, 3,0,3), (2,0,3,0,5);
 create table test1 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
 insert into test1 values (1,0,2,0,1), (1,0,2,0,2), (2,0,3,0,3), (2,0,4,0,4), (2,0,4,0,5), (2,0,4,0,6);
-ANALYZE;
+ANALYZE test1;
+ANALYZE test2;
+-- BNL wouldn't be chosen because of high skip-scan cost
 explain (costs off) /*+IndexScan(p2)*/ select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
 explain (costs off) /*+IndexScan(p2) YbBatchedNL(p1 p2)*/ select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
 drop table test1;
@@ -188,7 +197,8 @@ INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
 
 CREATE TABLE m2 (a money, primary key(a asc));
 INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
-ANALYZE;
+ANALYZE m1;
+ANALYZE m2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 

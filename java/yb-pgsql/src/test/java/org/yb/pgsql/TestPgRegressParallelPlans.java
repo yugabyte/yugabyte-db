@@ -31,11 +31,13 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    // yb_reset_analyze_statistics could potentially conflict with auto-ANALYZE
-    // because it internally UPDATE pg_yb_catalog_version.
-    flagMap.put("ysql_enable_auto_analyze", "false");
-    return flagMap;
+    Map<String, String> flags = super.getTServerFlags();
+    // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("enable_object_locking_for_table_locks", "false");
+    // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
+    flags.put("ysql_enable_auto_analyze", "false");
+    return flags;
   }
 
   @Test

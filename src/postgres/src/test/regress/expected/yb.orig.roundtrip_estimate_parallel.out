@@ -1,0 +1,237 @@
+-- Test planner's roundtrip estimates for Parallel Index/IndexOnly scans.
+-- DEPENDENCY: yb.orig.roundtrip_estimate_parallel_setup
+--
+-- This test uses its own seed tables so the parallel plan choice can be
+-- validated without perturbing the serial counterpart.
+\c roundtrip_parallel_test
+delete from queries;
+-- range queries.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  10000),
+           ('ce.rC', 20000)
+),
+ranges(qidbase, predicate) as (
+    values (300, '##COL## between 1 and 10000'),
+           (400, '##COL## between 1 and 11000')
+),
+scans(qidoff, target, predicol) as (
+    values (1, '*',  'pk'),  -- Parallel Index Scan using PK index
+           (2, 'v',  'b'),   -- Parallel Index Scan using non-PK index
+           (3, 'b, v', 'b')  -- Parallel Index Only Scan on non-PK index
+)
+select
+    r.qidrel + rng.qidbase + s.qidoff as qid,
+    'select ' || s.target || ' from ' || r.rel || ' where ' ||
+    replace(rng.predicate, '##COL##', s.predicol) as query
+from relations r, ranges rng, scans s;
+-- filter combination queries.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  10000),
+           ('ce.rC', 20000)
+),
+filter_combos(qidbase, qidoff, target, predicol, extra) as (
+    -- PK Index Scan: + storage filter, + local filter
+    values (500, 1, '*', 'pk', 'pk % 100 <= 33'),
+           (500, 2, '*', 'pk', 'pk % 100 <= 33 and non_pushable(pk) <= 12345'),
+    -- non-PK Index Scan: + storage index filter, + storage table filter,
+    --                    + local filter
+           (600, 1, 'v', 'b',  'b % 100 <= 33'),
+           (600, 2, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33'),
+           (600, 3, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345'),
+    -- Index Only Scan: + storage filter, + local filter
+           (700, 1, 'b, v', 'b',  'b % 100 <= 33'),
+           (700, 2, 'b, v', 'b',  'b % 100 <= 33 and non_pushable(b) <= 12345')
+)
+select
+    r.qidrel + fc.qidbase + fc.qidoff as qid,
+    'select ' || fc.target || ' from ' || r.rel
+    || ' where ' || fc.predicol || ' between 1 and 10000'
+    || ' and ' || fc.extra as query
+from relations r, filter_combos fc;
+-- seeknext-style queries.
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('',  50000),
+           ('C', 60000)
+),
+columns(col_id, col, forward_pred, backward_pred) as (
+    values (1, 'dv1',   '<= 1',    '<= 1 order by dv1 desc'),
+           (2, 'f1000', '<= 10',   '<= 10 order by f1000 desc'),
+           (3, 'f100',  '<= 100',  '<= 100 order by f100 desc')
+),
+scans(qidbase, is_only_scan, is_backward) as (
+    values (1000, false, false),
+           (2000, true,  false),
+           (3000, false, true),
+           (4000, true,  true)
+)
+select
+    s.qidbase + c_colo.qidcolo
+        + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
+    'select ' ||
+    case when s.is_only_scan then c.col || ', vv' else 'vv, ' || c.col end ||
+    ' from sn.r' || c_colo.colo ||
+    ' where ' || c.col || ' ' ||
+    case when s.is_backward then c.backward_pred else c.forward_pred end as query
+from colocations c_colo,
+     scans s,
+     columns c;
+set enable_seqscan = off;
+set enable_bitmapscan = off;
+set yb_enable_bitmapscan = off;
+set enable_sort = off;
+-- Cap workers; everything else (parallel_setup_cost, parallel_tuple_cost,
+-- min_parallel_*_scan_size) is left at the default so the cost model still
+-- decides whether parallel wins.  min_parallel_*_scan_size is a no-op for
+-- YB relations / indexes anyway.
+set max_parallel_workers_per_gather = 4;
+-- Keep parallel ranges small enough to split the scan, but not so small that
+-- parallel transfer costs dominate.  A smaller serial fetch-size limit makes
+-- serial scans more expensive while parallel scan costs still come from
+-- yb_parallel_range_*.
+set yb_parallel_range_size = '128kB';
+reset yb_parallel_range_rows;
+set yb_fetch_size_limit = '16kB';
+set yb_fetch_row_limit = 0;
+select * from queries order by qid;
+  qid  |                                                      query                                                       
+-------+------------------------------------------------------------------------------------------------------------------
+ 10301 | select * from ce.r where pk between 1 and 10000
+ 10302 | select v from ce.r where b between 1 and 10000
+ 10303 | select b, v from ce.r where b between 1 and 10000
+ 10401 | select * from ce.r where pk between 1 and 11000
+ 10402 | select v from ce.r where b between 1 and 11000
+ 10403 | select b, v from ce.r where b between 1 and 11000
+ 10501 | select * from ce.r where pk between 1 and 10000 and pk % 100 <= 33
+ 10502 | select * from ce.r where pk between 1 and 10000 and pk % 100 <= 33 and non_pushable(pk) <= 12345
+ 10601 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33
+ 10602 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33
+ 10603 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345
+ 10701 | select b, v from ce.r where b between 1 and 10000 and b % 100 <= 33
+ 10702 | select b, v from ce.r where b between 1 and 10000 and b % 100 <= 33 and non_pushable(b) <= 12345
+ 20301 | select * from ce.rC where pk between 1 and 10000
+ 20302 | select v from ce.rC where b between 1 and 10000
+ 20303 | select b, v from ce.rC where b between 1 and 10000
+ 20401 | select * from ce.rC where pk between 1 and 11000
+ 20402 | select v from ce.rC where b between 1 and 11000
+ 20403 | select b, v from ce.rC where b between 1 and 11000
+ 20501 | select * from ce.rC where pk between 1 and 10000 and pk % 100 <= 33
+ 20502 | select * from ce.rC where pk between 1 and 10000 and pk % 100 <= 33 and non_pushable(pk) <= 12345
+ 20601 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33
+ 20602 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33
+ 20603 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345
+ 20701 | select b, v from ce.rC where b between 1 and 10000 and b % 100 <= 33
+ 20702 | select b, v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and non_pushable(b) <= 12345
+ 51001 | select vv, dv1 from sn.r where dv1 <= 1
+ 51002 | select vv, f1000 from sn.r where f1000 <= 10
+ 51003 | select vv, f100 from sn.r where f100 <= 100
+ 52001 | select dv1, vv from sn.r where dv1 <= 1
+ 52002 | select f1000, vv from sn.r where f1000 <= 10
+ 52003 | select f100, vv from sn.r where f100 <= 100
+ 53001 | select vv, dv1 from sn.r where dv1 <= 1 order by dv1 desc
+ 53002 | select vv, f1000 from sn.r where f1000 <= 10 order by f1000 desc
+ 53003 | select vv, f100 from sn.r where f100 <= 100 order by f100 desc
+ 54001 | select dv1, vv from sn.r where dv1 <= 1 order by dv1 desc
+ 54002 | select f1000, vv from sn.r where f1000 <= 10 order by f1000 desc
+ 54003 | select f100, vv from sn.r where f100 <= 100 order by f100 desc
+ 61001 | select vv, dv1 from sn.rC where dv1 <= 1
+ 61002 | select vv, f1000 from sn.rC where f1000 <= 10
+ 61003 | select vv, f100 from sn.rC where f100 <= 100
+ 62001 | select dv1, vv from sn.rC where dv1 <= 1
+ 62002 | select f1000, vv from sn.rC where f1000 <= 10
+ 62003 | select f100, vv from sn.rC where f100 <= 100
+ 63001 | select vv, dv1 from sn.rC where dv1 <= 1 order by dv1 desc
+ 63002 | select vv, f1000 from sn.rC where f1000 <= 10 order by f1000 desc
+ 63003 | select vv, f100 from sn.rC where f100 <= 100 order by f100 desc
+ 64001 | select dv1, vv from sn.rC where dv1 <= 1 order by dv1 desc
+ 64002 | select f1000, vv from sn.rC where f1000 <= 10 order by f1000 desc
+ 64003 | select f100, vv from sn.rC where f100 <= 100 order by f100 desc
+(50 rows)
+
+update explain_query_options set with_analyze = false;
+-- should not return any row.  mismatches indicate non-index scan nodes or a
+-- scan node that did not actually execute in parallel.
+select q.qid, q.query, x.qid, x.nid, "Node Type", "Index Name",
+       "Actual Workers", "Went Parallel", "Index Cond"
+from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+where x.qid is null or q.qid is null or "Actual Workers" <= 0
+order by coalesce(q.qid, x.qid), x.nid;
+ qid | query | qid | nid | Node Type | Index Name | Actual Workers | Went Parallel | Index Cond 
+-----+-------+-----+-----+-----------+------------+----------------+---------------+------------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row.  surface the per-field counts on failure so
+-- that both totals mismatches and field-layout mismatches are diagnosable.
+-- Estimated and actual counts are both per-worker for parallel scans (see
+-- yb_add_base_table_fetch_cost / yb_cost_index in costsize.c, which use
+-- adjusted_index_tuples = index->tuples / parallel_divisor when computing
+-- estimated_num_*_result_pages, and show_yb_rpc_stats which divides actual
+-- counters by nloops), so the same comparison used for serial scans applies.
+-- Fails until https://github.com/yugabyte/yugabyte-db/issues/31134 is fixed.
+select qid, nid, "Node Type", "Index Name",
+       "Actual Workers", "Went Parallel",
+       scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+  qid  | nid |             Node Type             |   Index Name    | Actual Workers | Went Parallel | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | Total Estimates | Field Layout 
+-------+-----+-----------------------------------+-----------------+----------------+---------------+-----------+--------------+-------+-------+-------+-------+-----+-----+-----------------+--------------
+ 10301 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |    14 |    12 |     0 |  14 |  12 | failed          | passed
+ 10302 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 10303 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    14 |     0 |    11 |  14 |  11 | failed          | passed
+ 10401 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |    16 |    13 |     0 |  16 |  13 | failed          | passed
+ 10402 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
+ 10403 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
+ 10501 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 10502 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 10601 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 10602 |   1 | Parallel Index Scan               | i_r_b           |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
+ 10603 |   1 | Parallel Index Scan               | i_r_b           |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
+ 10701 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 10702 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20301 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |    14 |    12 |     0 |  14 |  12 | failed          | passed
+ 20302 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 20303 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    14 |     0 |    11 |  14 |  11 | failed          | passed
+ 20401 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |    16 |    13 |     0 |  16 |  13 | failed          | passed
+ 20402 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
+ 20403 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
+ 20501 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 20502 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 20601 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20602 |   1 | Parallel Index Scan               | rc_b_v_idx      |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
+ 20603 |   1 | Parallel Index Scan               | rc_b_v_idx      |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
+ 20701 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20702 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 51001 |   1 | Parallel Index Only Scan          | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 51002 |   1 | Parallel Index Only Scan          | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 51003 |   1 | Parallel Index Only Scan          | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 52001 |   1 | Parallel Index Only Scan          | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 52002 |   1 | Parallel Index Only Scan          | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 52003 |   1 | Parallel Index Only Scan          | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 53001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 53002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 53003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 54001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 54002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 54003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 61001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 61002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 61003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 62001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 62002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 62003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 63001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 63002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 63003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 64001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
+ 64002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+ 64003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
+(50 rows)
+

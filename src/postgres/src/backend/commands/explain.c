@@ -5160,7 +5160,7 @@ show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 								  planinfo->estimated_num_bmscan_nexts_prevs,
 								  -1,
 								  planinfo->estimated_num_bmscan_result_pages,
-								  planinfo->estimated_docdb_result_width,
+								  planinfo->estimated_ybctid_width,
 								  es);
 }
 
