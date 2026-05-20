@@ -188,15 +188,14 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "and all WAL segments will be retained until the next refresh. "
     "Setting to 0 will disable Opid-based and time-based WAL segment retention for XCluster.");
 
-DEFINE_RUNTIME_int32(
-    cdcsdk_max_expired_tables_to_clean_per_run, 1,
+DEFINE_RUNTIME_int32(cdcsdk_max_expired_tables_to_clean_per_run, 1,
     "This flag determines the maximum number of tables to be cleaned up per run of "
     "UpdatePeersAndMetrics. Since a lot of tables can become not of interest at the same time, "
     "this flag is used to prevent storming of cleanup requests to master. When the flag value is "
     "1, the number of cleanup requests sent will be min(num_tables_to_cleanup, num_of_nodes)");
 
-DEFINE_RUNTIME_AUTO_bool(
-    cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_cleanup_of_expired_table_entries,
+    kLocalPersisted, false, true,
     "When enabled, Update Peers and Metrics will look for entries in the state table that have "
     "either become not of interest or have expired for a stream. The cleanup logic will then "
     "update these entries in cdc_state table and also move the corresponding table's entry to "

@@ -66,29 +66,24 @@ DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
     "Controls the maximum number of records sent in GetConsistentChanges response. Only used when "
     "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
-DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
+DEFINE_RUNTIME_uint64(cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
-DEFINE_RUNTIME_uint64(
-    cdcsdk_vwal_getchanges_resp_max_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes, 4_MB,
     "Max size (in bytes) of GetChanges response for all GetChanges requests sent "
     "from Virtual WAL.");
 
-DEFINE_test_flag(
-    bool, cdcsdk_use_microseconds_refresh_interval, false,
+DEFINE_test_flag(bool, cdcsdk_use_microseconds_refresh_interval, false,
     "Used in tests to simulate commit time ties of publication refresh record with transactions. "
     "When this flag is set to true the value of FLAGS_cdcsdk_publication_list_refresh_interval_secs"
     " will be ignored and publication refresh interval will be set to "
     "cdcsdk_publication_list_refresh_interval_micros.");
 
-DEFINE_test_flag(
-    uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
-DEFINE_RUNTIME_bool(
-    cdcsdk_enable_dynamic_table_support, true,
+DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
 DEFINE_RUNTIME_bool(cdc_use_byte_threshold_for_vwal_changes, true,

@@ -56,8 +56,7 @@ DEFINE_test_flag(string, master_universe_uuid, "",
                  "When set, use this mocked uuid to compare against the universe_uuid "
                  "from the tserver request.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    master_enable_universe_uuid_heartbeat_check, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(master_enable_universe_uuid_heartbeat_check, kLocalPersisted, false, true,
     "When true, enables a sanity check between masters and tservers to prevent tservers from "
     "mistakenly heartbeating to masters in different universes. Master leader will check the "
     "universe_uuid passed by tservers against with its own copy of universe_uuid "

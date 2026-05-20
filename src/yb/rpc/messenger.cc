@@ -104,8 +104,7 @@ DEFINE_NON_RUNTIME_int32(rpc_reactor_task_timeout_ms, 0,
 
 DEFINE_UNKNOWN_int32(socket_receive_buffer_size, 0, "Socket receive buffer size, 0 to use default");
 
-DEFINE_test_flag(
-    int32, rpc_reactor_index_for_init_failure_simulation,
+DEFINE_test_flag(int32, rpc_reactor_index_for_init_failure_simulation,
     -1, "Index of reactor in Messenger to simulate failure of Reactor::Init method");
 
 namespace yb {

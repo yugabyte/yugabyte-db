@@ -152,8 +152,7 @@ DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
                       "considered to be inactive.");
 TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
 
-DEFINE_RUNTIME_int32(
-    check_pg_object_id_allocators_interval_secs, 3600 * 3,
+DEFINE_RUNTIME_int32(check_pg_object_id_allocators_interval_secs, 3600 * 3,
     "Interval at which pg object id allocators are checked for dropped databases.");
 TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 

@@ -80,16 +80,13 @@ DEFINE_UNKNOWN_int64(bucket_count, 1000000,
              "bucket_count parameter to pass into NewHashSkiplistRepFactory or "
              "NewHashLinkListRepFactory");
 
-DEFINE_UNKNOWN_int32(
-    hashskiplist_height, 4,
+DEFINE_UNKNOWN_int32(hashskiplist_height, 4,
     "skiplist_height parameter to pass into NewHashSkiplistRepFactory");
 
-DEFINE_UNKNOWN_int32(
-    hashskiplist_branching_factor, 4,
+DEFINE_UNKNOWN_int32(hashskiplist_branching_factor, 4,
     "branching_factor parameter to pass into NewHashSkiplistRepFactory");
 
-DEFINE_UNKNOWN_int32(
-    huge_page_tlb_size, 0,
+DEFINE_UNKNOWN_int32(huge_page_tlb_size, 0,
     "huge_page_tlb_size parameter to pass into NewHashLinkListRepFactory");
 
 DEFINE_UNKNOWN_int32(bucket_entries_logging_threshold, 4096,
@@ -100,12 +97,10 @@ DEFINE_UNKNOWN_bool(if_log_bucket_dist_when_flash, true,
             "if_log_bucket_dist_when_flash parameter to pass into "
             "NewHashLinkListRepFactory");
 
-DEFINE_UNKNOWN_int32(
-    threshold_use_skiplist, 256,
+DEFINE_UNKNOWN_int32(threshold_use_skiplist, 256,
     "threshold_use_skiplist parameter to pass into NewHashLinkListRepFactory");
 
-DEFINE_UNKNOWN_int32(
-    num_threads, 1,
+DEFINE_UNKNOWN_int32(num_threads, 1,
     "Number of concurrent threads to run. If the benchmark includes writes, "
     "then at most one thread will be a writer.");
 

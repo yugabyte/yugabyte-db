@@ -66,12 +66,11 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
-DEFINE_UNKNOWN_int32(
-    entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
+DEFINE_UNKNOWN_int32(entries_per_index_block, 10000,
+    "Number of entries per index block stored in WAL segment file");
 TAG_FLAG(entries_per_index_block, advanced);
 
-DEFINE_test_flag(
-    int32, entries_per_log_index_chuck, 0,
+DEFINE_test_flag(int32, entries_per_log_index_chuck, 0,
     "DO NOT CHANGE IN PRODUCTION. If set to value greater than 0 - overrides "
     "GetEntriesPerIndexChunk() for testing purposes.");
 

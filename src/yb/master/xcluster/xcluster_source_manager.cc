@@ -47,8 +47,7 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
-DEFINE_test_flag(
-    bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
+DEFINE_test_flag(bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
     "Simulate failure during EnsureSequenceUpdatesAreInWal RPC.");
 
 DECLARE_int32(master_yb_client_default_timeout_ms);

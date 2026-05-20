@@ -262,8 +262,8 @@ DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, true,
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 
-DEFINE_test_flag(
-    string, mini_cluster_pg_host_port, "", "The PG host:port used in PostgresMiniclusterTest");
+DEFINE_test_flag(string, mini_cluster_pg_host_port, "",
+    "The PG host:port used in PostgresMiniclusterTest");
 
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
     "If true, setup an error status in AlterSchema and respond success to rpc call. "

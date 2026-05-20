@@ -93,8 +93,7 @@ DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
     "Should we not crash when we get a create snapshot request with the same "
     "id as one of the previous snapshots.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
     "When true, tables and tablets are hidden instead of getting deleted on a drop if there are "
     "snapshots covering the object. Snapshots also get created with a TTL when "
     "this flag value is true.");

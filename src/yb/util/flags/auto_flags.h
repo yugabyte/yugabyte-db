@@ -56,8 +56,7 @@
 
 namespace yb {
 
-YB_DEFINE_ENUM(
-    AutoFlagClass,
+YB_DEFINE_ENUM(AutoFlagClass,
     // Adds/modifies format of data sent over the wire to another process within the universe. No
     // modification to persisted data.
     ((kLocalVolatile, 1))

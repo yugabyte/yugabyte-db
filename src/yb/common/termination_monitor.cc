@@ -19,8 +19,8 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/thread.h"
 
-DEFINE_NON_RUNTIME_bool(
-    graceful_shutdown, true, "Whether to shutdown gracefully when receiving SIGTERM.");
+DEFINE_NON_RUNTIME_bool(graceful_shutdown, true,
+    "Whether to shutdown gracefully when receiving SIGTERM.");
 
 namespace yb {
 

@@ -61,39 +61,31 @@ DEPRECATE_FLAG(int32, cdc_snapshot_batch_size, "02_2026");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
-DEFINE_RUNTIME_bool(
-    enable_single_record_update, true,
+DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, true,
+DEFINE_RUNTIME_bool(cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
-DEFINE_NON_RUNTIME_bool(
-    cdc_enable_consistent_records, true,
+DEFINE_NON_RUNTIME_bool(cdc_enable_consistent_records, true,
     "If 'true' we will ensure that the records are order by the commit_time.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_stream_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_stream_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the response of a GetChanges call. The actual size may be a "
     "little higher than this value.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_snapshot_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_snapshot_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the CDC snapshot GetChanges response. The actual size may be "
     "slightly higher than this value.");
 
-DEFINE_test_flag(
-    bool, cdc_snapshot_failure, false,
+DEFINE_test_flag(bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_end_markers_transactions, true,
+DEFINE_RUNTIME_bool(cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
 
-DEFINE_NON_RUNTIME_int64(
-    cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
     "The lag threshold in milli seconds between the hybrid time returned by "
     "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");

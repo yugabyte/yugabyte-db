@@ -251,13 +251,11 @@ DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
 DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
     "Add replication status to heartbeats tserver sends to master");
 
-DEFINE_RUNTIME_int32(
-    check_lagging_catalog_versions_interval_secs, 900,
+DEFINE_RUNTIME_int32(check_lagging_catalog_versions_interval_secs, 900,
     "Interval at which pg backends are checked for lagging catalog versions.");
 TAG_FLAG(check_lagging_catalog_versions_interval_secs, advanced);
 
-DEFINE_RUNTIME_int32(
-    min_invalidation_message_retention_time_secs, 60,
+DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 

@@ -76,24 +76,21 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 
 namespace log {
 
-YB_DEFINE_ENUM(
-    SyncType,
+YB_DEFINE_ENUM(SyncType,
     (kNoSync)
     (kAsyncFsync)
     (kForceFsync)
 );
 
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
-YB_DEFINE_ENUM(
-    SegmentAllocationState,
+YB_DEFINE_ENUM(SegmentAllocationState,
     (kAllocationNotStarted)  // No segment allocation requested
     (kAllocationInProgress)  // Next segment allocation started
     (kAllocationFinished)    // Next segment ready
     (kAllocationFailed)      // Next segment allocation failed
 );
 
-YB_DEFINE_ENUM(
-    SegmentOpIdRelation,
+YB_DEFINE_ENUM(SegmentOpIdRelation,
     // Segment is empty
     (kEmptySegment)
     // OpId is before the segment

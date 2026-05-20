@@ -86,8 +86,7 @@ TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, adv
 
 DEPRECATE_FLAG(uint32, master_ts_ysql_catalog_lease_ms, "03_2026");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_enable_colocated_tables_with_tablespaces, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_colocated_tables_with_tablespaces, false,
     "Enable creation of colocated tables with a specified placement policy via a tablespace."
     "If true, creating a colocated table  will colocate the table on an implicit "
     "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
@@ -109,18 +108,16 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
-DEFINE_RUNTIME_int32(
-    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
+DEFINE_RUNTIME_int32(ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
     "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
     "tserver");
 TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_AUTO_bool(
-    yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
     "Enable support for CDC Consistent Snapshot Streams");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_enable_replication_slot_consumption, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_consumption,
+    kLocalPersisted, false, true,
     "Enable consumption of changes via replication slots."
     "Requires yb_enable_replication_commands to be true.");
 
@@ -184,8 +181,7 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
     "must be true to enable the feature.");
@@ -233,8 +229,7 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, enable_object_locking_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether table-level object locking can be safely enabled "
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
@@ -404,12 +399,10 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,
     "When positive, artificially limits the NOTIFY queue to this many pages for testing.");
-DEFINE_RUNTIME_AUTO_bool(
-    ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
     "Enable the infra required for Auto Analyze");
 
-DEFINE_RUNTIME_bool(
-    ysql_enable_auto_analyze, false,
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
     "which have changed more than a configurable threshold.");
 

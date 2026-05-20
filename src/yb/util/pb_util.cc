@@ -133,8 +133,7 @@ DEFINE_NON_RUNTIME_uint64(rpc_max_message_size, 255_MB,
 // To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
 // bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
 // message length that may produce integer overflow warnings, so that's what we'll use.
-DEFINE_NON_RUNTIME_uint32(
-    protobuf_message_total_bytes_limit, 511_MB,
+DEFINE_NON_RUNTIME_uint32(protobuf_message_total_bytes_limit, 511_MB,
     "Limits single protobuf message size for deserialization. This value must be greater than "
     "rpc_max_message_size and less than 512MB.");
 TAG_FLAG(protobuf_message_total_bytes_limit, advanced);

@@ -170,8 +170,7 @@ DEFINE_test_flag(double, simulated_crash_after_modify_flushed_frontier_probabili
 DEFINE_test_flag(bool, fail_flush_mem_table, false,
     "Fails all flush memtable requests when the flag is set.");
 
-DEFINE_RUNTIME_bool(
-    rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, false,
+DEFINE_RUNTIME_bool(rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, false,
     "Whether to allow multiple pending compactions for the same RocksDB instance. Only has effect "
     "when use_priority_thread_pool_for_compactions is set to true and "
     "rocksdb_determine_compaction_input_at_start is set to false.");

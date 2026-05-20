@@ -90,8 +90,7 @@ DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
-DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_user_ddls_preempt_auto_analyze, true,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
