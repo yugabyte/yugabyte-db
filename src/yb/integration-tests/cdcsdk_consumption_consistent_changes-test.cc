@@ -6228,6 +6228,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfter
   // These will increase the frequency of bg task which cleans up hidden tables.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  // Disable cleanup of expired table entries, else it will cleanup the new tables as well.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, true /* colocated */,
