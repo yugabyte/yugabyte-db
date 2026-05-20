@@ -15,11 +15,13 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.google.common.net.HostAndPort;
+import com.yugabyte.util.PSQLException;
 import org.hamcrest.CoreMatchers;
+import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
@@ -817,6 +819,9 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   // Version Mismatch message appended.
   @Test
   public void testCatalogVersionLogging() throws Exception {
+    Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
+        isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement statement1 = connection1.createStatement();
@@ -829,21 +834,21 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
+      // Disable heartbeats so the catalog version bump from the ALTER
+      // cannot propagate to tserver 1 before the SELECT x1.
+      for (HostAndPort hostAndPort : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            hostAndPort, "TEST_tserver_disable_heartbeat", "true", true));
+      }
+
       statement1.execute("ALTER TABLE test_table ADD COLUMN x1 int");
 
+      // Connection 2's tserver still has stale catalog; SELECT x1 must fail.
+      String query = "SELECT x1 FROM test_table";
       try {
-        // Immediately try selecting row from connection 2.
-        String query = "SELECT x1 FROM test_table";
         statement2.execute(query);
-
-        // Connection Manager enabled runs will not fail due to DDL sleeps.
-        if (!isTestRunningWithConnectionManager()) {
-          fail(String.format("Statement did not fail: %s", query));
-        }
+        fail(String.format("Statement did not fail: %s", query));
       } catch (SQLException error) {
-        if (isTestRunningWithConnectionManager()) {
-          fail("Connection Manager enabled run should not have failed");
-        }
         LOG.info(error.getMessage());
         assertThat(
           error.getMessage(),
