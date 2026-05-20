@@ -302,7 +302,7 @@ The following flags can be used, when specified, with the commands above.
 
 ### --exclude_vector_indexes
 
-Use with [`compact_tablet`](#compact_tablet) or [`compact_all_tablets`](#compact_all_tablets) to compact only the tablet's RocksDB data and skip vector indexes on the tablet. Not valid for flush commands.
+Use with [compact_tablet](#compact_tablet) or [compact_all_tablets](#compact_all_tablets) to compact only the tablet's RocksDB data and skip vector indexes on the tablet. Not valid for flush commands.
 
 Default: `false` (vector indexes are included in compaction)
 
