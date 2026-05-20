@@ -389,7 +389,7 @@ DROP INDEX
   Do any or all of the following:
 
   - Increase the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../../../../../reference/configuration/yb-master/#ysql-index-backfill-rpc-timeout-ms) from 60000 (one minute) to 300000 (five minutes).
-  - Tune the YB-TServer flag [backfill_index_timeout_grace_margin_ms](../../../../../reference/configuration/yb-tserver/#backfill-index-timeout-grace-margin-ms): with `-1`, YSQL uses an automatic margin of at least 3 minutes (180000 ms); YCQL uses about 1 second. To set an explicit margin, use a value such as `60000` (one minute).
+  - Tune the YB-TServer flag [backfill_index_timeout_grace_margin_ms](../../../../../reference/configuration/yb-tserver/#backfill-index-timeout-grace-margin-ms): with `-1` (default), YSQL uses an automatic margin of at least 3 minutes (180000 ms); YCQL uses about 1 second. To set an explicit margin, use a value such as `60000` (one minute).
   - Decrease the YB-TServer flag [backfill_index_write_batch_size](../../../../../reference/configuration/yb-tserver/#backfill-index-write-batch-size) from 128 to 32.
 
 - `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
