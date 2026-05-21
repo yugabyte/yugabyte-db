@@ -1685,7 +1685,7 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(userIntent.providerType)) {
-      log.debug("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
       return;
     }
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
