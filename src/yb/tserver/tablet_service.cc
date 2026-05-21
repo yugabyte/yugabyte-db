@@ -396,6 +396,7 @@ std::shared_ptr<consensus::RaftConsensus> GetConsensusOrRespond(const TabletPeer
   auto result = GetConsensus(tablet_peer);
   if (!result.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
+    return nullptr;
   }
   return result.get();
 }
