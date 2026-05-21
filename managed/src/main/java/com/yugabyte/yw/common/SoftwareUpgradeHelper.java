@@ -65,7 +65,8 @@ public class SoftwareUpgradeHelper {
         universe.getUniverseDetails().getPrimaryCluster();
     return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
         && (primaryCluster.userIntent.enableYSQLAuth
-            || primaryCluster.userIntent.enableNodeToNodeEncrypt)
+            || primaryCluster.userIntent.enableNodeToNodeEncrypt
+            || primaryCluster.userIntent.enableClientToNodeEncrypt)
         && (primaryCluster.userIntent.dedicatedNodes
             || primaryCluster.userIntent.providerType.equals(CloudType.kubernetes));
   }
