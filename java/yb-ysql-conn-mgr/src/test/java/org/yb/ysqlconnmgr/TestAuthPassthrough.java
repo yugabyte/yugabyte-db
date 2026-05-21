@@ -21,12 +21,15 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAuthPassthrough extends BaseYsqlConnMgr {
   final String TEST_USERNAME = "user1";
   final String TEST_PASSWORD = "pwd";

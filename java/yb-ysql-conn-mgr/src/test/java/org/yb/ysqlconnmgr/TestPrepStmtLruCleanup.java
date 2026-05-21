@@ -34,16 +34,19 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import com.google.common.net.HostAndPort;
+import org.yb.YBParameterizedTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.BuildTypeUtil;
+import org.yb.util.RequiresLinux;
 
 // Tests for the LRU eviction of prepared statements on Connection Manager
 // backends. Without eviction, prepared statements accumulate indefinitely
 // on long-running backends, causing unbounded memory growth. The
 // ysql_conn_mgr_max_prepared_statements flag caps the number of statements
 // kept per backend; excess LRU statements are closed via ForceClose on detach.
-@RunWith(value = YBParameterizedTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
 
   private final boolean optimizedMode;

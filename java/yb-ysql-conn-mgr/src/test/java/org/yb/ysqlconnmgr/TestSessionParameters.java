@@ -33,6 +33,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -40,7 +42,8 @@ import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
 
   @Override

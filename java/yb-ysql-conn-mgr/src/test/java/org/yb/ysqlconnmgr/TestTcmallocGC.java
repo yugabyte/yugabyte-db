@@ -27,12 +27,15 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.BuildTypeUtil;
 import java.util.Collections;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestTcmallocGC extends BaseYsqlConnMgr {
 
   private static final int TEST_GC_INTERVAL_SECS = 2;

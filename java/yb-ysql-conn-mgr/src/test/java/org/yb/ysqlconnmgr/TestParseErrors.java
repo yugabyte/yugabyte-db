@@ -33,11 +33,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
 /*
  * Tests for correct Odyssey behaviour when handling parse errors.
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestParseErrors extends BaseYsqlConnMgr {
   private static final Logger LOG = LoggerFactory.getLogger(TestParseErrors.class);
 

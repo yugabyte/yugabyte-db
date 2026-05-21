@@ -32,6 +32,7 @@ public final class TestFilterUtil {
   public static boolean shouldSkip(Annotation[] annotations) {
     for (Annotation a : annotations) {
       if ((a instanceof SkipOnTSAN && BuildTypeUtil.isTSAN()) ||
+          (a instanceof RequiresLinux && !SystemUtil.IS_LINUX) ||
           (a instanceof RequiresReleaseBuild && !TestUtils.isReleaseBuild())) {
         return true;
       }

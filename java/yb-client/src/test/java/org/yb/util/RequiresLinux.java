@@ -14,16 +14,15 @@
  */
 package org.yb.util;
 
-import org.junit.runners.model.InitializationError;
-import org.yb.YBTestRunner;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-public class YBTestRunnerNonMac extends YBTestRunner {
-  public YBTestRunnerNonMac(Class<?> klass) throws InitializationError {
-    super(klass);
-  }
-
-  @Override
-  public boolean shouldRunTests() {
-    return super.shouldRunTests() && SystemUtil.IS_LINUX;
-  }
+/**
+ * Skips the annotated test class or method on non-Linux platforms (e.g. macOS).
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface RequiresLinux {
 }

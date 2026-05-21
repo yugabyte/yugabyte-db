@@ -29,10 +29,13 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestDefaultConfig extends BaseYsqlConnMgr {
   private final static String YSQL_CONN_MGR_CONFIG_FILE_NAME = "ysql_conn_mgr.conf";
   private final Map<String, String> DEFAULT_CONFIG = new HashMap<String, String>() {

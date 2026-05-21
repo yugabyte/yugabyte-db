@@ -19,11 +19,14 @@ import java.sql.Connection;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestUnixSocketConnections extends BaseYsqlConnMgr {
 
   @Override

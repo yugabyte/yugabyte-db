@@ -10,13 +10,16 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionEndpoint;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.google.gson.JsonObject;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestHangUpOnRouteSignals extends BaseYsqlConnMgr {
 
     private static final CountDownLatch startLatch = new CountDownLatch(1);
