@@ -22,9 +22,9 @@ export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
 
 export const GP3_DEFAULT_DISK_IOPS = 3000;
-export const GP3_MAX_IOPS = 16000;
+export const GP3_MAX_IOPS = 80000;
 export const GP3_DEFAULT_DISK_THROUGHPUT = 125;
-export const GP3_MAX_THROUGHPUT = 1000;
+export const GP3_MAX_THROUGHPUT = 2000;
 export const GP3_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 
 export const UltraSSD_DEFAULT_DISK_IOPS = 3000;
