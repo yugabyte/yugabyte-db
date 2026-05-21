@@ -480,13 +480,15 @@ TEST_F(LoadBalancerPlacementPolicyTest, UnderreplicatedAdd) {
   ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(
       3 /* num_tservers */, 10s /* timeout */));
 
-  // Wait for ts0 removed from quorum.
+  // Wait for ts0 removed from quorum. follower_unavailable_considered_failed_sec is set to 6s,
+  // and the new leader might take around 3secs to take effect, and since cluster balancer could
+  // re-balance the leaders, wait for about 15s before giving up.
   vector<int> counts_per_ts;
   const vector<int> expected_counts_per_ts = {0, 4, 4, 0};
   ASSERT_OK(WaitFor([&] {
     GetLoadOnTservers(table_name().table_name(), new_num_tservers, &counts_per_ts);
     return counts_per_ts == expected_counts_per_ts;
-  }, 10s * kTimeMultiplier, "Wait for ts0 removed from quorum."));
+  }, 15s * kTimeMultiplier, "Wait for ts0 removed from quorum."));
 
   // Should not add a replica in ts3 since that does not fix the under-replication in z0.
   SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
