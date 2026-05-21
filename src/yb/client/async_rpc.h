@@ -16,6 +16,8 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
 
+#include "yb/ash/ash_fwd.h"
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -146,6 +148,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   rpc::RpcCommandPtr retained_self_;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+
+  // Wait state captured at AsyncRpc construction
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 template <class Req, class Resp>
