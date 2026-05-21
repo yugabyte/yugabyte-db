@@ -5462,7 +5462,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -5499,6 +5498,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
     auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
     ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
   }
+
+  // Force-expire the stream so the XReplParentTabletDeletionTask is unblocked from cleaning up the
+  // tablets dropped above. The retention check is `last_active_time + retention < now`, so 0 makes
+  // the stream expire on the next background-task tick. This decouples the wait below from any
+  // TSAN-sensitive retention timing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
