@@ -30,7 +30,6 @@ public class TestUnixSocketConnections extends BaseYsqlConnMgr {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.addCommonTServerFlag("ysql_enable_auth", "true");
-    builder.addCommonTServerFlag("ysql_conn_mgr_password", "wrong pass");
   }
 
   @Override
