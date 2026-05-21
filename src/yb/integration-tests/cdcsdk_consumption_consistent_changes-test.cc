@@ -6225,6 +6225,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfter
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  // With cdc_intent_retention_ms = 0 the tserver classifies every colocated table on the tablet
+  // (including pg_class and pg_publication_rel) as expired and asks the master to drop them from
+  // the stream's qualified list. The hidden OLD table is still removed via the dropped-table
+  // cleanup path after CleanupHiddenTablets fully deletes it, so disabling expired-table cleanup
+  // keeps the catalog tables in place without affecting the assertion below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
   // These will increase the frequency of bg task which cleans up hidden tables.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
