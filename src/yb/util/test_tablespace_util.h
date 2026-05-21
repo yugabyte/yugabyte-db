@@ -99,10 +99,14 @@ class Tablespace {
   std::vector<PlacementBlock> placement_blocks;
   std::vector<PlacementBlock> read_replica_placement_blocks;
 
+  // The default placement_uuid `"read_replica"` matches the constant used by integration tests
+  // that create read-replica tservers. Pass an empty string to omit the field from the generated
+  // JSON entirely, in which case the master will populate it from the cluster config.
   Tablespace(
       std::string name, int32_t num_replicas, std::vector<PlacementBlock> placement_blocks,
       std::vector<PlacementBlock> read_replica_placement_blocks = {},
-      std::optional<int32_t> read_replica_num_replicas = std::nullopt)
+      std::optional<int32_t> read_replica_num_replicas = std::nullopt,
+      std::string read_replica_placement_uuid = "read_replica")
       : name(std::move(name)),
         num_replicas(num_replicas),
         placement_blocks(std::move(placement_blocks)),
@@ -113,7 +117,8 @@ class Tablespace {
       const int32_t read_replica_num_replicas_value = read_replica_num_replicas_.value_or(
           TotalMinReplicas(this->read_replica_placement_blocks));
       read_replica_json_ = GeneratePlacementJson(
-          this->read_replica_placement_blocks, read_replica_num_replicas_value, "read_replica");
+          this->read_replica_placement_blocks, read_replica_num_replicas_value,
+          read_replica_placement_uuid);
       read_replica_num_replicas_ = read_replica_num_replicas_value;
     }
     create_cmd_ = GenerateCreateCmd();
