@@ -7283,6 +7283,18 @@ PostgresMain(const char *dbname, const char *username)
 					 * query protocol. (#28409)
 					 */
 					pq_getmsgend(&input_message);
+					/*
+					 * YB: On Sync, tell conn mgr (YB_BE_SYNC_ACK 'Y') so it can
+					 * reconcile outstanding parse / prep-stmt bookkeeping at this
+					 * boundary (before finish_xact_command output). Conn mgr only.
+					 */
+					if (YbIsClientYsqlConnMgr() &&
+						whereToSendOutput == DestRemote)
+					{
+						pq_putemptymessage('Y');
+						pq_flush();
+					}
+
 					MemoryContext oldcontext = CurrentMemoryContext;
 
 					PG_TRY();

@@ -79,6 +79,8 @@
 /* server */
 #include "sources/ejection.h"
 #include "sources/thread_global.h"
+#include "sources/circular_queue.h"
+#include "sources/parse_queue.h"
 #include "sources/server.h"
 
 /* client */
