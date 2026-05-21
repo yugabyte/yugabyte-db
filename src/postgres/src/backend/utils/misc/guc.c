@@ -3475,7 +3475,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_fkey_batched_docdb_lookup_when_types_mismatch,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 

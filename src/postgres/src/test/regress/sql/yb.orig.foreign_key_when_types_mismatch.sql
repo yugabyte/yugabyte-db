@@ -20,6 +20,7 @@
 --
 
 \set VERBOSITY default
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 
 -- int2_to_int4
 CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
