@@ -40,7 +40,7 @@ type: docs
 
 ## PySpark
 
-To build your Python application using the YugabyteDB Spark Connector for YCQL, start PySpark with the following for Scala 2.11:
+To build your Python application using the YugabyteDB Spark Connector for YCQL, start PySpark with the following for Scala 2.12:
 
 ```sh
 $ pyspark --packages com.yugabyte.spark:spark-cassandra-connector_2.12-3.3-yb-4
