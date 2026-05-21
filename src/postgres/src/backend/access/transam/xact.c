@@ -5608,149 +5608,162 @@ AbortSubTransaction(void)
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
-	/* Make sure we have a valid memory context and resource owner */
-	AtSubAbort_Memory();
-	AtSubAbort_ResourceOwner();
-
-	/*
-	 * Release any LW locks we might be holding as quickly as possible.
-	 * (Regular locks, however, must be held till we finish aborting.)
-	 * Releasing LW locks is critical since we might try to grab them again
-	 * while cleaning up!
-	 *
-	 * FIXME This may be incorrect --- Are there some locks we should keep?
-	 * Buffer locks, for example?  I don't think so but I'm not sure.
-	 */
-	LWLockReleaseAll();
-
-	pgstat_report_wait_end();
-	pgstat_progress_end_command();
-	AbortBufferIO();
-	UnlockBuffers();
-
-	/* Reset WAL record construction state */
-	XLogResetInsertion();
-
-	/* Cancel condition variable sleep */
-	ConditionVariableCancelSleep();
-
-	/*
-	 * Also clean up any open wait for lock, since the lock manager will choke
-	 * if we try to wait for another lock before doing this.
-	 */
-	LockErrorCleanup();
-
-	/*
-	 * If any timeout events are still active, make sure the timeout interrupt
-	 * is scheduled.  This covers possible loss of a timeout interrupt due to
-	 * longjmp'ing out of the SIGINT handler (see notes in handle_sig_alarm).
-	 * We delay this till after LockErrorCleanup so that we don't uselessly
-	 * reschedule lock or deadlock check timeouts.
-	 */
-	reschedule_timeouts();
-
-	/*
-	 * Re-enable signals, in case we got here by longjmp'ing out of a signal
-	 * handler.  We do this fairly early in the sequence so that the timeout
-	 * infrastructure will be functional if needed while aborting.
-	 */
-	PG_SETMASK(&UnBlockSig);
-
-	/*
-	 * check the current transaction state
-	 */
-	ShowTransactionState("AbortSubTransaction");
-
-	if (s->state != TRANS_INPROGRESS)
-		elog(WARNING, "AbortSubTransaction while in %s state",
-			 TransStateAsString(s->state));
-
-	s->state = TRANS_ABORT;
-
-	/*
-	 * Reset user ID which might have been changed transiently.  (See notes in
-	 * AbortTransaction.)
-	 */
-	SetUserIdAndSecContext(s->prevUser, s->prevSecContext);
-
-	/* Forget about any active REINDEX. */
-	ResetReindexState(s->nestingLevel);
-
-	/* Reset logical streaming state. */
-	ResetLogicalStreamingState();
-
-	/*
-	 * No need for SnapBuildResetExportedSnapshotState() here, snapshot
-	 * exports are not supported in subtransactions.
-	 */
-
-	/* Exit from parallel mode, if necessary. */
-	if (IsInParallelMode())
+	PG_TRY();
 	{
-		AtEOSubXact_Parallel(false, s->subTransactionId);
-		s->parallelModeLevel = 0;
-	}
+		YBCEnterSubTxnAbort();
 
-	/*
-	 * We can skip all this stuff if the subxact failed before creating a
-	 * ResourceOwner...
-	 */
-	if (s->curTransactionOwner)
-	{
-		AfterTriggerEndSubXact(false);
-		AtSubAbort_Portals(s->subTransactionId,
-						   s->parent->subTransactionId,
-						   s->curTransactionOwner,
-						   s->parent->curTransactionOwner);
-		AtEOSubXact_LargeObject(false, s->subTransactionId,
-								s->parent->subTransactionId);
-		AtSubAbort_Notify();
+		/* Make sure we have a valid memory context and resource owner */
+		AtSubAbort_Memory();
+		AtSubAbort_ResourceOwner();
 
-		/* Advertise the fact that we aborted in pg_xact. */
-		(void) RecordTransactionAbort(true);
+		/*
+		 * Release any LW locks we might be holding as quickly as possible.
+		 * (Regular locks, however, must be held till we finish aborting.)
+		 * Releasing LW locks is critical since we might try to grab them again
+		 * while cleaning up!
+		 *
+		 * FIXME This may be incorrect --- Are there some locks we should keep?
+		 * Buffer locks, for example?  I don't think so but I'm not sure.
+		 */
+		LWLockReleaseAll();
 
-		/* Post-abort cleanup */
-		if (FullTransactionIdIsValid(s->fullTransactionId))
-			AtSubAbort_childXids();
+		pgstat_report_wait_end();
+		pgstat_progress_end_command();
+		AbortBufferIO();
+		UnlockBuffers();
 
-		CallSubXactCallbacks(SUBXACT_EVENT_ABORT_SUB, s->subTransactionId,
-							 s->parent->subTransactionId);
+		/* Reset WAL record construction state */
+		XLogResetInsertion();
 
-		ResourceOwnerRelease(s->curTransactionOwner,
-							 RESOURCE_RELEASE_BEFORE_LOCKS,
-							 false, false);
-		AtEOSubXact_RelationCache(false, s->subTransactionId,
-								  s->parent->subTransactionId);
-		AtEOSubXact_Inval(false);
-		ResourceOwnerRelease(s->curTransactionOwner,
-							 RESOURCE_RELEASE_LOCKS,
-							 false, false);
-		ResourceOwnerRelease(s->curTransactionOwner,
-							 RESOURCE_RELEASE_AFTER_LOCKS,
-							 false, false);
-		AtSubAbort_smgr();
+		/* Cancel condition variable sleep */
+		ConditionVariableCancelSleep();
 
-		AtEOXact_GUC(false, s->gucNestLevel);
-		AtEOSubXact_SPI(false, s->subTransactionId);
-		AtEOSubXact_on_commit_actions(false, s->subTransactionId,
+		/*
+		 * Also clean up any open wait for lock, since the lock manager will choke
+		 * if we try to wait for another lock before doing this.
+		 */
+		LockErrorCleanup();
+
+		/*
+		 * If any timeout events are still active, make sure the timeout interrupt
+		 * is scheduled.  This covers possible loss of a timeout interrupt due to
+		 * longjmp'ing out of the SIGINT handler (see notes in handle_sig_alarm).
+		 * We delay this till after LockErrorCleanup so that we don't uselessly
+		 * reschedule lock or deadlock check timeouts.
+		 */
+		reschedule_timeouts();
+
+		/*
+		 * Re-enable signals, in case we got here by longjmp'ing out of a signal
+		 * handler.  We do this fairly early in the sequence so that the timeout
+		 * infrastructure will be functional if needed while aborting.
+		 */
+		PG_SETMASK(&UnBlockSig);
+
+		/*
+		 * check the current transaction state
+		 */
+		ShowTransactionState("AbortSubTransaction");
+
+		if (s->state != TRANS_INPROGRESS)
+			elog(WARNING, "AbortSubTransaction while in %s state",
+				 TransStateAsString(s->state));
+
+		s->state = TRANS_ABORT;
+
+		/*
+		 * Reset user ID which might have been changed transiently.  (See notes in
+		 * AbortTransaction.)
+		 */
+		SetUserIdAndSecContext(s->prevUser, s->prevSecContext);
+
+		/* Forget about any active REINDEX. */
+		ResetReindexState(s->nestingLevel);
+
+		/* Reset logical streaming state. */
+		ResetLogicalStreamingState();
+
+		/*
+		 * No need for SnapBuildResetExportedSnapshotState() here, snapshot
+		 * exports are not supported in subtransactions.
+		 */
+
+		/* Exit from parallel mode, if necessary. */
+		if (IsInParallelMode())
+		{
+			AtEOSubXact_Parallel(false, s->subTransactionId);
+			s->parallelModeLevel = 0;
+		}
+
+		/*
+		 * We can skip all this stuff if the subxact failed before creating a
+		 * ResourceOwner...
+		 */
+		if (s->curTransactionOwner)
+		{
+			AfterTriggerEndSubXact(false);
+			AtSubAbort_Portals(s->subTransactionId,
+							   s->parent->subTransactionId,
+							   s->curTransactionOwner,
+							   s->parent->curTransactionOwner);
+			AtEOSubXact_LargeObject(false, s->subTransactionId,
+									s->parent->subTransactionId);
+			AtSubAbort_Notify();
+
+			/* Advertise the fact that we aborted in pg_xact. */
+			(void) RecordTransactionAbort(true);
+
+			/* Post-abort cleanup */
+			if (FullTransactionIdIsValid(s->fullTransactionId))
+				AtSubAbort_childXids();
+
+			CallSubXactCallbacks(SUBXACT_EVENT_ABORT_SUB, s->subTransactionId,
+								 s->parent->subTransactionId);
+
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_BEFORE_LOCKS,
+								 false, false);
+			AtEOSubXact_RelationCache(false, s->subTransactionId,
 									  s->parent->subTransactionId);
-		AtEOSubXact_Namespace(false, s->subTransactionId,
+			AtEOSubXact_Inval(false);
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_LOCKS,
+								 false, false);
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_AFTER_LOCKS,
+								 false, false);
+			AtSubAbort_smgr();
+
+			AtEOXact_GUC(false, s->gucNestLevel);
+			AtEOSubXact_SPI(false, s->subTransactionId);
+			AtEOSubXact_on_commit_actions(false, s->subTransactionId,
+										  s->parent->subTransactionId);
+			AtEOSubXact_Namespace(false, s->subTransactionId,
+								  s->parent->subTransactionId);
+			AtEOSubXact_Files(false, s->subTransactionId,
 							  s->parent->subTransactionId);
-		AtEOSubXact_Files(false, s->subTransactionId,
-						  s->parent->subTransactionId);
-		AtEOSubXact_HashTables(false, s->nestingLevel);
-		AtEOSubXact_PgStat(false, s->nestingLevel);
-		AtSubAbort_Snapshot(s->nestingLevel);
+			AtEOSubXact_HashTables(false, s->nestingLevel);
+			AtEOSubXact_PgStat(false, s->nestingLevel);
+			AtSubAbort_Snapshot(s->nestingLevel);
+		}
+
+		YBCRollbackToSubTransaction(s->subTransactionId);
+
+		/*
+		 * Restore the upper transaction's read-only state, too.  This should be
+		 * redundant with GUC's cleanup but we may as well do it for consistency
+		 * with the commit case.
+		 */
+		XactReadOnly = s->prevXactReadOnly;
+
+		YBCExitSubTxnAbort();
 	}
-
-	YBCRollbackToSubTransaction(s->subTransactionId);
-
-	/*
-	 * Restore the upper transaction's read-only state, too.  This should be
-	 * redundant with GUC's cleanup but we may as well do it for consistency
-	 * with the commit case.
-	 */
-	XactReadOnly = s->prevXactReadOnly;
+	PG_CATCH();
+	{
+		YBCExitSubTxnAbort();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	RESUME_INTERRUPTS();
 }

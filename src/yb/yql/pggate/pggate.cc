@@ -2680,7 +2680,9 @@ YbcReadPointHandle PgApiImpl::GetMaxReadPoint() const {
 }
 
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ChangeTxnSnapshot(read_point)));
+  if (!IsSubTxnAbort()) {
+    RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ChangeTxnSnapshot(read_point)));
+  }
   return pg_txn_manager_->RestoreReadPoint(read_point);
 }
 

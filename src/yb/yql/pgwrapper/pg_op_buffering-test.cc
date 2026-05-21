@@ -635,4 +635,79 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseFastPathTxnTest) {
   CheckBulkLoadForColocatedUniqueIndex(&conn, table_name + "_unique_index", csv_filename, num_rows,
       write_rpc_watcher_);
 }
+
+TEST_F(PgOpBufferingTest, SubtxnAbortBypassFlushSimple) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateTable(&conn));
+  ASSERT_OK(SetMaxBatchSize(&conn, 100));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // Insert a row to be buffered
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTable));
+
+  // Create savepoint A
+  ASSERT_OK(conn.Execute("SAVEPOINT A"));
+
+  // Insert another row inside savepoint A
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2)", kTable));
+
+  // Rollback to savepoint A - should bypass flush and clear buffer for that subtxn
+  const auto rollback_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
+    return conn.Execute("ROLLBACK TO A");
+  }));
+  ASSERT_EQ(rollback_rpc_count, 0);
+
+  // Commit the outer transaction
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Verify that only the first row exists
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT k FROM " + kTable + " ORDER BY k"));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], 1);
+}
+
+TEST_F(PgOpBufferingTest, SubtxnAbortBypassFlushNested) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateTable(&conn));
+  ASSERT_OK(SetMaxBatchSize(&conn, 100));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // Create SAVEPOINT A
+  ASSERT_OK(conn.Execute("SAVEPOINT A"));
+
+  // Create SAVEPOINT B
+  ASSERT_OK(conn.Execute("SAVEPOINT B"));
+
+  // Rollback to B (decrements abort depth)
+  // Rollback to A (decrements abort depth)
+  const auto rollback_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
+    RETURN_NOT_OK(conn.Execute("ROLLBACK TO B"));
+    RETURN_NOT_OK(conn.Execute("ROLLBACK TO A"));
+    return Status::OK();
+  }));
+  ASSERT_EQ(rollback_rpc_count, 0);
+
+  // Commit transaction A/B parent
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Assert: no stale skip-flush state remains, next transaction flush works normally
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // Insert buffered op
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTable));
+
+  // Commit should flush normally (meaning we should see 1 Write RPC)
+  const auto commit_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
+    return conn.Execute("COMMIT");
+  }));
+  ASSERT_EQ(commit_rpc_count, 1);
+
+  // Verify row is present
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT k FROM " + kTable + " ORDER BY k"));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], 1);
+}
+
 } // namespace yb::pgwrapper
