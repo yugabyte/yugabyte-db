@@ -107,6 +107,28 @@ The diagnostic information can be analyzed locally or the bundle can be forwarde
 
 The focus is to ensure that support bundle generation is successful in most cases, regardless of any individual file collection failures.
 
+### Perf Advisor Collector
+
+{{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector is a YugabyteDB Anywhere component that collects performance monitoring data locally on the YugabyteDB Anywhere host. It lets you generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
+
+{{< note title="YBA installer registration" >}}
+Starting in YugabyteDB Anywhere v2026.1, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. The service is registered by default, but you must enable the collector for each universe before it begins collecting metadata.
+{{< /note >}}
+
+To enable the PA collector for a universe:
+
+1. Open the universe and click **Actions>Enable Perf Advisor Collector**.
+
+1. Confirm the **Are you sure you want to enable Performance Monitoring?** action in the dialog, and select **Apply changes**.
+
+After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) hash data. To disable collection, click **Actions>Disable Perf Advisor Collector**.
+
+When you create a support bundle, select the **Perf Advisor metadata** component to include this data in the archive. If the PA collector is not enabled for a universe, the **Perf Advisor metadata** option does not appear in the support bundle UI. For more information about the component, see [Perf Advisor metadata](#perf-advisor-metadata).
+
+For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
+
+### Create support bundles
+
 You can create a support bundle as follows:
 
 1. Open the universe that needs to be diagnosed and click **Actions > Support Bundles**.
@@ -271,6 +293,19 @@ You can include the following metrics with the support bundle:
 The Prometheus metrics are stored in JSON files in the `support_bundle/YBA/promdump` directory.
 
 You can also create "Custom Queries" by providing PromQL expressions; their results are stored in the support bundle under the corresponding folder name.
+
+#### Perf Advisor metadata
+
+{{<tags/feature/ea idea="1428">}} Performance monitoring metadata collected from the Perf Advisor (PA) collector registered with YugabyteDB Anywhere. This component is available only when the PA collector is enabled for the universe (**Actions > Enable Perf Advisor Collector**). If the collector is not enabled, **Perf Advisor metadata** does not appear in the support bundle component list.
+
+When selected, YugabyteDB Anywhere requests a Perf Advisor support bundle dump for the specified date range and includes the results in the archive under `support_bundle/YBA/pa/`. Share this data with {{% support-platform %}} to help analyze anomalies and cluster load patterns.
+
+You can configure the following options for this component:
+
+- Date range: Adjust the start and end times for the Perf Advisor metadata dump independently of the global support bundle date range.
+- Format: Choose **Binary** or **JSON** for the exported metrics format.
+
+The PA collector continues gathering metadata in the background after you enable it; creating a support bundle with **Perf Advisor metadata** selected captures the collected data for the chosen time window.
 
 </details>
 
