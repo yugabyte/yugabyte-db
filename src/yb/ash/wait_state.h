@@ -316,6 +316,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetYbSystemTableInfo)
   (kReleaseSessionObjectLock)
   (kQueryAutoAnalyze)
+  (kResetTableMutationCountersAfterAnalyze)
   (kGetTabletForKey)
   (kRemotePgExec)
 

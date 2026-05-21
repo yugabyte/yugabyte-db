@@ -850,6 +850,17 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status ResetTableMutationCountersAfterAnalyze(const PgObjectId& table_id) {
+    tserver::PgResetTableMutationCountersAfterAnalyzeRequestPB req;
+    tserver::PgResetTableMutationCountersAfterAnalyzeResponsePB resp;
+    req.set_database_oid(table_id.database_oid);
+    req.set_table_relfilenode_oid(table_id.object_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::ResetTableMutationCountersAfterAnalyze, req, resp,
+        PggateRPC::kResetTableMutationCountersAfterAnalyze));
+    return ResponseStatus(resp);
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -2125,6 +2136,10 @@ Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
 
 Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid db_oid) {
     return impl_->QueryAutoAnalyze(db_oid);
+}
+
+Status PgClient::ResetTableMutationCountersAfterAnalyze(const PgObjectId& table_id) {
+  return impl_->ResetTableMutationCountersAfterAnalyze(table_id);
 }
 
 

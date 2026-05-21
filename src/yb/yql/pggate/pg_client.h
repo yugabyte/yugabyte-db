@@ -208,6 +208,8 @@ class PgClient {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetTableMutationCountersAfterAnalyze(const PgObjectId& table_id);
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id);

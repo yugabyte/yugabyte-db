@@ -38,6 +38,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
@@ -2957,6 +2958,19 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
         }
     }
+    return Status::OK();
+  }
+
+  Status ResetTableMutationCountersAfterAnalyze(
+      const PgResetTableMutationCountersAfterAnalyzeRequestPB& req,
+      PgResetTableMutationCountersAfterAnalyzeResponsePB* resp, rpc::RpcContext* context) {
+    stateful_service::ResetTableMutationCountersAfterAnalyzeRequestPB stateful_service_req;
+    stateful_service_req.add_table_ids(
+        PgObjectId(req.database_oid(), req.table_relfilenode_oid()).GetYbTableId());
+    RETURN_NOT_OK(
+        client::PgAutoAnalyzeServiceClient(client()).ResetTableMutationCountersAfterAnalyze(
+            stateful_service_req, context->GetClientDeadline()));
+
     return Status::OK();
   }
 

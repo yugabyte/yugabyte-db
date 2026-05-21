@@ -281,9 +281,43 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     return Status::OK();
   }
+
+  Status WaitForTableMutationCount(const TableId& table_id, uint64 expected_mutations) {
+    RETURN_NOT_OK(WaitFor([this, &table_id, expected_mutations]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      const auto it = table_mutations_in_cql_table.find(table_id);
+      if (it == table_mutations_in_cql_table.end()) {
+        return expected_mutations == 0;
+      }
+      LOG(INFO) << table_id << " mutations: " << it->second
+                << ", expected: " << expected_mutations;
+      return it->second == expected_mutations;
+    }, 10s * kTimeMultiplier, "Check expected mutations count"));
+
+    return Status::OK();
+  }
 };
 
 } // namespace
+
+TEST(PgMutationCounterTest, ResetClearsOnlySpecifiedTables) {
+  tserver::PgMutationCounter counter;
+  const TableId table1 = "table1";
+  const TableId table2 = "table2";
+  const TableId table3 = "table3";
+
+  counter.Increase(table1, 10);
+  counter.Increase(table2, 20);
+  counter.Increase(table3, 30);
+  counter.Reset({table1, table3});
+
+  auto counts = counter.GetAndClear();
+  ASSERT_FALSE(counts.contains(table1));
+  ASSERT_TRUE(counts.contains(table2));
+  ASSERT_FALSE(counts.contains(table3));
+  ASSERT_EQ(counts[table2].load(), 20);
+}
 
 TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
@@ -475,6 +509,114 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
   // INSERT one more row to trigger analyze.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (102, 102)", table_name));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 102));
+}
+
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzeResetsMutationCount) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "manual_analyze_test";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  auto wait_for_mutation_reporting_and_persisting_ms =
+      FLAGS_ysql_node_level_mutation_reporting_interval_ms +
+      FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 50 * kTimeMultiplier;
+  std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(11, 15) AS s"));
+      },
+      {{table_id, 5}}));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test(v1)"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 5));
+
+  ASSERT_OK(conn.Execute("VACUUM ANALYZE manual_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(16, 20) AS s"));
+      },
+      {{table_id, 5}}));
+  ASSERT_OK(conn.Execute("VACUUM ANALYZE manual_analyze_test(v1)"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 5));
+}
+
+TEST_F(PgAutoAnalyzeTest, InternalAnalyzeDoesNotResetMutationCount) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "internal_analyze_test";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO internal_analyze_test "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+  ASSERT_OK(conn.Execute("ANALYZE internal_analyze_test"));
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 10));
+
+  ASSERT_OK(conn.Execute("ANALYZE internal_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+}
+
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzePartitionedTableResetsPartitionMutationCounts) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test (h1 INT, v1 INT) PARTITION BY RANGE (h1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test_p1 "
+      "PARTITION OF partitioned_analyze_test FOR VALUES FROM (0) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test_p2 "
+      "PARTITION OF partitioned_analyze_test FOR VALUES FROM (10) TO (20)"));
+
+  const auto partition1_id = ASSERT_RESULT(GetTableId("partitioned_analyze_test_p1"));
+  const auto partition2_id = ASSERT_RESULT(GetTableId("partitioned_analyze_test_p2"));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO partitioned_analyze_test_p1 "
+            "SELECT s, s FROM generate_series(1, 5) AS s"));
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO partitioned_analyze_test_p2 "
+            "SELECT s, s FROM generate_series(11, 15) AS s"));
+      },
+      {{partition1_id, 5}, {partition2_id, 5}}));
+
+  ASSERT_OK(conn.Execute("ANALYZE partitioned_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(partition1_id, 0));
+  ASSERT_OK(WaitForTableMutationCount(partition2_id, 0));
 }
 
 TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeMultiTablesMultiDBs) {

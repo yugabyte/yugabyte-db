@@ -75,6 +75,7 @@ class TserverXClusterContextIf;
     (IsObjectPartOfXRepl) \
     (ListClones) \
     (QueryAutoAnalyze) \
+    (ResetTableMutationCountersAfterAnalyze) \
     (ListLiveTabletServers) \
     (ListSlotEntries) \
     (ListReplicationSlots) \

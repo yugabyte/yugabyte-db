@@ -1091,6 +1091,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+YbcStatus YBCResetTableMutationCountersAfterAnalyze(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid);
 
 // ---------------------------------------------------------------------------
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.

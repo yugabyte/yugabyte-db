@@ -3214,6 +3214,12 @@ YbcStatus YBCQueryAutoAnalyze(
   return YBCStatusOK();
 }
 
+YbcStatus YBCResetTableMutationCountersAfterAnalyze(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid) {
+  return ToYBCStatus(pgapi->ResetTableMutationCountersAfterAnalyze(
+      PgObjectId(database_oid, table_relfilenode_oid)));
+}
+
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
 int YBCGetXClusterRole(uint32_t db_oid) {
