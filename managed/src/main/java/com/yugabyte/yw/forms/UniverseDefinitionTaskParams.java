@@ -731,6 +731,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public static Optional<UUID> searchProviderUUIDByAz(UUID azUUID, PlacementInfo placementInfo) {
+      if (placementInfo == null) {
+        return Optional.empty();
+      }
       return placementInfo
           .azInfoStream()
           .filter(az -> az.placementAZ.uuid.equals(azUUID))
