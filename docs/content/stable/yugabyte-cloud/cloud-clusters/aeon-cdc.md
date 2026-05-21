@@ -69,7 +69,7 @@ Note the following:
 
 - Only the admin user (created when you created the cluster) can execute these functions.
 - The functions are only available in the `yugabyte` database.
-- The functions aren't available for clusters which are already on v2024.1.0 or later (created prior to April 2, 2025), only newly created clusters, or clusters that are newly upgraded to v2024.1.0.
+- The functions are available for clusters created or upgraded to v2024.1.0 or later starting April 2, 2025. Clusters already running these versions prior to this date do not have these functions.
 - Because YugabyteDB Aeon [restricts access to superuser](../../cloud-secure-clusters/cloud-users/), you cannot set the REPLICATION attribute using CREATE or ALTER; you must use these functions.
 
 ## Limitations
