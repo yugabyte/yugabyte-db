@@ -179,6 +179,22 @@ SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
 ROLLBACK;
 
+-- DDL after anonymous internal savepoint (EXCEPTION block) disallowed.
+-- We MUST error out here to prevent a split-brain between Postgres and the YB Master.
+-- If we allowed this CREATE TABLE to proceed, and the subtransaction later aborted
+-- (e.g., via a raised exception), Postgres would roll back its local pg_class entry,
+-- but the YB Master (lacking savepoint support) would commit the DocDB table.
+-- This would result in a permanently orphaned table consuming resources.
+DO $$
+BEGIN
+  CREATE TABLE test_anonymous_subtxn_ddl (id INT PRIMARY KEY);
+  -- The CREATE TABLE above will throw "interleaving SAVEPOINT & DDL..."
+  -- before we can even reach the next line.
+  RAISE EXCEPTION 'force abort';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'caught error: %', sqlerrm;
+END $$;
+
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
     a INT PRIMARY KEY

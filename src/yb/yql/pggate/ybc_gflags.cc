@@ -26,6 +26,15 @@ DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
+DEFINE_RUNTIME_bool(ysql_bypass_anonymous_savepoint_ddl_check, true,
+    "If true, bypass the check for interleaving SAVEPOINT & DDL in anonymous subtransactions "
+    "(such as those created by PL/pgSQL EXCEPTION blocks) when DDL savepoint support is disabled. "
+    "Setting to false enables strict detection and prevents potential orphaned tables. "
+    "This flag should be deprecated when ysql_yb_enable_ddl_savepoint_support is moved out "
+    "of preview and turned on by default.");
+TAG_FLAG(ysql_bypass_anonymous_savepoint_ddl_check, advanced);
+DEFINE_NEW_INSTALL_VALUE(ysql_bypass_anonymous_savepoint_ddl_check, false);
+
 DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
     "If true, disables read, write, and execute of local server files. "
     "File access can be re-enabled if set to false.");
@@ -231,6 +240,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_bypass_anonymous_savepoint_ddl_check =
+          &FLAGS_ysql_bypass_anonymous_savepoint_ddl_check,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
