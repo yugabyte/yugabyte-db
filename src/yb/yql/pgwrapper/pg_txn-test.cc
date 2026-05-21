@@ -36,6 +36,7 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
@@ -656,6 +657,7 @@ TEST_F(PgTxnTest, FlushLargeTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_always_include_size_threshold) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_min_merge_width) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   constexpr auto kTxnRows = 15;
   constexpr auto kValueLen = 16_KB;
