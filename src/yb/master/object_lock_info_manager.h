@@ -23,6 +23,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
 
 namespace yb::rpc {
@@ -52,6 +53,11 @@ class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
 
 class ObjectLockInfo;
+
+struct TServerLeaseInfo {
+  SysObjectLockEntryPB::LeaseInfoPB lease_info;
+  MonoDelta lease_expiry;
+};
 
 class ObjectLockInfoManager {
  public:
@@ -92,7 +98,7 @@ class ObjectLockInfoManager {
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch = std::nullopt);
 
-  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const;
+  std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const;
 
   void BootstrapLocksPostLoad();
 

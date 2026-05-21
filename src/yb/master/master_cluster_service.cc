@@ -159,10 +159,10 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       desc->GetMetrics(entry->mutable_metrics());
       auto it = ysql_lease_infos.find(desc->id());
       if (it != ysql_lease_infos.end() &&
-          it->second.instance_seqno() == entry->instance_id().instance_seqno()) {
+          it->second.lease_info.instance_seqno() == entry->instance_id().instance_seqno()) {
         auto& lease_info = *entry->mutable_lease_info();
-        lease_info.set_is_live(it->second.live_lease());
-        lease_info.set_lease_epoch(it->second.lease_epoch());
+        lease_info.set_is_live(it->second.lease_info.live_lease());
+        lease_info.set_lease_epoch(it->second.lease_info.lease_epoch());
       }
     }
     rpc.RespondSuccess();
