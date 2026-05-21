@@ -57,10 +57,12 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SystemUtil;
 import org.yb.util.TableProperties;
+import org.yb.YBTestRunner;
+import org.yb.util.ProcessUtil;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
-import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
 import static org.yb.pgsql.TestYsqlDump.assertOutputFile;
@@ -78,7 +80,9 @@ import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 

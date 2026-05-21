@@ -14,17 +14,15 @@
  */
 package org.yb.util;
 
-import org.junit.runners.model.InitializationError;
-import org.yb.client.TestUtils;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-public class YBTestRunnerNonSanOrAArch64Mac extends YBTestRunnerNonTsanAsan {
-
-  public YBTestRunnerNonSanOrAArch64Mac(Class<?> klass) throws InitializationError {
-    super(klass);
-  }
-
-  @Override
-  public boolean shouldRunTests() {
-    return super.shouldRunTests() && !TestUtils.IS_AARCH64 && SystemUtil.IS_LINUX;
-  }
+/**
+ * Skips the annotated test class or method on ASAN builds.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface SkipOnASAN {
 }

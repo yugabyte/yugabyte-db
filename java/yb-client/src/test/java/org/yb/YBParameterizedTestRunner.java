@@ -39,16 +39,9 @@ public class YBParameterizedTestRunner extends Parameterized {
 
   private List<Runner> filteredChildren;
 
-  protected boolean shouldRunTests() {
-    return true;
-  }
-
   public YBParameterizedTestRunner(Class<?> klass) throws Throwable {
     super(klass);
 
-    if (!shouldRunTests()) {
-      return;
-    }
     if (TestFilterUtil.shouldSkip(klass.getAnnotations())) {
       return;
     }
@@ -76,7 +69,7 @@ public class YBParameterizedTestRunner extends Parameterized {
 
   @Override
   protected List<Runner> getChildren() {
-    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
+    if (ConfForTesting.onlyCollectingTests()) {
       return Collections.emptyList();
     }
     if (TestFilterUtil.shouldSkip(getTestClass().getJavaClass().getAnnotations())) {

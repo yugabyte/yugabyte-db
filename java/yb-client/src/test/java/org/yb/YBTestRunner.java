@@ -33,13 +33,6 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
 
-  // TODO(#31675): Replace shouldRunTests() and custom runner subclasses with annotation-based
-  // filtering (like @RequiresReleaseBuild) so that build-type and platform conditions can be
-  // expressed per-method without needing a new runner class per condition.
-  protected boolean shouldRunTests() {
-    return true;
-  }
-
   private Stream<FrameworkMethod> getFilteredChildren() {
     if (TestFilterUtil.shouldSkip(getTestClass().getJavaClass().getAnnotations())) {
       return Stream.empty();
@@ -54,9 +47,6 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
     assert !Modifier.isAbstract(klass.getModifiers()) :
            "YBTestRunner constructor invoked for an abstract class " + specifiedClassName;
 
-    if (!shouldRunTests()) {
-      return;
-    }
     if (ConfForTesting.onlyCollectingTests()) {
       getFilteredChildren().forEach(method -> {
         Class declaringClass = method.getDeclaringClass();
@@ -78,7 +68,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   @Override
   protected List<FrameworkMethod> getChildren() {
-    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
+    if (ConfForTesting.onlyCollectingTests()) {
       return Collections.emptyList();
     }
     return getFilteredChildren().collect(Collectors.toList());
