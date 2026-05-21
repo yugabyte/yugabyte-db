@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
@@ -61,11 +60,6 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   private Region region2;
   private AvailabilityZone az21;
   private AvailabilityZone az22;
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(2, 30);
-  }
 
   @Before
   public void setUpDNS() {

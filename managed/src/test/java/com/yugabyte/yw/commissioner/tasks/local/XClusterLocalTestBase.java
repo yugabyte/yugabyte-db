@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
@@ -351,11 +350,6 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(node, universe, table.db.name, query, 10);
     assertTrue(ysqlResponse.isSuccess());
-  }
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(120, 180);
   }
 
   public NodeDetails getLiveNode(Universe universe) {

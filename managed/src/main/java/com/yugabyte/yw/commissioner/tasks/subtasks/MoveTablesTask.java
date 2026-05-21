@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.api.client.util.Throwables;
 import com.google.common.collect.ArrayListMultimap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
@@ -19,17 +18,16 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -49,13 +47,9 @@ public class MoveTablesTask extends BaseTablespacesTask {
   private static final String SQL_ALL = "ALTER TABLE ALL IN TABLESPACE %s SET TABLESPACE %s";
   private static final String SQL = "ALTER TABLE %s SET TABLESPACE %s";
 
-  private final NodeUniverseManager nodeUniverseManager;
-
   @Inject
-  protected MoveTablesTask(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected MoveTablesTask(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -150,7 +144,7 @@ public class MoveTablesTask extends BaseTablespacesTask {
                 alterAllSupported);
           }
           // Wait till load balancer finishes refreshing tablespace info.
-          Thread.sleep(TimeUnit.SECONDS.toMillis(90));
+          waitFor(Duration.ofSeconds(90));
           waitForLoadBalance(universe);
           for (UniverseDefinitionTaskParams.PartitionInfo partitionInfo : partitionInfos) {
             List<Step> stepsForPartition = multimapByStep.get(partitionInfo.getUuid());
@@ -174,10 +168,7 @@ public class MoveTablesTask extends BaseTablespacesTask {
 
       } catch (Exception e) {
         log.error("Failed to move tables", e);
-        try {
-          Thread.sleep(TimeUnit.SECONDS.toMillis(SLEEP_BETWEEN_RETRIES));
-        } catch (InterruptedException ignored) {
-        }
+        waitFor(Duration.ofSeconds(SLEEP_BETWEEN_RETRIES));
       }
     }
     if (!multimapByStep.isEmpty()) {
@@ -318,11 +309,5 @@ public class MoveTablesTask extends BaseTablespacesTask {
       suffix = "partition";
     }
     return newPartition.getTablespaceName() + "_edit_" + suffix;
-  }
-
-  private boolean createTemporary(
-      UniverseDefinitionTaskParams.PartitionInfo newPartition,
-      UniverseDefinitionTaskParams.PartitionInfo oldPartition) {
-    return Objects.equals(newPartition.getTablespaceName(), oldPartition.getTablespaceName());
   }
 }
