@@ -45,6 +45,7 @@ create type index_plan_rows as (
     "Storage Index Filter" text,
     "Storage Filter" text,
     "Filter" text,
+    "Actual Loops" float8,
     "Plan Rows" float8,
     "Total Cost" float8,
     "Estimated Table Roundtrips" float8,
@@ -68,10 +69,10 @@ create table ce.r (
     primary key (pk asc)
 ) with (colocation = off);
 
-create index nonconcurrently i_r_a on ce.r (a asc) include (v);
-create unique index nonconcurrently i_r_b on ce.r (b asc) include (v);
-create index nonconcurrently i_r_c on ce.r (c asc) include (v);
-create index nonconcurrently i_r_bl on ce.r (bl asc) include (v);
+create index nonconcurrently on ce.r (a asc) include (v);
+create unique index nonconcurrently on ce.r (b asc) include (v);
+create index nonconcurrently on ce.r (c asc) include (v);
+create index nonconcurrently on ce.r (bl asc) include (v);
 
 insert into ce.r
     select
@@ -82,7 +83,7 @@ insert into ce.r
                chr((((i - 1) / 26) % 26) + ascii('a')),
                chr(((i - 1) % 26) + ascii('a'))),
         i,
-        ((i - 1) / 10) + 1,
+        ((hashint4(i) % 1234) + 1234) % 1234 + 1,
         i % 2 = 1,
         sha512(('x' || i)::bytea)::bpchar
             || lpad(sha512((i || 'y')::bytea)::bpchar, 536, '#')
@@ -96,31 +97,20 @@ create table ce.rC (like ce.r including constraints including indexes including 
     with (colocation = on);
 insert into ce.rC select * from ce.r;
 
--- Keep cardinality-estimation noise out of the roundtrip-estimation checks.
--- The modulo predicates are deliberately close to default selectivity, but
--- their conjunction is correlated because e is derived from b.
-create statistics ce_r_pk_mod100 on ((pk % 100)) from ce.r;
-create statistics ce_r_b_mod100 on ((b % 100)) from ce.r;
-create statistics ce_r_b_e_mod100 (mcv) on ((b % 100)), ((e % 100)) from ce.r;
-alter statistics ce_r_pk_mod100 set statistics 10000;
-alter statistics ce_r_b_mod100 set statistics 10000;
+-- Extended stats on (b % 100, e % 100): without this, the conjunction
+-- "b % 100 <= 33 and e % 100 <= 33" combines under independence and
+-- over-counts vs the joint selectivity once b is also range-bounded.
+create statistics ce_r_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.r;
 alter statistics ce_r_b_e_mod100 set statistics 10000;
 
-create statistics ce_rc_pk_mod100 on ((pk % 100)) from ce.rC;
-create statistics ce_rc_b_mod100 on ((b % 100)) from ce.rC;
-create statistics ce_rc_b_e_mod100 (mcv) on ((b % 100)), ((e % 100)) from ce.rC;
-alter statistics ce_rc_pk_mod100 set statistics 10000;
-alter statistics ce_rc_b_mod100 set statistics 10000;
+create statistics ce_rc_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.rC;
 alter statistics ce_rc_b_e_mod100 set statistics 10000;
 
 analyze ce.r;
 analyze ce.rC;
 
--- Force consideration of parallel paths regardless of the cost-based
--- worker count.  This sets RelOptInfo->rel_parallel_workers in plancat.c
--- and short-circuits yb_compute_parallel_worker, so the planner always
--- considers a partial path with the requested worker count.  No
--- parallel_*_cost or yb_parallel_range_* GUC is touched.
+-- parallel_workers reloption forces a partial path with this worker count
+-- (short-circuits yb_compute_parallel_worker), independent of cost GUCs.
 alter table ce.r set (parallel_workers = 4);
 alter table ce.rC set (parallel_workers = 4);
 
@@ -210,6 +200,10 @@ create table queries (qid int, query text, primary key (qid asc));
 create table explain_query_options (with_analyze bool not null);
 insert into explain_query_options values (false);
 
+-- check_roundtrip_estimates: parallel-aware variant.  See
+-- yb.orig.roundtrip_estimate_setup.sql for the colocated non-PK
+-- normalization; this version also exposes "Actual Workers" and
+-- "Went Parallel" via parallel_context.
 drop view if exists check_roundtrip_estimates;
 create view check_roundtrip_estimates as
 with recursive plan_tree as (
@@ -251,20 +245,21 @@ plan_rows as (
             coalesce(pt.node, '{}'::jsonb)
         ) rec
 ),
-index_nodes as (
+scan_nodes as (
     select *
     from plan_rows
-    where "Node Type" like 'Index% Scan%'
+    where "Node Type" like 'Index% Scan%' or "Node Type" = 'Seq Scan'
 ),
 parallel_context as (
     select
         idx.qid,
         idx.path,
         close_parallel."Node Type" parallel_node_type,
+        coalesce(close_workers."Workers Planned", 0) planned_workers,
         coalesce(close_workers."Workers Launched",
                  close_workers."Workers Planned", 0) actual_workers
     from
-        index_nodes idx
+        scan_nodes idx
         left join lateral (
             select anc."Node Type", anc.path, anc.depth
             from plan_rows anc
@@ -297,23 +292,45 @@ select
     is_colocated,
     scan_kind,
     "Index Cond",
+    "Storage Index Filter",
+    "Storage Filter",
+    "Filter",
     est_table "Estimated Table Roundtrips",
     est_index "Estimated Index Roundtrips",
     act_table "Storage Table Read Requests",
     act_index "Storage Index Read Requests",
     estimated_roundtrips "Estimated Roundtrips",
     actual_roundtrips "Actual Roundtrips",
-    case when error_roundtrips > 0.05 and abs(diff_roundtrips) > 1 then
+    planned_loops "Planned Loops",
+    actual_loops "Actual Loops",
+    est_table_total "Estimated Table Total Roundtrips",
+    est_index_total "Estimated Index Total Roundtrips",
+    act_table_total "Storage Table Total Read Requests",
+    act_index_total "Storage Index Total Read Requests",
+    estimated_total_roundtrips "Estimated Total Roundtrips",
+    actual_total_roundtrips "Actual Total Roundtrips",
+    -- Tolerance includes EXPLAIN's integer per-loop counter rounding.
+    case when error_total_roundtrips > 0.05
+            and abs(diff_total_roundtrips) > greatest(1.0, actual_loops) then
         'failed' else 'passed' end "Total Estimates",
     case
-        when scan_kind = 'pk'
-                and act_table > 0 and act_index = 0 then 'passed'
-        when scan_kind = 'ios'
-                and act_table = 0 and act_index > 0 then 'passed'
-        when scan_kind = 'idx' and is_colocated
-                and act_table = 0 and act_index > 0 then 'passed'
+        when scan_kind = 'seq' and act_index = 0
+                and (act_table > 0
+                     or (actual_loops > 1 and est_table > 0)) then 'passed'
+        when scan_kind = 'pk' and act_index = 0
+                and (act_table > 0
+                     or (actual_loops > 1 and est_index > 0)) then 'passed'
+        when scan_kind = 'ios' and act_table = 0
+                and (act_index > 0
+                     or (actual_loops > 1 and est_index > 0)) then 'passed'
+        when scan_kind = 'idx' and is_colocated and act_index = 0
+                and (act_table > 0
+                     or (actual_loops > 1 and est_table > 0)) then 'passed'
         when scan_kind = 'idx' and not is_colocated
-                and act_table > 0 and act_index > 0 then 'passed'
+                and (act_table > 0
+                     or (actual_loops > 1 and est_table > 0))
+                and (act_index > 0
+                     or (actual_loops > 1 and est_index > 0)) then 'passed'
         else 'failed'
     end "Field Layout"
 from (
@@ -322,7 +339,7 @@ from (
         query,
         row_number() over (partition by qid order by path) nid,
         case
-            when pc.actual_workers > 0 then
+            when actual_workers > 0 then
                 'Parallel ' || "Node Type" || case when "Scan Direction" = 'Backward'
                     then ' Backward' else '' end
             else
@@ -330,35 +347,70 @@ from (
                     then ' Backward' else '' end
         end "Node Type",
         "Index Name",
-        pc.actual_workers "Actual Workers",
-        pc.actual_workers > 0 "Went Parallel",
+        actual_workers "Actual Workers",
+        actual_workers > 0 "Went Parallel",
         "Index Name" like 'rc_%' is_colocated,
         case
+            when "Node Type" = 'Seq Scan' then 'seq'
             when "Index Name" like '%_pkey' then 'pk'
             when "Node Type" like 'Index Only Scan%' then 'ios'
             else 'idx'
         end scan_kind,
         "Index Cond",
-        coalesce("Estimated Table Roundtrips", 0) est_table,
-        coalesce("Estimated Index Roundtrips", 0) est_index,
-        coalesce("Storage Table Read Requests", 0) act_table,
-        coalesce("Storage Index Read Requests", 0) act_index,
-        coalesce("Estimated Table Roundtrips", 0)
-            + coalesce("Estimated Index Roundtrips", 0) estimated_roundtrips,
-        coalesce("Storage Table Read Requests", 0)
-            + coalesce("Storage Index Read Requests", 0) actual_roundtrips,
-        abs(coalesce("Estimated Table Roundtrips", 0)
-              + coalesce("Estimated Index Roundtrips", 0)
-            - coalesce("Storage Table Read Requests", 0)
-              - coalesce("Storage Index Read Requests", 0))
-            / greatest(1, coalesce("Storage Table Read Requests", 0)
-                          + coalesce("Storage Index Read Requests", 0))
-            error_roundtrips,
-        coalesce("Estimated Table Roundtrips", 0)
-            + coalesce("Estimated Index Roundtrips", 0)
-            - coalesce("Storage Table Read Requests", 0)
-            - coalesce("Storage Index Read Requests", 0) diff_roundtrips
-    from
-        index_nodes
-        join parallel_context pc using (qid, path)
+        "Storage Index Filter",
+        "Storage Filter",
+        "Filter",
+        est_table,
+        est_index,
+        act_table,
+        act_index,
+        est_table + est_index estimated_roundtrips,
+        act_table + act_index actual_roundtrips,
+        planned_loops,
+        actual_loops,
+        est_table * planned_loops est_table_total,
+        est_index * planned_loops est_index_total,
+        act_table * actual_loops act_table_total,
+        act_index * actual_loops act_index_total,
+        (est_table + est_index) * planned_loops estimated_total_roundtrips,
+        (act_table + act_index) * actual_loops actual_total_roundtrips,
+        abs((est_table + est_index) * planned_loops
+            - (act_table + act_index) * actual_loops)
+            / greatest(1, (act_table + act_index) * actual_loops)
+            error_total_roundtrips,
+        (est_table + est_index) * planned_loops
+            - (act_table + act_index) * actual_loops diff_total_roundtrips
+    from (
+        select
+            scan_nodes.*,
+            pc.actual_workers,
+            -- Planned per-scan loop count: workers, plus the leader iff it
+            -- participates.  current_setting() reads the live GUC at view-eval
+            -- time so blocks that toggle the setting see the right value.
+            pc.planned_workers
+                + case when current_setting('parallel_leader_participation')
+                            = 'on'
+                       then 1 else 0 end planned_loops,
+            coalesce("Actual Loops", 1) actual_loops,
+            coalesce("Estimated Table Roundtrips", 0) est_table,
+            coalesce("Estimated Index Roundtrips", 0) est_index,
+            -- See yb.orig.roundtrip_estimate_setup.sql for the rationale.
+            case
+                when "Index Name" not like '%_pkey'
+                    and "Node Type" not like 'Index Only Scan%'
+                    and "Index Name" like 'rc_%' then
+                    coalesce("Storage Table Read Requests", 0)
+                    + coalesce("Storage Index Read Requests", 0)
+                else coalesce("Storage Table Read Requests", 0)
+            end act_table,
+            case
+                when "Index Name" not like '%_pkey'
+                    and "Node Type" not like 'Index Only Scan%'
+                    and "Index Name" like 'rc_%' then 0::float8
+                else coalesce("Storage Index Read Requests", 0)
+            end act_index
+        from
+            scan_nodes
+            join parallel_context pc using (qid, path)
+    ) b
 ) v;

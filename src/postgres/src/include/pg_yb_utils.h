@@ -888,6 +888,18 @@ extern bool	yb_enable_parallel_scan_range_sharded;
 extern bool	yb_enable_parallel_scan_system;
 
 /*
+ * Test-only GUC for exercising parallel plan code paths.
+ */
+typedef enum YbForceParallel
+{
+	YB_FORCE_PARALLEL_OFF = 0,
+	YB_FORCE_PARALLEL_PREFER = 1,
+	YB_FORCE_PARALLEL_FORCE = 2,
+} YbForceParallel;
+
+extern int	yb_test_force_parallel;
+
+/*
  * If set to true, all DDL statements will cause the catalog version to increment.
  */
 extern bool yb_test_make_all_ddl_statements_incrementing;

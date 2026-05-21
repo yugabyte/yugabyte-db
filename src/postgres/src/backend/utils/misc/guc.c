@@ -727,6 +727,14 @@ static const struct config_enum_entry yb_qpm_plan_format_options[] =
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry yb_test_force_parallel_options[] =
+{
+	{"off", YB_FORCE_PARALLEL_OFF, false},
+	{"prefer", YB_FORCE_PARALLEL_PREFER, false},
+	{"force", YB_FORCE_PARALLEL_FORCE, false},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -8000,6 +8008,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&yb_qpm_configuration.cache_replacement_algorithm, YB_QPM_SIMPLE_CLOCK_LRU,
 		yb_cache_replacement_algorithm_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_force_parallel", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Influences planner selection of parallel paths for tests."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
+		},
+		&yb_test_force_parallel,
+		YB_FORCE_PARALLEL_OFF,
+		yb_test_force_parallel_options,
 		NULL, NULL, NULL
 	},
 
