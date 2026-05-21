@@ -286,7 +286,7 @@ The owner of the clone is determined as follows:
 - OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
 
     ```sql
-    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...)
+    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
     ```
 
     The role `some_role` is the owner.
