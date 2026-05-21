@@ -261,6 +261,7 @@ TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
@@ -353,6 +354,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     ServerRegistrationPB reg;
     RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
     return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
+  }
+
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index;
   }
 
  private:

@@ -3399,11 +3399,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
-  // True once we have determined whether CDC is enabled on the master. This is set after CDC
-  // streams are loaded from persisted data during master startup, regardless of whether any CDC
-  // streams actually exist.
-  std::atomic<bool> cdc_enabled_status_known_{false};
-
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_

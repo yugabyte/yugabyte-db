@@ -3213,8 +3213,7 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
 
 void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
     TabletIdCDCCheckpointMap* tablet_min_checkpoint_map) {
-  auto enable_update_local_peer_min_index =
-      FLAGS_enable_update_local_peer_min_index;
+  auto enable_update_local_peer_min_index = context_->ShouldLocalPeerUpdateOwnBarriers();
 
   for (auto& [tablet_id, tablet_info] : *tablet_min_checkpoint_map) {
     auto s =
@@ -3582,7 +3581,6 @@ void CDCServiceImpl::CDCMasterBgTask() {
     time_since_last_run = MonoTime::Now();
     VLOG(2) << "Running CDCMasterBgTask";
 
-    TabletCDCCheckpointInfo checkpoint_info;
     TableIdToStreamIdMap expired_tables_map;
 
     auto result = PopulateSysCatalogTabletCheckPointInfo(&expired_tables_map);
@@ -3590,8 +3588,14 @@ void CDCServiceImpl::CDCMasterBgTask() {
       LOG(WARNING) << "Failed to compute sys_catalog barriers from full scan: " << result.status();
       continue;
     }
-    checkpoint_info = result->first;
-    auto& grpc_safe_times = result->second;
+    if (!*result) {
+      // No CDCSDK stream entry visible in cdc_state yet - nothing to advance, nothing to update.
+      // Skip propagation so the initial barriers set by stream creation aren't trampled by the
+      // sentinel "Max" values we'd otherwise compute.
+      VLOG(2) << "CDCMasterBgTask: no CDCSDK streams visible in cdc_state, skipping propagation";
+      continue;
+    }
+    auto& [checkpoint_info, grpc_safe_times] = **result;
 
     auto update_status = UpdateGRPCSlotEntries(grpc_safe_times);
     if (!update_status.ok()) {
@@ -3599,8 +3603,8 @@ void CDCServiceImpl::CDCMasterBgTask() {
     }
 
     auto propagate_status = UpdateTabletPeerWithCheckpoint(
-        master::kSysCatalogTabletId, &checkpoint_info,
-        true /* enable_update_local_peer_min_index */, true /* ignore_rpc_failures */);
+        master::kSysCatalogTabletId, &checkpoint_info, context_->ShouldLocalPeerUpdateOwnBarriers(),
+        true /* ignore_rpc_failures */);
     WARN_NOT_OK(propagate_status, "Failed to propagate sys_catalog retention barriers");
     if (propagate_status.ok()) {
       set_cdc_master_bg_task_ran_once();
@@ -3622,7 +3626,7 @@ void CDCServiceImpl::CDCMasterBgTask() {
   } while (sleep_while_not_stopped());
 }
 
-Result<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>
+Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
 CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map) {
   TabletCDCCheckpointInfo info;
   info.cdc_sdk_op_id = OpId::Max();
@@ -3788,9 +3792,18 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     info.cdc_sdk_safe_time = std::min(info.cdc_sdk_safe_time, restart_time);
   }
 
+  // If no CDCSDK stream entry was visible in cdc_state, there is nothing to advance. Return
+  // nullopt so the caller skips both the gRPC slot entry update and the sys_catalog barrier
+  // propagation - otherwise the default sentinel values (cdc_sdk_op_id = OpId::Max,
+  // cdc_sdk_safe_time = HybridTime::kInvalid) would clobber initial barriers that may have just
+  // been set by stream creation.
+  if (!cdcsdk_stream_available) {
+    return std::nullopt;
+  }
+
   // If we have any CDCSDK streams available but all such streams are expired for sys_catalog
   // tablet, then we set the safe time to the current time.
-  if (info.cdc_sdk_safe_time == HybridTime::kInvalid && cdcsdk_stream_available) {
+  if (info.cdc_sdk_safe_time == HybridTime::kInvalid) {
     info.cdc_sdk_safe_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   }
 
@@ -4202,9 +4215,9 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
   std::vector<const std::string*> rollback_tablet_id_vec;
   RollBackTabletIdCheckpointMap rollback_tablet_id_map;
   auto scope_exit = ScopeExit([this, &rollback_tablet_id_map] {
-    for (const auto& [tablet_id, rollback_checkpoint_info] : rollback_tablet_id_map) {
+    for (const auto& [tablet_id, rollback_info] : rollback_tablet_id_map) {
       VLOG(1) << "Rolling back the cdc replicated index for the tablet_id: " << tablet_id;
-      RollbackCdcReplicatedIndexEntry(*tablet_id, rollback_checkpoint_info);
+      RollbackCdcReplicatedIndexEntry(*tablet_id, rollback_info);
     }
   });
 
@@ -4271,32 +4284,37 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
   }
 
   if (rollback_tablet_id_map) {
+    auto remaining_expiration =
+        tablet_peer->cdc_sdk_min_checkpoint_op_id_expiration() - CoarseMonoClock::Now();
     (*rollback_tablet_id_map)[&tablet_id] = {
-        tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id()};
+        tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id(),
+        tablet_peer->get_cdc_sdk_safe_time(),
+        remaining_expiration > MonoDelta::kZero ? remaining_expiration : MonoDelta::kZero};
   }
 
-  if (initial_retention_barrier) {
-    RETURN_NOT_OK(tablet_peer->SetAllInitialCDCRetentionBarriers(
-        replicated_index, cdc_sdk_replicated_op, cdc_sdk_safe_time,
-        true /* require_history_cutoff */));
-  } else {
-    auto barrier_revised = VERIFY_RESULT(tablet_peer->MoveForwardAllCDCRetentionBarriers(
-        replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
-        true /* require_history_cutoff */));
-    if (!barrier_revised) {
-      // No need to rollback in this case
-      if (rollback_tablet_id_map) {
-        (*rollback_tablet_id_map).erase(&tablet_id);
-      }
-      return STATUS(TryAgain, "Revision of CDC retention barriers is currently blocked");
+  auto barrier_revised = VERIFY_RESULT(tablet_peer->SetAllCDCRetentionBarriers(
+      replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
+      cdc_sdk_safe_time == HybridTime::kInitial ? false : true /* require_history_cutoff */,
+      initial_retention_barrier));
+  // If initial_retention_barrier was passed as true to tablet_peer's
+  // SetAllCDCRetentionBarriers(), it always returns true for an OK status since the tablet's
+  // SetAllInitialCDCRetentionBarriers() gets called.
+  // Thus, if barrier_revised is false, it means initial_retention_barrier was passed as false
+  // (signifying tablet's MoveForwardAllCDCRetentionBarriers() was called) and the barrier
+  // revision is blocked.
+  if (!barrier_revised) {
+    // No need to rollback in this case
+    if (rollback_tablet_id_map) {
+      (*rollback_tablet_id_map).erase(&tablet_id);
     }
+    return STATUS(TryAgain, "Revision of CDC retention barriers is currently blocked");
   }
 
   return Status::OK();
 }
 
 void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
-    const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info) {
+    const string& tablet_id, const RollbackBarrierInfo& rollback_info) {
   auto tablet_peer = GetServingTablet(tablet_id);
   if (!tablet_peer.ok()) {
     LOG(WARNING) << "Unable to rollback replicated index for " << tablet_id;
@@ -4304,14 +4322,13 @@ void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
   }
 
   WARN_NOT_OK(
-      (**tablet_peer).set_cdc_min_replicated_index(rollback_checkpoint_info.first),
+      (**tablet_peer).set_cdc_min_replicated_index(rollback_info.cdc_min_replicated_index),
       "Unable to update min index for tablet $0 " + tablet_id);
   WARN_NOT_OK(
       (**tablet_peer)
           .SetCDCSDKRetainOpIdAndTime(
-              rollback_checkpoint_info.second,
-              MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
-              HybridTime::kInvalid),
+              rollback_info.cdc_sdk_min_checkpoint_op_id, rollback_info.cdc_sdk_op_id_expiration,
+              rollback_info.cdc_sdk_safe_time),
       "Unable to update op id and expiration time for tablet $0 " + tablet_id);
 }
 
