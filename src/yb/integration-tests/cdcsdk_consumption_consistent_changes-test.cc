@@ -4251,6 +4251,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTabletDeletionWithUnuse
       master::IncludeInactive::kTrue));
   ASSERT_EQ(get_tablets_res.size(), 3);
 
+  // Setting cdc_intent_retention_ms = 0 (below) also makes tservers classify these streams as
+  // expired and ask the master to wipe all cdc_state rows for this table, including the
+  // children rows the test asserts on after WaitFor. Disable that table-level cleanup so only
+  // the hidden parent tablet's cdc_state entry is removed, leaving the children's inherited
+  // checkpoints intact.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
   // Now, since cdc_wal_retention_time_secs has been set to zero, we will delete the hidden parent
