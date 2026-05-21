@@ -636,6 +636,7 @@ DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
@@ -7222,7 +7223,11 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+  } else {
+      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+  }
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
   // because we keep track of the permissions based on the canonical resource name which is a
@@ -10078,7 +10083,11 @@ Status CatalogManager::DeleteYsqlDBTables(
   for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
   }
-  RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+    RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(table_ids));
+  } else {
+    RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  }
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto& [table, _] : tables_and_locks) {

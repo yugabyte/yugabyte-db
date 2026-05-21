@@ -145,6 +145,9 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
+
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;

@@ -661,6 +661,9 @@ message SysCDCStreamEntryPB {
       14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 
   optional bool allow_tables_without_primary_key = 15 [default = false];
+
+  // This field stores the list of tables that were dropped while being part of the CDCSDK stream.
+  repeated bytes dropped_table_id = 17;
 }
 
 
