@@ -67,6 +67,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
@@ -89,6 +90,7 @@ DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
 DECLARE_string(metric_node_name);
+DECLARE_bool(TEST_tablet_peer_force_get_raft_consensus_failure);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
@@ -717,22 +719,28 @@ TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-// Regression test for #31046. The 3-arg GetConsensusOrRespond helper used to
-// fall through and call Result::get() on a non-OK Result when GetRaftConsensus
-// failed, FATALing the tserver with "Check failed: value" at status.cc:657
-// inside CheckTserverTabletHealth. Starting tablet-peer shutdown is enough to
-// make GetRaftConsensus return IllegalState; the RPC must now respond with an
-// error instead of crashing the process.
+// Regression test for #31046. CheckTserverTabletHealth used to call
+// GetConsensusOrRespond inside its per-tablet loop, which (a) FATALed via
+// Result::get() on a non-OK Result before the 3-arg overload was fixed,
+// and (b) consumed the RpcContext on the first failing tablet, leading
+// the trailing context.RespondSuccess() to double-respond.
+// Production hits this when the RUNNING-state check in LookupTabletPeer
+// races with consensus transitioning to non-OK. We use a TEST flag to
+// force that condition deterministically: LookupTabletPeer still sees
+// the peer as RUNNING, but GetRaftConsensus returns IllegalState.
+// The RPC must complete without crashing the process.
 TEST_F(TabletServerTest, CheckTserverTabletHealthDoesNotCrashWhenConsensusUnavailable) {
-  ASSERT_TRUE(tablet_peer_->StartShutdown());
-  ASSERT_TRUE(tablet_peer_->IsShutdownStarted());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_peer_force_get_raft_consensus_failure) = true;
+  auto reset = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_peer_force_get_raft_consensus_failure) = false;
+  });
 
   CheckTserverTabletHealthRequestPB req;
   req.add_tablet_ids(kTabletId);
   CheckTserverTabletHealthResponsePB resp;
   RpcController controller;
   ASSERT_OK(proxy_->CheckTserverTabletHealth(req, &resp, &controller));
-  ASSERT_TRUE(resp.has_error());
+  EXPECT_FALSE(resp.has_error());
   EXPECT_EQ(0, resp.tablet_healths_size());
 }
 

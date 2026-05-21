@@ -3494,11 +3494,16 @@ void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthR
       continue;
     }
 
-    auto consensus = GetConsensusOrRespond(res->tablet_peer, resp, &context);
-    if (!consensus) {
-      LOG_WITH_FUNC(INFO) << "Could not find consensus for tablet " << tablet_id;
+    // Skip per-tablet without consuming the RPC context. Using GetConsensusOrRespond here
+    // would respond on the first failure and then the trailing context.RespondSuccess()
+    // would double-respond.
+    auto consensus_result = GetConsensus(res->tablet_peer);
+    if (!consensus_result.ok()) {
+      LOG_WITH_FUNC(INFO) << "Could not find consensus for tablet " << tablet_id
+                          << ": " << consensus_result.status();
       continue;
     }
+    auto consensus = *consensus_result;
 
     auto* tablet_health = resp->add_tablet_healths();
     tablet_health->set_tablet_id(tablet_id);
