@@ -4256,7 +4256,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTabletDeletionWithUnuse
   // children rows the test asserts on after WaitFor. Disable that table-level cleanup so only
   // the hidden parent tablet's cdc_state entry is removed, leaving the children's inherited
   // checkpoints intact.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal) = true;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
