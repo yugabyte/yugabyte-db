@@ -298,7 +298,7 @@ To run the program, run the following command:
 
 ```sh
 $ spark-submit --class com.yugabyte.sample.apps.CassandraSparkWordCount \
-    target/scala-2.11/CassandraSparkWordCount-assembly-1.0.jar
+    target/scala-2.12/CassandraSparkWordCount-assembly-1.0.jar
 ```
 
 You should see a table similar to the following as the output:
