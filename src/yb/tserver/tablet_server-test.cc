@@ -717,6 +717,25 @@ TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
+// Regression test for #31046. The 3-arg GetConsensusOrRespond helper used to
+// fall through and call Result::get() on a non-OK Result when GetRaftConsensus
+// failed, FATALing the tserver with "Check failed: value" at status.cc:657
+// inside CheckTserverTabletHealth. Starting tablet-peer shutdown is enough to
+// make GetRaftConsensus return IllegalState; the RPC must now respond with an
+// error instead of crashing the process.
+TEST_F(TabletServerTest, CheckTserverTabletHealthDoesNotCrashWhenConsensusUnavailable) {
+  ASSERT_TRUE(tablet_peer_->StartShutdown());
+  ASSERT_TRUE(tablet_peer_->IsShutdownStarted());
+
+  CheckTserverTabletHealthRequestPB req;
+  req.add_tablet_ids(kTabletId);
+  CheckTserverTabletHealthResponsePB resp;
+  RpcController controller;
+  ASSERT_OK(proxy_->CheckTserverTabletHealth(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  EXPECT_EQ(0, resp.tablet_healths_size());
+}
+
 // Test that with concurrent requests to delete the same tablet, one wins and
 // the other fails, with no assertion failures. Regression test for KUDU-345.
 TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
