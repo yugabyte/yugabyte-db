@@ -16,7 +16,7 @@ type: docs
 {{< warning title="Extension support" >}}
 Support for the DocumentDB extension is in {{<tags/feature/tp>}}. It is not recommended for use in production.
 
-The extension is currently only available on the `master` branch of the [yugabyte/yugabyte-db](https://github.com/yugabyte/yugabyte-db) repository and is not included in released builds. To try it, build YugabyteDB from source by following [Build and test](../../../contribute/core-database/build-and-test/).
+The extension is currently only available on the `master` branch and is not included in released builds. To try it, build YugabyteDB from source by following [Build and test](../../../contribute/core-database/build-and-test/).
 {{< /warning >}}
 
 The [DocumentDB](https://documentdb.io) extension adds a BSON data type and document-store APIs to YugabyteDB, enabling CRUD, aggregation, and indexing operations on JSON-style documents. A built-in gateway worker listens on a separate port and speaks the wire protocol used by MongoDB drivers and tools (for example, PyMongo or mongosh).
