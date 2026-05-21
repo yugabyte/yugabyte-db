@@ -7613,4 +7613,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
+
+  public SubTaskGroup createCheckNodeCommandExecutionTasks(Collection<NodeDetails> nodes) {
+    return doInPrecheckSubTaskGroup(
+        "CheckNodeCommandExecution",
+        subTaskGroup ->
+            nodes.forEach(
+                n -> {
+                  CheckNodeCommandExecution.Params params = new CheckNodeCommandExecution.Params();
+                  params.setUniverseUUID(taskParams().getUniverseUUID());
+                  params.nodeName = n.nodeName;
+                  params.azUuid = n.azUuid;
+                  params.timeoutSecs = 10;
+                  CheckNodeCommandExecution task = createTask(CheckNodeCommandExecution.class);
+                  task.initialize(params);
+                  subTaskGroup.addSubTask(task);
+                }));
+  }
 }
