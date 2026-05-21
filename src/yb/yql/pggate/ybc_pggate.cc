@@ -2005,6 +2005,22 @@ YbcStatus YBCPgRollbackToSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
 }
 
+void YBCPgEnterSubTxnAbort() {
+  if (pgapi) {
+    pgapi->EnterSubTxnAbort();
+  }
+}
+
+void YBCPgExitSubTxnAbort() {
+  if (pgapi) {
+    pgapi->ExitSubTxnAbort();
+  }
+}
+
+bool YBCPgIsSubTxnAbort() {
+  return pgapi && pgapi->IsSubTxnAbort();
+}
+
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null) {
   return ExtractValueFromResult(
       pgapi->GetActiveTransaction(), [txn_id, is_null](const Uuid &value) {

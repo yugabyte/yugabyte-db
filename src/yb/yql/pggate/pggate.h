@@ -925,6 +925,13 @@ class PgApiImpl {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
   }
 
+  void EnterSubTxnAbort() { ++subtxn_abort_depth_; }
+  void ExitSubTxnAbort() {
+    DCHECK_GT(subtxn_abort_depth_, 0);
+    --subtxn_abort_depth_;
+  }
+  bool IsSubTxnAbort() const { return subtxn_abort_depth_ > 0; }
+
   struct PgSharedData;
   struct SignedPgSharedData;
 
@@ -1026,6 +1033,8 @@ class PgApiImpl {
   ash::WaitStateInfoPtr wait_state_;
 
   ReplicationInfoSnapshot replication_info_snapshot_{pg_client_};
+
+  int subtxn_abort_depth_ = 0;
 };
 
 }  // namespace yb::pggate

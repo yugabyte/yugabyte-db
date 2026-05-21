@@ -384,6 +384,9 @@ extern void YBCAbortTransaction();
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
 extern void YBCRollbackToSubTransaction(SubTransactionId id);
+extern void YBCEnterSubTxnAbort();
+extern void YBCExitSubTxnAbort();
+extern bool YBCIsSubTxnAbort();
 
 /*
  * Get the type ID of a real or virtual attribute (column).

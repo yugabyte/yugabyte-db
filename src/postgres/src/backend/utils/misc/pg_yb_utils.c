@@ -1509,6 +1509,24 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	YbInvalidateTableCacheForAlteredTables();
 }
 
+void
+YBCEnterSubTxnAbort()
+{
+	YBCPgEnterSubTxnAbort();
+}
+
+void
+YBCExitSubTxnAbort()
+{
+	YBCPgExitSubTxnAbort();
+}
+
+bool
+YBCIsSubTxnAbort()
+{
+	return YBCPgIsSubTxnAbort();
+}
+
 static bool yb_connected_to_template_db = false;
 
 void
