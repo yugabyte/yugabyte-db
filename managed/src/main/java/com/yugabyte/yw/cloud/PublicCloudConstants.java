@@ -117,7 +117,7 @@ public class PublicCloudConstants {
     IO1(Common.CloudType.aws, new Pair<>(100, 64000)),
     IO2(Common.CloudType.aws, new Pair<>(100, 256000)),
     GP2(Common.CloudType.aws),
-    GP3(Common.CloudType.aws, new Pair<>(3000, 16000), new Pair<>(125, 1000)),
+    GP3(Common.CloudType.aws, new Pair<>(3000, 80000), new Pair<>(125, 2000)),
     Scratch(Common.CloudType.gcp),
     Persistent(Common.CloudType.gcp),
     Hyperdisk_Balanced(Common.CloudType.gcp, new Pair<>(3000, 160000), new Pair<>(250, 2400)),
