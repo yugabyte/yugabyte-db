@@ -116,6 +116,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -275,6 +276,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    taskExecutor.setMaxWaitForTime(Duration.ofMillis(5));
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);

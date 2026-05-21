@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -48,11 +47,6 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
   private final String DDL_SUPPORT_URL =
       "https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/2.29.0.0-b435/"
           + "yugabyte-2.29.0.0-b435-centos-x86_64.tar.gz";
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(90, 120);
-  }
 
   private BackupRequestParams getBackupParams(Universe universe, CustomerConfig customerConfig) {
     BackupRequestParams params = new BackupRequestParams();

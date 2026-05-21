@@ -53,11 +53,6 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
         Json.toJson(formData));
   }
 
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(240, 270);
-  }
-
   @Before
   public void setUpDNS() {
     provider.getDetails().getCloudInfo().local.setHostedZoneId("test");

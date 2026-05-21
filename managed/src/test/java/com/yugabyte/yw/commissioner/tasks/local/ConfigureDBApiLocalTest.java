@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ConfigureYCQLFormData;
 import com.yugabyte.yw.forms.ConfigureYSQLFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,11 +46,6 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
   private static final String CP_STABLE_VERSION = "2024.2.2.1-b6";
   private static final String CP_STABLE_VERSION_URL =
       "https://software.yugabyte.com/releases/2024.2.2.1/yugabyte-2024.2.2.1-b6-%s-%s.tar.gz";
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(150, 180);
-  }
 
   private Result configureYSQL(ConfigureYSQLFormData formData, UUID universeUUID) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(

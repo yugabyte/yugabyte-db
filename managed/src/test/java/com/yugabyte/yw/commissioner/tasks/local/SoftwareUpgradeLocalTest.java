@@ -11,7 +11,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -28,11 +27,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(180, 210);
-  }
 
   public static final String OLD_DB_VERSION = "2.20.0.1-b1";
   public static String OLD_DB_VERSION_URL =
