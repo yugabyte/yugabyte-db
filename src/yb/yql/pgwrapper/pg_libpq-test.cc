@@ -5455,6 +5455,7 @@ TEST_F(PgLibPqTest, InconsistentIndexRead) {
   // Assert that the balance is always 10k.
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
     auto reader_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(reader_conn.Execute("SET yb_max_query_layer_retries=120"));
     while (!stop.load(std::memory_order_acquire)) {
       auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
           "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
