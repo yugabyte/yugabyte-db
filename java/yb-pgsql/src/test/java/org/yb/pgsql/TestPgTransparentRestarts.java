@@ -128,6 +128,15 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("wait_queue_poll_interval_ms", "5");
+    // Exaggerate the clock skew to make read restarts more likely.
+    flags.put("max_clock_skew_usec", "2000000");
+    return flags;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flags = super.getMasterFlags();
+    flags.put("max_clock_skew_usec", "2000000");
     return flags;
   }
 
@@ -650,7 +659,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   private static boolean isRetriesExhaustedError(Exception ex) {
-    return ex.getMessage().contains("All transparent retries exhausted");
+    String msg = ex.getMessage();
+    // TODO(#31761): A few retries should always be enough to close out the uncertainty
+    // window. Currently, for parallel execution, retries don't close the uncertainty window
+    // because the read time is never advanced to the restart read time.
+    return msg.contains("yb_max_query_layer_retries") && msg.contains("exhausted");
   }
 
   /** Whether this exception represents expected transaction concurrency related error */
