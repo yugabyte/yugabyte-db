@@ -2297,6 +2297,8 @@ bool		yb_enable_retry_after_non_atomic_commit = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
+int			yb_test_sleep_before_executor_start_ms = 0;
+
 int			yb_test_fail_next_ddl = 0;
 
 bool		yb_force_catalog_update_on_next_ddl = false;

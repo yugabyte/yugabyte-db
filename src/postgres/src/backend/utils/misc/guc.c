@@ -4129,6 +4129,18 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_test_sleep_before_executor_start_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sleep before executing a statement. "
+						 "Can be used to simulate race conditions where "
+						 "catalog is updated between planning and execution."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_sleep_before_executor_start_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set to non-zero, the next DDL will fail: "
 						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),

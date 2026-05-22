@@ -97,6 +97,55 @@ TEST_F(PgConcurrentDDLsTest, CreateIndexAndConcurrentAnalyze) {
 }
 #endif
 
+TEST_F(PgConcurrentDDLsTest, WholerowRaceCondition) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test_wholerow (k INT PRIMARY KEY, v INT, v2 INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_wholerow VALUES (1, 100, 200)"));
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([this] {
+    auto dml_conn = ASSERT_RESULT(Connect());
+
+    // Set GUCs to induce the race
+    ASSERT_OK(dml_conn.Execute("SET yb_test_sleep_before_executor_start_ms = 15000"));
+
+    // Prepare statement so it plans without any secondary indexes.
+    // We use a non-PK condition so it does a SeqScan, ensuring yb_fetch_target_tuple is true.
+    ASSERT_OK(dml_conn.Execute("PREPARE my_dml AS DELETE FROM test_wholerow WHERE v = 100"));
+
+    // Execute the statement. The test GUC will cause it to sleep inside standard_ExecutorStart
+    // for 15 seconds (between planning and actual execution).
+    // Meanwhile, the main thread creates an index and bumps the catalog version.
+    // Upon waking up and proceeding, the backend will process background catalog invalidation
+    // messages from the tablet server (due to object locking/heartbeats), causing it to
+    // realize the schema changed.
+    // It should throw schema version mismatch.
+    auto status = dml_conn.Execute("EXECUTE my_dml");
+
+    LOG(INFO) << "Execute returned status " << status;
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "schema version mismatch");
+  });
+
+  // Wait a little bit to ensure the DML thread starts executing and goes to sleep
+  std::this_thread::sleep_for(1s);
+
+  // Session 2: DDL
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // Disable wait so that CREATE INDEX CONCURRENTLY finishes instantly
+  // instead of hanging while waiting for the sleeping DML transaction.
+  ASSERT_OK(ddl_conn.Execute("SET yb_disable_wait_for_backends_catalog_version = true"));
+
+  LOG(INFO) << "Creating concurrent index...";
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX CONCURRENTLY idx_wholerow ON test_wholerow(v2)"));
+  LOG(INFO) << "Created concurrent index successfully.";
+
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+}
+
 TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
   auto kNumTables = 2;
   // TODO(#30015): If multiple threads create indexes on the same table, the "only a single oid is
