@@ -82,6 +82,7 @@ INSERT INTO project_logs VALUES (1, 'Initial log');
 -- This will drop table project_logs but shouldn't abort the entire transaction.
 ROLLBACK TO SAVEPOINT sp_mixed;
 SELECT project_name FROM projects WHERE id = 101;
+ROLLBACK;
 
 -- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
 CREATE TABLE departments (
