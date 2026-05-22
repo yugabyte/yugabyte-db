@@ -720,6 +720,13 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * Sleep before executing a statement.
+ * Can be used to simulate race conditions where catalog is updated between
+ * planning and execution.
+ */
+extern int yb_test_sleep_before_executor_start_ms;
+
+/*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.
  */

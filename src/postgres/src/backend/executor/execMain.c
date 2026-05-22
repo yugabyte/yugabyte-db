@@ -155,6 +155,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	EState	   *estate;
 	MemoryContext oldcontext;
 
+	if (yb_test_sleep_before_executor_start_ms > 0)
+		pg_usleep(yb_test_sleep_before_executor_start_ms * 1000);
+
 	/* sanity checks: queryDesc must not be started already */
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
