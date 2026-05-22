@@ -971,6 +971,136 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * Triggers a CDC stream expiry by setting cdc_intent_retention_ms low (2s) and poller sleep
+   * high (5s). The poller's first poll succeeds, on the next poll it receives a non-retryable
+   * "stream expired" error.
+   *
+   */
+  private void triggerCdcStreamExpiry() throws Exception {
+    setCdcIntentRetentionMs("2000");
+    setNotificationsPollSleepDurationEmpty("5000");
+    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(15000));
+  }
+
+  private void waitForPollerAndSlotCleanup(Connection conn) throws Exception {
+    waitForCondition(conn,
+        "SELECT CASE WHEN NOT EXISTS ("
+        + "SELECT 1 FROM pg_stat_activity"
+        + " WHERE backend_type = 'notifications poller'"
+        + ") THEN 1 ELSE 0 END");
+
+    waitForCondition(conn,
+        "SELECT CASE WHEN NOT EXISTS ("
+        + "SELECT 1 FROM pg_replication_slots"
+        + " WHERE slot_name LIKE 'yb_notifications_%'"
+        + ") THEN 1 ELSE 0 END");
+  }
+
+  @FunctionalInterface
+  private interface CdcRuntimeErrorTestBody {
+    void run(Connection nonListener) throws Exception;
+  }
+
+  /**
+   * Creates a nonListener on tserver 0, confirms the poller is running,
+   * triggers a CDC stream expiry, runs the test body, then verifies cleanup and recovery.
+   */
+  private void withCdcRuntimeError(CdcRuntimeErrorTestBody body) throws Exception {
+    Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+    try {
+      try (Statement checkStmt = nonListener.createStatement()) {
+        getPollerPid(checkStmt);
+      }
+
+      triggerCdcStreamExpiry();
+
+      body.run(nonListener);
+
+      waitForPollerAndSlotCleanup(nonListener);
+    } finally {
+      nonListener.close();
+      setCdcIntentRetentionMs("28800000");
+      setNotificationsPollSleepDurationEmpty("100");
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  /**
+   * Validates that a non-retryable CDC runtime error (stream expiry) terminates all listening
+   * backends with a meaningful error, while non-listening sessions survive. Also verifies that the
+   * notifications poller is cleaned up, the replication slot is dropped, and recovery works.
+   */
+  @Test
+  public void testCdcRuntimeErrorTerminatesListeners() throws Exception {
+    Connection listener1 = getConnectionBuilder().withTServer(0).connect();
+    listener1.createStatement().execute("LISTEN ch1");
+
+    Connection listener2 = getConnectionBuilder().withTServer(0).connect();
+    listener2.createStatement().execute("LISTEN ch2");
+
+    withCdcRuntimeError(nonListener -> {
+      assertConnectionDead(listener1, "listener1");
+      assertConnectionDead(listener2, "listener2");
+      nonListener.createStatement().execute("SELECT 1");
+    });
+  }
+
+  /**
+   * Validates that a new LISTEN fails when the notifications poller receives a non-retryable
+   * error and the existing listeners are being cleaned up.
+   */
+  @Test
+  public void testCdcRuntimeErrorBlocksNewListener() throws Exception {
+    Connection listenerA = getConnectionBuilder().withTServer(0).connect();
+    listenerA.createStatement().execute("LISTEN ch1");
+
+    // Block listenerA's main loop with pg_sleep so it can't process the
+    // FATAL from has_runtime_error. This keeps listenerA registered as a
+    // listener, which keeps the poller alive in error state.
+    Thread sleepThread = new Thread(() -> {
+      try {
+        listenerA.createStatement().execute("SELECT pg_sleep(60)");
+      } catch (SQLException e) {
+        LOG.info("listenerA pg_sleep interrupted (expected): {}", e.getMessage());
+      }
+    });
+    sleepThread.start();
+    Thread.sleep(1000);
+
+    withCdcRuntimeError(nonListener -> {
+      // A new LISTEN should fail because the poller is in error state.
+      try (Connection listenerB = getConnectionBuilder().withTServer(0).connect();
+           Statement stmtB = listenerB.createStatement()) {
+        stmtB.execute("LISTEN ch2");
+        fail("LISTEN should have failed because poller has a runtime error");
+      } catch (SQLException e) {
+        LOG.info("listenerB LISTEN failed (expected): {}", e.getMessage());
+        assertTrue("Error should mention non-retryable error",
+            e.getMessage().contains("non-retryable error"));
+      }
+
+      sleepThread.join(Timeouts.adjustTimeoutSecForBuildType(120000));
+      assertConnectionDead(listenerA, "listenerA");
+    });
+  }
+
+  private void setCdcIntentRetentionMs(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      miniCluster.getClient().setFlag(tserver, "cdc_intent_retention_ms", value);
+    }
+  }
+
+  private void assertConnectionDead(Connection conn, String label) {
+    try {
+      conn.createStatement().execute("SELECT 1");
+      fail(label + " should have been terminated by FATAL");
+    } catch (SQLException e) {
+      LOG.info("{} terminated (expected): {}", label, e.getMessage());
+    }
+  }
+
+  /**
    * Verifies that LISTEN/NOTIFY works even after a non-INSERT/DELETE record (i.e., an UPDATE)
    * appears in the pg_yb_notifications CDC stream. The notifications poller consumes the CDC
    * stream for pg_yb_notifications; an UPDATE record is unexpected (users never UPDATE this
