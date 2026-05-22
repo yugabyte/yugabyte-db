@@ -93,6 +93,7 @@
 #include <pthread.h>
 #endif
 
+#include "access/parallel.h"
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
@@ -5036,12 +5037,33 @@ BackendInitialize(Port *port)
 		else
 			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
 
-		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
-					 "remote_ps_data: %s",
-					 (am_walsender ?
-					  "walsender" :
-					  (yb_is_auth_backend ? "auth" : "regular")),
-					 getpid(), port->user_name, remote_ps_data);
+		StringInfoData logmsg;
+		const char *database_name =
+			(port->database_name && port->database_name[0] != '\0') ? port->database_name : "<unset>";
+		const char *application_name =
+			(port->application_name && port->application_name[0] != '\0') ? port->application_name : "<unset>";
+
+		initStringInfo(&logmsg);
+		appendStringInfo(&logmsg,
+						 "Started %s backend with pid: %d, user_name: %s, database_name: %s",
+						 (am_walsender ?
+						  "walsender" :
+						  (yb_is_auth_backend ? "auth" : "regular")),
+						 getpid(), port->user_name, database_name);
+		appendStringInfo(&logmsg, ", application_name: %s", application_name);
+		appendStringInfo(&logmsg, ", backend_type: %s", GetBackendTypeDesc(MyBackendType));
+		appendStringInfo(&logmsg, ", remote_ps_data: %s", remote_ps_data);
+		if (IsParallelWorker())
+		{
+			pid_t		leader_pid = GetParallelLeaderPid();
+
+			if (leader_pid > 0)
+				appendStringInfo(&logmsg, ", parallel_leader_pid: %d", leader_pid);
+			else
+				appendStringInfoString(&logmsg, ", parallel_leader_pid: <unknown>");
+		}
+		YBC_LOG_INFO("%s", logmsg.data);
+		pfree(logmsg.data);
 	}
 }
 

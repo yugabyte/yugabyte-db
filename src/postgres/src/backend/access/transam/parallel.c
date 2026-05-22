@@ -135,6 +135,12 @@ static dlist_head pcxt_list = DLIST_STATIC_INIT(pcxt_list);
 /* Backend-local copy of data from FixedParallelState. */
 static pid_t ParallelLeaderPid;
 
+pid_t
+GetParallelLeaderPid(void)
+{
+	return ParallelLeaderPid;
+}
+
 /*
  * List of internal parallel worker entry points.  We need this for
  * reasons explained in LookupParallelWorkerFunction(), below.
