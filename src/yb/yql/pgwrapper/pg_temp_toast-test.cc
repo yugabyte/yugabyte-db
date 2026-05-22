@@ -22,6 +22,8 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_uint64(vector_index_initial_chunk_size);
+
 namespace yb::pgwrapper {
 
 // This file contains tests that verify that we are properly detoasting data when inserting
@@ -195,6 +197,9 @@ class PgToastTempTableTest : public PgMiniTestBase {
   // Creates tables and inserts data used in all of the tests in this file.
   void SetUp() override {
     PgMiniTestBase::SetUp();
+    // todo(GH31838): Fix the pre-allocation logic for hnsw_lib so tweaking this flag isn't
+    // necessary to avoid running out of memory on high dimension vectors.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kNumRows * 2;
 
     conn_ = EXPECT_RESULT(Connect());
 
