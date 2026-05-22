@@ -3401,11 +3401,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
-  // True once we have determined whether CDC is enabled on the master. This is set after CDC
-  // streams are loaded from persisted data during master startup, regardless of whether any CDC
-  // streams actually exist.
-  std::atomic<bool> cdc_enabled_status_known_{false};
-
   // For per-database catalog version mode upgrade support: when the gflag
   // --ysql_enable_db_catalog_version_mode is true, whether the table
   // pg_yb_catalog_version has been upgraded to have one row per database.

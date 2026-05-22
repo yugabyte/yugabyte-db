@@ -12727,35 +12727,25 @@ TEST_F(CDCSDKYsqlTest, TestNoLossFromActiveSegmentWithApproachingDeadline) {
 TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
-      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 5;
 
   ASSERT_OK(SetUpWithParams(
-      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      1 /* rf */, 2 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
-
-  // Call GetChanges on Master a few times to keep the stream active. The UpdatePeersAndMetrics
-  // running on master should not expire the tablet checkpoint.
-  GetChangesResponsePB change_resp;
-  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
-  for (int i = 0; i < 5; i++) {
-    change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id, explicit_checkpoint));
-    ASSERT_FALSE(change_resp.has_error());
-    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
-
-    SleepFor(MonoDelta::FromSeconds(2));
+  SleepFor(
+      MonoDelta::FromSeconds(
+          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+  // Checking that CDCMasterBgTask has not expired the tablet checkpoint.
+  for (size_t i = 0; i < test_cluster()->num_masters(); i++) {
+    auto mini_master = test_cluster()->mini_master(i);
+    auto tablet_peer_ptr = ASSERT_NOTNULL(mini_master->tablet_peer());
+    ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max())
+        << "Retention barrier expired on master " << i;
   }
-
-  auto tablet_peer_ptr = ASSERT_NOTNULL(test_cluster_.mini_cluster_->mini_master()->tablet_peer());
-  // Checking that UpdatePeersAndMetrics has not expired the tablet checkpoint.
-  ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max());
 }
 
 TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
@@ -13787,7 +13777,6 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -13803,10 +13792,14 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
 
   // Given that the auto flag FLAGS_cdc_enable_dynamic_schema_changes is false, the CDCMasterBgTask
   // will not run. Thus, the sys_catalog tablet's cdc_sdk_safe_time will not be set. And history
-  // cutoff will be computed to HybridTime::kMin by AllowedHistoryCutoffProvider.
+  // cutoff will be computed based on FLAGS_timestamp_syscatalog_history_retention_interval_sec by
+  // AllowedHistoryCutoffProvider.
   auto& cm = mini_master->catalog_manager_impl();
   auto cutoff = cm.AllowedHistoryCutoffProvider(metadata.get());
-  ASSERT_EQ(cutoff.primary_cutoff_ht, HybridTime::kMin);
+  auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
+  auto diff_us = static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
+                 static_cast<int64_t>(cutoff.primary_cutoff_ht.GetPhysicalValueMicros());
+  ASSERT_GE(diff_us, FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   // Skip running CDCMasterBgTask.
@@ -13815,14 +13808,20 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = true;
 
   // Since CDCMasterBgTask hasn't ran yet, the sys_catalog tablet's cdc_sdk_safe_time will not be
-  // set. And history cutoff will still be computed to HybridTime::kMin by
-  // AllowedHistoryCutoffProvider.
+  // set. And history cutoff will still be computed based on
+  // FLAGS_timestamp_syscatalog_history_retention_interval_sec by AllowedHistoryCutoffProvider.
   auto cutoff_after_upgrade = cm.AllowedHistoryCutoffProvider(metadata.get());
-  ASSERT_EQ(cutoff_after_upgrade.primary_cutoff_ht, HybridTime::kMin);
+  current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
+  diff_us = static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
+            static_cast<int64_t>(cutoff_after_upgrade.primary_cutoff_ht.GetPhysicalValueMicros());
+  ASSERT_GE(diff_us, FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   // Now allow CDCMasterBgTask to run.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
+  // Setting FLAGS_timestamp_syscatalog_history_retention_interval_sec to 0 to validate cutoff
+  // calculation based on cdc_sdk_safe_time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -13869,7 +13868,7 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
 TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -13900,9 +13899,9 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
   DeleteCDCStream(stream);
   // Once cdc stream is deleted, the CDCMasterBgTask won't be able to release the barriers on sys
   // catalog tablet because it won't see any stream entry in cdc_state table. So, we will set the
-  // cdc_min_replicated_index_considered_stale_secs to 5 seconds to allow the
+  // cdc_min_replicated_index_considered_stale_secs_master to 5 seconds to allow the
   // ResetStaleRetentionBarriersOp to release the barriers.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 5;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -13915,7 +13914,7 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
       "barrier on sys catalog after stream deletion"));
 }
 
-TEST_F(CDCSDKYsqlTest, TestChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
+TEST_F(CDCSDKYsqlTest, TestNoChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
   // Simulate an upgrade by promoting the auto flag after initial master startup and stream
@@ -13923,6 +13922,7 @@ TEST_F(CDCSDKYsqlTest, TestChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -13956,7 +13956,7 @@ TEST_F(CDCSDKYsqlTest, TestChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
   // Restart the master after upgrade and check that the history cutoff calculated for sys_catalog
-  // is HybridTime::kMin until CDCMasterBgTask runs.
+  // remains same as before master restart (irrespective of CDCMasterBgTask run).
   ASSERT_OK(mini_master->Restart());
   LOG(INFO) << "Master Restarted";
   ASSERT_OK(test_cluster()->WaitForAllTabletServers());
@@ -13968,21 +13968,15 @@ TEST_F(CDCSDKYsqlTest, TestChangeInSysCatalogHistoryCutOffAfterMasterRestart) {
 
   auto& cm_after_restart = mini_master->catalog_manager_impl();
   auto cutoff_after_restart = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
-  ASSERT_EQ(cutoff_after_restart.primary_cutoff_ht, HybridTime::kMin);
+  ASSERT_EQ(cutoff_after_restart.primary_cutoff_ht, metadata->cdc_sdk_safe_time());
   ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
 
-  // Allow CDCMasterBgTask to run. The history cutoff should go back to normal value i.e
-  // cutoff_after_upgrade.
+  // Allow CDCMasterBgTask to run. The history cutoff should still compute to same value.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto cutoff_after_bg_task = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
-        return (cutoff_after_bg_task.primary_cutoff_ht >= cutoff_after_upgrade) &&
-               (cutoff_after_bg_task.primary_cutoff_ht < HybridTime::kInvalid) &&
-               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
-      },
-      MonoDelta::FromSeconds(30 * kTimeMultiplier),
-      "Timed out waiting for CDCMasterBgTask to run on sys catalog"));
+  SleepFor(MonoDelta::FromSeconds(10));
+  auto cutoff_after_bg_task = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
+  ASSERT_EQ(cutoff_after_bg_task.primary_cutoff_ht, metadata->cdc_sdk_safe_time());
+  ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
 }
 
 }  // namespace cdc
