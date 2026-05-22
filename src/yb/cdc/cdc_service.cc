@@ -400,6 +400,11 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
       attrs["namespace_name"] = raft_group_metadata->namespace_name();
       attrs["table_name"] = raft_group_metadata->table_name();
       attrs["table_type"] = TableType_Name(raft_group_metadata->table_type());
+      auto table_info = raft_group_metadata->primary_table_info();
+      if (source_type == XCLUSTER && table_info->table_type == PGSQL_TABLE_TYPE &&
+          table_info->schema().has_pgschema_name()) {
+        attrs["pgschema_name"] = table_info->schema().SchemaName();
+      }
       attrs["stream_id"] = stream_id.ToString();
       if (slot_name.has_value()) {
         attrs["slot_name"] = slot_name.value();

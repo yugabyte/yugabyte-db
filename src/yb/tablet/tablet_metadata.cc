@@ -535,6 +535,9 @@ MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
   attrs["table_name"] = table_name;
   attrs["table_type"] = TableType_Name(table_type);
   attrs["namespace_name"] = namespace_name;
+  if (table_type == PGSQL_TABLE_TYPE && schema().has_pgschema_name()) {
+    attrs["pgschema_name"] = schema().SchemaName();
+  }
   if (table_type == PGSQL_TABLE_TYPE && !namespace_id.empty()) {
     auto db_oid = GetPgsqlDatabaseOid(namespace_id);
     if (db_oid.ok()) {
