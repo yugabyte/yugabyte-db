@@ -47,6 +47,8 @@ using namespace std::literals;
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
