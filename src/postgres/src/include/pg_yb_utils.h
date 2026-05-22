@@ -710,6 +710,13 @@ extern bool yb_enable_retry_after_non_atomic_commit;
 extern bool yb_test_system_catalogs_creation;
 
 /*
+ * Sleep before executing a statement.
+ * Can be used to simulate race conditions where catalog is updated between
+ * planning and execution.
+ */
+extern int yb_test_sleep_before_executor_start_ms;
+
+/*
  * If set to non-zero, next DDL operation will fail with the specified error level:
  * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
  * Resets to 0 after triggering.
