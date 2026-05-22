@@ -789,6 +789,12 @@ TEST_F(PgConcurrentBlockedWaitersTest, YB_DISABLE_TEST_IN_TSAN(LongPauseRetrySin
 
 class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
+    PgConcurrentBlockedWaitersTest::SetUp();
+  }
+
   Status WaitForLoadBalance(int num_tablet_servers) {
     return WaitFor(
       [&]() -> Result<bool> { return client_->IsLoadBalanced(num_tablet_servers); },
