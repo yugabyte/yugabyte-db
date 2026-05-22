@@ -56,7 +56,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
-| wait_event_aux | text | Additional information for the wait event, when available. For TServer events tied to a tablet, the first 15 characters of the tablet ID; for YCQL read/write events with table context, the first 15 characters of the table ID; for YSQL WaitingOnTServer events, the PgClient RPC name. Null for most other events. |
+| wait_event_aux | text | Additional information for the wait event, when available. For TServer events tied to a tablet, the first 15 characters of the tablet ID; for YCQL read/write events with table context, the first 15 characters of the table ID; for YSQL `WaitingOnTServer` events, the RPC name. Null for most other events. |
 | wait_event_code | bigint | Code of the wait event. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)/[ycql_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/ycql-stat-statements/). See [Constant query identifiers](#constant-query-identifiers). |
