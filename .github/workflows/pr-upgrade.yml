@@ -11,8 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR upgrade info
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          body="${{ github.event.pull_request.body }}"
+          body="$PR_BODY"
           UPG_RE='upgrade.*(downgrade|rollback)\ssafety'
           # downcase the body for regex matching
           if [[ ! "${body,,}" =~ $UPG_RE ]]; then
