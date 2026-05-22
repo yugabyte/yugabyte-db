@@ -1923,6 +1923,20 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testGetUpdateOptionsEditLeaderPreference() throws IOException {
+    testGetAvailableOptions(
+        x -> {
+          x.getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .limit(1)
+              .forEach(az -> az.leaderPreference = 1);
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
   public void testGetUpdateOptionsEditSmartResizeNonRestart() throws IOException {
     testGetAvailableOptions(
         x -> x.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50,

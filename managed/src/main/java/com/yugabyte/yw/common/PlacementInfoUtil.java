@@ -64,6 +64,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
@@ -1166,14 +1168,12 @@ public class PlacementInfoUtil {
         .collect(Collectors.toSet());
   }
 
+  @Data
+  @AllArgsConstructor
   private static class AZInfo {
-    public AZInfo(boolean affinitized, int num) {
-      isAffinitized = affinitized;
-      numNodes = num;
-    }
-
     public boolean isAffinitized;
     public int numNodes;
+    public int leaderPreference;
   }
 
   // Helper function to check if the old placement and new placement after edit
@@ -1187,7 +1187,9 @@ public class PlacementInfoUtil {
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
-          oldAZMap.put(oldAZ.uuid, new AZInfo(oldAZ.isAffinitized, oldAZ.numNodesInAZ));
+          oldAZMap.put(
+              oldAZ.uuid,
+              new AZInfo(oldAZ.isAffinitized, oldAZ.numNodesInAZ, oldAZ.leaderPreference));
         }
       }
     }
@@ -1199,8 +1201,9 @@ public class PlacementInfoUtil {
             return false;
           }
           AZInfo azInfo = oldAZMap.get(newAZ.uuid);
-          if (azInfo.isAffinitized != newAZ.isAffinitized
-              || azInfo.numNodes != newAZ.numNodesInAZ) {
+          if (!Objects.equals(
+              azInfo,
+              new AZInfo(newAZ.isAffinitized, newAZ.numNodesInAZ, newAZ.leaderPreference))) {
             return false;
           }
         }
