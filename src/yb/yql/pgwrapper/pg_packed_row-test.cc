@@ -44,13 +44,15 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
-DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -451,7 +453,7 @@ TEST_P(PgPackedRowTest, Random) {
       continue;
     }
     std::unordered_set<std::string> values;
-    tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
+    tablet->TEST_DocDBDumpToContainer(values, docdb::IncludeIntents::kTrue);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {

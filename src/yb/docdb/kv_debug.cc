@@ -41,8 +41,22 @@
 
 namespace yb::docdb {
 
+namespace {
+
+template <class HT>
+std::string HandleWriteTime(
+    const std::string& prefix, const HT& ht, IncludeWriteTime include_write_time) {
+  if (!include_write_time) {
+    return prefix;
+  }
+  return prefix + " " + AsString(ht);
+}
+
+} // namespace
+
 Result<std::string> DocDBKeyToDebugStr(
-    Slice key_slice, StorageDbType db_type, dockv::HybridTimeRequired ht_required) {
+    Slice key_slice, StorageDbType db_type, dockv::HybridTimeRequired ht_required,
+    IncludeWriteTime include_write_time) {
   auto key_type = GetKeyType(key_slice, db_type);
   dockv::SubDocKey subdoc_key;
   switch (key_type) {
@@ -50,8 +64,10 @@ Result<std::string> DocDBKeyToDebugStr(
       auto decoded_intent_key = VERIFY_RESULT(dockv::DecodeIntentKey(key_slice));
       RETURN_NOT_OK(
           subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(decoded_intent_key.intent_prefix));
-      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue) + " " +
-             ToString(decoded_intent_key.intent_types) + " " + decoded_intent_key.doc_ht.ToString();
+      return HandleWriteTime(
+          subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue) + " " +
+              ToString(decoded_intent_key.intent_types),
+          decoded_intent_key.doc_ht, include_write_time);
     }
     case KeyType::kReverseTxnKey: {
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
@@ -59,7 +75,7 @@ Result<std::string> DocDBKeyToDebugStr(
       auto doc_ht = VERIFY_RESULT_PREPEND(
           dockv::DecodeInvertedDocHt(key_slice),
           Format("Reverse txn record for: $0", transaction_id));
-      return Format("TXN REV $0 $1", transaction_id, doc_ht);
+      return HandleWriteTime(Format("TXN REV $0", transaction_id), doc_ht, include_write_time);
     }
     case KeyType::kTransactionMetadata:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
@@ -73,14 +89,15 @@ Result<std::string> DocDBKeyToDebugStr(
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFrom(key_slice, ht_required),
           "Error: failed decoding SubDocKey " + FormatSliceAsStr(key_slice));
-      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue);
+      return subdoc_key.ToString(dockv::AutoDecodeKeys::kTrue, include_write_time);
     case KeyType::kExternalIntents: {
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kExternalTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
           dockv::DecodeInvertedDocHt(key_slice),
           Format("External txn record for: $0", transaction_id));
-      return Format("TXN EXT $0 $1", transaction_id, doc_hybrid_time);
+      return  HandleWriteTime(
+          Format("TXN EXT $0", transaction_id), doc_hybrid_time, include_write_time);
     }
     case KeyType::kApplyState:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionApplyState));

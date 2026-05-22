@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <string>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
@@ -1158,6 +1160,27 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
   return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter)));
+}
+
+Result<std::string> DumpTableLeadersDocDB(MiniCluster* cluster, const std::string& table_name) {
+  auto vector = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster, table_name));
+  return boost::algorithm::join(vector, "\n");
+}
+
+Result<std::vector<std::string>> DumpTableLeadersDocDBToVector(
+    MiniCluster* cluster, const std::string& table_name) {
+  std::vector<std::string> result;
+  auto tablets = VERIFY_RESULT(ListTabletsForTableName(
+      cluster, table_name, ListPeersFilter::kLeaders));
+  std::ranges::sort(tablets, [](const auto& lhs, const auto& rhs) {
+    return lhs->metadata()->partition()->partition_key_start() <
+           rhs->metadata()->partition()->partition_key_start();
+  });
+  for (const auto& tablet : tablets) {
+    tablet->TEST_DocDBDumpToContainer(
+      result, docdb::IncludeIntents::kFalse, dockv::IncludeWriteTime::kFalse);
+  }
+  return result;
 }
 
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers) {
