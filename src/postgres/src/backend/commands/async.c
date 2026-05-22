@@ -2926,8 +2926,22 @@ ybInsertPendingNotifiesToTable(void)
 	TupleTableSlot *slot = MakeSingleTupleTableSlot(desc, &TTSOpsVirtual);
 	EState	   *estate = CreateExecutorState();
 
-	ListCell   *nextNotify = list_head(pendingNotifies->events);
+	YbcPgTransactionSetting txn_setting = (IsTransactionBlock() ?
+										   YB_TRANSACTIONAL :
+										   YB_SINGLE_SHARD_TRANSACTION);
 
+	int			num_notifs = list_length(pendingNotifies->events);
+	Datum	   *uuids = (Datum *) palloc(num_notifs * sizeof(Datum));
+	int			i = 0;
+	ListCell   *nextNotify;
+
+	YBBeginOperationsBuffering();
+
+	/*
+	 * Phase 1: All INSERTs. This way writes can be buffered and flushed in
+	 * batches.
+	 */
+	nextNotify = list_head(pendingNotifies->events);
 	while (nextNotify)
 	{
 		Notification *n = (Notification *) lfirst(nextNotify);
@@ -2935,8 +2949,10 @@ ybInsertPendingNotifiesToTable(void)
 		ExecClearTuple(slot);
 		ResetPerTupleExprContext(estate);
 
+		uuids[i] = gen_random_uuid(NULL);
+
 		slot->tts_isnull[yb_notif_uuid_att.attnum - 1] = false;
-		slot->tts_values[yb_notif_uuid_att.attnum - 1] = gen_random_uuid(NULL);
+		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
 
 		slot->tts_isnull[yb_sender_node_uuid_att.attnum - 1] = false;
 		slot->tts_values[yb_sender_node_uuid_att.attnum - 1] =
@@ -2958,17 +2974,45 @@ ybInsertPendingNotifiesToTable(void)
 		slot->tts_isnull[yb_extra_options_att.attnum - 1] = true;
 		ExecStoreVirtualTuple(slot);
 
-		YbcPgTransactionSetting txn_setting = (IsTransactionBlock() ?
-											   YB_TRANSACTIONAL :
-											   YB_SINGLE_SHARD_TRANSACTION);
-
 		YBCExecuteInsertForDb(dboid, rel, slot, ONCONFLICT_NONE, NULL,
 							  txn_setting);
-		YBCExecuteDelete(rel, slot, NIL, false /* target_tuple_fetched */ ,
-						 txn_setting, false /* changingPart */ , estate);
+		i++;
 		nextNotify = lnext(pendingNotifies->events, nextNotify);
 	}
 
+	/*
+	 * Phase 2: All DELETEs. Only notif_uuid (the PK) is needed for ybctid
+	 * computation.
+	 */
+	bool		can_buffer_deletes = (txn_setting == YB_TRANSACTIONAL);
+
+	for (i = 0; i < num_notifs; i++)
+	{
+		ExecClearTuple(slot);
+		ResetPerTupleExprContext(estate);
+
+		slot->tts_isnull[yb_notif_uuid_att.attnum - 1] = false;
+		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
+		ExecStoreVirtualTuple(slot);
+
+		if (can_buffer_deletes)
+			TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
+
+		/*
+		 * Buffering of DELETE requires target_tuple_fetched to be true. Hence,
+		 * pass can_buffer_deletes as the target_tuple_fetched argument, even
+		 * though no tuple is fetched irrespective of can_buffer_deletes.
+		 *
+		 * This hack will not be required if we can relax DELETE's buffering
+		 * requirement along the lines of UPDATE's (GHI #31856).
+		 */
+		YBCExecuteDelete(rel, slot, NIL, can_buffer_deletes /* target_tuple_fetched */ ,
+						 txn_setting, false /* changingPart */ , estate);
+	}
+
+	YBEndOperationsBuffering();
+
+	pfree(uuids);
 	FreeExecutorState(estate);
 	ExecDropSingleTupleTableSlot(slot);
 }

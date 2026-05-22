@@ -28,6 +28,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONObject;
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBDaemon;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -1053,6 +1055,41 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertTrue("Failed to set max_replication_slots",
           miniCluster.getClient().setFlag(master, "max_replication_slots", value,
                                           /* force = */ true));
+    }
+  }
+
+  private long getPerformCountForTServer(int tserverIndex) throws Exception {
+    String host = getPgHost(tserverIndex);
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      if (ts.getLocalhostIP().equals(host)) {
+        return new Metrics(ts.getLocalhostIP(), ts.getWebPort(), "server")
+            .getHistogram("handler_latency_yb_tserver_PgClientService_Perform").totalCount;
+      }
+    }
+    throw new RuntimeException("No tserver found at index " + tserverIndex);
+  }
+
+  /**
+   * Test that NOTIFYs within a transaction are buffered and flushed in batches.
+   */
+  @Test
+  public void testTxnNotifysAreBuffered() throws Exception {
+    final int N = 50;
+    final int tserverIndex = 0;
+
+    try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("BEGIN");
+      for (int i = 0; i < N; i++) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'msg_" + i + "'");
+      }
+
+      long before = getPerformCountForTServer(tserverIndex);
+      stmt.execute("COMMIT");
+      long delta = getPerformCountForTServer(tserverIndex) - before;
+
+      LOG.info("NOTIFY flush optimization: {} notifications, {} Perform RPCs", N, delta);
+      assertEquals("Perform RPCs for " + N + " notifications", 2, delta);
     }
   }
 }
