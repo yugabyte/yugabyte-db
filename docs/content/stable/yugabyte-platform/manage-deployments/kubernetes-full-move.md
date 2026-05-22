@@ -68,7 +68,7 @@ The following illustrates `userIntent` with `userIntentOverrides.azOverrides` af
 ```json
 "userIntent": {
   "numNodes": 3,
-  "ybSoftwareVersion": "2.31.0.0-b60",
+  "ybSoftwareVersion": "2026.1.0.0-b1",
   "accessKeyCode": "yugabyte-default",
   "deviceInfo": {
     "volumeSize": 50,
@@ -168,7 +168,7 @@ spec:
         storageClass: vk-standard
 ```
 
-Apply changes with `kubectl apply` on the CRD. The Operator reconciles the universe and runs the full move workflow. Monitor tasks in YugabyteDB Anywhere on the universe [Tasks](../retry-failed-task/) page.
+Apply changes with `kubectl apply` to the `YBUniverse` resource. The Operator reconciles the universe and runs the full move workflow. Monitor tasks in YugabyteDB Anywhere on the universe [Tasks](../retry-failed-task/) page.
 
 ## Batch pod moves
 

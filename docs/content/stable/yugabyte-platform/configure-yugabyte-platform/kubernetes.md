@@ -114,7 +114,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Optionally, use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
-1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster. Refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/). After a universe is created, you can change storage class and volume count on YugabyteDB v2026.1.0.0 or later using[Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/).
+1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster. Refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/). After a universe is created, you can change storage class and volume count on YugabyteDB v2026.1.0.0 or later using [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/).
 
 1. Optionally, use the **Kube Pod Address Template** field to enter the pod address template.
 
