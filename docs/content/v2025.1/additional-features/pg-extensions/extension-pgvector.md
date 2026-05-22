@@ -218,7 +218,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Concurrent index creation is not currently supported. For example, the following syntax falls back to non-concurrent implementation:
 
     ```sql
-    CREATE INDEX CONCURRENLTY on <table> USING ybhnsq (vec vector_l2_ops);
+    CREATE INDEX CONCURRENTLY on <table> USING ybhnsq (vec vector_l2_ops);
     ```
 
     Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
