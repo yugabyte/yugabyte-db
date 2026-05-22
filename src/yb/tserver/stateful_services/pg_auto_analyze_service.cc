@@ -166,8 +166,10 @@ void PgAutoAnalyzeService::Activate() { LOG(INFO) << ServiceName() << " activate
 void PgAutoAnalyzeService::Deactivate() { LOG(INFO) << ServiceName() << " de-activated"; }
 
 Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
-  std::lock_guard lock(mutation_flush_mutex_);
-  const auto& table_id_to_mutations_maps = pg_cluster_level_mutation_counter_.GetAndClear();
+  const auto table_id_to_mutations_maps = [&] {
+    std::lock_guard lock(mutation_flush_mutex_);
+    return pg_cluster_level_mutation_counter_.GetAndClear();
+  }();
   if (table_id_to_mutations_maps.empty()) {
     VLOG(5) << "No more mutations";
     return Status::OK();
@@ -191,7 +193,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     auto* const update_req = add_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    auto *col_pb = update_req->add_column_values();
+    auto* col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
     auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
     bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
@@ -763,8 +765,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
 }
 
 // Update the table mutations by subtracting the mutations count we fetched if ANALYZE succeeded
-// or failed with "does not exist error". Floor at zero so a manual ANALYZE reset that completed
-// while this auto-analyze was running cannot leave a negative mutation count.
+// or failed with "does not exist error". Apply the subtraction only if the current count is at
+// least the analyzed snapshot so a manual ANALYZE reset that completed while this auto-analyze was
+// running cannot leave a negative mutation count.
 // Do subtraction instead of directly updating the mutation counts to zero because updating mutation
 // counts to zero might cause us to lose some mutations collected during triggering ANALYZE.
 // TODO(auto-analyze, #22883): Clean up entries from auto analyze YCQL table if
@@ -782,9 +785,6 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     }
   }
 
-  std::lock_guard lock(mutation_flush_mutex_);
-  auto current_table_id_to_info_maps = VERIFY_RESULT(ReadTableMutations());
-
   auto session = VERIFY_RESULT(GetYBSession(
       FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
@@ -792,18 +792,10 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
   auto mutations_col_id = schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeMutations));
 
   std::vector<client::YBOperationPtr> ops;
-  for (auto& table_id : tables) {
-    auto current_it = current_table_id_to_info_maps.find(table_id);
-    if (current_it == current_table_id_to_info_maps.end()) {
-      continue;
-    }
+  for (const auto& table_id : tables) {
     auto analyzed_it = table_id_to_info_maps.find(table_id);
     auto analyzed_mutations =
         analyzed_it == table_id_to_info_maps.end() ? 0 : analyzed_it->second.mutations;
-    auto remaining_mutations = current_it->second.mutations - analyzed_mutations;
-    if (remaining_mutations < 0) {
-      remaining_mutations = 0;
-    }
 
     auto update_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const update_req = update_op->mutable_request();
@@ -811,10 +803,18 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
     auto *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
-    col_pb->mutable_expr()->mutable_value()->set_int64_value(remaining_mutations);
-    ops.push_back(std::move(update_op));
+    auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
+    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
+    auto* operand1 = bfcall_expr_pb->add_operands();
+    auto* operand2 = bfcall_expr_pb->add_operands();
+    operand1->set_column_id(mutations_col_id);
+    operand2->mutable_value()->set_int64_value(analyzed_mutations);
     auto* const condition = update_req->mutable_if_expr()->mutable_condition();
-    condition->set_op(QL_OP_EXISTS);
+    condition->set_op(QL_OP_AND);
+    table->AddCondition(condition, QL_OP_EXISTS);
+    table->AddInt64Condition(
+        condition, master::kPgAutoAnalyzeMutations, QL_OP_GREATER_THAN_EQUAL, analyzed_mutations);
+    ops.push_back(std::move(update_op));
   }
 
   if (!ops.empty()) {
@@ -1067,33 +1067,38 @@ Status PgAutoAnalyzeService::ResetTableMutationCountersAfterAnalyzeImpl(
     table_ids.push_back(table_id);
   }
 
+  auto session = VERIFY_RESULT(GetYBSession(
+      FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
+  auto* table = VERIFY_RESULT(GetServiceTable());
+  const auto& schema = table->schema();
+  auto mutations_col_id = schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeMutations));
+
+  std::vector<client::YBOperationPtr> ops;
+  ops.reserve(table_ids.size());
+  for (const auto& table_id : table_ids) {
+    auto update_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
+    auto* const update_req = update_op->mutable_request();
+    QLAddStringHashValue(update_req, table_id);
+    update_req->mutable_column_refs()->add_ids(mutations_col_id);
+    auto* col_pb = update_req->add_column_values();
+    col_pb->set_column_id(mutations_col_id);
+    col_pb->mutable_expr()->mutable_value()->set_int64_value(0);
+    update_req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
+    ops.push_back(std::move(update_op));
+  }
+
   {
     std::lock_guard lock(mutation_flush_mutex_);
     pg_cluster_level_mutation_counter_.Reset(table_ids);
-
-    auto session = VERIFY_RESULT(GetYBSession(
-        FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
-    auto* table = VERIFY_RESULT(GetServiceTable());
-    const auto& schema = table->schema();
-    auto mutations_col_id = schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeMutations));
-
-    std::vector<client::YBOperationPtr> ops;
-    ops.reserve(table_ids.size());
-    for (const auto& table_id : table_ids) {
-      auto update_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
-      auto* const update_req = update_op->mutable_request();
-      QLAddStringHashValue(update_req, table_id);
-      update_req->mutable_column_refs()->add_ids(mutations_col_id);
-      auto* col_pb = update_req->add_column_values();
-      col_pb->set_column_id(mutations_col_id);
-      col_pb->mutable_expr()->mutable_value()->set_int64_value(0);
-      update_req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
-      ops.push_back(std::move(update_op));
-    }
-
-    RETURN_NOT_OK_PREPEND(
-        session->TEST_ApplyAndFlush(ops), "Failed to reset mutations in auto analyze table");
   }
+
+  // Do the service-table reset outside mutation_flush_mutex_ to avoid holding a global mutex across
+  // YCQL I/O. This means a periodic flush batch that was drained from memory before this reset can
+  // still apply after the reset and leave a slightly stale non-zero service-table count. That is
+  // accepted for manual ANALYZE reset semantics; the reset is best-effort with respect to in-flight
+  // service-table writes.
+  RETURN_NOT_OK_PREPEND(
+      session->TEST_ApplyAndFlush(ops), "Failed to reset mutations in auto analyze table");
 
   // This evicts the service-local reltuples cache only. Mutations already buffered on other
   // tservers before this reset may still be reported later and counted as post-reset mutations.

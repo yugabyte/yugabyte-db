@@ -708,30 +708,29 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	 * columns; otherwise, there is still work for auto-analyze to do.
 	 */
 	if (!inh)
-	{
 		pgstat_report_analyze(onerel, totalrows, totaldeadrows,
 							  (va_cols == NIL));
-		/*
-		 * YB: A full manual ANALYZE makes table statistics fresh enough that
-		 * auto-analyze does not need to immediately re-analyze the table based
-		 * on mutations collected before this ANALYZE.  This intentionally
-		 * follows PostgreSQL's resetcounter semantics and differs from the
-		 * auto-analyze service's own subtract-snapshot cleanup, which preserves
-		 * mutations that arrive during an internal auto-analyze run.
-		 */
-		if (IsYBRelation(onerel) && va_cols == NIL &&
-			!yb_use_internal_auto_analyze_service_conn &&
-			!yb_is_internal_connection)
-		{
-			YbcStatus	reset_status =
-				YBCResetTableMutationCountersAfterAnalyze(YBCGetDatabaseOid(onerel),
-														  YbGetRelfileNodeId(onerel));
-
-			HandleYBStatusAtErrorLevel(reset_status, WARNING);
-		}
-	}
 	else if (onerel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		pgstat_report_analyze(onerel, 0, 0, (va_cols == NIL));
+
+	/*
+	 * YB: yb auto-analyze treats a full manual ANALYZE as making table
+	 * statistics fresh enough that it does not need to immediately re-analyze
+	 * based on mutations collected before this ANALYZE.  This intentionally
+	 * follows PostgreSQL's resetcounter semantics and differs from the
+	 * auto-analyze service's own subtract-snapshot cleanup, which preserves
+	 * mutations that arrive during an internal auto-analyze run.
+	 */
+	if (!inh && IsYBRelation(onerel) && va_cols == NIL &&
+		!yb_use_internal_auto_analyze_service_conn &&
+		!yb_is_internal_connection)
+	{
+		YbcStatus	reset_status =
+			YBCResetTableMutationCountersAfterAnalyze(YBCGetDatabaseOid(onerel),
+													  YbGetRelfileNodeId(onerel));
+
+		HandleYBStatusAtErrorLevel(reset_status, WARNING);
+	}
 
 	/*
 	 * If this isn't part of VACUUM ANALYZE, let index AMs do cleanup.
@@ -1902,7 +1901,9 @@ ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull)
 }
 
 
-/*==========================================================================
+/*
+ * YB: yb lint requires an empty opening comment line for this banner.
+ *==========================================================================
  *
  * Code below this point represents the "standard" type-specific statistics
  * analysis algorithms.  This code can be replaced on a per-data-type basis

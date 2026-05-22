@@ -156,8 +156,8 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
 
   tserver::PgMutationCounter pg_cluster_level_mutation_counter_;
 
-  // Serializes service-table mutation counter writes: periodic flushes, auto-analyze cleanup, and
-  // manual ANALYZE resets.
+  // Orders in-memory mutation drains and manual ANALYZE resets. This intentionally does not cover
+  // YCQL I/O, so a batch drained before a reset may still flush to the service table after it.
   std::mutex mutation_flush_mutex_;
 
   const std::shared_future<client::YBClient*>& client_future_;
