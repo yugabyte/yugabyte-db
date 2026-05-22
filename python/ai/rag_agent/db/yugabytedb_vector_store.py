@@ -6,6 +6,33 @@ import json
 from psycopg import sql
 from db.connection_pool import ConnectionPool
 from db.active_pipeline_tracking import PipelineTracking
+from langfuse import get_client
+from observability import meko_observe
+
+
+@meko_observe(name="Execute SQL / YugabyteDB Vector Store", as_type="span", capture_input=False, capture_output=False)
+def execute_sql(cur, query: str, params=None, many: bool = False) -> int:
+    if many:
+        cur.executemany(query, params)
+    elif params is not None:
+        cur.execute(query, params)
+    else:
+        cur.execute(query)
+    rowcount = cur.rowcount
+    is_langfuse_enabled = os.getenv("ENABLE_LANGFUSE_TRACING", "false") == "true"
+    if is_langfuse_enabled:
+        query_str = query.as_string(cur) if hasattr(query, 'as_string') else query
+        get_client().update_current_span(
+            input={
+                "query": query_str.strip(),
+                "mode": "executemany" if many else "execute",
+                **({"batch_size": len(params)} if many and params is not None else {}),
+                **({"param_count": len(params)} if not many and params is not None else {}),
+            },
+            output={"rowcount": rowcount}
+        )
+
+    return rowcount
 
 
 class YugabyteDBVectorStore:
@@ -40,7 +67,8 @@ class YugabyteDBVectorStore:
         cur = conn.cursor()
         try:
             # Query information_schema to check if table exists
-            cur.execute(
+            execute_sql(
+                cur,
                 """
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables
@@ -82,6 +110,7 @@ class YugabyteDBVectorStore:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Insert Embeddings / YugabyteDB Vector Store", as_type="span")
     def insert_embeddings(
         self,
         document_id,
@@ -142,8 +171,12 @@ class YugabyteDBVectorStore:
                      tenant_id, metadata_json)
                 )
                 if len(batch) >= batch_size:
-                    cur.executemany(insert_stmt, batch)
-                    rows_inserted = cur.rowcount
+                    rows_inserted = execute_sql(
+                        cur,
+                        insert_stmt,
+                        batch,
+                        many=True
+                    )
                     total_inserted += rows_inserted
                     self.pipeline_tracking.update_embeddings_persisted(
                         pipeline_id=pipeline_id,
@@ -159,8 +192,12 @@ class YugabyteDBVectorStore:
 
             # Insert any remaining items in the batch
             if batch:
-                cur.executemany(insert_stmt, batch)
-                rows_inserted = cur.rowcount
+                rows_inserted = execute_sql(
+                    cur,
+                    insert_stmt,
+                    batch,
+                    many=True
+                )
                 total_inserted += rows_inserted
                 self.pipeline_tracking.update_embeddings_persisted(
                     pipeline_id=pipeline_id,
@@ -189,6 +226,7 @@ class YugabyteDBVectorStore:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Create Index / YugabyteDB Vector Store", as_type="span")
     def create_index(
         self,
         table_name,
@@ -223,7 +261,7 @@ class YugabyteDBVectorStore:
                 table=sql.Identifier(table_name),
                 ops_class=sql.SQL(distance_metric),
             )
-            cur.execute(sql_create_index)
+            execute_sql(cur, sql_create_index)
 
             conn.commit()
             cur.close()

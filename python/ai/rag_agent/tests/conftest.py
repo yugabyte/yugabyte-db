@@ -118,8 +118,15 @@ def mock_chunk_function():
 
 @pytest.fixture(autouse=True)
 def setup_test_environment():
-    """Setup test environment variables."""
+    """Setup test environment variables.
+
+    Forces ENABLE_LANGFUSE_TRACING off so unit tests don't take the
+    langfuse code paths that expect real psycopg cursors (Mock cursors
+    can't satisfy ``Composable.as_string(cur)``). This keeps the suite
+    hermetic regardless of the developer's shell or .env file.
+    """
     os.environ['OPENAI_API_KEY'] = 'test-api-key'
+    os.environ['ENABLE_LANGFUSE_TRACING'] = 'false'
     yield
 
 

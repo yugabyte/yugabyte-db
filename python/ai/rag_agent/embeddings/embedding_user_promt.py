@@ -2,6 +2,7 @@ import os
 import logging
 import psycopg
 from langchain_openai import OpenAIEmbeddings
+from observability import meko_observe
 
 
 class UserPromptEmbedder:
@@ -36,6 +37,7 @@ class UserPromptEmbedder:
         )
         self.logger = logging.getLogger(__name__)
 
+    @meko_observe(name="Embed Prompt / UserPromptEmbedder", as_type="embedding")
     def embed_prompt(self, prompt: str):
         """Get OpenAI embedding for a single prompt."""
         try:
@@ -45,6 +47,7 @@ class UserPromptEmbedder:
             self.logger.error(f"Failed to generate embedding for prompt: {e}")
             raise
 
+    @meko_observe(name="Similarity Search / UserPromptEmbedder", as_type="retriever")
     def similarity_search(self, prompt: str):
         """
         Embed the prompt and perform a vector similarity search using HNSW index in the PG table.

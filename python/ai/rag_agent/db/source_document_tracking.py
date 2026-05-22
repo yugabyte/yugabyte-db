@@ -1,6 +1,6 @@
 from db.connection_pool import ConnectionPool
 from models.document_metadata import DocumentMetadata
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional
 from uuid import UUID
 import logging
 
@@ -129,19 +129,84 @@ class SourceDocumentTracking:
             if connection:
                 self.connection_pool.return_connection(connection)
 
-    def update_document_status(self, document_id: UUID, status: str):
+    def get_document_status(self, document_id: UUID) -> Optional[str]:
+        """
+        Look up the current status of a document in ``dist_rag.documents``.
+
+        Returns ``None`` when the row doesn't exist. Callers use this for
+        idempotency checks (e.g. skip processing a document whose status
+        is already ``COMPLETED``); failures to look up are treated as
+        "unknown -- proceed" by the caller.
+        """
+        connection = None
+        cursor = None
+        try:
+            connection = self.connection_pool.get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT status FROM dist_rag.documents WHERE document_id = %s",
+                (str(document_id),),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            self.logger.warning(
+                f"Failed to look up status for document_id {document_id}: "
+                f"{str(e)}"
+            )
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                self.connection_pool.return_connection(connection)
+
+    def update_document_status(
+        self,
+        document_id: UUID,
+        status: str,
+        trace_id: Optional[str] = None,
+    ):
         """
         Update the status of a document.
+
+        When *trace_id* is supplied the ``document_details`` JSONB column is
+        set (or merged) with ``{"meko": {"trace_id": "<value>"}}``.
         """
         connection = None
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-            cursor.execute(
-                "UPDATE dist_rag.documents SET status = %s "
-                "WHERE document_id = %s",
-                (status, document_id)
-            )
+            if trace_id:
+                cursor.execute(
+                    "UPDATE dist_rag.documents "
+                    "SET status = %s, "
+                    "    document_details = jsonb_set("
+                    "        jsonb_set("
+                    "            COALESCE(document_details, '{}'::jsonb),"
+                    "            '{meko}',"
+                    "            COALESCE(COALESCE(document_details, '{}'::jsonb)->'meko',"
+                    "                '{}'::jsonb),"
+                    "            true"
+                    "        ),"
+                    "        '{meko,trace_id}',"
+                    "        to_jsonb(%s::text),"
+                    "        true"
+                    "    ) "
+                    "WHERE document_id = %s",
+                    (status, trace_id, document_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE dist_rag.documents SET status = %s "
+                    "WHERE document_id = %s",
+                    (status, document_id),
+                )
             connection.commit()
             return True
         except Exception as e:

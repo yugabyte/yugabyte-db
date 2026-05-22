@@ -7,6 +7,7 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     SpacyTextSplitter
 )
+from observability import meko_observe
 import json
 import mimetypes
 
@@ -54,6 +55,7 @@ def get_splitter_for_filetype(file_location: str) -> tuple[str, str]:
     return splitter, args
 
 
+@meko_observe(name="Chunk Text / chunk", as_type="span")
 def chunk(splitter, text, args):
     kwargs = json.loads(args)
 
@@ -63,6 +65,7 @@ def chunk(splitter, text, args):
         raise ValueError("Unknown splitter: {}".format(splitter))
 
 
+@meko_observe(name="Chunk LangChain Docs / chunk", as_type="span")
 def chunk_langchain_docs(splitter, docs, args):
     kwargs = json.loads(args)
 

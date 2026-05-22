@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 RUN useradd --uid 1001 --create-home --shell /bin/false ragagent
 
 COPY --chown=ragagent:ragagent . /app/rag_agent/
+RUN chown -R ragagent:ragagent /app/rag_agent
 
 USER ragagent
 RUN touch /app/rag_agent/app.log

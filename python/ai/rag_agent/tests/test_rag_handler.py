@@ -187,7 +187,8 @@ class TestRagPipelineHandler:
         assert result is True
         mock_embed_cls.assert_called_once_with(
             embedding_model="custom_model",
-            embedding_model_params=custom_params
+            embedding_model_params=custom_params,
+            ai_provider=None
         )
 
     @patch('rag_pipeline.rag_handler.PipelineTracking')
