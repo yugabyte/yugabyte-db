@@ -1188,5 +1188,21 @@ export const ApiPermissionMap = {
     DELETE_TELEMETRY_PROVIDER_BY_ID : {
         requestType : ApiRequestType.DELETE,
         endpoint : '/telemetry_provider/$intUUID<[^/]+>'
+    },
+    EDIT_V2_UNIVERSE_PLACEMENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters'
+    },
+    EDIT_V2_UNIVERSE_CLUSTER: {
+        requestType: ApiRequestType.PUT,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+    },
+    ADD_V2_READ_REPLICA: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters'
+    },
+    DELETE_V2_READ_REPLICA: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters/$clsUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;

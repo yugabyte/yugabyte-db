@@ -15,6 +15,8 @@ import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettings
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { styled } = mui;
 
@@ -58,16 +60,18 @@ export const AdvancedTab = () => {
     <StyledPanel>
       <StyledHeader sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {t('proxyConfiguration')}
-        <YBButton
-          dataTestId="edit-security-transit-button"
-          variant="ghost"
-          startIcon={<EditIcon />}
-          onClick={() => {
-            setEditAdvancedSettingsModalVisible(true);
-          }}
-        >
-          {t('edit', { keyPrefix: 'common' })}
-        </YBButton>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+          <YBButton
+            dataTestId="edit-security-transit-button"
+            variant="ghost"
+            startIcon={<EditIcon />}
+            onClick={() => {
+              setEditAdvancedSettingsModalVisible(true);
+            }}
+          >
+            {t('edit', { keyPrefix: 'common' })}
+          </YBButton>
+        </RbacValidator>
       </StyledHeader>
       <StyledContent>
         <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>

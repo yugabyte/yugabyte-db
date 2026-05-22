@@ -8,6 +8,8 @@ import { StyledInfoRow } from '../../create-universe/components/DefaultComponent
 import { LinuxVersion } from '../components';
 
 import EditIcon from '@app/redesign/assets/edit2.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 interface InstanceCardProps {
   title: string;
   arch?: string;
@@ -31,14 +33,16 @@ export const InstanceCard: FC<InstanceCardProps> = ({
     <StyledContent>
       <StyledHeader>
         <div className="header-title">{title}</div>
-        <YBButton
-          dataTestId="edit-placement-edit-button"
-          variant="ghost"
-          startIcon={<EditIcon />}
-          onClick={() => onEditClicked && onEditClicked()}
-        >
-          {t('edit', { keyPrefix: 'common' })}
-        </YBButton>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl>
+          <YBButton
+            dataTestId="edit-placement-edit-button"
+            variant="ghost"
+            startIcon={<EditIcon />}
+            onClick={() => onEditClicked && onEditClicked()}
+          >
+            {t('edit', { keyPrefix: 'common' })}
+          </YBButton>
+        </RbacValidator>
       </StyledHeader>
       {arch && (
         <>

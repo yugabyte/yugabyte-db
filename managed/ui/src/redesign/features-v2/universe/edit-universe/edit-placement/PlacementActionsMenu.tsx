@@ -5,6 +5,8 @@ import { KeyboardArrowDown } from '@material-ui/icons';
 import { getAddGeoPartitionRoute, getAddReadReplicaRoute } from '../../read-replica/readReplicaUtils';
 import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { Box, MenuItem, Typography, Divider, Link } = mui;
 
@@ -65,29 +67,32 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           <Divider />
         </>
       ) : null}
-      <MenuItem
-        data-test-id="add-read-replica"
-        sx={{ height: 'auto' }}
-        onClick={() => {
-          window.location.href = getAddReadReplicaRoute(universeUuid);
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}>
-          <div>
-            <AddIcon />
-          </div>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {t('addReadReplica')}
-            <Typography
-              variant="subtitle1"
-              color="textSecondary"
-              sx={{ whiteSpace: 'initial' }}
-            >
-              <Trans t={t} i18nKey={'addReadReplicaHelpText'} style={{ lineHeight: '16px' }} />
-            </Typography>
+      <RbacValidator accessRequiredOn={ApiPermissionMap.ADD_V2_READ_REPLICA} isControl>
+
+        <MenuItem
+          data-test-id="add-read-replica"
+          sx={{ height: 'auto' }}
+          onClick={() => {
+            window.location.href = getAddReadReplicaRoute(universeUuid);
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}>
+            <div>
+              <AddIcon />
+            </div>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {t('addReadReplica')}
+              <Typography
+                variant="subtitle1"
+                color="textSecondary"
+                sx={{ whiteSpace: 'initial' }}
+              >
+                <Trans t={t} i18nKey={'addReadReplicaHelpText'} style={{ lineHeight: '16px' }} />
+              </Typography>
+            </Box>
           </Box>
-        </Box>
-      </MenuItem>
+        </MenuItem>
+      </RbacValidator>
       {showAddGeoPartition && (
         <>
           <Divider />

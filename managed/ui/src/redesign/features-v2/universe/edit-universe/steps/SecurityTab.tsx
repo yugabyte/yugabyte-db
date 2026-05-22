@@ -21,6 +21,8 @@ import { CloudType } from '@app/redesign/helpers/dtos';
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { styled, Box, CircularProgress } = mui;
 
@@ -86,15 +88,17 @@ export const SecurityTab = () => {
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             {t('encryptionInTransit')}
-            <YBButton
-              dataTestId="edit-security-transit-button"
-              variant="ghost"
-              startIcon={<EditIcon />}
-              onClick={() => setEitModalOpen(true)}
-              disabled={eitModalOpen}
-            >
-              {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+              <YBButton
+                dataTestId="edit-security-transit-button"
+                variant="ghost"
+                startIcon={<EditIcon />}
+                onClick={() => setEitModalOpen(true)}
+                disabled={eitModalOpen}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            </RbacValidator>
           </StyledHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
@@ -120,15 +124,17 @@ export const SecurityTab = () => {
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             {t('encryptionAtRest')}
-            <YBButton
-              dataTestId="edit-security-at-rest-button"
-              variant="ghost"
-              startIcon={<EditIcon />}
-              onClick={() => setEarModalOpen(true)}
-              disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID}
-            >
-              {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+              <YBButton
+                dataTestId="edit-security-at-rest-button"
+                variant="ghost"
+                startIcon={<EditIcon />}
+                onClick={() => setEarModalOpen(true)}
+                disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            </RbacValidator>
           </StyledHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
