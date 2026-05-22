@@ -312,7 +312,7 @@ You need:
 
 Use the `run-script` API when you need the same shell commands executed on many universe nodes in one round trip, instead of SSHing to each host.
 
-Endpoint: `POST /api/v2/customers/{cUUID}/universes/{uniUUID}/run-script`
+Endpoint to run a script: `POST /api/v2/customers/{cUUID}/universes/{uniUUID}/run-script`
 
 You can provide the script body or point to a script file that already exists on the YBA host. You can target all nodes, Masters only, TServers only, a specific cluster, or an explicit list of node names, and you can also cap parallel execution across nodes.
 
@@ -320,13 +320,13 @@ The response is synchronous and includes the stdout, exit code, and per-node suc
 
 ### Collect files, download, and clean up
 
-- Endpoint to create a collection:  `POST /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections`  
+- Endpoint to create a collection: `POST /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections`  
     Accepts a list of file paths and/or directory paths to gather, along with size and depth limits. Files are packaged into a tar archive on each node. The response includes a `collection_uuid` that identifies the collection.
 
 - Endpoint to download a collection: `GET /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download`  
     Streams the per-node archives as a combined download.
 
-- Endpoint to Delete a collection: `DELETE /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}`  
+- Endpoint to delete a collection: `DELETE /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}`  
     Removes staged archives from the database nodes and can optionally remove related data from YBA local storage.
 
 Contact {{% support-platform %}} for invocation examples suited to your environment and issue.
