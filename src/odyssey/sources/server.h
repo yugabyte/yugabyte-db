@@ -73,6 +73,8 @@ struct od_server {
 	/* YB */
 	bool yb_sticky_connection;
 	bool yb_replication_connection;
+	/* YB: true if this server has claimed a backend slot in yb_backends_in_use */
+	bool yb_slot_claimed;
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
@@ -139,6 +141,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	od_stat_state_init(&server->stats_state);
 	server->yb_sticky_connection = false;
 	server->yb_replication_connection = false;
+	server->yb_slot_claimed = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
 	server->yb_logical_client_version = UINT64_MAX;
