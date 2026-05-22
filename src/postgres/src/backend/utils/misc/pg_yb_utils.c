@@ -5933,3 +5933,9 @@ YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 		return false;
 	return true;
 }
+
+bool
+YbCatalogPreloadRequired()
+{
+	return YbNeedAdditionalCatalogTables() || !*YBCGetGFlags()->ysql_use_relcache_file;
+}

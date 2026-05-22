@@ -1321,4 +1321,7 @@ extern long YbGetPeakRssKb();
 extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
+
+extern bool YbCatalogPreloadRequired();
+
 #endif /* PG_YB_UTILS_H */
