@@ -110,4 +110,6 @@ YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
 
+using dockv::IncludeWriteTime;
+
 }  // namespace yb::docdb

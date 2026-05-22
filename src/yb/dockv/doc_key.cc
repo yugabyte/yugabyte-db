@@ -1023,14 +1023,15 @@ Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   return status;
 }
 
-string SubDocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
+string SubDocKey::ToString(
+    AutoDecodeKeys auto_decode_keys, IncludeWriteTime include_write_time) const {
   std::string result("SubDocKey(");
   result.append(doc_key_.ToString(auto_decode_keys));
   result.append(", [");
 
   AppendVectorToString(&result, subkeys_, auto_decode_keys);
 
-  if (has_hybrid_time()) {
+  if (include_write_time && has_hybrid_time()) {
     if (!subkeys_.empty()) {
       result.append("; ");
     }

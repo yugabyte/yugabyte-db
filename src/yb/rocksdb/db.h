@@ -108,6 +108,8 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
+using UserFrontierRange = std::pair<UserFrontierPtr, UserFrontierPtr>;
+
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
 // any external synchronization.
@@ -850,6 +852,10 @@ class DB {
 
   virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
     return nullptr;
+  }
+
+  virtual UserFrontierRange CalcMemTableFrontiers() {
+    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
