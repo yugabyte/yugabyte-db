@@ -3631,6 +3631,12 @@ class PgIndexBackfillCancellationTest : public PgIndexBackfillTest {
     options->extra_tserver_flags.push_back(
         Format("--transaction_heartbeat_usec=$0",
                kTransactionHeartbeat.ToMicroseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_session_expiration_ms=$0",
+               kPgClientSessionExpiration.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_heartbeat_interval_ms=$0",
+               kPgClientHeartbeatInterval.ToMilliseconds()));
   }
 
   int GetNumTabletServers() const override { return 1; }
@@ -3641,8 +3647,8 @@ class PgIndexBackfillCancellationTest : public PgIndexBackfillTest {
     // Roughly it verifies that the time needed to abort the backfill is less
     // than the time to finish the full backfill.
     const MonoDelta abort_detection_window =
-        kLivenessInterval + kTransactionRpcTimeout + kTransactionHeartbeat
-        + kWaitForMaxDelay;
+        kPgClientSessionExpiration + kLivenessInterval + kTransactionRpcTimeout
+        + kTransactionHeartbeat + kWaitForMaxDelay;
     const MonoDelta min_remaining_backfill_time =
         kSlowdown * (kExpectedTotalBackfillRpcs - 1);
 
@@ -3695,13 +3701,16 @@ class PgIndexBackfillCancellationTest : public PgIndexBackfillTest {
   const MonoDelta kTransactionRpcTimeout = 1s * kTimeMultiplier;
   const MonoDelta kTransactionHeartbeat = 500ms;
   const MonoDelta kLivenessInterval = 1s;
+  // pg_client_heartbeat_interval_ms validator requires strictly > 1000ms.
+  const MonoDelta kPgClientHeartbeatInterval = 1100ms;
+  const MonoDelta kPgClientSessionExpiration = 3s;
 
   // WaitFor poll cap used to observe the abort counter in the positive test.
   const MonoDelta kWaitForMaxDelay = 100ms;
 
   // ceil(kNumRows / kFetchRowLimit)
   static constexpr int kFetchRowLimit = 500;
-  static constexpr int kNumRows = 8000;
+  static constexpr int kNumRows = 12000;
   static constexpr int kExpectedTotalBackfillRpcs =
       (kNumRows + kFetchRowLimit - 1) / kFetchRowLimit;
 

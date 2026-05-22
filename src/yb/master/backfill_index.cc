@@ -685,7 +685,7 @@ BackfillTable::BackfillTable(
     read_time_for_backfill_ = HybridTime::kInvalid;
     timestamp_chosen_.store(false, std::memory_order_release);
   }
-  done_.store(false, std::memory_order_release);
+  state_.store(State::kRunning, std::memory_order_release);
 }
 
 const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
@@ -1008,8 +1008,9 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
 
   // If OK then move on to READ permissions.
   if (!done() && --tablets_pending_ == 0) {
-    bool expected = false;
-    if (!done_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    State expected = State::kRunning;
+    if (!state_.compare_exchange_strong(
+            expected, State::kSuccess, std::memory_order_acq_rel)) {
       return Status::OK();
     }
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
@@ -1026,7 +1027,7 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
 Status BackfillTable::MarkIndexesAsFailed(
     const std::unordered_set<TableId>& failed_indexes, const string& message) {
   if (indexes_to_build() == failed_indexes) {
-    done_.store(true, std::memory_order_release);
+    state_.store(State::kFailed, std::memory_order_release);
     StopLivenessMonitor();
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
@@ -1151,8 +1152,9 @@ void BackfillTable::StopLivenessMonitor() {
 }
 
 Status BackfillTable::Abort(bool from_liveness) {
-  bool expected = false;
-  if (!done_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+  State expected = State::kRunning;
+  if (!state_.compare_exchange_strong(
+          expected, State::kFailed, std::memory_order_acq_rel)) {
     return Status::OK();
   }
   if (from_liveness) {
@@ -1171,8 +1173,8 @@ Status BackfillTable::Abort(bool from_liveness) {
 
 Status BackfillTable::CheckIfDone() {
   if (indexes_to_build().empty()) {
-    done_.store(true, std::memory_order_release);
-    StopLivenessMonitor();
+    DCHECK(state() != State::kRunning)
+        << "CheckIfDone expects callers to transition state out of kRunning before invocation";
     RETURN_NOT_OK_PREPEND(
         UpdateIndexPermissionsForIndexes(),
         "Could not update index permissions after backfill");

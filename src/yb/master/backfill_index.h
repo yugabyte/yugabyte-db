@@ -140,8 +140,18 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   std::string description() const;
 
+  enum class State : uint8_t {
+    kRunning,
+    kSuccess,
+    kFailed,
+  };
+
+  State state() const {
+    return state_.load(std::memory_order_acquire);
+  }
+
   bool done() const {
-    return done_.load(std::memory_order_acquire);
+    return state() != State::kRunning;
   }
 
   bool timestamp_chosen() const {
@@ -227,7 +237,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
 
-  std::atomic_bool done_{false};
+  std::atomic<State> state_{State::kRunning};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
