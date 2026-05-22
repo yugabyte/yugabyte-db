@@ -1264,6 +1264,14 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(DeadlockResolvesYoungestTxn)) {
 }
 
 void PgWaitQueuesTest::TestMultiTabletFairness() const {
+  // Prevent leadership churn during the test. The 20+ PG connections all go through TS-0 which
+  // can get stressed enough to cause missed heartbeats, triggering leader elections. When status
+  // tablet leaders become unavailable, wait-queue requests time out, and after the blocker commits,
+  // transactions resume at different tablets in different orders -- leading to spurious deadlocks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   constexpr int kNumUpdateConns = 20;
   constexpr int kNumKeys = 40;
   // This test specifically ensures 2 aspects when transactions simultaneously contend on
@@ -1339,13 +1347,6 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(setup_conn.Fetch(Format(
       "SELECT * From foo WHERE k IN ($0) FOR UPDATE", JoinStrings(contended_keys, ","))));
-
-  // Prevent leadership churn during the test. The 20+ PG connections all go through TS-0 which
-  // can get stressed enough to cause missed heartbeats, triggering leader elections. When status
-  // tablet leaders become unavailable, wait-queue requests time out, and after the blocker commits,
-  // transactions resume at different tablets in different orders -- leading to spurious deadlocks.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 60000;
 
   // Create update_conns here since this is somewhat slow, and the loop below has timing-based
   // waits and assertions.
