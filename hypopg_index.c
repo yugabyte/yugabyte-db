@@ -68,6 +68,9 @@
 #include "utils/ruleutils.h"
 #endif
 #include "utils/syscache.h"
+#if PG_VERSION_NUM >= 190000
+#include "utils/tuplestore.h"
+#endif
 
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
@@ -136,7 +139,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	Oid			oid;
 
 #if PG_VERSION_NUM >= 90600
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 	amoptions_function amoptions;
 #else
 	RegProcedure amoptions;
