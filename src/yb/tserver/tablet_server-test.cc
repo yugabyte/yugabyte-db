@@ -67,7 +67,6 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
@@ -730,10 +729,8 @@ TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
 // the peer as RUNNING, but GetRaftConsensus returns IllegalState.
 // The RPC must complete without crashing the process.
 TEST_F(TabletServerTest, CheckTserverTabletHealthDoesNotCrashWhenConsensusUnavailable) {
+  // YBTest::flag_saver_ restores all gflags on fixture teardown, so no manual reset needed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_peer_force_get_raft_consensus_failure) = true;
-  auto reset = ScopeExit([] {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_peer_force_get_raft_consensus_failure) = false;
-  });
 
   CheckTserverTabletHealthRequestPB req;
   req.add_tablet_ids(kTabletId);
