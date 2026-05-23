@@ -3460,7 +3460,16 @@ TEST_F(PgLibPqPgssQtextLeakTest, TestNoMemoryLeakOnCorruptedPgssQtext) {
   constexpr int kNumPopulateQueries = 500;
   constexpr int kPgMaxIdentifierLen = 63;  // NAMEDATALEN - 1
   const int kLeakIterations = RegularBuildVsSanitizers(2000, 500);
-  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 200) * 1024;
+  // The sanitizer threshold is set well above the ASAN baseline overhead (issue #31709):
+  // 500 iterations of the error path accumulate ~200 MB of RSS from ASAN's shadow memory,
+  // redzones, allocator metadata, and per-error ereport/longjmp cleanup state -- not from
+  // the leak this test guards against. Before bumping to 400 MB, runs consistently landed
+  // at ~203 MB and tipped over the previous 200 MB threshold ~28% of the time. A real
+  // regression of the qtext-buffer leak would add file_size * iterations of growth (with
+  // ASAN's per-allocation overhead on top -- empirically ~4x), so a threshold of 400 MB
+  // still detects an unfixed leak comfortably while leaving room for ASAN measurement
+  // noise. The non-sanitizer threshold (50 MB) is unchanged.
+  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 400) * 1024;
   constexpr size_t kCorruptOffset = 500;
 
   auto conn = ASSERT_RESULT(Connect());
