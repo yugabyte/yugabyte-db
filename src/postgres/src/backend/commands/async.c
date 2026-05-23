@@ -642,6 +642,7 @@ typedef struct
 {
 	volatile YbNotifsPollerInitStatus init_status;
 	char		error_message[1024];
+	volatile bool has_runtime_error;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -700,6 +701,7 @@ static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe);
+static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
 static void ybListenNotifyPreChecks(void);
@@ -1375,6 +1377,29 @@ Exec_ListenPreCommit(void)
 	prevListener = InvalidBackendId;
 
 	bool		ybIsFirstListenerOnNode = QUEUE_FIRST_LISTENER == InvalidBackendId;
+
+	if (!ybIsFirstListenerOnNode)
+	{
+		static YbNotifsPollerShmemData *poller_data = NULL;
+
+		if (poller_data == NULL)
+		{
+			bool		found;
+
+			poller_data = ybShmemNotifsPollerData(&found);
+		}
+
+		if (poller_data->has_runtime_error)
+		{
+			LWLockRelease(NotifyQueueLock);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("notifications poller encountered a non-retryable "
+							"error, LISTEN is unavailable until existing "
+							"listeners terminate. Please re-try in some time"),
+					 errdetail("%s", poller_data->error_message)));
+		}
+	}
 
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
 	{
@@ -2702,6 +2727,24 @@ ProcessIncomingNotify(bool flush)
 	if (listenChannels == NIL)
 		return;
 
+	if (IsYugaByteEnabled())
+	{
+		static YbNotifsPollerShmemData *poller_data = NULL;
+
+		if (poller_data == NULL)
+		{
+			bool		found;
+
+			poller_data = ybShmemNotifsPollerData(&found);
+		}
+
+		if (poller_data->has_runtime_error)
+			ereport(FATAL,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("notifications poller encountered a fatal error"),
+					 errdetail("%s", poller_data->error_message)));
+	}
+
 	if (Trace_notify)
 		elog(DEBUG1, "ProcessIncomingNotify");
 
@@ -3060,6 +3103,7 @@ ybStartNotifsPollerBgWorker(void)
 
 	poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 	poller_data->error_message[0] = '\0';
+	poller_data->has_runtime_error = false;
 
 	memset(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "notifications poller");
@@ -3213,6 +3257,8 @@ ybNotifsPollerLoop()
 {
 	YbVirtualWalRecord *record;
 	List	   *publications = ybNotifsPublications();
+	bool		shmem_found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&shmem_found);
 
 	for (;;)
 	{
@@ -3237,9 +3283,37 @@ ybNotifsPollerLoop()
 		yb_walsender_poll_sleep_duration_empty_ms =
 			yb_notifications_poll_sleep_duration_empty_ms;
 
-		record = YBCReadRecord(publications);
-		if (record)
-			ybNotifsPollerProcessRecord(record);
+		PG_TRY();
+		{
+			record = YBCReadRecord(publications);
+			if (record)
+				ybNotifsPollerProcessRecord(record);
+		}
+		PG_CATCH();
+		{
+			MemoryContext error_cxt = MemoryContextSwitchTo(TopMemoryContext);
+			ErrorData  *edata = CopyErrorData();
+
+			ereport(WARNING,
+					(errmsg("notifications poller encountered a non-retryable "
+							"error, terminating all listening backends in "
+							"this node"),
+					 errdetail("%s", edata->message)));
+
+			strlcpy(poller_data->error_message, edata->message,
+					sizeof(poller_data->error_message));
+			poller_data->has_runtime_error = true;
+
+			FreeErrorData(edata);
+			MemoryContextSwitchTo(error_cxt);
+			FlushErrorState();
+
+			ybSignalAllListeners();
+
+			/* Nothing else to do, exit. */
+			proc_exit(0);
+		}
+		PG_END_TRY();
 	}
 
 	pg_unreachable();
@@ -3565,6 +3639,44 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	pfree(desc);
 	pfree(tuple);
+}
+
+/*
+ * Signal all listening backends unconditionally via PROCSIG_NOTIFY_INTERRUPT.
+ *
+ * Unlike SignalBackends(), this does not skip caught-up listeners.
+ */
+static void
+ybSignalAllListeners(void)
+{
+	int32	   *pids;
+	BackendId  *ids;
+	int			count;
+
+	pids = (int32 *) palloc(MaxBackends * sizeof(int32));
+	ids = (BackendId *) palloc(MaxBackends * sizeof(BackendId));
+	count = 0;
+
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+	{
+		int32		pid = QUEUE_BACKEND_PID(i);
+
+		Assert(pid != InvalidPid);
+		pids[count] = pid;
+		ids[count] = i;
+		count++;
+	}
+	LWLockRelease(NotifyQueueLock);
+
+	for (int i = 0; i < count; i++)
+	{
+		if (SendProcSignal(pids[i], PROCSIG_NOTIFY_INTERRUPT, ids[i]) < 0)
+			elog(DEBUG3, "could not signal backend with PID %d: %m", pids[i]);
+	}
+
+	pfree(pids);
+	pfree(ids);
 }
 
 static void
