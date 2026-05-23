@@ -11,6 +11,8 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.CustomTrustStoreListener;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -43,25 +45,30 @@ public class CustomCAStoreManager {
   // Reference to the listeners who want to get notified about updates in this custom trust-store.
   private final List<CustomTrustStoreListener> trustStoreListeners = new ArrayList<>();
   private final YBATrustStoreManager ybaTrustStoreManager;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
-  public CustomCAStoreManager(YBATrustStoreManager ybaTrustStoreManager) {
+  public CustomCAStoreManager(
+      YBATrustStoreManager ybaTrustStoreManager, RuntimeConfGetter runtimeConfGetter) {
     trustStoreManagers.add(ybaTrustStoreManager);
     this.ybaTrustStoreManager = ybaTrustStoreManager;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public UUID addCACert(UUID customerId, String name, String contents, String storagePath) {
-    Customer.getOrBadRequest(customerId);
+    Customer customer = Customer.getOrBadRequest(customerId);
 
     boolean suppressErrors = false;
     UUID certId = UUID.randomUUID();
     log.info("Uploading custom CA certificate => name: '{}', customerId: '{}'", name, customerId);
 
+    boolean validate =
+        runtimeConfGetter.getConfForScope(customer, CustomerConfKeys.CheckCertificateConfig);
     List<TrustStoreManager> trustStoreManagersToRollback = new ArrayList<>();
     List<X509Certificate> x509CACerts = null;
     try {
       x509CACerts = getCertChain(customerId, name, contents);
-      validateNewCert(name, x509CACerts);
+      validateNewCert(name, x509CACerts, validate);
     } catch (CertificateException e) {
       log.error(String.format("Failed to validate certificate %s", name), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getLocalizedMessage());
@@ -111,12 +118,18 @@ public class CustomCAStoreManager {
     return certId;
   }
 
-  private void validateNewCert(String name, List<X509Certificate> x509CACerts) {
+  private void validateNewCert(String name, List<X509Certificate> x509CACerts, boolean validate) {
     CustomCaCertificateInfo cert = CustomCaCertificateInfo.getByName(name);
     if (cert != null) {
       String errMsg = String.format("CA certificate by name '%s' already exists", name);
       log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    if (!validate) {
+      log.info(
+          "Skipping custom CA certificate validation."
+              + " Set yb.tls.enable_config_validation to true to enable it.");
+      return;
     }
     // Verify the uploaded cert has a verified cert-chain and not expired.
     CertificateHelper.verifyCertValidity(x509CACerts);
@@ -125,7 +138,7 @@ public class CustomCAStoreManager {
   public UUID updateCA(
       UUID customerId, UUID oldCertId, String name, String newCertContents, String storagePath) {
 
-    Customer.getOrBadRequest(customerId);
+    Customer customer = Customer.getOrBadRequest(customerId);
     CustomCaCertificateInfo oldCert = validateAndGetCert(oldCertId, customerId, name);
     log.info("Refreshing custom CA => name: '{}', customerId: '{}' ...", name, customerId);
 
@@ -137,10 +150,18 @@ public class CustomCAStoreManager {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
+    boolean validate =
+        runtimeConfGetter.getConfForScope(customer, CustomerConfKeys.CheckCertificateConfig);
     try {
       // Validate new certificate's chain and expiry.
       List<X509Certificate> x509CACerts = getCertChain(customerId, name, newCertContents);
-      CertificateHelper.verifyCertValidity(x509CACerts);
+      if (validate) {
+        CertificateHelper.verifyCertValidity(x509CACerts);
+      } else {
+        log.info(
+            "Skipping custom CA certificate validation."
+                + " Set yb.tls.enable_config_validation to true to enable it.");
+      }
     } catch (CertificateException e) {
       log.error("Verification of certificate failed", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getLocalizedMessage());
