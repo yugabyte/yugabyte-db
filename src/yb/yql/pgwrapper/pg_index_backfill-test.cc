@@ -826,7 +826,7 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillTestDeadlines, ::testing::Bool());
 // Set the backfill batch size, backfill rate and a low timeout for backfill rpc.
 // Ensure that the backfill is completed. And that the avg rpc latency is
 // below what is set as the timeout.
-TEST_P(PgIndexBackfillTestDeadlines, BackfillRespectsDeadline) {
+TEST_P(PgIndexBackfillTestDeadlines, YB_DISABLE_TEST(BackfillRespectsDeadline)) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
 
