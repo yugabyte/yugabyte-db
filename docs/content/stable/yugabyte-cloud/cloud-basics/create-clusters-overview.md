@@ -172,9 +172,9 @@ Clusters are created using a stable release, taken from the [stable release seri
 
 {{< note title="Production, Innovation, and Early Access tracks" >}}
 
-Clusters previously on the Innovation and Production tracks will move to the Extended track.
+Clusters previously on the Innovation and Production tracks are now on the Extended track.
 
-Clusters previously on the Preview and Early Access tracks will move to the Rapid track.
+Clusters previously on the Preview and Early Access tracks are now on the Rapid track.
 
 {{< /note >}}
 
