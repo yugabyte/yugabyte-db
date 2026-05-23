@@ -5257,6 +5257,19 @@ YBIsDmlCommandTag(CommandTag command_tag)
 			command_tag == CMDTAG_DELETE);
 }
 
+static bool
+YBIsTransactionControlCommandTag(CommandTag command_tag)
+{
+	return (command_tag == CMDTAG_COMMIT ||
+			command_tag == CMDTAG_ROLLBACK ||
+			command_tag == CMDTAG_COMMIT_PREPARED ||
+			command_tag == CMDTAG_ROLLBACK_PREPARED ||
+			command_tag == CMDTAG_BEGIN ||
+			command_tag == CMDTAG_START_TRANSACTION ||
+			command_tag == CMDTAG_SAVEPOINT ||
+			command_tag == CMDTAG_RELEASE);
+}
+
 /* Whether we are allowed to restart current query/txn. */
 static bool
 yb_is_retry_possible(ErrorData *edata, int attempt,
@@ -5524,7 +5537,8 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	bool		is_dml = YBIsDmlCommandTag(command_tag);
 
 	if (command_tag == CMDTAG_COPY || command_tag == CMDTAG_COPY_FROM ||
-		command_tag == CMDTAG_ANALYZE)
+		command_tag == CMDTAG_ANALYZE ||
+		YBIsTransactionControlCommandTag(command_tag))
 	{
 		const char *retry_err = psprintf("query layer retries not possible for %s commands",
 										 GetCommandTagName(command_tag));
