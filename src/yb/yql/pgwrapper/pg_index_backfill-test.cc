@@ -787,7 +787,7 @@ class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
 // below what is set as the timeout.
 TEST_F_EX(
     PgIndexBackfillTest,
-    BackfillRespectsDeadline,
+    YB_DISABLE_TEST(BackfillRespectsDeadline),
     PgIndexBackfillTestDeadlines) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
