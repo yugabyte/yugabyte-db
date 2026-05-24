@@ -201,7 +201,7 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     RETURN_NOT_OK(WaitForTableIntentsApplied(cluster_.get(), peer->tablet_metadata()->table_id()));
     auto tablet = peer->shared_tablet_maybe_null();
     SCHECK_NOTNULL(tablet);
-    return tablet->Flush(tablet::FlushMode::kSync);
+    return tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly);
   }
 
   Result<RemoteTabletPtr> LookupTabletById(const TabletId& tablet_id,

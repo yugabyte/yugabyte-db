@@ -980,12 +980,12 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // Insert 2 rows, and flush.
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
   ASSERT_OK(conn.Execute("insert into t1 values (2)"));
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
   ASSERT_OK(conn.Execute("TRUNCATE t1"));
   SleepFor(1s);
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Check if the row still visible.
   ASSERT_OK(conn.FetchMatrix("select k from t1 where k = 1", 0, 1));
@@ -2363,14 +2363,14 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   auto sys_catalog_tablet =
       ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
 
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
   uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
 
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
@@ -2724,14 +2724,14 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T2 - BEGIN/INSERT";
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (1)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2796,7 +2796,7 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
   ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(21)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2843,7 +2843,7 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   ASSERT_OK(conn.Execute("INSERT INTO test1(a) VALUES (0)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(test1_peer->FlushBootstrapState());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test2(a int references test1(a)) SPLIT INTO 1 TABLETS"));
@@ -2936,7 +2936,7 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn3.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
 
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());

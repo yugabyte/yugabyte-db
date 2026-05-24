@@ -777,6 +777,8 @@ class DB {
   // ever growing file, but only the portion specified by manifest_file_size is
   // valid for this snapshot.
   // Setting flush_memtable to true does Flush before recording the live files.
+  // flush_reason tags that flush for observability; callers must pass an explicit reason
+  // (e.g. `kCheckpointCreation` for `CreateCheckpoint`, `kTestOnly` for tests).
   // Setting flush_memtable to false is useful when we don't want to wait for
   // flush which may have to wait for compaction to complete taking an
   // indeterminate time.
@@ -785,9 +787,9 @@ class DB {
   // you still need to call GetSortedWalFiles after GetLiveFiles to compensate
   // for new data that arrived to already-flushed column families while other
   // column families were flushing
-  virtual Status GetLiveFiles(std::vector<std::string>&,
-                              uint64_t* manifest_file_size,
-                              bool flush_memtable = true) = 0;
+  virtual Status GetLiveFiles(
+      std::vector<std::string>&, uint64_t* manifest_file_size, bool flush_memtable,
+      FlushReason flush_reason) = 0;
 
   // Retrieve the sorted list of all wal files with earliest file first
   virtual Status GetSortedWalFiles(VectorLogPtr* files) = 0;

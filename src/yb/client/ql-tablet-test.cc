@@ -1157,7 +1157,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
       ++key;
       SetValue(session, key, ValueForKey(key), table1_);
       if (meta.size() <= original_rocksdb_level0_stop_writes_trigger) {
-        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         stop_key = key + 10;
       } else if (key >= stop_key) {
         break;
@@ -1802,7 +1802,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
     ASSERT_OK(cluster_->FlushTablets());
 
     auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
-      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
       RETURN_NOT_OK(tablet->ForceManualRocksDBCompact());
       return tablet->GetCurrentVersionSstFilesSize();
     };

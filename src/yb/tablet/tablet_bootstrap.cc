@@ -590,7 +590,8 @@ class TabletBootstrap {
     RETURN_NOT_OK(RemoveRecoveryDir());
 
     if (FLAGS_force_recover_flushed_frontier) {
-      RETURN_NOT_OK(tablet_->Flush(FlushMode::kSync));
+      RETURN_NOT_OK(
+          tablet_->Flush(FlushMode::kSync, rocksdb::FlushReason::kFlushedFrontierRecovery));
       docdb::ConsensusFrontier new_consensus_frontier;
       new_consensus_frontier.set_op_id(consensus_info->last_committed_id);
       new_consensus_frontier.set_hybrid_time(tablet_->mvcc_manager()->LastReplicatedHybridTime());

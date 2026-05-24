@@ -81,7 +81,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   s = db->DisableFileDeletions();
   if (s.ok()) {
     // this will return live_files prefixed with "/"
-    s = db->GetLiveFiles(live_files, &manifest_file_size, true);
+    s = db->GetLiveFiles(live_files, &manifest_file_size, true, FlushReason::kCheckpointCreation);
   }
   // if we have more than one column family, we need to also get WAL files
   if (s.ok()) {

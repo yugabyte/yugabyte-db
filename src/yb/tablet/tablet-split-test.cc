@@ -123,7 +123,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       if (i % kRowsPerSourceFlush == 0) {
         ASSERT_OK(writer_->WriteBatch(&batch));
         batch.Clear();
-        ASSERT_OK(tablet()->Flush(FlushMode::kSync));
+        ASSERT_OK(tablet()->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
       }
     }
     if (!batch.empty()) {

@@ -211,7 +211,7 @@ void BulkLoadTask::Run() {
       /* decode_dockey */ false, /* increment_write_id */ false));
 
   if (FLAGS_flush_batch_for_tests) {
-    CHECK_OK(db_fixture_->FlushRocksDbAndWait());
+    CHECK_OK(db_fixture_->FlushRocksDbAndWait(rocksdb::FlushReason::kYbBulkLoadTool));
   }
 }
 
@@ -428,7 +428,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
   thread_pool_->Wait();
 
   // Now flush the DB.
-  RETURN_NOT_OK(db_fixture_->FlushRocksDbAndWait());
+  RETURN_NOT_OK(db_fixture_->FlushRocksDbAndWait(rocksdb::FlushReason::kYbBulkLoadTool));
 
   // Perform the necessary compactions.
   RETURN_NOT_OK(CompactFiles());

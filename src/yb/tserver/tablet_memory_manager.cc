@@ -381,7 +381,8 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
                     << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
             tablet_to_flush->Flush(
-                tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
+                tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick,
+                rocksdb::FlushReason::kGlobalMemstoreLimit),
             Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
         WARN_NOT_OK(
             peer_to_flush->log()->AsyncAllocateSegmentAndRollover(),

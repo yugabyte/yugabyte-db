@@ -1818,7 +1818,8 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   auto flush_tablet_and_wait = [&tablet, db_impl, cluster = cluster_.get()](
       const std::string& description) -> Status {
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster, 10s));
-    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+    RETURN_NOT_OK(tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs, rocksdb::FlushReason::kTestOnly));
 
     // Wait for the files are really being flushed.
     SleepFor(MonoDelta::FromMilliseconds(200));

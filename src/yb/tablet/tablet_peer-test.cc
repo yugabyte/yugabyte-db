@@ -404,13 +404,13 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
 
   // Ensure nothing gets deleted.
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
@@ -444,7 +444,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Flush RocksDB so the next mutation goes into a DMS.
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   int32_t earliest_needed = 1;
   auto total_segments = log_reader->num_segments();
@@ -483,7 +483,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   earliest_needed = 4;
   std::string details;
   min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));

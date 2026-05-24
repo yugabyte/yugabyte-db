@@ -252,7 +252,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->Flush(mode, flags);
+    return tablet->Flush(mode, flags, rocksdb::FlushReason::kTestOnly);
   });
 }
 

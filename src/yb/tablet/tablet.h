@@ -464,9 +464,13 @@ class Tablet : public AbstractTablet,
       const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
-  Status Flush(FlushMode mode,
-               FlushFlags flags = FlushFlags::kAllDbs,
-               int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
+  Status Flush(
+      FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
+      rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason);
 
   Status WaitForFlush();
 

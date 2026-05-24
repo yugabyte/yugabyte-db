@@ -39,7 +39,7 @@ class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<DataType::
     auto tablet = this->tablet();
     LocalTabletWriter writer(tablet);
     ASSERT_OK(this->InsertTestRow(&writer, 12345, 0));
-    ASSERT_OK(tablet->Flush(FlushMode::kSync));
+    ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   }
 
  protected:

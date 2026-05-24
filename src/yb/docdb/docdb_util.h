@@ -25,6 +25,7 @@
 #include "yb/master/master_replication.pb.h"
 
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/listener.h"
 
 namespace yb {
 
@@ -252,7 +253,9 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   void DocDBDebugDumpToConsole();
 
-  Status FlushRocksDbAndWait();
+  // Waits for regular DB flush. Pass `kYbBulkLoadTool` from `yb-bulk_load`; DocDB tests
+  // typically pass `kTestOnly`.
+  Status FlushRocksDbAndWait(rocksdb::FlushReason flush_reason);
 
   void SetTableTTL(uint64_t ttl_msec);
 

@@ -201,7 +201,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp->ql_response_batch().front().status()) <<
         "Insert error: " << resp->ShortDebugString();
   }
-  ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 }
 
 void RemoteBootstrapSessionTest::InitSession() {
