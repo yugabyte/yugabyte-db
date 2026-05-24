@@ -91,6 +91,11 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   void RunNewClusterGlobalInitDB(const LeaderEpoch& epoch);
 
+  // Test-only: spin until at least FLAGS_TEST_master_min_live_tservers_before_initdb tablet servers
+  // register, or until a 60s deadline elapses. Short-circuits when the flag is <= 0 so production
+  // is unaffected. See the .cc for the rationale and #31029.
+  void WaitForTServersBeforeInitDb();
+
   void RunMajorVersionUpgrade(const LeaderEpoch& epoch);
 
   Status RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch);

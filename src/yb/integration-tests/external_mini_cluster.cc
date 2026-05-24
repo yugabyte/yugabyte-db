@@ -406,6 +406,13 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
+  // WaitForInitDb is called here, after tservers have launched, rather than inside
+  // StartMasters(). The master gates initdb on the TEST_master_min_live_tservers_before_initdb
+  // flag set in StartMaster(), so initdb only completes after the tservers above register.
+  // StartMasters() is only called from this method, so the deferral is safe.
+  if (opts_.enable_ysql) {
+    RETURN_NOT_OK(WaitForInitDb());
+  }
   if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
     RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
         MonoTime::Now() + kTabletServerRegistrationTimeout));
@@ -576,6 +583,22 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
+    // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
+    // master (to create the global transaction status table) and fails with "Not enough live
+    // tablet servers ..." if no tservers have registered yet. Have the master wait for the
+    // tservers we are about to start before launching initdb. Mirrors the Java-side fix in
+    // MiniYBCluster.java. num_tablet_servers is the right ceiling because (a) we are about
+    // to start exactly that many tservers immediately after, and (b) the master's RF
+    // requirement is min(num_tablet_servers, FLAGS_replication_factor), so any test that
+    // survives the bootstrap eventually needs all of them anyway.
+    //
+    // Add the flag to --undefok so that upgrade tests (which boot older yb-master binaries
+    // from build/db-upgrade/) silently ignore it. Older masters never had this race in
+    // upgrade scenarios -- they load a pre-baked sys-catalog snapshot and bypass initdb
+    // altogether -- so being able to skip the flag is safe.
+    AppendCsvFlagValue(flags, "undefok", "TEST_master_min_live_tservers_before_initdb");
+    flags.push_back(Format(
+        "--TEST_master_min_live_tservers_before_initdb=$0", opts_.num_tablet_servers));
     if (opts_.enable_ysql_auth) {
       flags.push_back("--ysql_enable_auth=true");
     }
@@ -1294,9 +1317,10 @@ Status ExternalMiniCluster::StartMasters() {
     masters_.push_back(master);
   }
 
-  if (opts_.enable_ysql) {
-    RETURN_NOT_OK(WaitForInitDb());
-  }
+  // Note: WaitForInitDb() is intentionally not called here. It is called from Start() after
+  // tservers have launched, so that the master's wait on
+  // TEST_master_min_live_tservers_before_initdb does not deadlock against tservers that
+  // haven't been started yet. See the comment block in Start() for details.
 
   // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
   if (!masters_.empty()) {
