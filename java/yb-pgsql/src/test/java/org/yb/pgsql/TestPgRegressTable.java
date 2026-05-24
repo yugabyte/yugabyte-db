@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -28,6 +30,10 @@ public class TestPgRegressTable extends BasePgRegressTest {
 
   @Test
   public void testPgRegressTable() throws Exception {
+    // DB-15717 / GH #26364: this pg_regress suite hits the 1800s JUnit timeout
+    // on 2024.2 across all build types (ASAN, release, fastdebug) -- not just
+    // ASAN. Skip unconditionally on 2024.2; master and later branches are clean.
+    assumeFalse("DB-15717 / #26364: timeout on 2024.2 across all build types", true);
     runPgRegressTest("yb_table_serial_schedule");
   }
 }
