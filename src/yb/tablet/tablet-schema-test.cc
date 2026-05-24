@@ -78,7 +78,7 @@ class TestTabletSchema : public YBTabletTest {
     for (int32_t i = first_key; i < nrows; ++i) {
       InsertRow(i);
       if (i == (nrows / 2)) {
-        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
       }
     }
   }

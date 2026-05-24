@@ -210,7 +210,7 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
 
   // Insert & flush one row to start index counting.
   ASSERT_OK(this->InsertTestRow(&writer, 0, 333));
-  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   OpId id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   const int64_t start_index = id.index;
 
@@ -218,7 +218,7 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index);
 
-  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + kCount);
 
@@ -226,7 +226,7 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + kCount);
 
-  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + 2*kCount);
 }

@@ -666,7 +666,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
 
   void AbortedUnlocked(const Status& status) override {
     db_impl_->mutex_.AssertHeld();
-    cfd_->set_pending_flush(false);
+    cfd_->clear_pending_flush();
     if (cfd_->Unref()) {
       delete cfd_;
     }
@@ -992,7 +992,7 @@ DBImpl::~DBImpl() {
             LOG_WITH_PREFIX(INFO) << "Skipping mem table flush - disable_flush_on_shutdown_ is set";
           } else if (FLAGS_flush_rocksdb_on_shutdown) {
             LOG_WITH_PREFIX(INFO) << "Flushing mem table on shutdown";
-            CHECK_OK(FlushMemTable(cfd, FlushOptions()));
+            CHECK_OK(FlushMemTable(cfd, FlushOptions(FlushReason::kShutdown)));
           } else {
             RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
                 "Skipping mem table flush - flush_rocksdb_on_shutdown is unset");
@@ -2113,7 +2113,8 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
 
 Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
-    bool* made_progress, JobContext* job_context, LogBuffer* log_buffer) {
+    FlushReason flush_reason_for_job, bool* made_progress, JobContext* job_context,
+    LogBuffer* log_buffer) {
   mutex_.AssertHeld();
   DCHECK_NE(cfd->imm()->NumNotFlushed(), 0);
   DCHECK(cfd->imm()->IsFlushPending());
@@ -2128,11 +2129,11 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   }
 
   FlushJob flush_job(
-      dbname_, cfd, db_options_, mutable_cf_options, env_options_,
-      versions_.get(), &mutex_, &shutting_down_, &disable_flush_on_shutdown_, snapshot_seqs,
-      earliest_write_conflict_snapshot, mem_table_flush_filter, pending_outputs_.get(),
-      job_context, log_buffer, directories_.GetDbDir(), directories_.GetDataDir(0U),
-      GetCompressionFlush(*cfd->ioptions()), stats_.get(), &event_logger_);
+      dbname_, cfd, db_options_, mutable_cf_options, env_options_, versions_.get(), &mutex_,
+      &shutting_down_, &disable_flush_on_shutdown_, snapshot_seqs, earliest_write_conflict_snapshot,
+      mem_table_flush_filter, pending_outputs_.get(), job_context, log_buffer,
+      directories_.GetDbDir(), directories_.GetDataDir(0U), GetCompressionFlush(*cfd->ioptions()),
+      stats_.get(), flush_reason_for_job, &event_logger_);
 
   FileMetaData file_meta;
 
@@ -2145,8 +2146,8 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   auto file_number_holder = flush_job.Run(&file_meta);
 
   if (file_number_holder.ok()) {
-    InstallSuperVersionAndScheduleWorkWrapper(cfd, job_context,
-                                              mutable_cf_options);
+    InstallSuperVersionAndScheduleWorkWrapper(
+        cfd, job_context, mutable_cf_options, flush_reason_for_job);
     if (made_progress) {
       *made_progress = 1;
     }
@@ -2165,8 +2166,9 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   RETURN_NOT_OK(file_number_holder);
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
   // may temporarily unlock and lock the mutex.
-  NotifyOnFlushCompleted(cfd, &file_meta, mutable_cf_options,
-                         job_context->job_id, flush_job.GetTableProperties());
+  NotifyOnFlushCompleted(
+      cfd, &file_meta, mutable_cf_options, job_context->job_id, flush_job.GetTableProperties(),
+      flush_reason_for_job);
   auto sfm =
       static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
   if (sfm) {
@@ -2247,10 +2249,9 @@ uint64_t DBImpl::GetCurrentVersionDataSstFilesSize() {
   return data_sst_file_size;
 }
 
-void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
-                                    FileMetaData* file_meta,
-                                    const MutableCFOptions& mutable_cf_options,
-                                    int job_id, TableProperties prop) {
+void DBImpl::NotifyOnFlushCompleted(
+    ColumnFamilyData* cfd, FileMetaData* file_meta, const MutableCFOptions& mutable_cf_options,
+    int job_id, TableProperties prop, FlushReason flush_reason) {
   mutex_.AssertHeld();
   if (IsShuttingDown()) {
     return;
@@ -2264,7 +2265,7 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
     // release lock while notifying events
     mutex_.Unlock();
     {
-      FlushJobInfo info;
+      FlushJobInfo info{.flush_reason = flush_reason};
       info.cf_name = cfd->GetName();
       // TODO(yhchiang): make db_paths dynamic in case flush does not
       //                 go to L0 in the future.
@@ -2301,7 +2302,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
   auto cfd = cfh->cfd();
 
   if (!options.skip_flush) {
-    Status s = FlushMemTable(cfd, FlushOptions());
+    Status s = FlushMemTable(cfd, FlushOptions(FlushReason::kCompactionDependency));
     if (!s.ok()) {
       LogFlush(db_options_.info_log);
       return s;
@@ -2585,7 +2586,8 @@ Status DBImpl::CompactFilesImpl(
     status = compaction_job.Install(*c->mutable_cf_options());
     if (status.ok()) {
       InstallSuperVersionAndScheduleWorkWrapper(
-          c->column_family_data(), job_context, *c->mutable_cf_options());
+          c->column_family_data(), job_context, *c->mutable_cf_options(),
+          FlushReason::kPostCompactFiles);
     }
     c->ReleaseCompactionFiles(s);
   }
@@ -2874,7 +2876,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
     status = versions_->LogAndApply(cfd, mutable_cf_options, &edit, &mutex_,
                                     directories_.GetDbDir());
     superversion_to_free = InstallSuperVersionAndScheduleWork(
-       cfd, new_superversion.release(), mutable_cf_options);
+        cfd, new_superversion.release(), mutable_cf_options, FlushReason::kPostRefitLevel);
 
     RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,
         "[%s] LogAndApply: %s\n", cfd->GetName().c_str(),
@@ -3262,13 +3264,13 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
 
     // SwitchMemtable() will release and reacquire mutex
     // during execution
-    s = SwitchMemtable(cfd, &context);
+    s = SwitchMemtable(cfd, &context, flush_options.flush_reason);
     write_thread_.ExitUnbatched(&w);
 
     cfd->imm()->FlushRequested();
 
     // schedule flush
-    SchedulePendingFlush(cfd);
+    SchedulePendingFlush(cfd, flush_options.flush_reason);
     MaybeScheduleFlushOrCompaction();
   }
 
@@ -3305,7 +3307,9 @@ Status DBImpl::EnableAutoCompaction(
     if (status.ok()) {
       ColumnFamilyData* cfd = down_cast<ColumnFamilyHandleImpl*>(cf_ptr)->cfd();
       InstrumentedMutexLock guard_lock(&mutex_);
-      InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+      InstallSuperVersionAndScheduleWork(
+          cfd, nullptr, *cfd->GetLatestMutableCFOptions(),
+          FlushReason::kPostEnableBackgroundCompaction);
     } else {
       s = status;
     }
@@ -3452,35 +3456,41 @@ CompactionSizeKind DBImpl::GetCompactionSizeKind(const Compaction& compaction) {
              : CompactionSizeKind::kSmall;
 }
 
-void DBImpl::AddToFlushQueue(ColumnFamilyData* cfd) {
+void DBImpl::AddToFlushQueue(ColumnFamilyData* cfd, FlushReason reason) {
   assert(!cfd->pending_flush());
   cfd->Ref();
   flush_queue_.push_back(cfd);
-  cfd->set_pending_flush(true);
+  cfd->mark_pending_flush(reason);
 }
 
-ColumnFamilyData* DBImpl::PopFirstFromFlushQueue() {
+ColumnFamilyData* DBImpl::PopFirstFromFlushQueue(FlushReason* flush_reason_out) {
   assert(!flush_queue_.empty());
   auto cfd = *flush_queue_.begin();
   flush_queue_.pop_front();
   assert(cfd->pending_flush());
-  cfd->set_pending_flush(false);
+  const FlushReason reason = cfd->pending_flush_reason();
+  if (flush_reason_out != nullptr) {
+    *flush_reason_out = reason;
+  }
+  cfd->clear_pending_flush();
   return cfd;
 }
 
-void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
+void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd, FlushReason reason) {
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
     for (auto listener : db_options_.listeners) {
       listener->OnFlushScheduled(this);
     }
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "Flush scheduled for CF: " << cfd->GetName()
+                                 << ", reason: " << ToString(reason);
     if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
         FLAGS_use_priority_thread_pool_for_flushes) {
       ++bg_flush_scheduled_;
       cfd->Ref();
-      cfd->set_pending_flush(true);
+      cfd->mark_pending_flush(reason);
       SubmitCompactionOrFlushTask(std::make_unique<FlushTask>(this, cfd));
     } else {
-      AddToFlushQueue(cfd);
+      AddToFlushQueue(cfd, reason);
       ++unscheduled_flushes_;
     }
   }
@@ -3542,6 +3552,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
     bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd) {
   mutex_.AssertHeld();
 
+  FlushReason flush_reason_for_job = FlushReason::kUnknown;
+
   auto scope_exit = yb::ScopeExit([&cfd] {
     if (cfd && cfd->Unref()) {
       delete cfd;
@@ -3549,11 +3561,9 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
   });
 
   if (cfd) {
-    // cfd is not nullptr when we get here from DBImpl::FlushTask and in this case we need to reset
-    // pending flush flag.
-    // In other cases (getting here from DBImpl::BGWorkFlush) this is done by
-    // DBImpl::PopFirstFromFlushQueue called below.
-    cfd->set_pending_flush(false);
+    // FlushTask path: snapshot reason, then clear pending (same as PopFirstFromFlushQueue).
+    flush_reason_for_job = cfd->pending_flush_reason();
+    cfd->clear_pending_flush();
   }
 
   Status status = bg_error_;
@@ -3568,7 +3578,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
   if (cfd == nullptr) {
     while (!flush_queue_.empty()) {
       // This cfd is already referenced
-      auto first_cfd = PopFirstFromFlushQueue();
+      auto first_cfd = PopFirstFromFlushQueue(&flush_reason_for_job);
 
       if (first_cfd->IsDropped() || !first_cfd->imm()->IsFlushPending()) {
         // can't flush this CF, try next one
@@ -3597,8 +3607,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       << "compaction slots scheduled " << bg_compaction_scheduled_ << ", "
       << "compaction tasks " << yb::ToString(compaction_tasks_) << ", "
       << "total compaction slots " << BGCompactionsAllowed();
-  return FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
-                                          job_context, log_buffer);
+  return FlushMemTableToOutputFile(
+      cfd, mutable_cf_options, flush_reason_for_job, made_progress, job_context, log_buffer);
 }
 
 void DBImpl::WaitAfterBackgroundError(
@@ -3946,7 +3956,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
                                     *c->mutable_cf_options(), c->edit(),
                                     &mutex_, directories_.GetDbDir());
     InstallSuperVersionAndScheduleWorkWrapper(
-        c->column_family_data(), job_context, *c->mutable_cf_options());
+        c->column_family_data(), job_context, *c->mutable_cf_options(),
+        FlushReason::kPostBackgroundCompaction);
     LOG_TO_BUFFER(log_buffer, "[%s] Deleted %d files\n",
                 c->column_family_data()->GetName().c_str(),
                 c->num_input_files(0));
@@ -3982,7 +3993,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
                                     &mutex_, directories_.GetDbDir());
     // Use latest MutableCFOptions
     InstallSuperVersionAndScheduleWorkWrapper(
-        c->column_family_data(), job_context, *c->mutable_cf_options());
+        c->column_family_data(), job_context, *c->mutable_cf_options(),
+        FlushReason::kPostBackgroundCompaction);
 
     VersionStorageInfo::LevelSummaryStorage tmp;
     c->column_family_data()->internal_stats()->IncBytesMoved(c->output_level(),
@@ -4029,7 +4041,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     status = compaction_job.Install(*c->mutable_cf_options());
     if (status.ok()) {
       InstallSuperVersionAndScheduleWorkWrapper(
-          c->column_family_data(), job_context, *c->mutable_cf_options());
+          c->column_family_data(), job_context, *c->mutable_cf_options(),
+          FlushReason::kPostBackgroundCompaction);
     }
     *made_progress = true;
   }
@@ -4301,18 +4314,18 @@ Status DBImpl::Get(const ReadOptions& read_options,
 // new SuperVersion() inside of the mutex. We do similar thing
 // for superversion_to_free
 void DBImpl::InstallSuperVersionAndScheduleWorkWrapper(
-    ColumnFamilyData* cfd, JobContext* job_context,
-    const MutableCFOptions& mutable_cf_options) {
+    ColumnFamilyData* cfd, JobContext* job_context, const MutableCFOptions& mutable_cf_options,
+    FlushReason flush_reason) {
   mutex_.AssertHeld();
   auto old_superversion = InstallSuperVersionAndScheduleWork(
-      cfd, job_context->new_superversion, mutable_cf_options);
+      cfd, job_context->new_superversion, mutable_cf_options, flush_reason);
   job_context->new_superversion = nullptr;
   job_context->superversions_to_free.push_back(old_superversion.release());
 }
 
 std::unique_ptr<SuperVersion> DBImpl::InstallSuperVersionAndScheduleWork(
-    ColumnFamilyData* cfd, SuperVersion* new_sv,
-    const MutableCFOptions& mutable_cf_options) {
+    ColumnFamilyData* cfd, SuperVersion* new_sv, const MutableCFOptions& mutable_cf_options,
+    FlushReason flush_reason) {
   mutex_.AssertHeld();
 
   // Update max_total_in_memory_state_
@@ -4327,8 +4340,8 @@ std::unique_ptr<SuperVersion> DBImpl::InstallSuperVersionAndScheduleWork(
       new_sv ? new_sv : new SuperVersion(), &mutex_, mutable_cf_options);
 
   // Whenever we install new SuperVersion, we might need to issue new flushes or
-  // compactions.
-  SchedulePendingFlush(cfd);
+  // compactions. Memtable switches pass a concrete flush_reason from SwitchMemtable.
+  SchedulePendingFlush(cfd, flush_reason);
   SchedulePendingCompaction(cfd);
   MaybeScheduleFlushOrCompaction();
 
@@ -4758,7 +4771,8 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
       write_thread_.ExitUnbatched(&w);
 
       if (status.ok()) {
-        InstallSuperVersionAndScheduleWork(cfd, nullptr, mutable_cf_options);
+        InstallSuperVersionAndScheduleWork(
+            cfd, nullptr, mutable_cf_options, FlushReason::kPostExternalFileIngest);
       }
     }
   }
@@ -4860,7 +4874,8 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
       auto* cfd =
           versions_->GetColumnFamilySet()->GetColumnFamily(column_family_name);
       assert(cfd != nullptr);
-      InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+      InstallSuperVersionAndScheduleWork(
+          cfd, nullptr, *cfd->GetLatestMutableCFOptions(), FlushReason::kPostCreateColumnFamily);
 
       if (!cfd->mem()->IsSnapshotSupported()) {
         is_snapshot_supported_ = false;
@@ -5370,12 +5385,12 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         continue;
       }
       if (cfd->GetLogNumber() <= flush_column_family_if_log_file) {
-        status = SwitchMemtable(cfd, &context);
+        status = SwitchMemtable(cfd, &context, FlushReason::kMaxTotalWalSize);
         if (!status.ok()) {
           break;
         }
         cfd->imm()->FlushRequested();
-        SchedulePendingFlush(cfd);
+        SchedulePendingFlush(cfd, FlushReason::kMaxTotalWalSize);
       }
     }
     MaybeScheduleFlushOrCompaction();
@@ -5404,10 +5419,10 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       }
     }
     if (largest_cfd != nullptr) {
-      status = SwitchMemtable(largest_cfd, &context);
+      status = SwitchMemtable(largest_cfd, &context, FlushReason::kGlobalMemstoreLimit);
       if (status.ok()) {
         largest_cfd->imm()->FlushRequested();
-        SchedulePendingFlush(largest_cfd);
+        SchedulePendingFlush(largest_cfd, FlushReason::kGlobalMemstoreLimit);
         MaybeScheduleFlushOrCompaction();
       }
     }
@@ -5732,7 +5747,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
 Status DBImpl::ScheduleFlushes(WriteContext* context) {
   ColumnFamilyData* cfd;
   while ((cfd = flush_scheduler_.TakeNextColumnFamily()) != nullptr) {
-    auto status = SwitchMemtable(cfd, context);
+    auto status = SwitchMemtable(cfd, context, FlushReason::kMemtableSizeLimit);
     if (cfd->Unref()) {
       delete cfd;
     }
@@ -5745,7 +5760,8 @@ Status DBImpl::ScheduleFlushes(WriteContext* context) {
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
-Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
+Status DBImpl::SwitchMemtable(
+    ColumnFamilyData* cfd, WriteContext* context, FlushReason flush_reason) {
   mutex_.AssertHeld();
   unique_ptr<WritableFile> lfile;
   log::Writer* new_log = nullptr;
@@ -5839,8 +5855,8 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   cfd->imm()->Add(cfd->mem(), &context->memtables_to_free_);
   new_mem->Ref();
   cfd->SetMemtable(new_mem);
-  context->superversions_to_free_.push_back(InstallSuperVersionAndScheduleWork(
-      cfd, new_superversion, mutable_cf_options));
+  context->superversions_to_free_.push_back(
+      InstallSuperVersionAndScheduleWork(cfd, new_superversion, mutable_cf_options, flush_reason));
 
   return s;
 }
@@ -6127,8 +6143,7 @@ ColumnFamilyHandle* DBImpl::GetColumnFamilyHandleUnlocked(
 
 Status DBImpl::Import(const std::string& source_dir) {
   const auto seqno = versions_->LastSequence();
-  FlushOptions options;
-  RETURN_NOT_OK(Flush(options));
+  RETURN_NOT_OK(Flush(FlushOptions(FlushReason::kImport)));
   VersionEdit edit;
   auto status = versions_->Import(source_dir, seqno, &edit);
   if (!status.ok()) {
@@ -6164,7 +6179,7 @@ yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard lock(mutex_);
   WriteContext context;
-  CHECK_OK(SwitchMemtable(default_cf_handle_->cfd(), &context));
+  CHECK_OK(SwitchMemtable(default_cf_handle_->cfd(), &context, FlushReason::kUnknown));
 }
 
 void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
@@ -6293,7 +6308,7 @@ Status DBImpl::DeleteFile(std::string name) {
                                     &edit, &mutex_, directories_.GetDbDir());
     if (status.ok()) {
       InstallSuperVersionAndScheduleWorkWrapper(
-          cfd, &job_context, *cfd->GetLatestMutableCFOptions());
+          cfd, &job_context, *cfd->GetLatestMutableCFOptions(), FlushReason::kPostDeleteFile);
     }
     FindObsoleteFiles(&job_context, false);
   }  // lock released here
@@ -6374,7 +6389,8 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
                                     &edit, &mutex_, directories_.GetDbDir());
     if (status.ok()) {
       InstallSuperVersionAndScheduleWorkWrapper(
-          cfd, &job_context, *cfd->GetLatestMutableCFOptions());
+          cfd, &job_context, *cfd->GetLatestMutableCFOptions(),
+          FlushReason::kPostDeleteFilesInRange);
     }
     for (auto* deleted_file : deleted_files) {
       deleted_file->being_compacted = false;
@@ -6754,7 +6770,8 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
     if (s.ok()) {
       for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
-        impl->InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+        impl->InstallSuperVersionAndScheduleWork(
+            cfd, nullptr, *cfd->GetLatestMutableCFOptions(), FlushReason::kPostOpen);
       }
       impl->alive_log_files_.push_back(
           DBImpl::LogFileNumberSize(impl->logfile_number_));

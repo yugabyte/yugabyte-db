@@ -89,12 +89,12 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
   QLWriteRequestPB req;
   BuildPartialRow(0, 0, "foo", &req);
   ASSERT_OK(writer_->Write(&req));
-  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Create one more row. Write and flush.
   BuildPartialRow(1, 1, "bar", &req);
   ASSERT_OK(writer_->Write(&req));
-  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Shut down the tablet.
   harness_->tablet()->StartShutdown();
@@ -130,12 +130,12 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   QLWriteRequestPB req;
   BuildPartialRow(0, 0, "foo", &req);
   ASSERT_OK(writer_->Write(&req));
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Create one more row. Write and flush.
   BuildPartialRow(1, 1, "bar", &req);
   ASSERT_OK(writer_->Write(&req));
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;

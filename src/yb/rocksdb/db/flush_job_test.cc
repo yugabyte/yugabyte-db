@@ -115,7 +115,8 @@ TEST_F(FlushJobTest, Empty) {
       dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, FlushReason::kTestOnly,
+      &event_logger);
   {
     InstrumentedMutexLock l(&mutex_);
     ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
@@ -167,7 +168,8 @@ TEST_F(FlushJobTest, NonEmpty) {
       dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, FlushReason::kTestOnly,
+      &event_logger);
   FileMetaData fd;
   {
     InstrumentedMutexLock l(&mutex_);
@@ -240,7 +242,7 @@ TEST_F(FlushJobTest, Snapshots) {
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, snapshots, kMaxSequenceNumber, MemTableFilter(),
       &file_numbers_provider, &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
-      &event_logger);
+      FlushReason::kTestOnly, &event_logger);
   {
     InstrumentedMutexLock l(&mutex_);
     ASSERT_OK(yb::ResultToStatus(flush_job.Run()));

@@ -1956,7 +1956,8 @@ class TabletsFlusher final : public TabletsFlusherBase {
 
  private:
   Status Flush(const tablet::TabletPtr& tablet) override {
-    return tablet->Flush(tablet::FlushMode::kAsync, flush_flags_);
+    return tablet->Flush(
+        tablet::FlushMode::kAsync, flush_flags_, rocksdb::FlushReason::kAdminFlush);
   }
 
   Status WaitForFlush(const tablet::TabletPtr& tablet) override {

@@ -112,7 +112,7 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {
-  FlushOptions fo;
+  FlushOptions fo(FlushReason::kTestOnly);
   fo.wait = wait;
   return FlushMemTable(default_cf_handle_->cfd(), fo);
 }

@@ -408,7 +408,9 @@ Status TabletVectorIndexes::Backfill(
       << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
 
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
-  RETURN_NOT_OK_PREPEND(Flush(FlushMode::kSync, FlushFlags::kRegular), "Flush regular DB");
+  RETURN_NOT_OK_PREPEND(
+      Flush(FlushMode::kSync, FlushFlags::kRegular, rocksdb::FlushReason::kVectorIndexBackfill),
+      "Flush regular DB");
   RETURN_NOT_OK_PREPEND(vector_index->Flush(), "Flush vector index");
   return Status::OK();
 }

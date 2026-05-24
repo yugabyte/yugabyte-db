@@ -332,7 +332,7 @@ TEST_P(AlterTableTest, TestAddExistingColumn) {
 TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   InsertRows(0, 1);
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -578,7 +578,7 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
 
   LOG(INFO) << "Flushing RocksDB";
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
@@ -623,7 +623,7 @@ TEST_P(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   InsertRows(1, 1);
 
   UpdateRow(0, { {"c1", 10001} });
@@ -700,9 +700,9 @@ TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   InsertRows(1, 1);
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());

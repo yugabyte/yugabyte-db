@@ -365,7 +365,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
           SubDocKey($0, ["k2"; HT{ physical: 1000 w: 3 }]) -> "v2"; ttl: 10.000s
           )#", collection_key.ToString()));
       if (intermediate_flushes) {
-        ASSERT_OK(FlushRocksDbAndWait());
+        ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
       }
     }
 
@@ -379,7 +379,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
           DocPath(collection_key.Encode()), ValueRef(map_value), 1100_usec_ht,
           MonoDelta::FromSeconds(20 + i)));
       if (intermediate_flushes) {
-        ASSERT_OK(FlushRocksDbAndWait());
+        ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
       }
     }
   }

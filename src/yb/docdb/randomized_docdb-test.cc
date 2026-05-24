@@ -144,7 +144,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
     }
     ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " << current_iteration;
     if (current_iteration % kFlushFrequency == 0) {
-      ASSERT_OK(FlushRocksDbAndWait());
+      ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
     }
     if (current_iteration % snapshot_frequency == 0) {
       load_gen_->CaptureDocDbSnapshot();

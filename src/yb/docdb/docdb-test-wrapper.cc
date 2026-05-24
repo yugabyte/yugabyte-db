@@ -698,7 +698,7 @@ TEST_P(DocDBTestWrapper, MinorCompactionNoDeletions) {
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key), ValueRef(QLValue::Primitive(value_str)),
         HybridTime::FromMicros(i * 1000)));
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   }
 
   ASSERT_EQ(6, NumSSTableFiles());
@@ -772,7 +772,7 @@ TEST_P(DocDBTestWrapper, MinorCompactionWithDeletions) {
     auto value_ref = i == 5 ? ValueRef(ValueEntryType::kTombstone) : ValueRef(value);
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key), value_ref, HybridTime::FromMicros(i * 1000)));
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   }
 
   ASSERT_EQ(6, NumSSTableFiles());
@@ -1119,7 +1119,7 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 0;
   // Write batch and flush options.
   auto dwb = MakeDocWriteBatch();
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   DocKey key1(0, MakeKeyEntryValues("key1"), KeyEntryValues());
   DocKey key2(0, MakeKeyEntryValues("key2"), KeyEntryValues());
@@ -1132,7 +1132,7 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   uint64_t total_table_iterators = 0;
 
   auto flush_rocksdb = [this, &total_table_iterators]() {
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
     total_table_iterators =
         regular_db_options().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
   };
@@ -1213,7 +1213,7 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
 TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
   // Write batch and flush options.
   auto dwb = MakeDocWriteBatch();
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   // We need to write enough keys for fixed-size bloom filter to have more than one block.
   constexpr auto kNumKeys = 100000;
@@ -1254,7 +1254,7 @@ TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
                            ValueRef(value)));
       ASSERT_OK(WriteToRocksDB(dwb, ht));
     }
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
     for (int32_t i = 0; i < kNumKeys; ++i) {
       const auto sub_doc_key = get_sub_doc_key(i, is_range_key);
@@ -1293,7 +1293,7 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), ValueRef(QLValue::Primitive("value1"))));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   // Put bigger key into memtable.
   DocKey key2(234, MakeKeyEntryValues("key2"), KeyEntryValues());
@@ -1817,7 +1817,7 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
     const auto doc_key = MakeDocKey(i);
     const KeyBytes encoded_doc_key = doc_key.Encode();
     SetupRocksDBState(encoded_doc_key);
-    ASSERT_OK(FlushRocksDbAndWait());
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
     flushed_frontier = rocksdb()->GetFlushedFrontier();
     LOG(INFO) << "Flushed frontier after i=" << i << ": "
               << (flushed_frontier ? flushed_frontier->ToString() : "N/A");
@@ -1894,7 +1894,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterSingleFile) {
     ASSERT_OK(WriteSimple(i));
   }
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   CloseRocksDB();
 
@@ -1929,7 +1929,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
     ASSERT_OK(WriteSimple(i));
   }
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
 
@@ -1975,7 +1975,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
     )#");
 
     if (j == 0) {
-      ASSERT_OK(FlushRocksDbAndWait());
+      ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
     } else if (j == 1) {
       rocksdb::CompactRangeOptions options;
       ASSERT_OK(ForceRocksDBCompact(rocksdb(), options));
@@ -2011,7 +2011,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterMap) {
             << " of db oids " << db_oids[0] << " and " << db_oids[1]
             << " at hybrid time " << HybridTime::FromMicros(2000);
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   ASSERT_OK(SetHybridTimeFilter(db_oids[1], HybridTime::FromMicros(2000)));
   ASSERT_OK(SetHybridTimeFilter(db_oids[2], HybridTime::FromMicros(2000)));
@@ -2079,7 +2079,7 @@ TEST_P(DocDBTestWrapper, CombinedHybridTimeFilterAndCotablesFilter) {
             << HybridTime::FromMicros(4000) << " and "
             << HybridTime::FromMicros(6000);
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
   ASSERT_OK(SetHybridTimeFilter(db_oids[1], HybridTime::FromMicros(3000)));
   ASSERT_OK(SetHybridTimeFilter(db_oids[2], HybridTime::FromMicros(7000)));
@@ -2201,7 +2201,7 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithCotables) {
       "SubDocKey(DocKey(CoTableId=$0, 0x0003, [\"cotablekey2\", 10000], []), "
       "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToHexString()) };
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   auto frontier = rocksdb()->GetFlushedFrontier();
   ASSERT_EQ(frontier.get(), nullptr);
   HistoryCutoff cutoff = { 3000_usec_ht, 2000_usec_ht };
@@ -2321,7 +2321,7 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithColocatedTables) {
       "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", colocation_id3) };
 
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   auto frontier = rocksdb()->GetFlushedFrontier();
   ASSERT_EQ(frontier.get(), nullptr);
   HistoryCutoff cutoff = { HybridTime::kInvalid, 3000_usec_ht };
@@ -2396,7 +2396,7 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithNonColocatedTables) {
       "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
       "[\"subkey2\"; HT{ physical: 1000 }]) -> \"value1\"" };
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   auto frontier = rocksdb()->GetFlushedFrontier();
   ASSERT_EQ(frontier.get(), nullptr);
   HistoryCutoff cutoff = { HybridTime::kInvalid, 2000_usec_ht };

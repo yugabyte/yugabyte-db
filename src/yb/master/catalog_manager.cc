@@ -2882,7 +2882,7 @@ Status CatalogManager::FlushSysCatalog(
     rpc::RpcContext* context) {
   LOG(INFO) << "FlushSysCatalog started";
   auto status = PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
-    return shared_tablet->Flush(tablet::FlushMode::kSync);
+    return shared_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kSysCatalogFlush);
   });
   LOG(INFO) << "FlushSysCatalog completed: " << status;
   return status;

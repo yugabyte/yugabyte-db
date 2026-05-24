@@ -997,7 +997,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
         peer->clock().Now(), CoarseTimePoint::max()));
     auto current_ht = clock_->Now();
-    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     bool found = false;
     auto files = tablet->regular_db()->GetLiveFilesMetaData();
     for (const auto& meta : files) {
