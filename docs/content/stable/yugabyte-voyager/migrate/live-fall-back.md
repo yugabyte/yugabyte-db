@@ -1295,9 +1295,10 @@ Perform the following steps as part of the cutover process:
 
 {{% tab header="PostgreSQL" %}}
 
-For PostgreSQL versions earlier than 15, select _one_ of the following methods to ensure data from the target YugabyteDB is imported back into the source database correctly.
-    - Grant superuser permissions to the voyager user so that the [session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE) session parameter can be configured for every connection.
-    - Turn off foreign-key constraints and triggers on the source database.
+For PostgreSQL versions earlier than 15, select _one_ of the following methods to ensure data from the target YugabyteDB is imported back into the source database correctly.<br>
+
+  - Grant superuser permissions to the voyager user so that the [session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE) session parameter can be configured for every connection.
+  - Turn off foreign-key constraints and triggers on the source database.
     Execute the following PL/SQL commands on the source schema using a privileged account:
 
 ```sql
