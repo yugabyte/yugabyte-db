@@ -13,7 +13,7 @@ type: docs
 
 [Finalize the schema](../../../migrate/migrate-steps/#finalize-schema-post-data-import) post the import of data into YugabyteDB database.
 
-Create indexes and triggers in the target schema, and refresh the materialized views. Must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete.
+Create [NOT VALID](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-DESC-ADD-TABLE-CONSTRAINT) constraints in the target schema, and refresh materialized views on the target must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete.
 
 ## Syntax
 

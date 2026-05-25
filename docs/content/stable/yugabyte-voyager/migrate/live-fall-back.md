@@ -1289,6 +1289,88 @@ Keep monitoring the metrics displayed for export data from source and import dat
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
+1. Prepare the source database for fallback.
+
+    <br/>{{< tabpane text=true >}}
+
+{{% tab header="PostgreSQL" %}}
+
+For PostgreSQL versions earlier than 15, select _one_ of the following methods to ensure data from the target YugabyteDB is imported back into the source database correctly.
+    - Grant superuser permissions to the voyager user so that the [session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE) session parameter can be configured for every connection.
+    - Turn off foreign-key constraints and triggers on the source database.
+    Execute the following PL/SQL commands on the source schema using a privileged account:
+
+```sql
+-- Disable triggers
+DO $$
+DECLARE
+   r RECORD;
+BEGIN
+   FOR r IN
+       SELECT table_schema, '"' || table_name || '"' AS t_name
+       FROM information_schema.tables
+       WHERE table_type = 'BASE TABLE'
+       AND table_schema IN (<SCHEMA_LIST>)
+   LOOP
+       EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' DISABLE TRIGGER ALL';
+   END LOOP;
+END $$;
+
+-- SCHEMA_LIST is a comma-separated list of schemas, for example: 'abc', 'public', 'xyz'
+
+-- Drop referential constraints
+DO $$
+DECLARE
+   fk RECORD;
+BEGIN
+   FOR fk IN
+       SELECT conname, conrelid::regclass AS table_name
+       FROM pg_constraint
+       JOIN pg_class ON conrelid = pg_class.oid
+       JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+       WHERE contype = 'f'
+       AND pg_namespace.nspname IN (<SCHEMA_LIST>)
+   LOOP
+       EXECUTE 'ALTER TABLE ' || fk.table_name || ' DROP CONSTRAINT ' || fk.conname;
+   END LOOP;
+END $$;
+
+-- SCHEMA_LIST is a comma-separated list of schemas, for example: 'abc', 'public', 'xyz'
+```
+
+{{% /tab %}}
+
+{{% tab header="Oracle" %}}
+
+Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user:
+Use the following PL/SQL commands to disable triggers, and disable referential constraints on the source:
+
+```sql
+-- Disable triggers
+BEGIN
+   FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+   LOOP
+     EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
+   END LOOP;
+END;
+/
+
+-- Disable referential constraints
+BEGIN
+   FOR c IN (SELECT table_name, constraint_name
+     FROM user_constraints
+     WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
+   LOOP
+     EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
+   END LOOP;
+END;
+/
+```
+
+{{% /tab %}}
+
+    {{< /tabpane >}}
+
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
     <br/>{{< tabpane text=true >}}
@@ -1416,85 +1498,6 @@ In this scenario, the [get data-migration-report](#get-data-migration-report) co
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
     {{< /warning >}}
-
-1. Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user:
-
-    <br/>{{< tabpane text=true >}}
-
-{{% tab header="Oracle" %}}
-
-Use the following PL/SQL commands to disable triggers, and disable referential constraints on the source:
-
-  ```sql
-    --disable triggers
-  BEGIN
-      FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
-      LOOP
-        EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
-      END LOOP;
-  END;
-    /
-
-    --disable referential constraints
-  BEGIN
-      FOR c IN (SELECT table_name, constraint_name
-        FROM user_constraints
-        WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
-      LOOP
-        EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
-      END LOOP;
-  END;
-    /
-  ```
-
-  {{% /tab %}}
-
-  {{% tab header="PostgreSQL" %}}
-
-  To disable triggers and foreign key checks in PostgreSQL 15 and later, `import data to source` sets the session parameter [session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE) on each connection to apply changes from the target. However, in PostgreSQL versions earlier than 15, this parameter is restricted to superusers.
-
-  If superuser privileges cannot be granted to the `source-db-user`, use the following PL/SQL commands to disable triggers and drop foreign key constraints on the source:
-
-  ```sql
-  --disable triggers
-  DO $$
-  DECLARE
-      r RECORD;
-  BEGIN
-      FOR r IN
-          SELECT table_schema, '"' || table_name || '"' AS t_name
-          FROM information_schema.tables
-          WHERE table_type = 'BASE TABLE'
-          AND table_schema IN (<SCHEMA_LIST>)
-      LOOP
-          EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' DISABLE TRIGGER ALL';
-      END LOOP;
-  END $$;
-  --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-
-  --drop referential constraints
-  DO $$
-  DECLARE
-      fk RECORD;
-  BEGIN
-      FOR fk IN
-          SELECT conname, conrelid::regclass AS table_name
-          FROM pg_constraint
-          JOIN pg_class ON conrelid = pg_class.oid
-          JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-          WHERE contype = 'f'
-          AND pg_namespace.nspname IN (<SCHEMA_LIST>)
-      LOOP
-          EXECUTE 'ALTER TABLE ' || fk.table_name || ' DROP CONSTRAINT ' || fk.conname;
-      END LOOP;
-  END $$;
-  --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-
-  ```
-
-  {{% /tab %}}
-
-    {{< /tabpane >}}
 
 ### Cutover to the source (Optional)
 
