@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -1407,22 +1408,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           GFlagsUtil.mergeCSVs(
               combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
       tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
-      // removing query log export for 2026.1.0
-      // overrides.put(
-      //     "otelCollector",
-      //     otelCollectorConfigGenerator.getOtelHelmValues(
-      //         auditLogConfig,
-      //         GFlagsUtil.getLogLinePrefix(
-      //             primaryClusterIntent.queryLogConfig,
-      //             tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-      //         primaryClusterIntent.ybSoftwareVersion));
-      overrides.put(
-          "otelCollector",
-          otelCollectorConfigGenerator.getOtelHelmValues(
-              auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  primaryClusterIntent.queryLogConfig,
-                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+      String logLinePrefix =
+          GFlagsUtil.getLogLinePrefix(
+              primaryClusterIntent.queryLogConfig, tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+      Map<String, Object> otelOverrides;
+      if (OtelCollectorUtil.supportsOtelConfigPassthrough(imageTag)) {
+        // Newer charts accept the full collector config rendered by YBA via spec.config.
+        OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
+            otelCollectorConfigGenerator.getOtelColConfigK8s(
+                provider, auditLogConfig, queryLogConfig, logLinePrefix);
+        otelOverrides = new HashMap<>();
+        otelOverrides.put("enabled", otelConfig.isEnabled());
+        otelOverrides.put("config", otelConfig.getConfig());
+        otelOverrides.put("secretEnv", otelConfig.getSecretEnv());
+      } else {
+        // Older charts assemble the config themselves from structured Helm values.
+        otelOverrides =
+            otelCollectorConfigGenerator.getOtelHelmValues(auditLogConfig, logLinePrefix);
+      }
+      overrides.put("otelCollector", otelOverrides);
     }
 
     if (!tserverGFlags.isEmpty()) {

@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
@@ -80,7 +82,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
@@ -715,20 +716,7 @@ public class UpgradeUniverseHandler {
           "Cannot modify audit log config while YSQL major version upgrade is in progress.");
     }
 
-    // Verify if exporter config is set to export active.
-    if (requestParams.auditLogConfig.isExportActive()) {
-      // If exporter config is set to export active, verify if any exporter is configured.
-      if (CollectionUtils.isEmpty(requestParams.auditLogConfig.getUniverseLogsExporterConfig())) {
-        String errorMessage =
-            String.format(
-                "Audit log config is set to export active, but no exporter configured on universe"
-                    + " '%s'.",
-                universe.getUniverseUUID());
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
-      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(requestParams.auditLogConfig)) {
       for (UniverseLogsExporterConfig exporterConfig :
           requestParams.auditLogConfig.getUniverseLogsExporterConfig()) {
         UUID exporterUUID = exporterConfig.getExporterUuid();
@@ -792,23 +780,13 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
-    if (Util.isKubernetesBasedUniverse(universe)) {
-      return submitUpgradeTask(
-          TaskType.ModifyKubernetesAuditLoggingConfig,
-          CustomerTask.TaskType.ModifyAuditLoggingConfig,
-          requestParams,
-          customer,
-          universe);
-    }
     ExportTelemetryConfigParams exportParams =
-        buildExportTelemetryConfigParamsFromUniverse(universe);
-    // Override the audit log config in the export params with the requested config.
+        UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
             requestParams.auditLogConfig,
-            exportParams.getQueryLogConfig(),
-            exportParams.getMetricsExportConfig()));
-    exportParams.upgradeOption = requestParams.upgradeOption;
+            userIntent.queryLogConfig,
+            userIntent.metricsExportConfig));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -836,20 +814,7 @@ public class UpgradeUniverseHandler {
           "Cannot modify query log config while YSQL major version upgrade is in progress.");
     }
 
-    // Verify if exporter config is set to export active.
-    if (requestParams.queryLogConfig.isExportActive()) {
-      // If exporter config is set to export active, verify if any exporter is configured.
-      if (CollectionUtils.isEmpty(requestParams.queryLogConfig.getUniverseLogsExporterConfig())) {
-        String errorMessage =
-            String.format(
-                "Query log config is set to export active, but no exporter configured on universe"
-                    + " '%s'.",
-                universe.getUniverseUUID());
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
-      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+    if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(requestParams.queryLogConfig)) {
       for (UniverseQueryLogsExporterConfig exporterConfig :
           requestParams.queryLogConfig.getUniverseLogsExporterConfig()) {
         UUID exporterUUID = exporterConfig.getExporterUuid();
@@ -908,44 +873,17 @@ public class UpgradeUniverseHandler {
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
-
-      // // For Kubernetes provider, verify the universe version is compatible with otel exporter.
-      // if (userIntent.providerType.equals(CloudType.kubernetes)
-      //     && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
-      //   String errorMessage =
-      //       String.format(
-      //           "Query log exporter is not supported for universe '%s' running version '%s'.
-      // Please"
-      //               + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
-      //               + " only enable query logs on the universe.",
-      //           universe.getUniverseUUID(),
-      //           userIntent.ybSoftwareVersion,
-      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
-      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
-      //   log.error(errorMessage);
-      //   throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      // }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
-    // if (isK8s) {
-    //   return submitUpgradeTask(
-    //       TaskType.ModifyKubernetesQueryLoggingConfig,
-    //       CustomerTask.TaskType.ModifyQueryLoggingConfig,
-    //       requestParams,
-    //       customer,
-    //       universe);
-    // }
     ExportTelemetryConfigParams exportParams =
-        buildExportTelemetryConfigParamsFromUniverse(universe);
-    // Override the query log config in the export params with the requested config.
+        UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
-            exportParams.getAuditLogConfig(),
+            userIntent.auditLogConfig,
             requestParams.queryLogConfig,
-            exportParams.getMetricsExportConfig()));
-    exportParams.upgradeOption = requestParams.upgradeOption;
+            userIntent.metricsExportConfig));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -1312,28 +1250,6 @@ public class UpgradeUniverseHandler {
     return newTaskUUID;
   }
 
-  /**
-   * Builds ExportTelemetryConfigParams from current universe state (audit, query, metrics from
-   * userIntent). Caller sets the one telemetry config being updated and upgrade options.
-   */
-  @VisibleForTesting
-  public ExportTelemetryConfigParams buildExportTelemetryConfigParamsFromUniverse(
-      Universe universe) {
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    UserIntent userIntent = details.getPrimaryCluster().userIntent;
-    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
-    params.setUniverseUUID(universe.getUniverseUUID());
-    params.nodePrefix = details.nodePrefix;
-    params.clusters = details.clusters;
-    params.setTelemetryConfig(
-        TelemetryConfig.of(
-            userIntent.auditLogConfig, userIntent.queryLogConfig, userIntent.metricsExportConfig));
-    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
-    params.sleepAfterMasterRestartMillis = details.sleepAfterMasterRestartMillis;
-    params.sleepAfterTServerRestartMillis = details.sleepAfterTServerRestartMillis;
-    return params;
-  }
-
   public UUID submitExportTelemetryConfigs(
       ExportTelemetryConfigParams params, Customer customer, Universe universe) {
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -1346,12 +1262,12 @@ public class UpgradeUniverseHandler {
     // stored config rather than infer from the request alone.
     params.setModifiedExportTypes(computeModifiedExportTypes(params, universe));
     params.verifyParams(universe, true);
+    TaskType taskType =
+        Util.isKubernetesBasedUniverse(universe)
+            ? TaskType.KubernetesConfigureExportTelemetryConfig
+            : TaskType.ConfigureExportTelemetryConfig;
     return submitUpgradeTask(
-        TaskType.ConfigureExportTelemetryConfig,
-        CustomerTask.TaskType.ConfigureExportTelemetryConfig,
-        params,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.ConfigureExportTelemetryConfig, params, customer, universe);
   }
 
   /**

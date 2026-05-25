@@ -57,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
@@ -4099,6 +4100,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskExecutor.SubTaskGroup subTaskGroup =
         createSubTaskGroup("UpdateAndPersistQueryLoggingConfig");
     UpdateAndPersistQueryLoggingConfig task = createTask(UpdateAndPersistQueryLoggingConfig.class);
+    task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void updateAndPersistExportTelemetryConfigTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateAndPersistExportTelemetryConfig", SubTaskGroupType.Provisioning);
+    UpdateAndPersistExportTelemetryConfig task =
+        createTask(UpdateAndPersistExportTelemetryConfig.class);
     task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
