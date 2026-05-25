@@ -1811,11 +1811,8 @@ Status CatalogManager::DeleteCDCStream(
     }
 
     for (const auto& replication_slot_name : req->cdcsdk_ysql_replication_slot_name()) {
-      auto slot_name = ReplicationSlotName(replication_slot_name);
-      auto stream_it = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
-      auto stream_id = stream_it ? *stream_it : xrepl::StreamId::Nil();
-      auto stream_opt =
-          VERIFY_RESULT(GetStreamIfValidForDelete(std::move(stream_id), req->force_delete()));
+      auto stream_opt = VERIFY_RESULT(GetReplicationSlotStreamForDelete(
+          ReplicationSlotName(replication_slot_name), req->force_delete()));
       if (stream_opt) {
         streams.emplace_back(std::move(*stream_opt));
       } else {
@@ -1858,6 +1855,45 @@ Status CatalogManager::DeleteCDCStream(
   LOG(INFO) << "Successfully deleted CDC streams " << CDCStreamInfosAsString(streams)
             << " per request from " << RequestorString(rpc);
 
+  return Status::OK();
+}
+
+Result<std::optional<CDCStreamInfoPtr>> CatalogManager::GetReplicationSlotStreamForDelete(
+    const ReplicationSlotName& slot_name, bool force_delete) {
+  auto stream_it = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+  auto stream_id = stream_it ? *stream_it : xrepl::StreamId::Nil();
+  return GetStreamIfValidForDelete(std::move(stream_id), force_delete);
+}
+
+Status CatalogManager::DeleteNotificationsReplicationSlot(
+    const std::string& tserver_uuid, uint64_t tserver_start_time) {
+  auto slot_name = ReplicationSlotName("yb_notifications_" + tserver_uuid);
+  // Even though there will be atmost one notifications stream for the given tserver uuid, use a
+  // vector as DropXReplStreams() requires it.
+  std::vector<CDCStreamInfoPtr> streams;
+  {
+    SharedLock lock(mutex_);
+    auto stream =
+        VERIFY_RESULT(GetReplicationSlotStreamForDelete(slot_name, /*force_delete=*/true));
+    if (stream) {
+      // When called from the heartbeat path (tserver restart), a LISTEN on the
+      // restarted tserver may have already dropped the stale slot and created a
+      // fresh one. Skip deletion if the slot was created after the tserver started
+      // to avoid deleting the new slot.
+      if (tserver_start_time > 0) {
+        auto stream_lock = (*stream)->LockForRead();
+        if (stream_lock->pb.has_stream_creation_time() &&
+            stream_lock->pb.stream_creation_time() >= tserver_start_time) {
+          return Status::OK();
+        }
+      }
+      streams.push_back(std::move(*stream));
+    }
+  }
+  RETURN_NOT_OK(DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING));
+  if (!streams.empty()) {
+    LOG(INFO) << "Deleted notifications replication slot for tserver " << tserver_uuid;
+  }
   return Status::OK();
 }
 
