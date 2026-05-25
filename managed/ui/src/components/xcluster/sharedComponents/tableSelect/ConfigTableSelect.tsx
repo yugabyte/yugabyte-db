@@ -32,7 +32,7 @@ import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { liveMetricTimeRangeUnit, liveMetricTimeRangeValue, MetricName } from '../../constants';
-import { getTableUuid } from '../../../../utils/tableUtils';
+import { getTableTotalStorageBytes, getTableUuid, withTotalStorageAsSizeBytes } from '../../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { AlertTemplate } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
@@ -475,18 +475,20 @@ function getSelectionOptionsFromTables(
       xClusterTable.indexTableIDs?.forEach((indexTableId) => {
         const indexTable = tableUuidToConfigTable[indexTableId];
         if (indexTable) {
+          const augmentedIndexTable = withTotalStorageAsSizeBytes(indexTable);
           indexTableIds.push(indexTableId);
-          indexTables.push(indexTable);
-          indexTableTotalSize += indexTable.sizeBytes;
+          indexTables.push(augmentedIndexTable);
+          indexTableTotalSize += augmentedIndexTable.sizeBytes;
         }
       });
 
-      const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
-        ...xClusterTable,
-        indexTableIDs: indexTableIds,
-        tableUUID: getTableUuid(xClusterTable),
-        indexTables
-      };
+      const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate =
+        withTotalStorageAsSizeBytes({
+          ...xClusterTable,
+          indexTableIDs: indexTableIds,
+          tableUUID: getTableUuid(xClusterTable),
+          indexTables
+        });
 
       const namespaceName = xClusterTable.keySpace;
       const namespaceUuid =
@@ -512,7 +514,8 @@ function getSelectionOptionsFromTables(
         // Selecting/deselecting a namespace will select/deselect all tables under that namespace regardless if
         // those tables match the current filter.
         namespaceDetails.allXClusterTables.push(mainTableRestartReplicationCandidate);
-        namespaceDetails.sizeBytes += xClusterTable.sizeBytes + indexTableTotalSize;
+        namespaceDetails.sizeBytes +=
+          mainTableRestartReplicationCandidate.sizeBytes + indexTableTotalSize;
         if (isTableMatchedBySearchTokens) {
           namespaceDetails.xClusterTables.push(mainTableRestartReplicationCandidate);
         }
@@ -520,7 +523,7 @@ function getSelectionOptionsFromTables(
         namespaceUuidToNamespaceDetails.set(namespaceUuid, {
           uuid: namespaceUuid,
           name: namespaceName,
-          sizeBytes: xClusterTable.sizeBytes + indexTableTotalSize,
+          sizeBytes: mainTableRestartReplicationCandidate.sizeBytes + indexTableTotalSize,
           xClusterTables: isTableMatchedBySearchTokens
             ? [mainTableRestartReplicationCandidate]
             : [],
@@ -546,10 +549,13 @@ function getSelectionOptionsFromTables(
 const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'status'];
 
 const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: SearchToken[]) => {
+  const totalStorageBytes = getTableTotalStorageBytes(table);
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
     table: { value: table.tableName, type: FieldType.STRING },
-    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+    ...(totalStorageBytes !== undefined && {
+      sizeBytes: { value: totalStorageBytes, type: FieldType.NUMBER }
+    }),
     status: { value: table.statusLabel, type: FieldType.STRING }
   };
   return searchTokens.every((searchToken) =>

@@ -13,6 +13,7 @@ import { formatBytes, tableSort } from '../../ReplicationUtils';
 import { XClusterConfigAction } from '../../constants';
 
 import {
+  IndexTableRestartReplicationCandidate,
   MainTableRestartReplicationCandidate,
   TableRestartReplicationCandidate
 } from '../../XClusterTypes';
@@ -41,7 +42,7 @@ export const ConfigIndexTableList = ({
 }: ConfigIndexTableListProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof MainTableRestartReplicationCandidate>(
+  const [sortField, setSortField] = useState<keyof IndexTableRestartReplicationCandidate>(
     'tableName'
   );
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
@@ -51,14 +52,14 @@ export const ConfigIndexTableList = ({
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type XClusterTableCandidate.
-      setSortField(sortName as keyof MainTableRestartReplicationCandidate);
+      setSortField(sortName as keyof IndexTableRestartReplicationCandidate);
       setSortOrder(sortOrder);
     }
   };
 
   const indexTableRows =
     mainTableRestartReplicationCandidate.indexTables?.sort((a, b) =>
-      tableSort<MainTableRestartReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
+      tableSort<IndexTableRestartReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
   return (
     <div className={styles.expandComponent}>
