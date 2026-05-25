@@ -960,10 +960,6 @@ class UniverseDetail extends Component {
     const isCACertRotationEnabled =
       !isKubernetesUniverse &&
       (featureFlags.test['enableCACertRotation'] || featureFlags.released['enableCACertRotation']);
-    const nodeNames =
-      currentUniverse.data.universeDetails.nodeDetailsSet
-        .filter((nodeDetails) => !!nodeDetails.nodeName)
-        .map((nodeDetails) => nodeDetails.nodeName) ?? [];
     const actionMenuButtons = isNotHidden(
       currentCustomer.data.features,
       'universes.details.pageActions'
@@ -2002,7 +1998,6 @@ class UniverseDetail extends Component {
             }
           }}
           universeUuid={currentUniverse.data.universeUUID}
-          nodeNames={nodeNames}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
         />
