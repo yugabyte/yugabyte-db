@@ -407,7 +407,7 @@ The following universe-scoped runtime configuration parameters control comprehen
 
 | Flag | Details |
 | :--- | :--- |
-| `yb.checks.comprehensive_prechecks.enabled` | Default: `true`. When `false`, skips service liveness, command execution (comprehensive block), and DB port connectivity checks that are gated on this flag. |
+| `yb.checks.comprehensive_prechecks.enabled` | Default: `true`. When `false`, skips service liveness, command execution, and DB port connectivity checks that are gated on this flag. |
 | `yb.checks.comprehensive_prechecks.check_service_liveness_timeout` | Default: `1m`. Timeout for each liveness check subtask during comprehensive pre-checks. |
 
 Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/) for instructions on viewing and changing these parameters.
@@ -571,7 +571,7 @@ Service(s) MASTER, TSERVER are not alive on node n1 (IP: 10.0.0.5)
 - Node agent is registered but not reachable.
 - Liveness probe exceeds the configured timeout.
 
-**Remediation**
+**Possible action/workaround**
 
 1. On the node (or via the YugabyteDB Anywhere UI), verify `yb-master`, `yb-tserver`, and node-agent services are running.
 1. Review the universe **Nodes** tab and node logs; fix crash loops or port conflicts.
