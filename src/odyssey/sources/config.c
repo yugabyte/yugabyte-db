@@ -72,6 +72,7 @@ void od_config_init(od_config_t *config)
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_enable_parse_queue_tracking = true;
 	config->yb_wait_for_rfq_on_sync = true;
+	config->yb_backend_drain_timeout_ms = 100;
 
 	od_list_init(&config->listen);
 }
@@ -100,6 +101,8 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 		new_config->yb_enable_parse_queue_tracking;
 	current_config->yb_wait_for_rfq_on_sync =
 		new_config->yb_wait_for_rfq_on_sync;
+	current_config->yb_backend_drain_timeout_ms =
+		new_config->yb_backend_drain_timeout_ms;
 }
 
 static void od_config_listen_free(od_config_listen_t *);
@@ -382,6 +385,9 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_tcmalloc_gc_interval     %d",
 	       config->yb_tcmalloc_gc_interval);
+
+	od_log(logger, "config", NULL, NULL, "yb_backend_drain_timeout_ms %d",
+	       config->yb_backend_drain_timeout_ms);
 
 	od_log(logger, "config", NULL, NULL, "TEST_yb_auth_delay_ms     %d",
 	       config->TEST_yb_auth_delay_ms);

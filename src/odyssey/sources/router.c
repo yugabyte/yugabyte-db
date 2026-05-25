@@ -45,13 +45,17 @@ static inline int od_router_immed_close_server_cb(od_server_t *server,
 						  void **argv)
 {
 	od_route_t *route = server->route;
-	/* remove server for server pool */
-	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
 
 	server->route = NULL;
 	od_backend_close_connection(server);
 	od_backend_close(server);
 
+	/*
+	 * YB: Always close connection before removing server from pool
+	 * to ensure PGPROC slot is released
+	 */
+	/* remove server for server pool */
+	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
 	return 0;
 }
 
@@ -869,36 +873,6 @@ static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *curr
 }
 
 /*
- * Calculate the number of in_use backends (aka physical connection) across all
- * routes.
- *
- * IMPORTANT: The caller must not hold any locks on any of the routes.
- */
-static uint32_t yb_calculate_all_in_use_backends(od_router_t *router) {
-	od_router_lock(router);
-
-	od_route_pool_t *pool = &router->route_pool;
-	od_list_t *i;
-	uint32_t total_in_use_backends = 0;
-	od_list_foreach(&pool->list, i)
-	{
-		od_route_t *route;
-		route = od_container_of(i, od_route_t, link);
-
-		if (yb_is_route_invalid(route) ||
-			(route->id.logical_rep))
-			continue;
-
-		od_route_lock(route);
-		total_in_use_backends += od_server_pool_total(&route->server_pool);
-		od_route_unlock(route);
-	}
-
-	od_router_unlock(router);
-	return total_in_use_backends;
-}
-
-/*
  * Return an idle server to close from a route different from the current route.
  * The route must be exceeding the per_route_quota.
  * Returns NULL if no such route is found.
@@ -1216,11 +1190,16 @@ od_router_status_t od_router_attach(od_router_t *router,
 					 */
 					idle_server->yb_slot_claimed = false;
 					yb_slot_claimed = true;
+
+					/*
+					 * Close the connection first so that we attempt to make a
+					 * new connection only when PGPROC slot has been released
+					 */
+					od_backend_close_connection(idle_server);
 					od_pg_server_pool_set(&idle_route->server_pool,
 							      idle_server,
 							      OD_SERVER_UNDEF);
 					idle_server->route = NULL;
-					od_backend_close_connection(idle_server);
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
 

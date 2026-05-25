@@ -208,6 +208,13 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
     "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
     "excess is returned to the OS. Set to 0 to disable periodic GC.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
+    "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
+    "backend's socket to be closed when closing the backend connection. Setting this to 0 "
+    "skips the wait entirely, which may cause subsequent connection attempts to fail with "
+    "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
+    "worker threads to block on closing sockets, reducing throughput.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {

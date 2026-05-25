@@ -8,11 +8,19 @@
 #include <arpa/inet.h>
 #include <assert.h>
 
+#include <errno.h>
+
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
 
 #define YB_SHMEM_KEY_FORMAT "shmkey="
+
+/*
+ * YB: Polling interval between non-blocking read attempts while waiting for
+ * the PG backend to close its socket
+ */
+#define YB_BACKEND_DRAIN_SLEEP_US 1000u
 
 void od_backend_close(od_server_t *server)
 {
@@ -34,7 +42,106 @@ static inline int od_backend_terminate(od_server_t *server)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return -1;
+
+#ifndef YB_SUPPORT_FOUND
 	return od_write(&server->io, &msg);
+#else // YB_SUPPORT_FOUND
+
+	/*
+	 * YB: Use a direct write() on the raw fd instead of machine_write()
+	 * since this function is called with locks held and we can't
+	 * yield the coroutine here.
+	 */
+	int fd = machine_fd(server->io.io);
+	void *data = machine_msg_data(msg);
+	int size = machine_msg_size(msg);
+	ssize_t rc = write(fd, data, size);
+	machine_msg_free(msg);
+	return (rc == size) ? 0 : -1;
+#endif // YB_SUPPORT_FOUND
+}
+
+/*
+ * YB: Gives current time of monotonic clock. This is to be preferred over
+ * machine_time_us() for implementing timeouts within a single function, as
+ * the machinarium function only updates time after coroutine has yielded
+ */
+static inline uint64_t yb_monotonic_time_us(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000ull + ts.tv_nsec / 1000ull;
+}
+
+/*
+ * YB: Drain the backend socket until the PG backend closes it (EOF). This is
+ * required to avoid the race condition in which PG hasn't freed up the PGPROC
+ * slot and we try to create a new connection. Since PG closes the socket after
+ * freeing up the slot, we rely on that.
+ *
+ * The caller always proceeds with od_io_close() when we return -- the drain is
+ * a best-effort wait.
+ */
+static inline void yb_od_backend_drain_until_eof(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	od_io_t *io = &server->io;
+	char buf[256];
+	int rc;
+	uint64_t timeout_ms = instance->config.yb_backend_drain_timeout_ms;
+
+	/* 0 disables the drain entirely. */
+	if (timeout_ms == 0)
+		return;
+
+	uint64_t start_us = yb_monotonic_time_us();
+
+	/*
+	 * Will be called with locks held, make sure to not call any function that
+	 * can yield the coroutine
+	 */
+	for (;;) {
+		uint64_t elapsed_us = yb_monotonic_time_us() - start_us;
+		if (elapsed_us >= timeout_ms * 1000llu) {
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server, "drain timed out after %llu us",
+				 elapsed_us);
+			rc = -1;
+			break;
+		}
+
+		rc = machine_read_raw(io->io, buf, sizeof(buf));
+		if (rc == 0) {
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server, "drain complete (EOF) after %llu us",
+				 yb_monotonic_time_us() - start_us);
+			break;
+		}
+		if (rc > 0)
+			continue;
+
+		/* rc == -1 */
+		int errno_ = machine_errno();
+		if (errno_ != EAGAIN && errno_ != EWOULDBLOCK &&
+		    errno_ != EINTR) {
+			/*
+			 * Real socket error -- the connection is already
+			 * broken. Treat as drained.
+			 */
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server,
+				 "drain ended with errno=%d after %llu us",
+				 errno_, yb_monotonic_time_us() - start_us);
+			break;
+		}
+
+		/* Sleep briefly between reads to avoid spinning on CPU. */
+		usleep(YB_BACKEND_DRAIN_SLEEP_US);
+	}
+
+	od_debug(&instance->logger, "backend-drain", NULL, server,
+		 "finished draining, rc=%d, elapsed=%d us", (int)rc,
+		 (int)(yb_monotonic_time_us() - start_us));
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -50,8 +157,16 @@ void od_backend_close_connection(od_server_t *server)
 		/* YB NOTE: Cleanup error_connect and tls even if we cannot connect */
 		goto cleanup;
 	}
-	if (machine_connected(server->io.io))
-		od_backend_terminate(server);
+	if (machine_connected(server->io.io)) {
+		int rc = od_backend_terminate(server);
+		if (rc == -1) {
+			od_debug(&instance->logger, "backend", NULL, server,
+				 "failed to send Terminate, skipping drain");
+		} else {
+			/* YB: Wait for backend to close socket */
+			yb_od_backend_drain_until_eof(server);
+		}
+	}
 
 	od_io_close(&server->io);
 
