@@ -222,7 +222,8 @@ class ObjectLockInfoManager::Impl {
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch);
 
-  std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const EXCLUDES(mutex_);
+  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const
+      EXCLUDES(mutex_);
 
   void BootstrapLocksPostLoad();
 
@@ -663,7 +664,7 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::ReleaseLocksHeldByExpired
       tserver_uuid, max_lease_epoch_to_release, leader_epoch);
 }
 
-std::unordered_map<std::string, TServerLeaseInfo>
+std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
 ObjectLockInfoManager::GetLeaseInfos() const {
   return impl_->GetLeaseInfos();
 }
@@ -1251,16 +1252,12 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
   return latch;
 }
 
-std::unordered_map<std::string, TServerLeaseInfo>
+std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
 ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   LockGuard lock(mutex_);
-  std::unordered_map<std::string, TServerLeaseInfo> result;
-  const auto now = MonoTime::Now();
+  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> result;
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
-    result[uuid] = TServerLeaseInfo{
-        .lease_info = object_info->LockForRead()->pb.lease_info(),
-        .lease_expiry = std::max(object_info->ysql_lease_deadline() - now, MonoDelta::kZero),
-    };
+    result[uuid] = object_info->LockForRead()->pb.lease_info();
   }
   return result;
 }

@@ -49,7 +49,7 @@ Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
       Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
   const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
   const std::regex col_regex(Format("<td[^>]*>([^]*?)</td>"));
-  const std::regex header_regex("<th[^>]*>([^]*?)</th>");
+  const std::regex header_regex("<th[^>]*>([^>]*?)</th>");
 
   std::smatch match;
   std::regex_search(webpage, match, table_regex);
