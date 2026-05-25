@@ -1,4 +1,4 @@
-# Copyright 2019 YugabyteDB, Inc. and Contributors
+# Copyright 2026 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -10,6 +10,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 import requests
 
@@ -69,6 +70,30 @@ YUGABYTE_SG_PREFIX = "yugabyte-sl-{}"
 
 DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
+
+# Max length of a single DNS label per RFC 1035.
+MAX_DNS_LABEL_LENGTH = 63
+
+
+def sanitize_dns_label(name, max_length=MAX_DNS_LABEL_LENGTH):
+    """Convert an arbitrary instance name into a valid OCI VNIC hostname label.
+
+    OCI hostname labels back the VCN-internal DNS records and must comply with
+    RFC 952/1123: only alphanumeric characters and hyphens, must start with a
+    letter, must not end with a hyphen, and be at most 63 characters long.
+    Returns None if no valid label can be derived from the given name.
+    """
+    if not name:
+        return None
+    label = re.sub(r"[^a-zA-Z0-9-]", "-", name).lower()
+    # Collapse runs of hyphens and trim leading/trailing ones.
+    label = re.sub(r"-+", "-", label).strip("-")
+    if not label:
+        return None
+    # Labels must begin with a letter.
+    if not label[0].isalpha():
+        label = "h" + label
+    return label[:max_length].rstrip("-") or None
 
 
 def get_oci_config():
@@ -175,26 +200,34 @@ class OciCloudAdmin:
         return [ad.name for ad in ads.data]
 
     def resolve_availability_domain(self, ad_name, compartment_id=None):
-        """Resolve friendly AD name (e.g. 'Availability Domain 1') to full OCI AD name."""
         comp_id = compartment_id or self.compartment_id
-        ads = self.identity_client.list_availability_domains(comp_id)
-
-        if ':' in ad_name or ad_name.startswith('ocid1.'):
+        ads = self.identity_client.list_availability_domains(comp_id).data
+        if ad_name.startswith('ocid1.'):
             return ad_name
-
-        for ad in ads.data:
-            if ad_name.startswith("Availability Domain "):
-                try:
-                    ad_num = ad_name.replace("Availability Domain ", "")
-                    if ad.name.endswith("-AD-{}".format(ad_num)):
-                        return ad.name
-                except (ValueError, IndexError):
-                    pass
-            if ad.name == ad_name or ad.name.endswith(ad_name):
+        target = ad_name.lower()
+        # Already in the "<prefix>:<REGION>-AD-N" shape; normalize against the API list.
+        if ':' in ad_name:
+            for ad in ads:
+                if ad.name.lower() == target:
+                    return ad.name
+            # Fall through; let it raise below.
+        # Match "Availability Domain N" or "...-AD-N" by AD number, case-insensitive.
+        suffix = None
+        if target.startswith("availability domain "):
+            suffix = "-ad-" + target.split()[-1]
+        elif "-ad-" in target:
+            suffix = "-ad-" + target.rsplit("-ad-", 1)[1]
+        if suffix:
+            for ad in ads:
+                if ad.name.lower().endswith(suffix):
+                    return ad.name
+        # Last resort: exact case-insensitive match against the full API name.
+        for ad in ads:
+            if ad.name.lower() == target:
                 return ad.name
-
-        logging.warning("Could not resolve AD name '{}', using as-is".format(ad_name))
-        return ad_name
+        raise YBOpsRuntimeError(
+            "Could not resolve OCI availability domain '{}' in compartment {}. "
+            "Available: {}".format(ad_name, comp_id, [ad.name for ad in ads]))
 
     def get_fault_domains(self, availability_domain, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
@@ -319,10 +352,24 @@ class OciCloudAdmin:
             boot_volume_size_in_gbs=actual_boot_size
         )
 
+        # Assign a VCN-internal DNS hostname when the target subnet has DNS
+        # enabled (i.e. has a dns_label). This makes OCI publish an A record so
+        # the node is reachable via its FQDN in addition to its private IP.
+        # Subnets without a dns_label reject hostname_label, so we skip it there.
+        hostname_label = None
+        try:
+            subnet = self.network_client.get_subnet(subnet_id).data
+            if getattr(subnet, "dns_label", None):
+                hostname_label = sanitize_dns_label(instance_name)
+        except Exception as e:
+            logging.warning(
+                "Could not look up subnet {} for DNS configuration: {}".format(subnet_id, e))
+
         vnic_details = CreateVnicDetails(
             subnet_id=subnet_id,
             assign_public_ip=assign_public_ip,
-            display_name="{}-vnic".format(instance_name)
+            display_name="{}-vnic".format(instance_name),
+            hostname_label=hostname_label
         )
 
         freeform_tags = tags or {}
@@ -400,6 +447,7 @@ class OciCloudAdmin:
                             "name": instance.display_name,
                             "public_ip": vnic.public_ip,
                             "private_ip": vnic.private_ip,
+                            "private_dns": self._get_private_dns(vnic),
                             "region": region,
                             "zone": instance.availability_domain,
                             "instance_type": instance.shape,
@@ -417,6 +465,37 @@ class OciCloudAdmin:
     def get_instance(self, instance_id):
         return self.compute_client.get_instance(instance_id).data
 
+    def _get_private_dns(self, vnic, subnet_cache=None):
+        """Build the VCN-internal FQDN for a VNIC, or None if DNS is not enabled.
+
+        OCI exposes the fully qualified domain name as
+        <hostname_label>.<subnet_domain_name>, where subnet_domain_name already
+        includes the subnet DNS label, the VCN DNS label and the oraclevcn.com
+        domain (e.g. "subnet1.vcn1.oraclevcn.com"). Returns None when the VNIC
+        has no hostname label or the subnet has DNS disabled.
+        """
+        hostname_label = getattr(vnic, "hostname_label", None)
+        if not hostname_label:
+            return None
+
+        subnet_id = vnic.subnet_id
+        subnet_domain_name = None
+        if subnet_cache is not None and subnet_id in subnet_cache:
+            subnet_domain_name = subnet_cache[subnet_id]
+        else:
+            try:
+                subnet = self.network_client.get_subnet(subnet_id).data
+                subnet_domain_name = getattr(subnet, "subnet_domain_name", None)
+            except Exception as e:
+                logging.warning(
+                    "Could not look up subnet {} for DNS name: {}".format(subnet_id, e))
+            if subnet_cache is not None:
+                subnet_cache[subnet_id] = subnet_domain_name
+
+        if not subnet_domain_name:
+            return None
+        return "{}.{}".format(hostname_label, subnet_domain_name.rstrip("."))
+
     def get_instances(self, region=None, search_pattern=None, compartment_id=None,
                       get_all=False, node_uuid=None):
         if region:
@@ -432,6 +511,7 @@ class OciCloudAdmin:
             )
 
         results = []
+        subnet_cache = {}
         for instance in instances.data:
             if search_pattern and search_pattern not in instance.display_name:
                 continue
@@ -450,6 +530,7 @@ class OciCloudAdmin:
             private_ip = None
             public_ip = None
             subnet_id = None
+            private_dns = None
 
             for attachment in vnic_attachments:
                 if attachment.lifecycle_state == "ATTACHED":
@@ -457,6 +538,7 @@ class OciCloudAdmin:
                     private_ip = vnic.private_ip
                     public_ip = vnic.public_ip
                     subnet_id = vnic.subnet_id
+                    private_dns = self._get_private_dns(vnic, subnet_cache=subnet_cache)
                     break
 
             inst_tags = instance.freeform_tags or {}
@@ -465,6 +547,7 @@ class OciCloudAdmin:
                 "name": instance.display_name,
                 "public_ip": public_ip,
                 "private_ip": private_ip,
+                "private_dns": private_dns,
                 "region": instance.region,
                 "zone": instance.availability_domain,
                 "instance_type": instance.shape,
@@ -479,6 +562,146 @@ class OciCloudAdmin:
         if not get_all and results:
             return results[0]
         return results if get_all else None
+
+    def terminate_instance(self, instance_id, preserve_boot_volume=False,
+                           delete_data_volumes=True):
+        # Delete attached data volumes before terminating instance
+        # Need to do this manually
+        if delete_data_volumes:
+            self._delete_attached_volumes(instance_id)
+
+        self.compute_client.terminate_instance(
+            instance_id,
+            preserve_boot_volume=preserve_boot_volume
+        )
+        self._wait_for_instance_state(instance_id, OCI_INSTANCE_TERMINATED, allow_not_found=True)
+
+    def _delete_attached_volumes(self, instance_id):
+        """Delete all block volumes attached to an instance (not boot volume)."""
+        try:
+            attachments = self.get_volume_attachments(instance_id=instance_id)
+            for attachment in attachments:
+                if attachment.lifecycle_state == "ATTACHED":
+                    volume_id = attachment.volume_id
+                    logging.info("Detaching and deleting volume {} from instance {}".format(
+                        volume_id, instance_id))
+                    try:
+                        self.detach_volume(attachment.id)
+                        self._wait_for_attachment_detached(attachment.id)
+                        self.delete_volume(volume_id)
+                        logging.info("Deleted volume {}".format(volume_id))
+                    except Exception as e:
+                        logging.warning("Failed to delete volume {}: {}".format(volume_id, e))
+        except Exception as e:
+            logging.warning("Failed to list volume attachments for instance {}: {}".format(
+                instance_id, e))
+
+    def _wait_for_attachment_detached(self, attachment_id, timeout=120):
+        """Wait for a volume attachment to be detached."""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                attachment = self.compute_client.get_volume_attachment(attachment_id).data
+                if attachment.lifecycle_state == "DETACHED":
+                    return
+            except oci.exceptions.ServiceError as e:
+                if e.status == 404:
+                    return  # Attachment already gone
+                raise
+            time.sleep(5)
+        logging.warning("Timeout waiting for attachment {} to detach".format(attachment_id))
+
+    def stop_instance(self, instance_id):
+        self.compute_client.instance_action(instance_id, "STOP")
+        return self._wait_for_instance_state(instance_id, OCI_INSTANCE_STOPPED)
+
+    def start_instance(self, instance_id):
+        self.compute_client.instance_action(instance_id, "START")
+        return self._wait_for_instance_state(instance_id, OCI_INSTANCE_RUNNING)
+
+    def reboot_instance(self, instance_id):
+        self.compute_client.instance_action(instance_id, "RESET")
+        return self._wait_for_instance_state(instance_id, OCI_INSTANCE_RUNNING)
+
+    def change_instance_type(self, instance_id, new_shape, ocpus=None, memory_in_gbs=None):
+        shape_config = None
+        if "Flex" in new_shape and (ocpus or memory_in_gbs):
+            shape_config = UpdateInstanceShapeConfigDetails(
+                ocpus=ocpus,
+                memory_in_gbs=memory_in_gbs
+            )
+
+        update_details = UpdateInstanceDetails(
+            shape=new_shape,
+            shape_config=shape_config
+        )
+        self.compute_client.update_instance(instance_id, update_details)
+
+    def create_volume(self, availability_domain, size_in_gbs, display_name=None,
+                      volume_type=OCI_VOLUME_TYPE_BALANCED, vpus_per_gb=None, tags=None):
+        if vpus_per_gb is None:
+            if volume_type in (OCI_VOLUME_TYPE_HIGH_PERFORMANCE, OCI_VOLUME_TYPE_HIGHER_PERF):
+                vpus_per_gb = 20
+            elif volume_type == OCI_VOLUME_TYPE_ULTRA_HIGH_PERFORMANCE:
+                vpus_per_gb = 30
+            elif volume_type == OCI_VOLUME_TYPE_LOWER_COST:
+                vpus_per_gb = 0
+            else:
+                vpus_per_gb = 10
+
+        volume_details = CreateVolumeDetails(
+            compartment_id=self.compartment_id,
+            availability_domain=availability_domain,
+            size_in_gbs=size_in_gbs,
+            display_name=display_name,
+            vpus_per_gb=vpus_per_gb,
+            freeform_tags=tags
+        )
+        response = self.blockstorage_client.create_volume(volume_details)
+        return self._wait_for_volume_state(response.data.id, "AVAILABLE")
+
+    def attach_volume(self, instance_id, volume_id, device_path=None):
+        attach_details = AttachParavirtualizedVolumeDetails(
+            instance_id=instance_id,
+            volume_id=volume_id,
+            display_name="attachment-{}".format(volume_id[-8:]),
+            device=device_path,
+            is_read_only=False,
+            is_shareable=False
+        )
+        response = self.compute_client.attach_volume(attach_details)
+        return self._wait_for_attachment_state(response.data.id, "ATTACHED")
+
+    def detach_volume(self, attachment_id):
+        self.compute_client.detach_volume(attachment_id)
+
+    def delete_volume(self, volume_id):
+        self.blockstorage_client.delete_volume(volume_id)
+
+    def get_volume_attachments(self, instance_id=None, compartment_id=None):
+        comp_id = compartment_id or self.compartment_id
+        return self.compute_client.list_volume_attachments(
+            comp_id, instance_id=instance_id).data
+
+    def update_volume_size(self, volume_id, new_size_in_gbs):
+        from oci.core.models import UpdateVolumeDetails
+        update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
+        self.blockstorage_client.update_volume(volume_id, update_details)
+
+    def list_volumes_by_tags(self, tags, compartment_id=None):
+        comp_id = compartment_id or self.compartment_id
+        volumes = self.blockstorage_client.list_volumes(compartment_id=comp_id).data
+        matching_volumes = []
+        for volume in volumes:
+            if volume.lifecycle_state not in ("AVAILABLE", "PROVISIONING"):
+                continue
+            if volume.freeform_tags:
+                matches = all(
+                    volume.freeform_tags.get(k) == v for k, v in tags.items()
+                )
+                if matches:
+                    matching_volumes.append(volume)
+        return matching_volumes
 
     def modify_tags(self, instance_id, tags_to_add=None, tags_to_remove=None):
         instance = self.get_instance(instance_id)

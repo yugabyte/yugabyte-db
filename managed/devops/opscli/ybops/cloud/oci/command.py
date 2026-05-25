@@ -19,10 +19,14 @@ from ybops.cloud.common.method import (
     RunHooks, WaitForConnection, ManageOtelCollector
 )
 from ybops.cloud.oci.method import (
-    OciQueryRegionsMethod, OciQueryZonesMethod,
+    OciCreateInstancesMethod, OciProvisionInstancesMethod,
+    OciDestroyInstancesMethod, OciQueryRegionsMethod, OciQueryZonesMethod,
     OciQueryInstanceTypesMethod, OciQueryCurrentHostMethod, OciQueryVpcMethod,
     OciQueryDeviceNames, OciAccessAddKeyMethod, OciNetworkBootstrapMethod,
-    OciNetworkQueryMethod, OciNetworkCleanupMethod, OciTagsMethod
+    OciNetworkQueryMethod, OciNetworkCleanupMethod, OciCreateRootVolumesMethod,
+    OciDeleteRootVolumesMethod, OciReplaceRootVolumeMethod, OciChangeInstanceTypeMethod,
+    OciPauseInstancesMethod, OciResumeInstancesMethod, OciUpdateDiskMethod, OciTagsMethod,
+    OciHardRebootInstancesMethod
 )
 
 
@@ -32,16 +36,27 @@ class OciInstanceCommand(InstanceCommand):
         super(OciInstanceCommand, self).__init__()
 
     def add_methods(self):
+        self.add_method(OciProvisionInstancesMethod(self))
+        self.add_method(OciCreateInstancesMethod(self))
+        self.add_method(OciCreateRootVolumesMethod(self))
+        self.add_method(OciDeleteRootVolumesMethod(self))
+        self.add_method(OciReplaceRootVolumeMethod(self))
+        self.add_method(OciDestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
+        self.add_method(OciUpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(OciChangeInstanceTypeMethod(self))
+        self.add_method(OciPauseInstancesMethod(self))
+        self.add_method(OciResumeInstancesMethod(self))
         self.add_method(OciTagsMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))
+        self.add_method(OciHardRebootInstancesMethod(self))
         self.add_method(ManageOtelCollector(self))
 
 

@@ -108,6 +108,48 @@ class OciCloud(AbstractCloud):
                 result[name]["prices"][region] = [{"os": "Linux", "price": 0.0}]
         return result
 
+    def create_instance(self, args, server_type, ssh_keys):
+        machine_image = getattr(args, 'machine_image', None)
+        if not machine_image:
+            machine_image = self.get_image(args.region, shape=args.instance_type)
+
+        if not machine_image:
+            raise YBOpsRuntimeError(
+                "No OCI image available for region {} compatible with shape {}. "
+                "Please configure an image bundle with OCI images or ensure "
+                "Oracle Linux images are available.".format(args.region, args.instance_type))
+
+        logging.info("Creating OCI instance with image: {}".format(machine_image))
+
+        tags = {}
+        if args.instance_tags:
+            tags = json.loads(args.instance_tags)
+
+        ocpus = getattr(args, 'ocpus', None)
+        memory_in_gbs = getattr(args, 'memory_in_gbs', None)
+
+        host_info = self.get_admin().create_instance(
+            region=args.region,
+            availability_domain=args.zone,
+            subnet_id=args.cloud_subnet,
+            instance_name=args.search_pattern,
+            shape=args.instance_type,
+            server_type=server_type,
+            image_id=machine_image,
+            num_volumes=args.num_volumes,
+            volume_size=args.volume_size,
+            boot_volume_size_gb=args.boot_disk_size_gb,
+            assign_public_ip=args.assign_public_ip,
+            ssh_public_key=ssh_keys,
+            user_data=self._get_user_data(args),
+            tags=tags,
+            volume_type=getattr(args, 'volume_type', OCI_VOLUME_TYPE_STANDARD),
+            ocpus=ocpus,
+            memory_in_gbs=memory_in_gbs,
+            node_uuid=getattr(args, 'node_uuid', None)
+        )
+        return host_info
+
     def _get_user_data(self, args):
         if hasattr(args, 'boot_script') and args.boot_script:
             try:
@@ -116,6 +158,23 @@ class OciCloud(AbstractCloud):
             except Exception as e:
                 logging.warning("Failed to read boot script: {}".format(e))
         return None
+
+    def destroy_instance(self, args):
+        host_info = self.get_host_info(args)
+        if host_info is None:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+
+        if args.node_ip is not None:
+            if host_info.get('private_ip') != args.node_ip:
+                logging.error("Host {} IP does not match.".format(args.search_pattern))
+                return
+        elif args.node_uuid is not None:
+            if host_info.get('node_uuid') != args.node_uuid:
+                logging.error("Host {} UUID does not match.".format(args.search_pattern))
+                return
+
+        self.get_admin().terminate_instance(host_info['id'])
 
     def get_host_info(self, args, get_all=False):
         region = args.region if hasattr(args, 'region') and args.region else None
@@ -129,6 +188,122 @@ class OciCloud(AbstractCloud):
     def get_device_names(self, args):
         return ["sd{}".format(chr(ord('b') + i))
                 for i in range(args.num_volumes)]
+
+    def start_instance(self, host_info, server_ports):
+        instance_id = host_info['id']
+        instance = self.get_admin().get_instance(instance_id)
+
+        if instance.lifecycle_state == OCI_INSTANCE_RUNNING:
+            logging.info("Instance {} is already running".format(host_info['name']))
+        elif instance.lifecycle_state == OCI_INSTANCE_STOPPED:
+            self.get_admin().start_instance(instance_id)
+        else:
+            raise YBOpsRuntimeError(
+                "Instance {} cannot be started from state {}".format(
+                    host_info['name'], instance.lifecycle_state))
+
+        updated_info = self.get_admin().get_instances(
+            search_pattern=host_info['name'],
+            get_all=False
+        )
+
+        if updated_info:
+            ssh_host = updated_info['private_ip']
+            self.wait_for_server_ports(
+                ssh_host,
+                host_info['name'],
+                server_ports
+            )
+        return updated_info
+
+    def stop_instance(self, host_info):
+        instance_id = host_info['id']
+        instance = self.get_admin().get_instance(instance_id)
+
+        if instance.lifecycle_state == OCI_INSTANCE_STOPPED:
+            logging.info("Instance {} is already stopped".format(host_info['name']))
+        elif instance.lifecycle_state == OCI_INSTANCE_RUNNING:
+            self.get_admin().stop_instance(instance_id)
+        else:
+            raise YBOpsRuntimeError(
+                "Instance {} cannot be stopped from state {}".format(
+                    host_info['name'], instance.lifecycle_state))
+
+    def reboot_instance(self, host_info, server_ports):
+        self.get_admin().reboot_instance(host_info['id'])
+        ssh_host = host_info['private_ip']
+        self.wait_for_server_ports(
+            ssh_host,
+            host_info['name'],
+            server_ports
+        )
+
+    def change_instance_type(self, host_info, instance_type, ocpus=None, memory_in_gbs=None):
+        self.get_admin().change_instance_type(
+            host_info['id'],
+            instance_type,
+            ocpus=ocpus,
+            memory_in_gbs=memory_in_gbs
+        )
+
+    def update_disk(self, args):
+        host_info = self.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+
+        attachments = self.get_admin().get_volume_attachments(instance_id=host_info['id'])
+        for attachment in attachments:
+            if attachment.lifecycle_state == "ATTACHED":
+                self.get_admin().update_volume_size(attachment.volume_id, args.volume_size)
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+
+        filter_tags = {
+            'universe-uuid': universe_uuid,
+            'node-uuid': node_uuid
+        }
+
+        volumes = self.get_admin().list_volumes_by_tags(filter_tags)
+        deleted_count = 0
+
+        for volume in volumes:
+            if volume.lifecycle_state == "AVAILABLE":
+                try:
+                    logging.info("Deleting volume: {} ({})".format(
+                        volume.display_name, volume.id))
+                    self.get_admin().delete_volume(volume.id)
+                    deleted_count += 1
+                except Exception as e:
+                    logging.warning(
+                        "Failed to delete volume {}: {}. "
+                        "deletion can fail due to errors, "
+                        "Use `--force` to ignore errors and force delete.".format(
+                            volume.id, e))
+
+        logging.info("Deleted {} volumes for node {}".format(deleted_count, node_uuid))
+
+    def modify_tags(self, args):
+        host_info = self.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+
+        tags_to_add = json.loads(args.instance_tags) if args.instance_tags else None
+        tags_to_remove = None
+        if hasattr(args, 'remove_tags') and args.remove_tags:
+            tags_to_remove = args.remove_tags.split(",")
+
+        self.get_admin().modify_tags(host_info['id'], tags_to_add, tags_to_remove)
 
     def get_console_output(self, args):
         host_info = self.get_host_info(args)
@@ -190,3 +365,22 @@ class OciCloud(AbstractCloud):
         except Exception as e:
             raise YBOpsRuntimeError(
                 "Unable to auto-discover OCI provider information: {}".format(e))
+
+    def expand_file_system(self, args, connect_options):
+        from ybops.utils.remote_shell import RemoteShell
+        remote_shell = RemoteShell(connect_options)
+        mount_points = self.get_mount_points_csv(args).split(',')
+        for mount_point in mount_points:
+            logging.info("Expanding file system with mount point: {}".format(mount_point))
+            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
+
+    def clone_disk(self, args, volume_id, num_disks):
+        raise YBOpsRuntimeError("Disk cloning not yet implemented for OCI")
+
+    def mount_disk(self, args, body):
+        instance_id = args.get('instance_id') or args.get('search_pattern')
+        volume_id = body.get('volume_id')
+        self.get_admin().attach_volume(instance_id, volume_id)
+
+    def unmount_disk(self, args, attachment_id):
+        self.get_admin().detach_volume(attachment_id)

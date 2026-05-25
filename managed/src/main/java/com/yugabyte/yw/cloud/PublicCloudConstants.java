@@ -126,6 +126,10 @@ public class PublicCloudConstants {
     Premium_LRS(Common.CloudType.azu),
     PremiumV2_LRS(Common.CloudType.azu, new Pair<>(3000, 80_000), new Pair<>(1, 1200)),
     UltraSSD_LRS(Common.CloudType.azu, new Pair<>(100, 160_000), new Pair<>(1, 3814)),
+    // OCI Block Volume storage types
+    OCI_Balanced(Common.CloudType.oci),
+    OCI_HigherPerformance(Common.CloudType.oci),
+    OCI_LowerCost(Common.CloudType.oci),
     Local(Common.CloudType.local);
 
     @Getter private final Common.CloudType cloudType;

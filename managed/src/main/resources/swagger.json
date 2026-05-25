@@ -7674,6 +7674,9 @@
             "Premium_LRS",
             "PremiumV2_LRS",
             "UltraSSD_LRS",
+            "OCI_Balanced",
+            "OCI_HigherPerformance",
+            "OCI_LowerCost",
             "Local"
           ],
           "type" : "string"
@@ -50925,6 +50928,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50951,6 +50957,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50993,6 +51002,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -51019,6 +51031,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -51061,6 +51076,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -51087,6 +51105,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"

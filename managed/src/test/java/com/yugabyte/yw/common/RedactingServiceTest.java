@@ -34,6 +34,16 @@ public class RedactingServiceTest {
     assertEquals(
         SECRET_REPLACEMENT,
         details.get("cloudInfo").get("gcp").get("gceApplicationCredentials").asText());
+    assertEquals(
+        SECRET_REPLACEMENT,
+        details.get("cloudInfo").get("oci").get("ociPrivateKeyContent").asText());
+    assertEquals(
+        SECRET_REPLACEMENT,
+        details.get("cloudInfo").get("oci").get("OCI_PRIVATE_KEY_CONTENT").asText());
+    assertEquals(
+        SECRET_REPLACEMENT, details.get("cloudInfo").get("oci").get("ociFingerprint").asText());
+    assertEquals(
+        SECRET_REPLACEMENT, details.get("cloudInfo").get("oci").get("OCI_FINGERPRINT").asText());
   }
 
   @Test
@@ -54,6 +64,18 @@ public class RedactingServiceTest {
     assertEquals(
         "Test_Credentials",
         details.get("cloudInfo").get("gcp").get("gceApplicationCredentials").asText());
+    assertEquals(
+        "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+        details.get("cloudInfo").get("oci").get("ociPrivateKeyContent").asText());
+    assertEquals(
+        "-----BEGIN PRIVATE KEY-----\ndef\n-----END PRIVATE KEY-----",
+        details.get("cloudInfo").get("oci").get("OCI_PRIVATE_KEY_CONTENT").asText());
+    assertEquals(
+        "11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff:00",
+        details.get("cloudInfo").get("oci").get("ociFingerprint").asText());
+    assertEquals(
+        "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99",
+        details.get("cloudInfo").get("oci").get("OCI_FINGERPRINT").asText());
   }
 
   @Test
@@ -267,8 +289,15 @@ public class RedactingServiceTest {
     ObjectNode gcp = mapper.createObjectNode();
     gcp.put("gceProject", "test_project");
     gcp.put("gceApplicationCredentials", "Test_Credentials");
+    ObjectNode oci = mapper.createObjectNode();
+    oci.put("ociPrivateKeyContent", "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----");
+    oci.put(
+        "OCI_PRIVATE_KEY_CONTENT", "-----BEGIN PRIVATE KEY-----\ndef\n-----END PRIVATE KEY-----");
+    oci.put("ociFingerprint", "11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff:00");
+    oci.put("OCI_FINGERPRINT", "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99");
     cloudInfo.set("aws", aws);
     cloudInfo.set("gcp", gcp);
+    cloudInfo.set("oci", oci);
     details.set("cloudInfo", cloudInfo);
     jsonNode.set("details", details);
     jsonNode.put("awsAccessKeyID", "AW*************ID");

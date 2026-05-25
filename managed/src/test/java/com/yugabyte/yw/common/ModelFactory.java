@@ -186,6 +186,10 @@ public class ModelFactory {
     return Provider.create(customer.getUuid(), Common.CloudType.azu, "Azure");
   }
 
+  public static Provider ociProvider(Customer customer) {
+    return Provider.create(customer.getUuid(), Common.CloudType.oci, "OCI");
+  }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.getUuid(), Common.CloudType.onprem, "OnPrem");
   }
