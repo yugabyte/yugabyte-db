@@ -337,6 +337,7 @@
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
+| "Enable comprehensive prechecks" | "yb.checks.comprehensive_prechecks.enabled" | "UNIVERSE" | "When enabled (default), extra runtime prechecks run during universe create/edit and rolling upgrades (e.g. node connectivity and service/command checks). Disable to skip these checks." | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
 | "Enable Automated Master Failover" | "yb.auto_master_failover.enabled" | "UNIVERSE" | "Enable Automated Master Failover for universes in background process" | "Boolean" |
 | "Master Follower Lag Soft Threshold" | "yb.auto_master_failover.master_follower_lag_soft_threshold" | "UNIVERSE" | "Master follower lag soft threshold for potential master failure" | "Duration" |

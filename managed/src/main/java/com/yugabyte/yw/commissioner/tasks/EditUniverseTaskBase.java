@@ -149,7 +149,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
-    createCheckNodeCommandExecutionTasks(liveNodes);
 
     long checkServiceLivenessTimeoutMs =
         confGetter
@@ -170,6 +169,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             subTaskGroup.addSubTask(task);
           }
         });
+
+    createCheckNodeCommandExecutionTasks(liveNodes);
   }
 
   protected Set<NodeDetails> getAddedMasters() {

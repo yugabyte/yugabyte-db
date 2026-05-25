@@ -1306,7 +1306,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "rolling upgrades (e.g. node connectivity and service/command checks). Disable to "
               + "skip these checks.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Duration> comprehensivePrecheckCheckServiceLivenessTimeout =
       new ConfKeyInfo<>(
