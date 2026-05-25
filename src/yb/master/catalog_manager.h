@@ -1500,6 +1500,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DeleteCDCStream(
       const DeleteCDCStreamRequestPB* req, DeleteCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Delete the notifications replication slot for a tserver.
+  Status DeleteNotificationsReplicationSlot(
+      const std::string& tserver_uuid, uint64_t tserver_start_time = 0);
+
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) override;
@@ -3040,6 +3044,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<std::optional<CDCStreamInfoPtr>> GetStreamIfValidForDelete(
       const xrepl::StreamId& stream_id, bool force_delete) REQUIRES_SHARED(mutex_);
+
+  Result<std::optional<CDCStreamInfoPtr>> GetReplicationSlotStreamForDelete(
+      const ReplicationSlotName& slot_name, bool force_delete) REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
