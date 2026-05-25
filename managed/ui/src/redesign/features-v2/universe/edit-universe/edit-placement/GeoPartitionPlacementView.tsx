@@ -1,6 +1,6 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import { toast } from 'react-toastify';
 import { MasterServerNodeAllocationModal } from '../master-server/MasterServerNodeAllocationModal';
@@ -58,6 +58,7 @@ export const GeoPartitionPlacementView = () => {
   const spec = universeData?.spec as Record<string, unknown> | undefined;
   const rawName = String(spec?.name ?? spec?.universeName ?? spec?.universe_name ?? '').trim();
   const universeDisplayName = rawName || universeUuid;
+  const isUniverseReady = useIsUniverseReady();
 
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
 
@@ -157,7 +158,8 @@ export const GeoPartitionPlacementView = () => {
         onClick: () => {
           window.location.href = getAddReadReplicaRoute(universeUuid);
         },
-        startIcon: <EditIcon />
+        startIcon: <EditIcon />,
+        disabled: !isUniverseReady
       },
       {
         id: 'delete-read-replica',
@@ -167,11 +169,12 @@ export const GeoPartitionPlacementView = () => {
         destructive: true,
         onClick: () =>
           setModalParams((prev) => ({ ...prev, showDeleteReadReplicaModal: true })),
-        startIcon: <DeleteOutlineIcon />
+        startIcon: <DeleteOutlineIcon />,
+        disabled: !isUniverseReady
       }
     ];
   }, [readReplicaClusters?.uuid, t, universeUuid]);
-
+  console.warn({isUniverseReady});
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -186,6 +189,7 @@ export const GeoPartitionPlacementView = () => {
             onClick={() => {
               window.location.href = getAddGeoPartitionRoute(universeUuid);
             }}
+            disabled={!isUniverseReady}
           >
             {t('geoParitionPlacementView.addGeoPartition')}
           </YBButton>

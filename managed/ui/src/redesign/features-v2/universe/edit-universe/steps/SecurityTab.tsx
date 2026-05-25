@@ -14,7 +14,7 @@ import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
 import { AssignPublicIPField } from '../../create-universe/fields';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 
@@ -74,6 +74,7 @@ export const SecurityTab = () => {
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
+  const isUniverseReady = useIsUniverseReady();
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -94,7 +95,7 @@ export const SecurityTab = () => {
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEitModalOpen(true)}
-                disabled={eitModalOpen}
+                disabled={eitModalOpen || !isUniverseReady}
               >
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>
@@ -130,7 +131,7 @@ export const SecurityTab = () => {
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEarModalOpen(true)}
-                disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID}
+                disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady}
               >
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>

@@ -7,7 +7,7 @@ import {
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettingsModal';
@@ -42,6 +42,7 @@ export const AdvancedTab = () => {
   );
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const networking_spec = primaryCluster?.networking_spec;
+  const isUniverseReady = useIsUniverseReady();
 
   const getNoProxyList = () => {
     if (!networking_spec?.proxy_config?.no_proxy_list?.length) {
@@ -68,6 +69,7 @@ export const AdvancedTab = () => {
             onClick={() => {
               setEditAdvancedSettingsModalVisible(true);
             }}
+            disabled={!isUniverseReady}
           >
             {t('edit', { keyPrefix: 'common' })}
           </YBButton>

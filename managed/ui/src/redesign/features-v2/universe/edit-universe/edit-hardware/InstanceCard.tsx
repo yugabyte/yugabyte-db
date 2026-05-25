@@ -10,6 +10,7 @@ import { LinuxVersion } from '../components';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { useIsUniverseReady } from '../EditUniverseUtils';
 interface InstanceCardProps {
   title: string;
   arch?: string;
@@ -28,7 +29,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   onEditClicked
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
-
+  const isUniverseReady = useIsUniverseReady();
   return (
     <StyledContent>
       <StyledHeader>
@@ -39,6 +40,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
             variant="ghost"
             startIcon={<EditIcon />}
             onClick={() => onEditClicked && onEditClicked()}
+            disabled={!isUniverseReady}
           >
             {t('edit', { keyPrefix: 'common' })}
           </YBButton>

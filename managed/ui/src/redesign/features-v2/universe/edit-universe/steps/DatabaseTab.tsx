@@ -15,7 +15,8 @@ import { KeyboardArrowDown } from '@material-ui/icons';
 import {
   convertGFlagApiRespToFormValues,
   getClusterByType,
-  useEditUniverseContext
+  useEditUniverseContext,
+  useIsUniverseReady
 } from '../EditUniverseUtils';
 
 import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
@@ -81,6 +82,7 @@ export const DatabaseTab = () => {
   const [ysqlModalOpen, setYsqlModalOpen] = useState(false);
   const [ycqlModalOpen, setYcqlModalOpen] = useState(false);
   const [gflagsModalOpen, setGflagsModalOpen] = useState(false);
+  const isUniverseReady = useIsUniverseReady();
 
   const universeUUID = universeData?.info?.universe_uuid;
 
@@ -169,7 +171,7 @@ export const DatabaseTab = () => {
                 <MenuItem
                   data-test-id="edit-ysql-settings"
                   data-testid="edit-ysql-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                   onClick={() => setYsqlModalOpen(true)}
                 >
                   <Box
@@ -184,7 +186,7 @@ export const DatabaseTab = () => {
                 <MenuItem
                   data-test-id="edit-ycql-settings"
                   data-testid="edit-ycql-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                   onClick={() => setYcqlModalOpen(true)}
                 >
                   <Box
@@ -254,7 +256,7 @@ export const DatabaseTab = () => {
                 <MenuItem
                   data-test-id="edit-pooling-settings"
                   data-testid="edit-pooling-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                   onClick={() => setConnectionPoolModalOpen(true)}
                 >
                   <Box
@@ -269,7 +271,7 @@ export const DatabaseTab = () => {
                 <MenuItem
                   data-test-id="edit-postgres-compatibility-settings"
                   data-testid="edit-postgres-compatibility-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                   onClick={() => setPgCompatibilityModalOpen(true)}
                 >
                   <Box
@@ -315,7 +317,7 @@ export const DatabaseTab = () => {
                 dataTestId="edit-gflags-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                 onClick={() => setGflagsModalOpen(true)}
               >
                 {t('edit', { keyPrefix: 'common' })}
@@ -347,7 +349,7 @@ export const DatabaseTab = () => {
                   dataTestId="add-gflags-button"
                   startIcon={<AddCircleIcon />}
                   sx={{ mt: 2 }}
-                  disabled={isLegacyUniverseLoading || !legacyUniverse}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
                   onClick={() => setGflagsModalOpen(true)}
                 >
                   {t('addFlag')}

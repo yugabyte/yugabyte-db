@@ -7,6 +7,7 @@ import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { useIsUniverseReady } from '../EditUniverseUtils';
 
 const { Box, MenuItem, Typography, Divider, Link } = mui;
 
@@ -33,6 +34,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   triggerLabelKey
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
+  const isUniverseReady = useIsUniverseReady();
 
   return (
     <YBDropdown
@@ -58,6 +60,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           <MenuItem
             data-test-id="edit-placement-clear-affinities"
             onClick={onEditMasterAllocationClick}
+            disabled={!isUniverseReady}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}>
               <EditIcon />
@@ -75,6 +78,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           onClick={() => {
             window.location.href = getAddReadReplicaRoute(universeUuid);
           }}
+          disabled={!isUniverseReady}
         >
           <Box sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}>
             <div>
@@ -102,6 +106,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
             onClick={() => {
               window.location.href = getAddGeoPartitionRoute(universeUuid);
             }}
+            disabled={!isUniverseReady}
           >
             <Box
               sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}

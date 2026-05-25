@@ -391,3 +391,8 @@ export const countMasterAndTServerNodes = (
   });
   return dedicatedNodesCount;
 };
+
+export function useIsUniverseReady() {
+  const { universeData } = useEditUniverseContext();
+  return !universeData?.info?.update_in_progress && !universeData?.info?.universe_paused;
+};

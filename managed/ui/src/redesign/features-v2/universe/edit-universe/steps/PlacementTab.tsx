@@ -4,7 +4,7 @@ import { mui } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { ClusterType } from '@app/redesign/helpers/dtos';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { useApplyMasterAllocation } from '../hooks/useApplyMasterAllocation';
 import { useEditUniverse } from '@app/v2/api/universe/universe';
@@ -45,6 +45,7 @@ export const PlacementTab = () => {
   const spec = universeData?.spec as Record<string, unknown> | undefined;
   const rawName = String(spec?.name ?? spec?.universeName ?? spec?.universe_name ?? '').trim();
   const universeDisplayName = rawName || universeUuid;
+  const isUniverseReady = useIsUniverseReady();
 
   const [showDeleteReadReplicaModal, setShowDeleteReadReplicaModal] = useState(false);
 
@@ -79,7 +80,8 @@ export const PlacementTab = () => {
         onClick: () => {
           window.location.href = getAddReadReplicaRoute(universeUuid);
         },
-        startIcon: <EditIcon />
+        startIcon: <EditIcon />,
+        disabled: !isUniverseReady
       },
       {
         id: 'delete-read-replica',
@@ -88,7 +90,8 @@ export const PlacementTab = () => {
         showDividerBefore: true,
         destructive: true,
         onClick: () => setShowDeleteReadReplicaModal(true),
-        startIcon: <DeleteOutlineIcon />
+        startIcon: <DeleteOutlineIcon />,
+        disabled: !isUniverseReady
       }
     ];
   }, [readReplicaCluster?.uuid, t, universeUuid]);
