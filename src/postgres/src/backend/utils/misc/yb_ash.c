@@ -34,6 +34,7 @@
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
+#include "parser/analyze.h"
 #include "parser/scansup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -79,6 +80,7 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
 YbAshTrackNestedQueries yb_ash_track_nested_queries = NULL;
 
@@ -104,10 +106,32 @@ static int	nested_level = 0;
 static bool pop_query_id_before_push = false;
 static uint64 query_id_to_be_popped_before_push = 0;
 
+/*
+ * Coordinate query_id tracking between exec_parse_message and the
+ * post_parse_analyze hook.  Parse cannot push the queryid at entry because
+ * the id is not yet known; the hook pushes it once JumbleQuery runs, and
+ * exec_parse_message pops it on exit using yb_ash_parse_queryid.
+ *
+ * Bind and Execute do not need this mechanism: their query_id is available
+ * at message entry, so a straightforward push/pop in the message handler
+ * suffices.
+ *
+ * yb_ash_in_parse_message – true while exec_parse_message is on the call
+ *   stack; guards the hook from pushing a query_id outside a Parse context.
+ * yb_ash_parse_queryid_pushed – true if the hook successfully pushed a queryid;
+ *   tells exec_parse_message whether to pop on exit.
+ * yb_ash_parse_queryid  – the queryid saved by the hook so that
+ *   exec_parse_message can pop it on exit.
+ */
+static bool yb_ash_in_parse_message = false;
+static bool yb_ash_parse_queryid_pushed = false;
+static uint64 yb_ash_parse_queryid = 0;
+
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
+static void YbAshFlushDeferredPop(void);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
@@ -127,6 +151,8 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  ProcessUtilityContext context, ParamListInfo params,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  QueryCompletion *qc);
+static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query,
+									  JumbleState *jstate);
 
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
@@ -198,6 +224,9 @@ YbAshInit(void)
 void
 YbAshInstallHooks(void)
 {
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = yb_ash_post_parse_analyze;
+
 	prev_ExecutorStart = ExecutorStart_hook;
 	ExecutorStart_hook = yb_ash_ExecutorStart;
 
@@ -316,6 +345,42 @@ YbAshShmemInit(void)
 		yb_ash->max_entries = yb_ash_cb_max_entries();
 		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 	}
+}
+
+/*
+ * post_parse_analyze hook. When called from exec_parse_message, pushes the
+ * just-computed query_id so post-analysis work (rewriting, plan caching)
+ * attributes correctly. The push is paired with the pop in
+ * YbAshResetQueryIdForMessage at exec_parse_message exit.
+ *
+ * Skips other call sites (exec_simple_query, SPI sub-parse, nested contexts)
+ * because they manage query_id via executor/utility hooks and an unmatched
+ * push here would leak onto the stack.
+ * TODO(#31445): Extend to exec_simple_query and SPI sub-parse by
+ * detecting the call context and issuing a matched push/pop, so Parse-phase
+ * catalog reads are correctly attributed in all code paths.
+ */
+static void
+yb_ash_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	if (!yb_enable_ash)
+		return;
+
+	if (!yb_ash_in_parse_message || yb_ash_parse_queryid_pushed)
+		return;
+
+	if (nested_level > 0)
+		return;
+
+	if (query->queryId == 0)
+		return;
+
+	yb_ash_parse_queryid = query->queryId;
+	YbAshSetQueryId(yb_ash_parse_queryid);
+	yb_ash_parse_queryid_pushed = true;
 }
 
 static void
@@ -492,7 +557,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
-static uint64
+uint64
 GetDefaultQueryId()
 {
 	YbcAshConstQueryIdType type =
@@ -561,6 +626,29 @@ YbAshSetMetadata(void)
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
 }
 
+/*
+ * Drain a pending deferred pop. Used by YbAshUnsetMetadata and by the
+ * per-message helpers to evict a previous statement's query_id before a new
+ * extended-protocol message starts.
+ */
+static void
+YbAshFlushDeferredPop(void)
+{
+	if (!pop_query_id_before_push)
+		return;
+
+	uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+	pop_query_id_before_push = false;
+	query_id_to_be_popped_before_push = 0;
+
+	if (prev_query_id != 0)
+	{
+		LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+		MyProc->yb_ash_metadata.query_id = prev_query_id;
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+	}
+}
+
 void
 YbAshUnsetMetadata(void)
 {
@@ -569,27 +657,72 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
-	if (pop_query_id_before_push)
-	{
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
-		pop_query_id_before_push = false;
-		query_id_to_be_popped_before_push = 0;
-
-		if (prev_query_id != 0)
-		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
-		}
-	}
+	YbAshFlushDeferredPop();
 
 	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
+	/* Reset parse-message state in case an error skipped the matching reset. */
+	yb_ash_in_parse_message = false;
+	yb_ash_parse_queryid_pushed = false;
+	yb_ash_parse_queryid = 0;
+
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.query_id = GetDefaultQueryId();
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Begin handling an extended-protocol message: drain any deferred pop and
+ * push the message's query_id if known. Parse callers pass the default
+ * sentinel (GetDefaultQueryId()); the post_parse_analyze hook pushes
+ * the real id later. Bind/Describe/Execute pass the cached query_id.
+ */
+void
+YbAshSetQueryIdForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	YbAshFlushDeferredPop();
+
+	if (query_id != GetDefaultQueryId())
+		YbAshSetQueryId(0);
+	else
+	{
+		yb_ash_in_parse_message = true;
+		yb_ash_parse_queryid_pushed = false;
+		yb_ash_parse_queryid = 0;
+	}
+}
+
+/*
+ * Symmetric counterpart of YbAshSetQueryIdForMessage. For Parse
+ * (query_id == GetDefaultQueryId()), pops whatever the
+ * post_parse_analyze hook pushed (if anything); safe to call when the hook
+ * never fired.
+ */
+void
+YbAshResetQueryIdForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	if (query_id == GetDefaultQueryId())
+	{
+		yb_ash_in_parse_message = false;
+		if (yb_ash_parse_queryid_pushed)
+		{
+			YbAshResetQueryId(yb_ash_parse_queryid);
+			yb_ash_parse_queryid_pushed = false;
+			yb_ash_parse_queryid = 0;
+		}
+		return;
+	}
+
+	YbAshResetQueryId(0);
 }
 
 /*
