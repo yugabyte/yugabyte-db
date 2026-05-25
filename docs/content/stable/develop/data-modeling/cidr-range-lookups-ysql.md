@@ -102,7 +102,7 @@ SELECT cidr_col, payload
 FROM network_data
 WHERE cidr_start_addr <= inet_to_byte16('194.155.2.7'::inet)
   AND cidr_end_addr >= inet_to_byte16('194.155.2.7'::inet)
-ORDER BY cidr_start_addr DESC
+ORDER BY cidr_start_addr DESC, cidr_col DESC
 LIMIT 1;
 ```
 
