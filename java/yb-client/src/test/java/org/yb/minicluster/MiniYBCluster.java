@@ -1117,6 +1117,21 @@ public class MiniYBCluster implements AutoCloseable {
     usedBindIPs.remove(hostPort.getHost());
   }
 
+  /**
+   * Force-kills (SIGKILL) a tserver and restarts it with the same data directory and UUID.
+   * Masters are not affected. This simulates a tserver crash followed by restart.
+   */
+  public void crashAndRestartTServer(HostAndPort hostPort) throws Exception {
+    MiniYBDaemon ts = tserverProcesses.get(hostPort);
+    if (ts == null) {
+      throw new IllegalArgumentException("No tserver at " + hostPort);
+    }
+    ts.getProcess().destroyForcibly();
+    ts.getProcess().waitFor();
+    ts = restart(ts);
+    tserverProcesses.put(ts.getHostAndPort(), ts);
+  }
+
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {
     return tserverProcesses;
   }

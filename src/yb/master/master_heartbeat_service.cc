@@ -52,6 +52,8 @@ DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
 
+DECLARE_bool(ysql_yb_enable_listen_notify);
+
 DEFINE_test_flag(string, master_universe_uuid, "",
                  "When set, use this mocked uuid to compare against the universe_uuid "
                  "from the tserver request.");
@@ -1565,10 +1567,24 @@ MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     }
   }
 
+  const auto& ts_uuid = req.common().ts_instance().permanent_uuid();
+  auto old_desc = server_->ts_manager()->LookupTSByUUID(ts_uuid);
+  int64_t old_seqno = old_desc.ok() ? (*old_desc)->latest_seqno() : -1;
+
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
+
+    if (FLAGS_ysql_yb_enable_listen_notify &&
+        old_seqno >= 0 &&
+        req.common().ts_instance().instance_seqno() > old_seqno) {
+      auto s = catalog_manager_->DeleteNotificationsReplicationSlot(
+          ts_uuid, req.common().ts_instance().start_time_us());
+      WARN_NOT_OK(s, Format(
+          "Failed to delete notifications replication slot for restarted tserver $0", ts_uuid));
+    }
+
     return desc_result;
   }
   auto& status = desc_result.status();
