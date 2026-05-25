@@ -126,4 +126,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 ### CDC with point-in-time recovery
 
-[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.
+[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with logical replication configured, you need to create new replication slots after the restore is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.
