@@ -1343,8 +1343,7 @@ END $$;
 
 {{% tab header="Oracle" %}}
 
-Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user:
-Use the following PL/SQL commands to disable triggers, and disable referential constraints on the source:
+Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user.
 
 ```sql
 -- Disable triggers
