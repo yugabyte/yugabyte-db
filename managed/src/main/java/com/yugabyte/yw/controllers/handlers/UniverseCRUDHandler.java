@@ -2762,7 +2762,7 @@ public class UniverseCRUDHandler {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Cannot delete default partition " + cur.getName());
             }
-          } else {
+          } else if (curCluster.isGeoPartitioned()) {
             boolean autoTablespaceUpdate =
                 confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
             if (!autoTablespaceUpdate
