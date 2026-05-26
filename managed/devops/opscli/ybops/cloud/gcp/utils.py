@@ -15,7 +15,7 @@ import json
 
 from googleapiclient import discovery
 from googleapiclient.errors import HttpError
-import oauth2client
+import google.auth
 from six.moves import http_client
 
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -78,9 +78,7 @@ def gcp_exception_handler(e):
         # in a ValueError if the response was invalid. Until that is fixed in
         # oauth2client, need to handle it here.
         logging.warning('Response content was invalid (%s), retrying', e)
-    elif (isinstance(e, oauth2client.client.HttpAccessTokenRefreshError) and
-          (e.status == TOO_MANY_REQUESTS or
-           e.status >= 500)):
+    elif isinstance(e, google.auth.exceptions.RefreshError) and e.retryable:
         logging.warning('Caught transient credential refresh error (%s), retrying', e)
     elif (isinstance(e, HttpError) and
           (e.resp.status == TOO_MANY_REQUESTS or
@@ -551,7 +549,7 @@ class GoogleCloudAdmin():
         #   GOOGLE_APPLICATION_CREDENTIALS: set to the path of the credentials json file
         # If these are not provided, then get_application_default will try to use the service
         # account associated with the instance we're running on, if one exists.
-        self.credentials = oauth2client.client.GoogleCredentials.get_application_default()
+        self.credentials, _ = google.auth.default()
         self.compute = discovery.build(
             "compute", "v1", credentials=self.credentials, num_retries=3)
         # If we have specified a GCE_PROJECT, use that, else, try the instance metadata, else fail.
