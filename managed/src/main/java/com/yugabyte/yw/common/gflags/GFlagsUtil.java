@@ -805,7 +805,7 @@ public class GFlagsUtil {
       }
       result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     }
-    return result;
+    return result == null ? "/tmp" : result;
   }
 
   private static Map<String, String> getYSQLGFlags(
