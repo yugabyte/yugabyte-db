@@ -1756,9 +1756,17 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Since the above call to OpenTablet succeeded, the peer's consensus would have been started.
   // On receiving the consensus requests from this PRE_VOTER peer, the leader tries to catch the
-  // peer up by sending required ops and then promotes it to VOTER state.
-  auto status = rb_client->VerifyChangeRoleSucceeded(VERIFY_RESULT(tablet_peer->GetConsensus()));
-  if (!status.ok()) {
+  // peer up by sending required ops and then promotes it to VOTER state. If the tserver is
+  // shutting down we never want to burn the full 30s config-change-role timeout: the peer's
+  // consensus is also shutting down and will not accept the leader's UpdateConsensus promoting
+  // it to VOTER, so the wait is guaranteed to time out, exceeding the 30s budget that
+  // WaitForRemoteSessionsToEnd (called from StartShutdown) allows the RBS to finish in.
+  auto status = rb_client->VerifyChangeRoleSucceeded(
+      VERIFY_RESULT(tablet_peer->GetConsensus()),
+      [this] { return IsShutdownStarted(); });
+  if (status.IsShutdownInProgress()) {
+    LOG_WITH_PREFIX(INFO) << status;
+  } else if (!status.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 60)
         << "Peer not promoted from PRE_[VOTER/OBSERVER] after successful remote bootstrap, "
         << "could be indicative of either a lagging peer which the leader is unable to bring "
@@ -2297,6 +2305,10 @@ Status TSTabletManager::TriggerAdminCompaction(
 }
 
 void TSTabletManager::StartShutdown() {
+  // Signal in-flight remote bootstrap sessions to bail out of any long waits (notably
+  // VerifyChangeRoleSucceeded). Set before taking the lock so an RBS thread spinning in a
+  // lock-free loop sees the signal even if StartShutdown is racing with it.
+  shutdown_started_.store(true, std::memory_order_release);
   {
     std::lock_guard lock(mutex_);
     switch (state_) {
