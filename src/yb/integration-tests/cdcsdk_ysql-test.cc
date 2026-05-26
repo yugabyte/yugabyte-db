@@ -12285,11 +12285,11 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   // Sleep for 5 seconds for master bg task to do its work.
   SleepFor(MonoDelta::FromSeconds(5));
 
-  // The replica identity map should contain all the entries. This is because, xcluster will retain
-  // the dropped table by marking it as HIDDEN.
+  // The replica identity map won't contain entry for table_1. This is because, stream with
+  // 'slot_name' had cleaned its metadata by removing the table_1 from its maintained lists.
   replica_identities.clear();
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
-  ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(replica_identities.size(), 1 + kNumberOfCatalogTablesBeingPolledByCDC);
 }
 
 TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {

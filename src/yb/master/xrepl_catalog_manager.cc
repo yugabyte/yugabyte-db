@@ -125,7 +125,7 @@ DEPRECATE_FLAG(bool, cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, "
 DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
                  "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
 
-DEFINE_RUNTIME_PREVIEW_bool(cdcsdk_use_dropped_table_list_for_cleanup, false,
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_use_dropped_table_list_for_cleanup, kLocalPersisted, false, true,
     "When enabled, dropped tables are tracked via the dropped_table_id list in stream metadata "
     "instead of using the DELETING_METADATA stream state.");
 
