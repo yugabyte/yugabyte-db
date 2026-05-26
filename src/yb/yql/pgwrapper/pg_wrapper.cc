@@ -705,6 +705,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   // Add cron.database_name
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
+  if (FLAGS_openssl_require_fips) {
+    lines.push_back("pgcrypto.builtin_crypto_enabled=fips");
+  }
+
   // Finally add gFlags.
   // If the file contains multiple entries for the same parameter, all but the last one are
   // ignored. If there are duplicates in FLAGS_ysql_pg_conf_csv then we want the values specified
