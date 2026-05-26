@@ -49,7 +49,7 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, -1,
     "Frequency in seconds at which the master leader will re-trigger DDL verification for "
     "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
     "background task.");
