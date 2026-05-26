@@ -1302,7 +1302,16 @@ void TabletServer::RelcacheInitConnectionDone(
 
 void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
+  // Identify this connection as the dedicated relcache-init builder so the
+  // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
+  // does not recursively trigger another internal connection
+  // (relcache.c:RelationCacheInitializePhase3).
+  auto status = ResultToStatus(
+      pgwrapper::CreateInternalPGConnBuilder(
+          pgsql_proxy_bind_address(), dbname, GetSharedMemoryPostgresAuthKey(), deadline,
+          /*yb_auto_analyze=*/false,
+          pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
+          .Connect(/*simple_query_protocol=*/false));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {

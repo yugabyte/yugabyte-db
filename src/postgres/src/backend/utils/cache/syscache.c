@@ -98,6 +98,7 @@
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_internal_conn.h"
 #include <assert.h>
 
 /*---------------------------------------------------------------------------
@@ -1470,6 +1471,31 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 }
 
 /*
+ * Should YbPreloadCatalogCache populate catcache LIST entries?
+ *
+ * - Outside minimal-preload mode: yes, always.
+ * - In minimal-preload mode: only if the current backend's YbInternalConnKind
+ *   descriptor opts in via preload_lists_in_minimal_mode. The relcache-init
+ *   builder is the one kind that opts in -- the lists it populates are needed
+ *   while building the relcache init file. Other minimal-preload kinds leave
+ *   lists to be built on demand from a full SearchCatCacheList scan, because
+ *   the prefetch filter restricts the underlying scan to system rows and the
+ *   lists would otherwise be missing user-defined entries.
+ */
+static bool
+YbShouldPreloadCatcacheLists(void)
+{
+	YbInternalConnKind kind;
+
+	if (!YbUseMinimalCatalogCachesPreload())
+		return true;
+
+	kind = YbLookupInternalConnKindByBackendType(MyBackendType);
+	return kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].preload_lists_in_minimal_mode;
+}
+
+/*
  * In YugaByte mode preload the given cache with data from master.
  * If no index cache is associated with the given cache (most of the time), its id should be -1.
  */
@@ -1509,10 +1535,14 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		/*
 		 * In minimal preload mode the scan above only includes system rows,
 		 * so any cached list built here would be missing user-defined
-		 * entries. Skip the list preloading entirely and let the lists be
-		 * built on demand from a full catalog scan in SearchCatCacheList.
+		 * entries. Most kinds skip list preloading in that mode and let
+		 * SearchCatCacheList rebuild on demand from a full scan. The
+		 * relcache-init builder is the exception (see yb_internal_conn.c):
+		 * it opts in via preload_lists_in_minimal_mode so list-keyed catcache
+		 * lookups go through the populated list caches as it builds the
+		 * relcache init file.
 		 */
-		if (YbUseMinimalCatalogCachesPreload())
+		if (!YbShouldPreloadCatcacheLists())
 			continue;
 
 		bool		is_add_to_list_required = true;
