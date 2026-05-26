@@ -32,7 +32,7 @@ For more information on upgrading universes, refer to [Upgrade FAQ](/stable/faq/
 ## Perform the upgrade
 
 {{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
-You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, conwtact {{% support-platform %}}.
+You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
 {{< /warning >}}
 
 You perform a rolling upgrade on a live universe deployment as follows:
