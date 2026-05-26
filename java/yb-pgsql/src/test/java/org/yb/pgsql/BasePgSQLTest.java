@@ -443,8 +443,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     long pgStartTimeoutMs = WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
         BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
-    verifyClusterAcceptsPGConnections(pgStartTimeoutMs);
     waitForAllTServerPgWebservers(pgStartTimeoutMs);
+    verifyClusterAcceptsPGConnections(pgStartTimeoutMs);
 
     connection = createTestRole();
     allowSchemaPublic();
