@@ -72,6 +72,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/cgroups.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
@@ -131,6 +132,9 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
+
+DEFINE_test_flag(bool, pause_session_lock_release, false,
+    "Pause before releasing session object lock.");
 
 #ifdef __linux__
 DECLARE_bool(enable_qos);
@@ -2810,6 +2814,9 @@ class PgClientSession::Impl {
         req.has_options() && req.options().ddl_use_regular_transaction_block()));
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
     if (req.session()) {
+      SCHECK(
+          !subtxn_with_session_object_locks_, IllegalState,
+          "Unexpected session advisory lock call while session has active session object locks");
       // Update subtxn of host transaction as it is required for retries with statement rollbacks.
       if (const auto& txn = primary_session_data->transaction; txn) {
         txn->SetActiveSubTransaction(req.options().active_sub_transaction_id());
@@ -2891,15 +2898,26 @@ class PgClientSession::Impl {
         options.ddl_mode(), options.ddl_use_regular_transaction_block());
     auto* primary_session_data = &GetSessionData(primary_session_kind);
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
-    if (PREDICT_FALSE(data->req.is_session_lock())) {
+    SubTransactionId active_subtxn_id;
+    if (data->req.is_session_lock()) {
       std::swap(primary_session_data, background_session_data);
       primary_session_kind = PgClientSessionKind::kPgSession;
       const auto& pg_session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(
           deadline, data->arena));
       DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
+      if (!subtxn_with_session_object_locks_) {
+        // If there are no active session object locks, bump the active subtxn id and use it
+        // for the new session object lock. This is necessary as releasing all session object
+        // locks rollsback the subtxn, and we could have active session advisory locks tagged
+        // to the previous subtxns which would still need to be honored.
+        subtxn_with_session_object_locks_ =
+            primary_session_data->transaction->IncrementAndGetSubTransactionId();
+      }
+      active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
       RETURN_NOT_OK(SetupSession(
           options, deadline, /* arena= */ nullptr, GetInTxnLimit(options, clock().get())));
+      active_subtxn_id = options.active_sub_transaction_id();
     }
 
     std::optional<TransactionMetadata> opt_bg_txn_meta = std::nullopt;
@@ -2919,7 +2937,7 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
-                                 << options.active_sub_transaction_id()
+                                 << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
                                  << " req: " << data->req.ShortDebugString()
                                  << " background txn meta: " << AsString(opt_bg_txn_meta);
@@ -2936,9 +2954,9 @@ class PgClientSession::Impl {
         plain_session_has_exclusive_object_locks_.store(true);
       }
       ts_lock_manager()->TrackDeadlineForGlobalAcquire(
-          txn_meta_res->transaction_id, options.active_sub_transaction_id(), deadline);
+          txn_meta_res->transaction_id, active_subtxn_id, deadline);
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
-          instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+          instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
           data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
       client_.AcquireObjectLocksGlobalAsync(
@@ -2950,7 +2968,7 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
-        instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+        instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
         data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
     AcquireObjectLockLocallyWithRetries(
@@ -2984,21 +3002,35 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     // If we fail to release the lock for any reason, return InvalidArgument as status so as to
     // force the backend to FATAL, thus freeing all object locks associated with it.
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_release);
     VLOG_WITH_FUNC(1) << req.ShortDebugString();
-    std::optional<SubTransactionId> opt_subtxn_id = std::nullopt;
-    if (req.options().active_sub_transaction_id()) {
-        opt_subtxn_id = req.options().active_sub_transaction_id();
-        RSTATUS_DCHECK(
-            req.has_lock_oid(), InvalidArgument,
-            "Expected to see object id in session lock release request");
-    }
-    auto* session_data = &GetSessionData(PgClientSessionKind::kPgSession);
+    const auto kind = PgClientSessionKind::kPgSession;
+    auto* session_data = &GetSessionData(kind);
     RSTATUS_DCHECK(
         session_data->transaction != nullptr, InvalidArgument, "Expected non-null kPgSession txn");
     auto txn_meta_res = session_data->transaction->GetMetadata(context->GetClientDeadline()).get();
     if (!txn_meta_res.ok()) {
       LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
     }
+
+    std::optional<SubTransactionId> opt_subtxn_id;
+    if (!req.release_all()) {
+      opt_subtxn_id = session_data->transaction->GetActiveSubTransactionId();
+    } else {
+      // All session object locks as part of a phased DDLs are tagged to the same subtxn id.
+      // When releasing all of them, abort the subtxn and bump up the active subtxn id.
+      const auto rollback_to_subtxn = *subtxn_with_session_object_locks_;
+      subtxn_with_session_object_locks_.reset();
+      RETURN_NOT_OK(session_data->transaction->RollbackToSubTransaction(
+          rollback_to_subtxn, context->GetClientDeadline()));
+      const auto new_subtxn_id = session_data->transaction->IncrementAndGetSubTransactionId();
+      RSTATUS_DCHECK(
+          rollback_to_subtxn == new_subtxn_id - 1, IllegalState,
+          "Expected all session object locks to be associated with the same subtxn");
+    }
+    RSTATUS_DCHECK(
+        req.release_all() || req.has_lock_oid(), InvalidArgument,
+        "Expected to see valid lock id in session lock release request or release_all option set");
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
@@ -4314,6 +4346,7 @@ class PgClientSession::Impl {
   VectorIndexQueryPtr vector_index_query_data_;
 
   PgOid database_oid_ = kInvalidOid;
+  std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 };
 
 PgClientSession::PgClientSession(

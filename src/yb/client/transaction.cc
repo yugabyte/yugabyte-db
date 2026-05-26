@@ -1045,6 +1045,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
+  SubTransactionId IncrementAndGetSubTransactionId() {
+    const auto new_subtxn_id = subtransaction_.get().subtransaction_id + 1;
+    subtransaction_.SetActiveSubTransaction(new_subtxn_id);
+    return new_subtxn_id;
+  }
+
+  SubTransactionId GetActiveSubTransactionId() const {
+    return subtransaction_.get().subtransaction_id;
+  }
+
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
@@ -2820,6 +2830,14 @@ void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
 
 std::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
   return impl_->GetSubTransactionMetadataPB();
+}
+
+SubTransactionId YBTransaction::IncrementAndGetSubTransactionId() {
+  return impl_->IncrementAndGetSubTransactionId();
+}
+
+SubTransactionId YBTransaction::GetActiveSubTransactionId() const {
+  return impl_->GetActiveSubTransactionId();
 }
 
 Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) {
