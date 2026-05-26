@@ -295,7 +295,7 @@ The owner of the clone is determined as follows:
 
 When using the yb-admin command `clone_namespace` directly (the preferred way to use clone for YSQL is the TEMPLATE SQL command), the cloned database retains the original template database's owner.
 
-Note: to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
+Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
 
 ## Limitations
 
