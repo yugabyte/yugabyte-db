@@ -4971,8 +4971,12 @@ class PgBackendsSessionExpireTest : public LibPqTestBase {
         });
   }
 
-  const MonoDelta kHeartbeatTimeout = 1s;
-  const MonoDelta kHeartbeatInterval = 10s;
+  // Sanitizer builds can spend multiple seconds in backend startup/relcache
+  // initialization, so a 1s session lifetime can expire unrelated connection
+  // attempts. Using a conservative 10x multipler in sanitizer builds as a
+  // workaround.
+  const MonoDelta kHeartbeatTimeout = RegularBuildVsSanitizers(1s, 10s);
+  const MonoDelta kHeartbeatInterval = kHeartbeatTimeout * 10;
   static constexpr int kMaxTabletsPerTable = 10;
 };
 
@@ -4982,7 +4986,7 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
   constexpr auto query = "SELECT * FROM pg_class LIMIT 1";
   PGConn conn = ASSERT_RESULT(Connect());
 
-  // The backend sends a heartbeat to the tablet server once every 10s by default.
+  // The backend sends a heartbeat to the tablet server every kHeartbeatInterval.
   // This is controlled by the 'pg_client_heartbeat_interval_ms' flag.
   // The flag 'pg_client_session_expiration_ms' controls how often the tserver checks for the
   // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little
