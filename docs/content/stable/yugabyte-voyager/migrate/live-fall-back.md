@@ -1288,7 +1288,7 @@ Keep monitoring the metrics displayed for export data from source and import dat
 
 Perform the following steps as part of the cutover process:
 
-1. Quiesce your source database, that is stop application writes.
+1. Stop application writes on the source database.
 1. Prepare the source database for fallback.
 
     <br/>{{< tabpane text=true >}}

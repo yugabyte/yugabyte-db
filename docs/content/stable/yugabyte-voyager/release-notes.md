@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Enhancements
 
-- Redesigned terminal UX for the [assess-migration](../reference/assess-migration/) command. The output is now organized into three clear phases:
+- Redesigned output for the [assess-migration](../reference/assess-migration/) command. The output is now organized into three clear phases:
   1. A **Preflight Checks** block that summarizes guardrail validations.
   1. An **Assessment Pipeline** that shows live progress for metadata gathering, usage analysis, sizing, and report generation via a spinner and step counter.
   1. A final **Summary** block.
