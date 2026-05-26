@@ -261,6 +261,79 @@ has_partition_attrs(Relation rel, Bitmapset *attnums, bool *used_in_expr)
 }
 
 /*
+ * yb_has_ancestor_partition_attrs
+ *
+ * Returns true if any column in partition_attnums overlaps a partition key
+ * column of ancestor_rel. The columns in a partition may be in a different
+ * order than the ancestor's columns. So, this function builds a name-based
+ * attrmap from ancestor_rel to partition_rel.
+ */
+bool
+yb_has_ancestor_partition_attrs(Relation partition_rel, Relation ancestor_rel,
+								Bitmapset *partition_attnums)
+{
+	/* Both partition and ancestor are guaranteed to have the same offset */
+	AttrNumber	attr_offset = YBGetFirstLowInvalidAttributeNumber(partition_rel);
+	TupleConversionMap *map = convert_tuples_by_name(RelationGetDescr(ancestor_rel),
+													 RelationGetDescr(partition_rel),
+													 gettext_noop("could not convert row type"));
+	PartitionKey key = RelationGetPartitionKey(ancestor_rel);
+	int			partnatts = get_partition_natts(key);
+	List	   *partexprs = get_partition_exprs(key);
+	ListCell   *exprs_item = list_head(partexprs);
+	bool		result = false;
+
+	for (int i = 0; i < partnatts && !result; i++)
+	{
+		AttrNumber	ancestor_attno = get_partition_col_attnum(key, i);
+
+		if (ancestor_attno != 0)
+		{
+			/* Simple key column: remap to partition_rel's space and check. */
+			AttrNumber	partattno = map == NULL ? ancestor_attno : map->attrMap[ancestor_attno];
+			Assert(AttributeNumberIsValid(partattno));
+
+			if (bms_is_member(partattno - attr_offset, partition_attnums))
+				result = true;
+		}
+		else
+		{
+			/*
+			 * Expression-based key: extract all column references from the
+			 * expression (in the ancestor's attribute space), map each to
+			 * partition_rel's attribute space, and then check if present in
+			 * partition_attnums.
+			 */
+			Node	   *expr = (Node *) lfirst(exprs_item);
+			Bitmapset  *expr_attrs = NULL;
+			int			bms_idx;
+
+			exprs_item = lnext(exprs_item);
+			pull_varattnos_min_attr(expr, 1, &expr_attrs, attr_offset + 1);
+
+			while ((bms_idx = bms_first_member(expr_attrs)) >= 0)
+			{
+				AttrNumber	anc_attno = (AttrNumber) bms_idx + attr_offset;
+				AttrNumber	partattno = map == NULL ? anc_attno : map->attrMap[ancestor_attno];
+				Assert(AttributeNumberIsValid(partattno));
+
+				if (bms_is_member(partattno - attr_offset, partition_attnums))
+				{
+					result = true;
+					break;
+				}
+			}
+
+			bms_free(expr_attrs);
+		}
+	}
+
+	if (map != NULL)
+		free_conversion_map(map);
+	return result;
+}
+
+/*
  * get_default_oid_from_partdesc
  *
  * Given a partition descriptor, return the OID of the default partition, if
