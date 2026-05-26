@@ -39,9 +39,21 @@
 
     - name: Control {{ process }} process with systemd
       block:
+        - name: Initialize systemd facts
+          set_fact:
+            systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
+            user_systemd_dir: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user"
+        # Per-service scope detection. Check for the user-level unit file for THIS
+        # specific service rather than just the parent ~/.config/systemd/user/ directory:
+        # on mixed-systemd nodes that directory exists because YBA creates user-level
+        # utility services (yb-zip_purge_yb_logs etc.) even when master/tserver/controller
+        # are managed by root-level systemd. Checking the per-service file instead picks
+        # the correct scope for each service individually. User-systemd takes priority
+        # when its unit file is present, since on 2024.2 a per-service user unit file is
+        # only created via the intentional Systemd Upgrade flow.
         - name: Determine system or user scope
           stat:
-            path: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user/"
+            path: "{{ user_systemd_dir }}/{{ systemd_process }}.service"
           register: systemd_user
         - name: Print systemd_user
           debug:
@@ -51,10 +63,9 @@
             systemd_log_level: "{{ 'SYSTEMD_LOG_LEVEL=debug ' if systemd_debug_log else '' }}"
         - name: Set the systemd prefix for user level
           set_fact:
-            systemd_prefix: "{{ systemd_log_level }}{{ 'systemctl --user' if systemd_user.stat.exists else 'sudo systemctl'}}"
-        - name: Set systemd name
-          set_fact:
-            systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
+            systemd_prefix: >-
+              {{ systemd_log_level }}{{ 'systemctl --user'
+              if systemd_user.stat.exists else 'sudo systemctl' }}
         - name: Print systemd_prefix
           debug:
             var: systemd_prefix
