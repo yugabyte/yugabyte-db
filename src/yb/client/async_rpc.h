@@ -65,7 +65,7 @@ struct AsyncRpcData {
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
-  int64_t leader_term = OpId::kUnknownTerm;
+  OpId pending_async_write_op_id = OpId::Invalid();
 };
 
 struct FlushExtraResult {
@@ -215,7 +215,7 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
  public:
   WaitForAsyncWriteRpc(
       const BatcherPtr& batcher, const TabletId& tablet_id,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id);
+      const std::shared_ptr<const YBTable>& table, const OpId& op_id);
 
   ~WaitForAsyncWriteRpc() = default;
 
@@ -237,7 +237,7 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   const TabletId tablet_id_;
   const OpId op_id_;
   BatcherPtr batcher_;
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  TabletInvoker tablet_invoker_;
   tserver::WaitForAsyncWriteRequestPB req_;
   tserver::WaitForAsyncWriteResponsePB resp_;
 

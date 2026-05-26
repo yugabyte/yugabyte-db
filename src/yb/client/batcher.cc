@@ -597,8 +597,15 @@ void Batcher::ExecuteOperations(Initial initial) {
     // Allow local calls for last group only.
     const auto allow_local_calls =
         allow_local_calls_in_curr_thread_ && (&group == &ops_info_.groups.back());
-    rpcs.push_back(
-        CreateRpc(self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
+    auto rpc_result = CreateRpc(
+        self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read);
+    if (!rpc_result.ok()) {
+      VLOG_WITH_PREFIX(1) << "Aborting batcher: failed to create RPC for tablet "
+                          << group.begin->tablet->tablet_id() << ": " << rpc_result.status();
+      Abort(rpc_result.status());
+      return;
+    }
+    rpcs.push_back(std::move(*rpc_result));
   }
 
   outstanding_rpcs_.store(rpcs.size());
@@ -650,7 +657,7 @@ void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId
   other->retryable_requests_.erase(it);
 }
 
-std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
+Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
   const auto& tablet_id = tablet->tablet_id();
@@ -679,9 +686,9 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
   if (transaction) {
-    auto term_opt = transaction->GetPendingAsyncWriteTerm(tablet_id);
-    if (term_opt) {
-      data.leader_term = *term_opt;
+    data.pending_async_write_op_id = VERIFY_RESULT(
+        transaction->GetAsyncWriteOpIdForReadCheck(tablet_id));
+    if (data.pending_async_write_op_id.valid()) {
       data.need_metadata = true;
     }
   }
@@ -779,7 +786,7 @@ void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
     }
   }
 }
@@ -790,7 +797,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
     }
 
     if (resp.has_propagated_hybrid_time()) {
@@ -879,7 +886,7 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
 
 void Batcher::HandleAsyncWriteResponse(
     const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
-    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
+    const std::shared_ptr<const YBTable>& table) {
   // We have a async write. Record the OpId, and send a async RPC to track its completion.
   // At time of final commit, we will wait for all these async writes to complete.
   auto transaction = this->transaction();
@@ -893,7 +900,7 @@ void Batcher::HandleAsyncWriteResponse(
     // Multiple write operations can get combined into the same async write RPC resulting in
     // duplicate OpIds.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-        shared_from_this(), tablet.tablet_id(), ts_proxy, op_id);
+        shared_from_this(), tablet.tablet_id(), table, op_id);
     wait_for_async_write_rpc->SendRpc();
   }
 }

@@ -1135,16 +1135,17 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   if (!PREDICT_FALSE(FLAGS_TEST_leader_skip_no_op)) {
     auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
-    round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
-        [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
-      // Set 'Leader is ready to serve' flag only for committed NoOp operation
-      // and only if the term is up-to-date.
-      // It is guaranteed that successful notification is called only while holding replicate state
-      // mutex.
-      if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
-        state_->SetLeaderNoOpCommittedUnlocked(true);
-      }
-    }));
+    round->SetCallback(MakeNonTrackedRoundCallback(
+        round.get(), [this, term = state_->GetCurrentTermUnlocked(),
+                      replicate](const Status& status) {
+          // Set 'Leader is ready to serve' flag only for committed NoOp operation
+          // and only if the term is up-to-date.
+          // It is guaranteed that successful notification is called only while holding replicate
+          // state mutex.
+          if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
+            state_->SetLeaderNoOpCommittedUnlocked(true, OpId::FromPB(replicate->id()).index);
+          }
+        }));
     RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
   }
 
@@ -3831,6 +3832,20 @@ void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
 int64_t RaftConsensus::TEST_LeaderTerm() const {
   auto lock = state_->LockForRead();
   return state_->GetCurrentTermUnlocked();
+}
+
+int64_t RaftConsensus::GetFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  return state_->GetFirstIndexOfCurrentTermUnlocked();
+}
+
+std::pair<LeaderState, int64_t> RaftConsensus::GetLeaderStateAndFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  auto first_index = leader_state.ok()
+      ? state_->GetFirstIndexOfCurrentTermUnlocked()
+      : kInvalidOpIdIndex;
+  return {std::move(leader_state), first_index};
 }
 
 std::string RaftConsensus::DelayedStepDown::ToString() const {

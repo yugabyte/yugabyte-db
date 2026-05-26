@@ -329,7 +329,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void FlushFinished();
   void AllLookupsDone();
-  std::shared_ptr<AsyncRpc> CreateRpc(
+  Result<std::shared_ptr<AsyncRpc>> CreateRpc(
       const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
       bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
@@ -365,7 +365,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
+      const std::shared_ptr<const YBTable>& table);
 
   BatcherState state_ = BatcherState::kGatheringOps;
 

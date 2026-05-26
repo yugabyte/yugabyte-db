@@ -2771,6 +2771,7 @@ void TabletServiceImpl::WaitForAsyncWrite(
     return;
   }
 
+  DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::WaitForAsyncWrite::BeforeRegister");
   tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
