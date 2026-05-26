@@ -142,7 +142,6 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "enable_db_clone=true"
     ```
 
 1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:
