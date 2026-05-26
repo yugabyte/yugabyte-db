@@ -1,0 +1,51 @@
+--
+-- PGP FIPS cipher restrictions
+--
+CREATE EXTENSION pgcrypto;
+
+-- crypto functions disabled.  Non-FIPS PGP ciphers are blocked.
+SET pgcrypto.builtin_crypto_enabled = off;
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=bf');
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=3des');
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=cast5');
+-- FIPS-approved ciphers should still work
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes128'),
+	'key', 'expect-cipher-algo=aes128');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes256'),
+	'key', 'expect-cipher-algo=aes256');
+RESET pgcrypto.builtin_crypto_enabled;
+
+-- crypto functions enabled.  All work.
+SET pgcrypto.builtin_crypto_enabled = on;
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes128'),
+	'key', 'expect-cipher-algo=aes128');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes192'),
+	'key', 'expect-cipher-algo=aes192');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes256'),
+	'key', 'expect-cipher-algo=aes256');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=bf'),
+	'key', 'expect-cipher-algo=bf');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=3des'),
+	'key', 'expect-cipher-algo=3des');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=cast5'),
+	'key', 'expect-cipher-algo=cast5');
+RESET pgcrypto.builtin_crypto_enabled;
+
+-- crypto functions with FIPS mode.
+SELECT fips_mode() AS is_fips \gset
+\if :is_fips
+SET pgcrypto.builtin_crypto_enabled = fips;
+-- non-AES ciphers must error
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=bf');
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=3des');
+SELECT pgp_sym_encrypt('data', 'key', 'cipher-algo=cast5');
+-- AES ciphers work
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes128'),
+	'key', 'expect-cipher-algo=aes128');
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes256'),
+	'key', 'expect-cipher-algo=aes256');
+-- AES round trip under FIPS
+SELECT pgp_sym_decrypt(pgp_sym_encrypt('FIPS round trip test', 'key',
+	'cipher-algo=aes256'), 'key');
+RESET pgcrypto.builtin_crypto_enabled;
+\endif
