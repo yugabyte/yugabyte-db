@@ -32,6 +32,12 @@ type: docs
     </a>
   </li>
   <li >
+    <a href="../yugabyte-psycopg3" class="nav-link">
+      <img src="/icons/yugabyte.svg"></i>
+      Yugabyte Psycopg3
+    </a>
+  </li>
+  <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PG Psycopg2
