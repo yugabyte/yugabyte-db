@@ -30,7 +30,7 @@ For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade
 ## Perform the upgrade
 
 {{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
-You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
+You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, conwtact {{% support-platform %}}.
 {{< /warning >}}
 
 You perform a rolling upgrade on a live universe deployment as follows:
@@ -143,6 +143,60 @@ To finalize an upgrade, do the following:
 1. Click **Finalize Upgrade**.
 
 1. Click **Proceed to finalize the upgrade** to confirm.
+
+## Canary upgrade
+
+{{<tags/feature/ea idea="1197">}}A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing. Canary upgrade is available only in VM-based universes.
+
+While in Early Access, canary upgrade is not available in YugabyteDB Anywhere by default. To make it available, set the **Enable Canary Upgrade** Global Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+You perform a canary upgrade on a live universe deployment as follows:
+
+1. Navigate to **Universes** and select your universe.
+
+1. Click **Actions > Upgrade Database Version** to display the **Upgrade Database** dialog.
+
+1. Choose the target version you want to upgrade to.
+
+1. Choose **Canary Upgrade**.
+
+1. Configure your **Upgrade Plan**.
+
+    - Choose the upgrade order for AZs in the universe.
+    - Set pause points between zone upgrades.
+
+        The primary cluster is upgraded before the read replica (if present).
+
+        Pausing after the first AZ is upgraded is recommended so that you can evaluate and rollback early if needed.
+
+        Pause after all masters is also recommended. When set, YugabyteDB Anywhere stops after every master is upgraded, so you can validate leader health and metadata before TServers are restarted.
+
+1. Configure the **Upgrade Pace**.
+
+    Specify the maximum number of nodes to process per batch and the delay between node upgrades.
+
+1. Click **Upgrade**.
+
+While the upgrade is in progress, you can monitor progress by clicking **Open Upgrade Monitor**.
+
+When YugabyteDB Anywhere reaches a pause point, the universe status is _Paused_, and the upgrade task stops until you act.
+
+While paused, you can resume the upgrade, roll back, or destroy the universe. Other actions (such as edit universe, GFlags changes, backups, or finalize) are not available until the upgrade progresses or is rolled back.
+
+At each pause:
+
+1. Review Upgrade Monitor to see completed AZs and the current step.
+1. Make sure workloads are running as expected, and there are no errors in the logs.
+1. Check that upgraded nodes are up and reachable.
+1. Review performance metrics for spikes or anomalies.
+
+If you have problems, in the **Upgrade Monitor**, click **Roll Back**, or click **Actions>Roll Back Upgrade**.
+
+To resume, in the **Upgrade Monitor**, click **Resume Upgrade**. Do not resume a universe you have not validated.
+
+If the upgrade task fails (universe status _Upgrade Failed_, not merely _Paused_), **Retry** the task to start a new upgrade run linked to the failed one. Zones already upgraded during the earlier attempt are preserved and skipped.
+
+If the failure happens in between the upgrade steps reported in the upgrade monitor side panel (that is, universe status reports the failure and there is a failure task banner), review the software upgrade task in the **Task** tab.
 
 ## Upgrades with xCluster and xCluster DR
 
