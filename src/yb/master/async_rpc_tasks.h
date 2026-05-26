@@ -558,10 +558,15 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
 // tserver admin service.
 class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  public:
+  // `callback`, if set, is invoked exactly once with the task's final Status when the task reaches
+  // a terminal state (success, failure, or abort). Used by callers that need to synchronously
+  // wait for a batch of these RPCs to complete (e.g. the ImportSnapshot rewiring path) instead of
+  // relying on the table-state promotion gating used by the normal create-table call site.
   AsyncAddTableToTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
-      const std::shared_ptr<std::atomic<size_t>>& task_counter);
+      const std::shared_ptr<std::atomic<size_t>>& task_counter,
+      std::function<void(const Status&)> callback = {});
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToTablet;
@@ -576,12 +581,14 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void UnregisterAsyncTaskCallback() override;
 
   TabletInfoPtr tablet_;
   const TabletId tablet_id_;
   tserver::AddTableToTabletRequestPB req_;
   tserver::AddTableToTabletResponsePB resp_;
   std::shared_ptr<std::atomic<size_t>> task_counter_;
+  std::function<void(const Status&)> callback_;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
