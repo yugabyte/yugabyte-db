@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/leader_lease.h"
 
@@ -438,7 +439,7 @@ class ReplicaState {
   RetryableRequestsCounts TEST_CountRetryableRequests();
   bool TEST_HasBootstrapStateOnDisk() const;
 
-  void SetLeaderNoOpCommittedUnlocked(bool value);
+  void SetLeaderNoOpCommittedUnlocked(bool value, int64_t no_op_index = kInvalidOpIdIndex);
 
   void NotifyReplicationFinishedUnlocked(
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
@@ -458,6 +459,11 @@ class ReplicaState {
   OpId GetLastFlushedOpIdInRetryableRequests();
 
   Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
+
+  int64_t GetFirstIndexOfCurrentTermUnlocked() const {
+    DCHECK(IsLocked());
+    return first_index_of_current_term_;
+  }
 
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
@@ -563,6 +569,10 @@ class ReplicaState {
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
+
+  // The index of the NO_OP entry at the start of this leader's term.
+  // Only valid when leader_no_op_committed_ is true.
+  int64_t first_index_of_current_term_ = kInvalidOpIdIndex;
 
   std::function<void(const OpIds&)> applied_ops_tracker_;
 

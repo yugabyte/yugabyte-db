@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "yb/common/entity_ids_types.h"
@@ -314,6 +315,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Result<OpId> TEST_GetLastOpIdWithType(OpIdType opid_type, OperationType op_type);
 
   int64_t TEST_LeaderTerm() const;
+
+  int64_t GetFirstIndexOfCurrentTerm() const;
+
+  // Atomically returns the leader state and the first log index of the current leader's term.
+  // The first index is only meaningful when the leader state's status is LEADER_AND_READY.
+  std::pair<LeaderState, int64_t> GetLeaderStateAndFirstIndexOfCurrentTerm() const;
 
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
