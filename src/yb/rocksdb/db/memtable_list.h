@@ -191,6 +191,8 @@ class MemTableList {
   // Initial value could be passed as `frontier`.
   UserFrontierPtr GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type);
 
+  UserFrontierRange MergeFrontiersWith(UserFrontierRange external_range);
+
   // Returns total number of memtables in the list that have been
   // completely flushed and logged.
   int NumFlushed() const;

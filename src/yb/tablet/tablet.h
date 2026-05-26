@@ -658,10 +658,17 @@ class Tablet : public AbstractTablet,
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
-  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
+  std::string TEST_DocDBDumpStr(
+      IncludeIntents include_intents = IncludeIntents::kFalse,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   void TEST_DocDBDumpToContainer(
-      IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      std::unordered_set<std::string>& out, IncludeIntents include_intents,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
+
+  void TEST_DocDBDumpToContainer(
+    std::vector<std::string>& out, IncludeIntents include_intents,
+    docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
@@ -1020,7 +1027,7 @@ class Tablet : public AbstractTablet,
   std::vector<ColumnId> GetColumnSchemasForIndex(
       const std::vector<qlexpr::IndexInfo>& indexes);
 
-  void DocDBDebugDump(std::vector<std::string> *lines);
+  void DocDBDebugDump(std::vector<std::string>* lines);
 
   Status WriteTransactionalBatch(
       int64_t batch_idx, // index of this batch in its transaction
@@ -1092,6 +1099,10 @@ class Tablet : public AbstractTablet,
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+
+  template <class Out>
+  void TEST_DocDBDumpToContainerImpl(
+      Out& out, IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time);
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -1243,7 +1254,8 @@ class Tablet : public AbstractTablet,
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
-  HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
+  docdb::CompactionHybridTimeConstraints CompactionHybridTimeConstraints(
+      const std::vector<rocksdb::FileMetaData*>& inputs);
 
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_

@@ -62,6 +62,7 @@ enum class YBHashSchema;
 // Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
 // PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
 YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
+YB_STRONGLY_TYPED_BOOL(IncludeWriteTime);
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
 

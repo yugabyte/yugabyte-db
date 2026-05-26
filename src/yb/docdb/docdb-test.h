@@ -504,7 +504,7 @@ class DocDBTestWrapper : public DocDBTest, public testing::WithParamInterface<Te
 
   Status ValidateRocksDbEntriesUnordered(std::unordered_set<std::string>* expected) {
     std::unordered_set<std::string> out;
-    DocDBDebugDumpToContainer(&out);
+    DocDBDebugDumpToContainer(out);
 
     LOG(INFO) << "Output: " << AsString(out);
     if (*expected == out) {

@@ -50,7 +50,18 @@ void DocDBDebugDump(
     std::ostream& out,
     SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type,
-    IncludeBinary include_binary = IncludeBinary::kFalse);
+    IncludeBinary include_binary = IncludeBinary::kFalse,
+    IncludeWriteTime include_write_time = IncludeWriteTime::kTrue);
+
+inline void DocDBDebugDump(
+    rocksdb::DB* rocksdb,
+    std::ostream& out,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    StorageDbType db_type,
+    IncludeWriteTime include_write_time) {
+  return DocDBDebugDump(
+      rocksdb, out, schema_packing_provider, db_type, IncludeBinary::kFalse, include_write_time);
+}
 
 std::string DocDBDebugDumpToStr(
     rocksdb::DB* rocksdb,
@@ -61,14 +72,25 @@ std::string DocDBDebugDumpToStr(
 std::string DocDBDebugDumpToStr(
     DocDB docdb,
     SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    IncludeBinary include_binary = IncludeBinary::kFalse);
+    IncludeBinary include_binary = IncludeBinary::kFalse,
+    IncludeWriteTime include_write_time = IncludeWriteTime::kTrue);
+
+std::string DocDBDebugDumpToStr(
+    DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time);
 
 std::string DocDBDebugDumpToStr(const DocOperationApplyData& data);
 
 void DocDBDebugDumpToContainer(
-    DocDB docdb,
+    std::unordered_set<std::string>& out, DocDB docdb,
     SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    std::unordered_set<std::string>* out);
+    IncludeWriteTime include_write_time = IncludeWriteTime::kTrue);
+
+void DocDBDebugDumpToContainer(
+    std::vector<std::string>& out, DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time = IncludeWriteTime::kTrue);
 
 void DumpRocksDBToLog(
     rocksdb::DB* rocksdb,

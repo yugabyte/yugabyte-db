@@ -149,6 +149,15 @@ UserFrontierPtr MemTableList::GetFrontier(UserFrontierPtr frontier, UpdateUserVa
   return frontier;
 }
 
+UserFrontierRange MemTableList::MergeFrontiersWith(UserFrontierRange result) {
+  for (const auto& mem : current_->memlist_) {
+    auto current = mem->GetFrontiers();
+    UserFrontier::Update(current.first.get(), UpdateUserValueType::kSmallest, &result.first);
+    UserFrontier::Update(current.second.get(), UpdateUserValueType::kLargest, &result.second);
+  }
+  return result;
+}
+
 int MemTableList::NumFlushed() const {
   return static_cast<int>(current_->memlist_history_.size());
 }
