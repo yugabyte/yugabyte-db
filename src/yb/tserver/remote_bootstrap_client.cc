@@ -506,7 +506,8 @@ Status RemoteBootstrapClient::Finish() {
 }
 
 Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
-    const shared_ptr<consensus::Consensus>& shared_consensus) {
+    const shared_ptr<consensus::Consensus>& shared_consensus,
+    const std::function<bool()>& is_cancelled) {
 
   if (!shared_consensus) {
     return STATUS(InvalidArgument, "Invalid consensus object");
@@ -519,6 +520,14 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   RaftConfigPB committed_config;
 
   do {
+    if (is_cancelled && is_cancelled()) {
+      return STATUS_FORMAT(
+          ShutdownInProgress,
+          "Abandoning VerifyChangeRoleSucceeded for peer $0: cancellation requested (likely "
+          "tserver shutdown). The peer's data is already persisted; the leader will promote it "
+          "to VOTER on the next RBS for this tablet.",
+          permanent_uuid());
+    }
     committed_config = shared_consensus->CommittedConfig();
     for (const auto &peer : committed_config.peers()) {
       if (peer.permanent_uuid() != permanent_uuid()) {

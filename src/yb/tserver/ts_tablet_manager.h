@@ -581,6 +581,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return state_;
   }
 
+  // Lock-free check that StartShutdown has been entered on this tablet manager. Flips once
+  // from false to true at the top of StartShutdown and stays true afterward. Intended as a
+  // cancellation signal for long-running operations (e.g. remote bootstrap verification)
+  // that must exit promptly so shutdown can drain `remote_bootstrap_clients_` inside its
+  // 30s deadline.
+  bool IsShutdownStarted() const {
+    return shutdown_started_.load(std::memory_order_acquire);
+  }
+
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
 
   bool IsOperational() const EXCLUDES(mutex_);
@@ -722,6 +731,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   MetricRegistry* metric_registry_;
 
   TSTabletManagerStatePB state_ GUARDED_BY(mutex_);
+
+  // Lock-free mirror of state_ transitioning to MANAGER_QUIESCING. See IsShutdownStarted.
+  std::atomic<bool> shutdown_started_{false};
 
   // Thread pool used to perform fsync operations corresponding to log::Log of each tablet_peer
   std::unique_ptr<ThreadPool> log_sync_pool_;
