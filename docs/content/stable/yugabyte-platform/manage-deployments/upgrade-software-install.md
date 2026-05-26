@@ -25,7 +25,9 @@ You upgrade a universe in the following phases:
 <!-- (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.) -->
 - Finalize - Depending on the changes included in the upgrade, you may need to finalize the upgrade to make the upgrade permanent. The system will tell you if this step is necessary. After finalizing, you can no longer roll back.
 
-For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+{{<tags/feature/ea idea="1197">}}Optionally, you can perform a [canary upgrade](#canary-upgrade). A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing.
+
+For more information on upgrading universes, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Perform the upgrade
 
@@ -146,9 +148,11 @@ To finalize an upgrade, do the following:
 
 ## Canary upgrade
 
-{{<tags/feature/ea idea="1197">}}A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing. Canary upgrade is available only in VM-based universes.
+{{<tags/feature/ea idea="1197">}}A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing.
 
-While in Early Access, canary upgrade is not available in YugabyteDB Anywhere by default. To make it available, set the **Enable Canary Upgrade** Global Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+Canary upgrade is not supported on Kubernetes-based universes.
+
+While in Early Access, canary upgrade is not available by default. To make it available, set the **Enable Canary Upgrade** Global Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 You perform a canary upgrade on a live universe deployment as follows:
 
