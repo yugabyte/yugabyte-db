@@ -22,6 +22,7 @@
 #include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/transaction.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
@@ -100,6 +101,9 @@ DEFINE_RUNTIME_bool(cdc_send_null_before_image_if_not_exists,
                     false,
                     "When this flag is set to true, GetChanges will return a null before image if "
                     "it is not able to find one.");
+DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
+                        false,
+                        "If 'true', before image is populated for the intra-transactional DMLs.");
 
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
@@ -497,8 +501,8 @@ Status PopulateBeforeImageForUpdateOp(
 }
 
 Status DoPopulateBeforeImage(
-    const tablet::TabletPeerPtr& tablet_peer, HybridTime read_time,
-    RowMessage* row_message, HybridTime cdc_sdk_safe_time,
+    const tablet::TabletPeerPtr& tablet_peer, const HybridTime& read_time,
+    const TransactionId& transaction_id, RowMessage* row_message, HybridTime cdc_sdk_safe_time,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, CDCSDKRequestSource request_source,
     const dockv::SubDocKey& decoded_primary_key, const Schema& schema,
@@ -517,9 +521,31 @@ Status DoPopulateBeforeImage(
   auto doc_read_context = VERIFY_RESULT(
       tablet_peer->tablet_metadata()->GetTableInfo(colocation_id))->doc_read_context;
   dockv::ReaderProjection projection(schema);
+
+  // For before image reads, we need to read the state BEFORE the transaction's changes.
+  HybridTime actual_read_time = read_time.Decremented();
+
+  // Create proper transaction context with the given transaction_id
+  TransactionOperationContext txn_op_context;
+  if (!transaction_id.IsNil() && FLAGS_cdc_enable_intra_transactional_before_image) {
+    auto* txn_participant = tablet->transaction_participant();
+    if (txn_participant) {
+      txn_op_context = TransactionOperationContext(transaction_id, txn_participant);
+    } else {
+      return STATUS_FORMAT(
+          InternalError, "Transaction participant not found for transaction id: $0",
+          transaction_id);
+    }
+  }
+  auto read_operation_data = docdb::ReadOperationData::FromSingleReadTime(actual_read_time);
+  if (FLAGS_cdc_enable_intra_transactional_before_image) {
+    read_operation_data.read_time.in_txn_limit = actual_read_time;
+    read_operation_data.use_ht_file_filter = false;
+  }
+
   docdb::DocRowwiseIterator iter(
-      projection, *doc_read_context, TransactionOperationContext(), docdb,
-      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op);
+      projection, *doc_read_context, txn_op_context, docdb,
+      read_operation_data, pending_op);
   iter.SetSchema(schema);
 
   const dockv::DocKey& doc_key = decoded_primary_key.doc_key();
@@ -533,12 +559,12 @@ Status DoPopulateBeforeImage(
   // before image.
   auto result = VERIFY_RESULT(iter.FetchNext(&row));
   if (!result) {
-    if (cdc_sdk_safe_time > read_time) {
+    if (cdc_sdk_safe_time > actual_read_time) {
       return STATUS_FORMAT(
           InternalError,
           "Failed to get the beforeimage for tablet_id: $0 due to compaction, cdc_sdk_safe_time: "
           "$1, read_time: $2",
-          tablet_peer->tablet_id(), cdc_sdk_safe_time, read_time);
+          tablet_peer->tablet_id(), cdc_sdk_safe_time, actual_read_time);
     }
 
     if (FLAGS_cdc_send_null_before_image_if_not_exists) {
@@ -573,30 +599,35 @@ Status DoPopulateBeforeImage(
 
 template <class... Args>
 Status PopulateBeforeImage(
-    const tablet::TabletPeerPtr& tablet_peer, HybridTime commit_time, RowMessage* row_message,
+    const tablet::TabletPeerPtr& tablet_peer,
+    const HybridTime& read_time,
+    const TransactionId& transaction_id,
+    RowMessage* row_message,
     Args&&... args) {
   auto cdc_sdk_safe_time = tablet_peer->get_cdc_sdk_safe_time();
   VLOG(2) << "Get BeforeImage for tablet: " << tablet_peer->tablet_id()
-          << " with read time: " << commit_time
+          << " with read time: " << read_time
           << " cdc_sdk_safe_time: " << cdc_sdk_safe_time
           << " for change record type: " << row_message->op();
-  if (!commit_time) {
+  if (!read_time.is_valid()) {
+    LOG(WARNING) << "Read time is invalid for tablet: " << tablet_peer->tablet_id();
     return Status::OK();
   }
   auto status = DoPopulateBeforeImage(
-      tablet_peer, commit_time.Decremented(), row_message, cdc_sdk_safe_time,
+      tablet_peer, read_time, transaction_id, row_message, cdc_sdk_safe_time,
       std::forward<Args>(args)...);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to get the BeforeImage for tablet: " << tablet_peer->tablet_id()
-                 << " with read time: " << commit_time
+                 << " with read time: " << read_time
                  << " for change record type: " << row_message->op()
                  << " row_message: " << row_message->DebugString()
                  << " with error status: " << status;
+  } else {
+    VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
+            << " with read time: " << read_time
+            << " for change record type: " << row_message->op()
+            << " row_message: " << row_message->DebugString();
   }
-  VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
-          << " with read time: " << commit_time
-          << " for change record type: " << row_message->op()
-          << " row_message: " << row_message->DebugString();
   return status;
 }
 
@@ -973,11 +1004,14 @@ Status PopulateCDCSDKIntentRecord(
         if (proto_record.IsInitialized() && row_message->IsInitialized() &&
             row_message->op() == RowMessage_Op_UPDATE) {
           if (record_type != cdc::CDCRecordType::CHANGE) {
+            auto read_time = FLAGS_cdc_enable_intra_transactional_before_image
+                                 ? prev_intent.intent_ht.hybrid_time()
+                                 : commit_time;
             RETURN_NOT_OK(PopulateBeforeImage(
-                tablet_peer, commit_time, row_message,
+                tablet_peer, read_time, transaction_id, row_message,
                 enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
                 schema_version, colocation_id, modified_columns, record_type));
-            if (!commit_time) {
+            if (!read_time) {
               for (size_t index = 0; index < schema.num_columns(); ++index) {
                 row_message->add_old_tuple();
               }
@@ -1064,10 +1098,18 @@ Status PopulateCDCSDKIntentRecord(
 
       if (IsOldRowNeededOnDelete(record_type) &&
          (row_message->op() == RowMessage_Op_DELETE)) {
+        auto read_time = FLAGS_cdc_enable_intra_transactional_before_image
+                             ? intent.intent_ht.hybrid_time()
+                             : commit_time;
         RETURN_NOT_OK(PopulateBeforeImage(
-            tablet_peer, commit_time, row_message, enum_oid_label_map,
+            tablet_peer, read_time, transaction_id, row_message, enum_oid_label_map,
             composite_atts_map, request_source, decoded_key, schema, schema_version,
             colocation_id, modified_columns, record_type));
+        if (!read_time) {
+          for (size_t index = 0; index < schema.num_columns(); ++index) {
+            row_message->add_old_tuple();
+          }
+        }
 
         if (row_message->old_tuple_size() == 0) {
           RETURN_NOT_OK(AddPrimaryKey(
@@ -1170,11 +1212,14 @@ Status PopulateCDCSDKIntentRecord(
            row_message->op() == RowMessage_Op_DELETE)) {
         if ((record_type != cdc::CDCRecordType::CHANGE) &&
             (row_message->op() == RowMessage_Op_UPDATE)) {
+          auto read_time = FLAGS_cdc_enable_intra_transactional_before_image
+                               ? prev_intent.intent_ht.hybrid_time()
+                               : commit_time;
           RETURN_NOT_OK(PopulateBeforeImage(
-              tablet_peer, commit_time, row_message,
+              tablet_peer, read_time, transaction_id, row_message,
               enum_oid_label_map, composite_atts_map, request_source, decoded_key, schema,
               schema_version, colocation_id, modified_columns, record_type));
-          if (!commit_time) {
+          if (!read_time) {
             for (size_t index = 0; index < schema.num_columns(); ++index) {
               row_message->add_old_tuple();
             }
@@ -1195,11 +1240,14 @@ Status PopulateCDCSDKIntentRecord(
     row_message->set_table(table_name);
     row_message->set_table_id(table_id);
     if (record_type != cdc::CDCRecordType::CHANGE) {
+      auto read_time = FLAGS_cdc_enable_intra_transactional_before_image
+                           ? prev_intent.intent_ht.hybrid_time()
+                           : commit_time;
       RETURN_NOT_OK(PopulateBeforeImage(
-          tablet_peer, commit_time, row_message, enum_oid_label_map,
+          tablet_peer, read_time, transaction_id, row_message, enum_oid_label_map,
           composite_atts_map, request_source, prev_decoded_key, schema, schema_version,
           colocation_id, modified_columns, record_type));
-      if (!commit_time) {
+      if (!read_time) {
         for (size_t index = 0; index < schema.num_columns(); ++index) {
           row_message->add_old_tuple();
         }
@@ -1367,9 +1415,9 @@ Status PopulateCDCSDKWriteRecord(
       if (row_message != nullptr && row_message->op() == RowMessage::UPDATE) {
         if (record_type != cdc::CDCRecordType::CHANGE) {
           RETURN_NOT_OK(PopulateBeforeImage(
-              tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
-              enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
-              schema_version, colocation_id, modified_columns, record_type));
+              tablet_peer, HybridTime::FromPB(msg->hybrid_time()), TransactionId::Nil(),
+              row_message, enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key,
+              schema, schema_version, colocation_id, modified_columns, record_type));
         } else {
           for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
                ++new_tuple_index) {
@@ -1419,7 +1467,7 @@ Status PopulateCDCSDKWriteRecord(
       if (IsOldRowNeededOnDelete(record_type) &&
           (row_message->op() == RowMessage_Op_DELETE)) {
         RETURN_NOT_OK(PopulateBeforeImage(
-            tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
+            tablet_peer, HybridTime::FromPB(msg->hybrid_time()), TransactionId::Nil(), row_message,
             enum_oid_label_map, composite_atts_map, request_source, decoded_key, schema,
             schema_version, colocation_id, modified_columns, record_type));
 
@@ -1507,7 +1555,7 @@ Status PopulateCDCSDKWriteRecord(
   if (row_message && row_message->op() == RowMessage_Op_UPDATE) {
     if (record_type != cdc::CDCRecordType::CHANGE) {
       RETURN_NOT_OK(PopulateBeforeImage(
-          tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
+          tablet_peer, HybridTime::FromPB(msg->hybrid_time()), TransactionId::Nil(), row_message,
           enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
           schema_version, colocation_id, modified_columns, record_type));
     } else {
