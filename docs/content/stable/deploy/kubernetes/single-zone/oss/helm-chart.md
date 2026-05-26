@@ -368,7 +368,7 @@ tserver:
 
 ### Liveness probes
 
-[Liveness probes](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes) determine whether Kubernetes should restart the YugabyteDB container. After enough consecutive failures, the kubelet restarts the container. Readiness probes only govern whether traffic is sent to the pod.
+[Liveness probes](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes) determine whether Kubernetes should restart the YugabyteDB container. After enough consecutive failures, the [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/) restarts the container. Readiness probes only govern whether traffic is sent to the pod.
 
 Like readiness, liveness behavior comes from the Helm chart used for direct installs and for [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
 

@@ -71,7 +71,7 @@ Learn how YugabyteDB [handles region failures](./handling-region-failures/).
 
 ### Gray failure
 
-A gray failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability. Gray failures can also result from the differential observability of the various components in the distributed system, for example, where one application connected to a cluster detects a failure, but the cluster itself healthy.
+A gray failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability. Gray failures can also result from the differential observability of the various components in the distributed system, for example, where one application connected to a cluster detects a failure, but the cluster itself is healthy.
 
 {{<lead link="./handling-gray-failures/">}}
 Learn how YugabyteDB [handles gray failures](./handling-gray-failures/).

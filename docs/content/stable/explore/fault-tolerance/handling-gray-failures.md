@@ -1,6 +1,6 @@
 ---
 title: Handle gray failures
-linkTitle: gray failures
+linkTitle: Gray failures
 description: Learn how YugabyteDB mitigates partial failures such as slow nodes, intermittent timeouts, and asymmetric connectivity.
 headcontent: Mitigate partial failures in YugabyteDB
 menu:
@@ -114,7 +114,7 @@ For more information, see [Synchronous replication](../../../architecture/docdb-
 
 ### Client retries and reconnection
 
-Applications should use retry-capable drivers and connect using multiple nodes where possible. gray failures can cause transient timeouts or errors during leader changes. Client-side retry logic helps absorb these short disruptions.
+Applications should use retry-capable drivers and connect using multiple nodes where possible. Gray failures can cause transient timeouts or errors during leader changes. Client-side retry logic helps absorb these short disruptions.
 
 ## Typical gray-failure scenarios
 

@@ -105,7 +105,7 @@ A network partition is a failure in which parts of a distributed system cannot r
 
 In a distributed database, a network partition can interrupt heartbeats, replication traffic, and leader-election messages, causing some replicas to lose contact with a quorum.
 
-A partial network partition is a less clear-cut form in which communication fails only on some paths, intermittently, or in one direction. Partial network partitions are a common type of gray failure.
+A partial network partition is a less clear-cut form in which communication fails only on some paths, intermittently, or in one direction. Partial network partitions are a common type of [gray failure](../../explore/fault-tolerance/handling-gray-failures/).
 
 In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency.
 
