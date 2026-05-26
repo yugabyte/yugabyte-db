@@ -103,4 +103,6 @@ YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
 YB_STRONGLY_TYPED_BOOL(UseVariableBloomFilter);
 
+using dockv::IncludeWriteTime;
+
 }  // namespace yb::docdb

@@ -13,6 +13,9 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/algorithm/string/join.hpp>
+
+#include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
@@ -33,12 +36,14 @@ using std::string;
 
 using namespace std::literals;
 
-DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(TEST_running_test);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
+DECLARE_bool(TEST_running_test);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(replication_factor);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
@@ -684,6 +689,145 @@ TEST_F(PgTxnTest, FlushLargeTransaction) {
 
   auto res = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(LENGTH(value)) FROM test"));
   ASSERT_EQ(res, kValueLen * kTxnRows + kExtraValueLen * kExtraRows);
+}
+
+TEST_F(PgTxnTest, RepackWithDelayedApplyAfter) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 2)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 3 WHERE key = 2"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 2 WHERE key = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 3 WHERE key = 1"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  auto records = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  auto column_id = kFirstColumnIdRep + 1;
+  ASSERT_EQ(
+      records,
+      Format("SubDocKey(DocKey(0x1210, [1], []), []) -> { $0: 1 }\n"
+             "SubDocKey(DocKey(0x1210, [1], []), [ColumnId($0)]) -> 3\n"
+             "SubDocKey(DocKey(0xc0c4, [2], []), []) -> { $0: 3 }", column_id));
+
+  auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test ORDER BY key"));
+  ASSERT_EQ(res, "1, 3; 2, 3");
+}
+
+TEST_F(PgTxnTest, RepackWithDelayedApplyBefore) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  // Disable automatic compactions: this test must keep the SST file containing the original
+  // packed row + value="2" out of the compacted range. Driving compaction manually ensures the
+  // packed row is processed as an "other range" before the input, exercising the safe-interval
+  // logic deterministically (relying on universal-compaction file selection is too fragile).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  // Pin the tablet leader: leader changes mid-test would cause flushes to land on different
+  // leaders, producing fewer files than expected on the leader we inspect.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value TEXT, temp INT, PRIMARY KEY((key) HASH)) "
+          "SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, '1')"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN temp"));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = '2' WHERE key = 2"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (3, 2)"));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = '3' WHERE key = 3"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = '3' WHERE key = 2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '1')"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Compact every file except the oldest one (the one with the packed row + value="2"). The
+  // remaining file's range becomes a "before" other-range during compaction, which is exactly the
+  // scenario this test is designed to cover.
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet_safe());
+  auto* db = tablet->doc_db().regular;
+  auto files = db->GetLiveFilesMetaData();
+  ASSERT_EQ(files.size(), 3);
+  std::ranges::sort(files, {}, [](const auto& file) { return file.smallest.seqno; });
+  std::vector<std::string> input_files;
+  for (size_t i = 1; i < files.size(); ++i) {
+    input_files.push_back(files[i].Name());
+  }
+  ASSERT_OK(db->CompactFiles(rocksdb::CompactionOptions(), input_files, /* output_level= */ 0));
+
+  auto res = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT * FROM test WHERE key < 10 ORDER BY key"));
+  ASSERT_EQ(res, "1, 1; 2, 3; 3, 3");
+
+  auto records = ASSERT_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), "test"));
+  std::erase_if(records, [](const auto& record) {
+    return !record.starts_with("SubDocKey(DocKey(0x1210") &&
+           !record.starts_with("SubDocKey(DocKey(0xc0c4") &&
+           !record.starts_with("SubDocKey(DocKey(0xfca0");
+  });
+  auto column_id = kFirstColumnIdRep + 1;
+  ASSERT_EQ(
+      boost::algorithm::join(records, "\n"),
+      Format("SubDocKey(DocKey(0x1210, [1], []), []) -> { $0: \"1\" }\n"
+             "SubDocKey(DocKey(0xc0c4, [2], []), []) -> { $0: \"1\" }\n"
+             "SubDocKey(DocKey(0xc0c4, [2], []), [ColumnId($0)]) -> \"3\"\n"
+             "SubDocKey(DocKey(0xc0c4, [2], []), [ColumnId($0)]) -> \"2\"\n"
+             "SubDocKey(DocKey(0xfca0, [3], []), []) -> { $0: \"3\" }", column_id));
+}
+
+// Regression test: when repacking is disabled due to overlapping other data (e.g. a
+// committed-but-not-applied transaction), the packed row must still be forwarded to the compaction
+// output. Otherwise, columns that only exist in the packed row (never updated individually) are
+// lost.
+TEST_F(PgTxnTest, RepackDisabledPreservesPackedRow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, extra INT, PRIMARY KEY((key) HASH)) "
+      "SPLIT INTO 1 TABLETS"));
+  // INSERT creates a packed row containing both value=1 and extra=42.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1, 42)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Committed-but-not-applied transaction: its presence makes MinRunningHybridTime finite,
+  // which pushes repack_range_min to kMax and sets repack_allowed=false for the packed row.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 2 WHERE key = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Direct single-shard UPDATE: writes a column update for 'value' only (not 'extra').
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 3 WHERE key = 1"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  // 'extra' must survive: it only exists in the packed row, which must not be dropped.
+  auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test"));
+  ASSERT_EQ(res, "1, 3, 42");
 }
 
 } // namespace yb::pgwrapper
