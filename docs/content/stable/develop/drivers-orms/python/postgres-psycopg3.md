@@ -28,13 +28,13 @@ type: docs
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <img src="/icons/yugabyte.svg"></i>
+      <img src="/icons/yugabyte.svg" /i>
       Yugabyte Psycopg2
     </a>
   </li>
   <li >
     <a href="../yugabyte-psycopg3" class="nav-link">
-      <img src="/icons/yugabyte.svg"></i>
+      <img src="/icons/yugabyte.svg" /i>
       Yugabyte Psycopg3
     </a>
   </li>
