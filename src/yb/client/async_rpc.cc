@@ -172,7 +172,8 @@ AsyncRpc::AsyncRpc(
                       mutable_retrier(),
                       trace_.get()),
       start_(CoarseMonoClock::Now()),
-      async_rpc_metrics_(data.batcher->async_rpc_metrics()) {
+      async_rpc_metrics_(data.batcher->async_rpc_metrics()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data.allow_local_calls_in_curr_thread);
 }
@@ -183,6 +184,10 @@ AsyncRpc::~AsyncRpc() {
 
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
+
+  // On retries, this runs on a reactor thread (via RpcRetrier::DoRetry) that carries no wait
+  // state. Re-adopt the wait state captured at construction
+  ADOPT_WAIT_STATE(wait_state_);
 
   retained_self_ = shared_from_this();
   // For now, if this is a retry, execute this rpc on the leader even if
