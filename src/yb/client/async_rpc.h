@@ -16,6 +16,8 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -136,6 +138,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   CoarseTimePoint start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
   rpc::RpcCommandPtr retained_self_;
+
+  // Wait state captured at AsyncRpc construction
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 template <class Req, class Resp>

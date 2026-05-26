@@ -141,6 +141,15 @@ class PgBgWorkersTest : public PgAshSingleNode {
   }
 };
 
+class PgWaitOnConflictAshTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // Short refresh so several wait-queue refresh retries fire during the test window.
+    options->extra_tserver_flags.push_back("--refresh_waiter_timeout_ms=200");
+  }
+};
+
 struct Configuration {
   const RPCs rpc_list = {};
   const std::vector<std::string> tserver_flags = {};
@@ -665,4 +674,61 @@ TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
   ASSERT_EQ(finish_txn_cnt, 0);
 }
 
-}  // namespace yb::pgwrapper
+// Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's
+// query_id across wait-queue refresh retries. The wait queue refreshes a stalled waiter every
+// refresh_waiter_timeout_ms; the waiter's Write RPC times out and is re-sent by RpcRetrier on a
+// reactor thread. AsyncRpc::SendRpc re-adopts the caller's wait state so the new
+// LocalYBInboundCall's CallStateListener::UpdateInfo can copy the user's query_id from
+// CurrentWaitState() (rpc_wait_state.cc, is_local_call branch). Without that re-adopt, every
+// refresh creates a fresh wait state with query_id=0 and ASH attributes the conflict-wait time to
+// no query.
+TEST_F_EX(PgAshTest, ConflictWaitPropagatesQueryIdAcrossRefresh, PgWaitOnConflictAshTest) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE toto (id INT)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO toto VALUES (1)"));
+
+  // Session 1: hold the row's intent lock open in a transaction.
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("UPDATE toto SET id = 2"));
+
+  // Session 2: conflicting UPDATE that will wait in the conflict wait queue.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  TestThreadHolder thread_holder;
+  Status update_status;
+  thread_holder.AddThreadFunctor([&conn2, &update_status] {
+    update_status = conn2.Execute("UPDATE toto SET id = 3");
+  });
+
+  // Span multiple refresh_waiter_timeout_ms intervals so the buggy retry path fires several
+  // times.
+  SleepFor(1s);
+
+  // Release session 1 so session 2 unblocks.
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.JoinAll();
+  ASSERT_OK(update_status);
+
+  const auto ash_query =  "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event = 'ConflictResolution_WaitOnConflictingTxns'";
+
+  // Confirm the conflict-wait path was actually exercised.
+  const auto total_conflict_samples = ASSERT_RESULT(conn_->FetchRow<int64_t>(ash_query));
+
+  ASSERT_GT(total_conflict_samples, 0)
+      << "ASH did not record any ConflictResolution_WaitOnConflictingTxns samples; the "
+      << "conflict-wait path was not exercised.";
+
+  // No sample for this wait event should have query_id=0; every one should carry the UPDATE's
+  // query_id.
+  const auto zero_query_id_samples = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "$0 AND query_id = 0", ash_query)));
+
+  ASSERT_EQ(zero_query_id_samples, 0)
+      << "Found " << zero_query_id_samples << "ConflictResolution_WaitOnConflictingTxns "
+      << "samples with query_id=0. Wait-queue refresh retries are dropping the user's wait "
+      << "state when AsyncRpc::SendRpc runs on the reactor thread.";
+}
+
+} // namespace yb::pgwrapper
