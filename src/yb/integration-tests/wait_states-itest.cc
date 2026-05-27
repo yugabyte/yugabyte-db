@@ -952,7 +952,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kCreatingNewTablet,
       ash::WaitStateCode::kSaveRaftGroupMetadataToDisk,
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,
-      ash::WaitStateCode::kConflictResolution_ResolveConficts,
+      ash::WaitStateCode::kConflictResolution_ResolveConflicts,
       ash::WaitStateCode::kConflictResolution_WaitOnConflictingTxns,
       ash::WaitStateCode::kRaft_WaitingForReplication,
       ash::WaitStateCode::kRaft_ApplyingEdits,
