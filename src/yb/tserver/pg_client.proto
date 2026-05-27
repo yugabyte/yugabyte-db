@@ -256,6 +256,10 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
+  // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
+  // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
+  bool use_regular_transaction_block = 4;
 }
 
 message PgBackfillIndexResponsePB {

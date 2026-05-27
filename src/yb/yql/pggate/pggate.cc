@@ -1420,9 +1420,10 @@ Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t versi
         + FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
 }
 
-Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
+Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
