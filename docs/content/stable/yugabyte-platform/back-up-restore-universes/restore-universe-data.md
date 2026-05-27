@@ -33,6 +33,12 @@ Backups from a stable track universe can only be restored to a higher version st
 
     If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/going-beyond-sql/tablespaces/).
 
+- If you are restoring from a Network File System (NFS) storage configuration, the entire backup must be readable by the `yugabyte` user. If `yugabyte` does not have read access, it is possible for restores to fail with a "file does not exist" error message.
+
+- If a universe that spans multiple regions is backed up to NFS using a different volume for each region, all the NFS volumes must be synced to contain the full backup. Each node will require access to the full backup.
+
+    - There is a caveat where a node will not require access to backed up tablets if that tablet is pinned to another region using [tablespaces](../../../explore/going-beyond-sql/tablespaces/).
+
 ## Restore an entire or incremental backup
 
 You can restore YugabyteDB universe data from a backup as follows:
@@ -301,6 +307,22 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     ```
 
     YugabyteDB Anywhere looks for the backup in `test_bucket/test`, not `user_bucket/test`.
+
+    The directory structure of the **Backup location** matters. YugabyteDB Anywhere determines the location of the backup files by removing the storage configuration's path from the start of the **Backup location** you provide, and then appending whatever remains to the storage configuration's path. As a result, the **Backup location** must begin with the path defined in the selected storage configuration. If it doesn't, the path is constructed incorrectly and the restore fails immediately.
+
+    The configuration path also includes a `yugabyte_backup` directory, which YugabyteDB Anywhere adds automatically when writing backups. The **Backup location** must include this directory. For example, for a storage configuration with the path `/backup`, a valid location is the following:
+
+    ```output
+    /backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+    ```
+
+    Similarly, for a storage configuration with the path `/mnt/backup/`, a valid location is the following:
+
+    ```output
+    /mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+    ```
+
+    Everything from the `yugabyte_backup` folder down must be left unchanged; only the leading storage address can differ, and only if it matches the selected storage configuration and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the storage config with the correct path prefix is used to match where the backup data now resides.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 
