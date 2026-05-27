@@ -272,7 +272,7 @@ alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
 
 alter_index_action =
   ( 'RENAME' 'TO' new_name
-    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' integer
+    | 'ALTER' [ 'COLUMN' ] int_literal 'SET STATISTICS' int_literal
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 
@@ -768,7 +768,7 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')' \
-                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
+                 [ 'PARTITION' 'BY' ( 'RANGE' | 'LIST' | 'HASH' ) '(' index_elem { ',' index_elem } ')' ] \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
