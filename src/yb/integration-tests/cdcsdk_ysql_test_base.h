@@ -161,6 +161,8 @@ DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 DECLARE_bool(TEST_cdc_skip_master_bg_task);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 namespace yb {
 
