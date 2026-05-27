@@ -192,7 +192,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void Resolve() {
-    SET_WAIT_STATUS(ConflictResolution_ResolveConficts);
+    SET_WAIT_STATUS(ConflictResolution_ResolveConflicts);
     auto status = SetRequestScope();
     if (status.ok()) {
       auto start_time = CoarseMonoClock::Now();
@@ -347,7 +347,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void InvokeCallback(const Result<HybridTime>& result) {
-    // ConflictResolution_ResolveConficts lasts until InvokeCallback.
+    // ConflictResolution_ResolveConflicts lasts until InvokeCallback.
     ADOPT_WAIT_STATE(wait_state_);
     SET_WAIT_STATUS(OnCpu_Active);
     YB_TRANSACTION_DUMP(

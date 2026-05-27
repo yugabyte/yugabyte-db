@@ -138,7 +138,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "Writing initial sys catalog snapshot during initdb.";
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
       return "DumpRunningRpcs is waiting on reactor threads.";
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return "A read/write rpc is waiting to identify conflicting transactions.";
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return "A read/write rpc is waiting for conflicting transactions to complete.";
@@ -538,7 +538,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return WaitStateType::kWaitOnCondition;
 
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return WaitStateType::kNetwork;
 
     case WaitStateCode::kLockedBatchEntry_Lock:
