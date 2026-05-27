@@ -2055,9 +2055,22 @@ class PgClientSession::Impl {
   Status BackfillIndex(
       const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
       rpc::RpcContext* context) {
+    // The PG backend holds a DDL transaction open for the entire backfill duration
+    // (StartTransactionCommand at indexcmds.c:2334). Pass it to the master so it can detect when
+    // this backend is killed (-> txn aborted) and stop launching new backfill chunks.
+    auto meta = GetDdlTransactionMetadata(
+        true /* use_transaction */, req.use_regular_transaction_block(),
+        context->GetClientDeadline(), IsTxnUsingTableLocks(false));
+    std::optional<TransactionMetadata> txn_metadata;
+    if (!meta.ok()) {
+      LOG(WARNING) << "BackfillIndex: failed to get DDL transaction metadata: " << meta.status();
+    } else if (*meta) {
+      txn_metadata = **meta;
+    }
     return client_.BackfillIndex(
-        PgObjectId::GetYbTableIdFromPB(req.table_id()), /* wait= */ true,
-        context->GetClientDeadline());
+        PgObjectId::GetYbTableIdFromPB(req.table_id()),
+        std::move(txn_metadata),
+        /* wait= */ true, context->GetClientDeadline());
   }
 
   Status CreateTablegroup(

@@ -547,6 +547,11 @@ METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
     "The number of CreateTable request errors due to attempting to create too many tablets.");
 
+METRIC_DEFINE_counter(cluster, backfill_aborted,
+    "Number of index backfills aborted on the master",
+    yb::MetricUnit::kRequests,
+    "Counts BackfillTable::Abort invocations on the master.");
+
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -1128,6 +1133,9 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
+
+  metric_backfill_aborted_ =
+      METRIC_backfill_aborted.Instantiate(master_->metric_entity_cluster());
 
   metric_max_follower_heartbeat_delay_ =
     METRIC_max_follower_heartbeat_delay.Instantiate(master_->metric_entity_cluster(), 0);
@@ -6642,9 +6650,19 @@ Status CatalogManager::BackfillIndex(
             IndexPermissions_Name(index_info_pb.index_permissions())));
   }
 
+  std::optional<TransactionMetadata> requester_txn;
+  if (req->has_requester_transaction()) {
+    auto result = TransactionMetadata::FromPB(req->requester_transaction());
+    if (result.ok()) {
+      requester_txn = std::move(*result);
+    } else {
+      LOG(WARNING) << "BackfillIndex: failed to decode requester transaction: " << result.status();
+    }
+  }
+
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, /* respect deferrals for backfill */ false,
-      /* update ysql to backfill */ true);
+      this, indexed_table, current_version, epoch, std::move(requester_txn),
+      /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
 }
 
 Status CatalogManager::GetBackfillJobs(
@@ -6821,7 +6839,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
   }
 
   auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, /* respect deferrals for backfill */ false);
+      this, indexed_table, current_version, epoch, std::nullopt,
+      /* respect_backfill_deferrals */ false);
   if (!s.ok()) {
     VLOG(3) << __func__ << " Done failed " << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
@@ -11130,6 +11149,10 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
   return Status::OK();
 }
 
+void CatalogManager::IncrementBackfillAborted() {
+  IncrementCounter(metric_backfill_aborted_);
+}
+
 Status CatalogManager::EnableBgTasks() {
   LockGuard lock(mutex_);
   background_tasks_.reset(new CatalogManagerBgTasks(master_));
@@ -11838,7 +11861,8 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
         table->id(), table->EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(version));
   }
 
-  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
+  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, table, version, epoch, std::nullopt);
 }
 
 Status CatalogManager::ProcessPendingAssignmentsPerTable(

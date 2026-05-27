@@ -1376,9 +1376,10 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(YbcPgOid dboid, uint64_t version, p
 
 YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
-    const YbcPgOid index_oid) {
+    const YbcPgOid index_oid,
+    bool use_regular_transaction_block) {
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->BackfillIndex(index_id));
+  return ToYBCStatus(pgapi->BackfillIndex(index_id, use_regular_transaction_block));
 }
 
 YbcStatus YBCPgWaitVectorIndexReady(
