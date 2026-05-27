@@ -251,6 +251,8 @@ DEFINE_test_flag(bool, get_ysql_catalog_version_from_sys_catalog, false,
                  "Whether catalog manager should get the ysql catalog version "
                  "from the sys_catalog.");
 
+DECLARE_bool(TEST_log_catalog_version_cache_events);
+
 DEFINE_test_flag(uint32, abort_create_table, 0,
     "Abort the creation of a table at a specified point in code.");
 
@@ -10911,14 +10913,32 @@ Status CatalogManager::IsInitDbDone(
   return Status::OK();
 }
 
-Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
-                                             uint64_t* last_breaking_version) {
-  return GetYsqlDBCatalogVersion(kTemplate1Oid, catalog_version, last_breaking_version);
+Status CatalogManager::GetYsqlCatalogVersion(
+    uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) {
+  return GetYsqlDBCatalogVersion(kTemplate1Oid, catalog_version, last_breaking_version, use_cache);
 }
 
-Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
-                                               uint64_t* catalog_version,
-                                               uint64_t* last_breaking_version) {
+Status CatalogManager::GetYsqlDBCatalogVersion(
+    uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) {
+  if (use_cache && FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    if (heartbeat_pg_catalog_versions_cache_) {
+      auto it = heartbeat_pg_catalog_versions_cache_->find(db_oid);
+      if (it != heartbeat_pg_catalog_versions_cache_->end()) {
+        LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+            << "GetYsqlDBCatalogVersion: cache hit for db_oid " << db_oid;
+        if (catalog_version) {
+          *catalog_version = it->second.current_version;
+        }
+        if (last_breaking_version) {
+          *last_breaking_version = it->second.last_breaking_version;
+        }
+        return Status::OK();
+      }
+    }
+  }
+  LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
+      << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
   auto table_id =
       VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
@@ -10948,15 +10968,12 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  auto table_id =
-      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  auto table_info = GetTableInfo(table_id);
-  if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions));
-  } else {
-    versions->clear();
-  }
-  return Status::OK();
+  // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
+  // initdb). The only caller that may invoke this before the table exists is the initdb path
+  // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
+  // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
+  // mutex_ on every heartbeat-rate refresh.
+  return sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions);
 }
 
 // Note: versions and fingerprint are outputs.
@@ -10964,15 +10981,16 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    // We expect that the only caller uses this cache is the heartbeat service.
-    // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the
-    // heartbeat service will simply not populate catalog versions in its
-    // heartbeat response message. A tserver will not change its private
-    // catalog version map when it finds no catalog versions in the heartbeat
-    // response message.
-    // Some unit tests check tserver private map before the background task has
-    // a chance to populate the cache, read from pg_yb_catalog_version below to
-    // make such unit tests happy.
+    // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
+    // the heartbeat service (master.cc, master_heartbeat_service.cc) and the master-side Read
+    // RPC path (via MasterTabletServer::get_ysql_db_catalog_version). Authoritative callers
+    // (e.g. WaitForYsqlBackendsCatalogVersion, ReportYsqlDdlTxnStatus) must pass false.
+    //
+    // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the heartbeat service
+    // will simply not populate catalog versions in its response message, and the tserver will
+    // not change its private catalog version map. Some unit tests check the tserver private
+    // map before the background task has a chance to populate the cache, so we fall through
+    // to read from pg_yb_catalog_version below to make such unit tests happy.
     if (heartbeat_pg_catalog_versions_cache_) {
       *versions = *heartbeat_pg_catalog_versions_cache_;
       if (fingerprint) {
@@ -14065,6 +14083,11 @@ void CatalogManager::SchedulePostTabletCreationTasksForPendingTables(const Leade
 }
 
 void CatalogManager::ResetCachedCatalogVersions() {
+  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
+  // against periodic runs, otherwise we can have catalog version in this cache
+  // go back after a DDL commit (which isn't a critical error but nice to prevent)
+  // or versions get repopulated after a reset from leader stepdown
+  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
   LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
@@ -14074,17 +14097,31 @@ void CatalogManager::ResetCachedCatalogVersions() {
   heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
 }
 
-void CatalogManager::RefreshPgCatalogVersionInfo() {
+bool CatalogManager::RefreshPgCatalogVersionCache() {
+  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
+  // against periodic runs, otherwise we can have catalog version in this cache
+  // go back after a DDL commit (which isn't a critical error but nice to prevent)
+  // or versions get repopulated after a reset from leader stepdown
+  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
+  if (!ysql_manager_->IsPgCatalogVersionsBgTaskRunning()) {
+    // This can happen when an on-demand call from ysql_ddl_handler runs
+    // while leader stepdown stops the periodic run.
+    VLOG_WITH_FUNC(2) << "Skipping refresh: catalog versions bg task not running";
+    return false;
+  }
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
   bool changed = false;
   if (!s.ok()) {
-    LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
-    ResetCachedCatalogVersions();
-  } else {
-    VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
-    const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
-    VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
+    YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s.ToString();
+    // Keep the existing cache intact; stale data is preferable to forcing every
+    // Read RPC to hit disk. The background task will retry with a shorter delay.
+    return false;
+  }
+  VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
+  const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
+  VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
+  {
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
       heartbeat_pg_catalog_versions_cache_->swap(versions);
@@ -14093,7 +14130,11 @@ void CatalogManager::RefreshPgCatalogVersionInfo() {
     }
     changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+    LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+        << "RefreshPgCatalogVersionCache: cache refreshed, databases: "
+        << heartbeat_pg_catalog_versions_cache_->size();
   }
+
   if (FLAGS_ysql_yb_enable_invalidation_messages) {
     // Maybe last time invalidation messages refresh failed, read it again.
     if (!changed) {
@@ -14108,13 +14149,16 @@ void CatalogManager::RefreshPgCatalogVersionInfo() {
       // because PG backends will fall back to do catalog cache refreshes.
       auto messages = GetYsqlCatalogInvalationMessagesImpl();
       if (!messages.ok()) {
-        LOG(WARNING) << "Catalog invalidation messages refresh failed: " << s;
+        YB_LOG_EVERY_N_SECS(WARNING, 20)
+            << "Catalog invalidation messages refresh failed: " << messages.status();
         LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
         // Reset to std::nullopt to indicate next time we want to read again.
         heartbeat_pg_inval_messages_cache_ = std::nullopt;
-      } else {
-        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
-                          << " catalog inval messages in memory";
+        return false;
+      }
+      VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                        << " catalog inval messages in memory";
+      {
         LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
         if (heartbeat_pg_inval_messages_cache_) {
           heartbeat_pg_inval_messages_cache_->swap(*messages);
@@ -14124,6 +14168,7 @@ void CatalogManager::RefreshPgCatalogVersionInfo() {
       }
     }
   }
+  return true;
 }
 
 Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTabletDrop(

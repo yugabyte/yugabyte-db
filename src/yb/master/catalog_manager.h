@@ -875,7 +875,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) override;
 
   Status GetYsqlCatalogVersion(
-      uint64_t* catalog_version, uint64_t* last_breaking_version) override;
+      uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache = false) override;
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -883,7 +884,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   Status GetYsqlDBCatalogVersion(
-      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache = false) override;
 
   Status InitializeTransactionTablesConfig(int64_t term);
 
@@ -1879,10 +1881,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
   void ResetCachedCatalogVersions()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
+               heartbeat_pg_catalog_versions_cache_mutex_);
 
-  // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
-  void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Serialized against
+  // concurrent refreshes / resets so a refresh that captured later disk state always
+  // swaps after a refresh that captured earlier disk state.
+  // Returns true on success, false on failure (cache is left intact on failure).
+  bool RefreshPgCatalogVersionCache()
+      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
+               heartbeat_pg_catalog_versions_cache_mutex_);
 
   Status GetYsqlYbSystemTableInfo(
       const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
@@ -3421,6 +3429,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
+  mutable MutexType refresh_pg_catalog_versions_cache_mutex_;
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_
