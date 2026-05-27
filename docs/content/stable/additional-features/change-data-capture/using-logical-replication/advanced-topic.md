@@ -80,7 +80,7 @@ This is illustrated in the following example. The client used for the example is
 
 ## Adding tables to publication
 
-The Publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an alter publication.
+The publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an `ALTER PUBLICATION`:
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -97,7 +97,7 @@ CREATE TABLE test_table_3(id INT PRIMARY KEY, aa INT, bb INT);
 ALTER PUBLICATION ADD TABLE test_table_3;
 ```
 
-The second way is when a table is added to `ALL TABLES` publication upon creation.
+The second way is when a table is added to an `ALL TABLES` publication upon creation:
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -107,12 +107,48 @@ CREATE PUBLICATION PUB FOR ALL TABLES;
 -- Start consumption through a replication slot.
 
 CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
--- Since the publication was created for ALL TABLES, alter publication is not requirred.
+-- Since the publication was created for ALL TABLES, ALTER PUBLICATION is not required.
 ```
 
-### YugabyteDB semantics
+### Implicit publication changes
 
-Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes (if any) are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is 15 minutes (900 seconds). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+Available in v2026.1 and later.
+
+In versions earlier than v2026.1, YugabyteDB logical replication differed from PostgreSQL in how changes to a publication were applied. The publication was polled periodically to check for changes, instead of reflecting publication changes implicitly at the correct point in the stream. For details, refer to [Versions earlier than v2026.1](#versions-earlier-than-v2026-1).
+
+Starting in v2026.1, with implicit publication changes enabled by default, any change to a publication is reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed, and YugabyteDB behavior matches PostgreSQL with regard to reflecting publication changes.
+
+This feature applies only to the logical replication model of CDC. Its purpose is to bring YugabyteDB logical replication to parity with PostgreSQL when reflecting changes made to publication objects. In versions earlier than v2026.1, changes to a publication were reflected only after a refresh interval. Any events written to a newly added table before that interval would not be streamed. Starting in v2026.1, regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
+
+For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#publication-change-detection) in the logical replication architecture documentation.
+
+#### Example
+
+```sql
+-- Assuming a replication slot is using the publication pub
+ALTER PUBLICATION pub ADD TABLE employees;
+INSERT INTO employees VALUES (1342, 'John Doe'); -- This will be captured by CDC
+
+ALTER PUBLICATION pub DROP TABLE employees;
+INSERT INTO employees VALUES (1343, 'Jane Doe'); -- This will NOT be captured by CDC
+```
+
+#### Configuration
+
+The feature is controlled by the following flags. Set them on both YB-Master and YB-TServer.
+
+| Flag | Details |
+| :--- | :--- |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default in v2026.1 and later), modifications to a publication are reflected implicitly. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. |
+| [cdc_enable_dynamic_schema_changes](../../../../reference/configuration/yb-tserver/#cdc-enable-dynamic-schema-changes) | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+
+To disable implicit publication changes and revert to the periodic publication refresh behavior used in versions earlier than v2026.1, set `ysql_yb_enable_implicit_dynamic_tables_logical_replication` to `false` on all YB-Master and YB-TServer processes and restart the cluster.
+
+#### Versions earlier than v2026.1
+
+In versions earlier than v2026.1, YugabyteDB does not apply publication changes immediately. Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is 15 minutes (900 seconds). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+
+On v2026.1 and later, this behavior applies when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
 Consider an example where the `cdcsdk_publication_list_refresh_interval_secs` flag is set to 900 seconds (15 minutes) and the publication's tables list is being refreshed every 15 minutes at 8:00 am, 8:15 am, 8:30 am, and so on.
 
@@ -122,9 +158,9 @@ You can change the value of this flag at run time, but the change becomes effect
 
 This change will only be applied after 8:15 am. That is, the publication's tables list will next be refreshed at 8:15 am. Then the next refresh will happen at 8:20 am, and subsequent refreshes will take place every 5 minutes.
 
-### Required settings
+#### Required settings
 
-To enable dynamic table addition, perform the following steps:
+When using versions earlier than v2026.1, or when `ysql_yb_enable_implicit_dynamic_tables_logical_replication` is set to `false` on v2026.1 and later, to enable dynamic table addition with minimal delay, perform the following steps:
 
 1. Set the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag to a lower value, such as 60 or 120 seconds. Note that the effect of this setting takes place after the upcoming publication refresh is performed.
 

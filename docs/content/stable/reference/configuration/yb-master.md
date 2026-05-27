@@ -1219,6 +1219,26 @@ Default: `true`
 
 Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../additional-features/change-data-capture/using-logical-replication/).
 
+##### --ysql_yb_enable_implicit_dynamic_tables_logical_replication
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. Set this flag on both YB-Master and YB-TServer. Available in v2026.1 and later.
+
+For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
+
+##### --cdc_enable_dynamic_schema_changes
+
+{{% tags/wrap %}}
+
+Default: Auto flag — initial `false`, target `true` (after promotion, behaves as `true`; see [All YB-Master flags](../all-flags-yb-master/) for full metadata)
+{{% /tags/wrap %}}
+
+When set, enables streaming of dynamic schema changes via CDC. Dynamic schema changes include any changes made to publications and all DDLs, including those that cause table rewrites. This auto flag is automatically promoted as part of the upgrade process. The [implicit publication changes](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) feature (v2026.1 and later) can be used only after this flag has been promoted.
+
 ### LISTEN/NOTIFY flags
 
 {{<tags/feature/ea idea="1901">}}Available in v2025.2.3 and later. To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
