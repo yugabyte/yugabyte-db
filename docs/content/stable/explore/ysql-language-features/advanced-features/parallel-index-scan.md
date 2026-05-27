@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-YSQL supports native [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html) (PQ) for a common temporal join pattern used in analytics. Starting in v2025.2.2, the planner can choose a Parallel Index Scan on the temporal table and a YB Batched Nested Loop Join for primary-key lookups into the joined table.
+[YSQL](../../../../api/ysql/) supports native [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html) (PQ) for a common temporal join pattern used in analytics. Starting in v2025.2.2, the planner can choose a parallel index scan on the temporal table and a [batched nested loop join](../../../../reference/configuration/postgresql-compatibility/#batched-nested-loop-join) for primary key lookups into the joined table.
 
 This removes the need for [earlier workarounds](#previous-workaround) such as:
 
@@ -52,7 +52,7 @@ SET yb_enable_parallel_scan_range_sharded = on;
 SET yb_enable_parallel_scan_hash_sharded = on;
 ```
 
-For this example, set the session-level DOP as follows:
+For this example, set the session-level degree of parallelism (DOP) as follows:
 
 ```sql
 SET max_parallel_workers_per_gather = 6;
@@ -132,7 +132,7 @@ This allows the planner to consider a plan that includes:
 
 - Gather or Gather Merge
 - launched worker processes
-- Parallel Index Scan on the temporal index
+- Parallel index scan on the temporal index
 
 ## Verify that Parallel Query is being used
 
@@ -170,7 +170,7 @@ The key indicator is:
 Parallel Index Scan using idx_entity_validity_tt_to_asc_vkey
 ```
 
-If you see this node, the temporal side of the join is using a parallel index scan rather than a serial index scan or parallel sequential scan.
+If you see this note, the temporal side of the join is using a parallel index scan rather than a serial index scan or parallel sequential scan.
 
 ## Expected performance
 
@@ -189,14 +189,14 @@ Before this optimization path was available, a common approach was to:
 - expose them through UNION ALL views
 - rely on Parallel Append
 
-That approach can still work, but it increases schema and query complexity. For temporal joins that match the pattern shown here, a native Parallel Index Scan lets you use standard PostgreSQL indexes and SQL instead.
+That approach can still work, but it increases schema and query complexity. For temporal joins that match the pattern shown here, a native parallel index scan lets you use standard PostgreSQL indexes and SQL instead.
 
 ## Best practices
 
 To improve the chances of getting a parallel index scan for temporal joins:
 
 - create an index whose leading column matches the temporal range predicate
-- enable the YSQL cost-based optimizer and parallel scan GUCs
+- enable the YSQL cost-based optimizer and parallel scan configuration parameters
 - use a sufficiently large time window or result set so parallelism is cost-effective
 - verify the actual plan with EXPLAIN (ANALYZE, DIST)
 
