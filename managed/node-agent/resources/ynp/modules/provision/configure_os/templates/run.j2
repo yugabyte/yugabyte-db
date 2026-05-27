@@ -108,7 +108,7 @@ if [[ -z "$GZIP_PATH" ]]; then
   echo "gzip not found, aborting." >> "$DUMP_DIR/custom_core_dump.log"
   exit 1
 fi
-/usr/bin/gzip >> "$CORE_FILE"
+"$GZIP_PATH" -c >> "$CORE_FILE"
 chmod 644 "$CORE_FILE"
 EOF
 

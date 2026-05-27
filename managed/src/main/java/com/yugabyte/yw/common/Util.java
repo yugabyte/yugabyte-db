@@ -116,7 +116,6 @@ import play.libs.Json;
 
 @Slf4j
 public class Util {
-  private static final int INITIAL_DELAY_MS = 500;
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -1841,5 +1840,19 @@ public class Util {
                     .filter(e -> FILTERED_INSTANCE_KEYS_FOR_LOGGING.contains(e.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Check if childPath is the same as parentPath or a descendant of parentPath.
+   *
+   * @param parentPath the parent path
+   * @param childPath the child path
+   * @return
+   */
+  public static boolean isPathSameOrDescendant(String parentPath, String childPath) {
+    // Normalize to remove redundant elements like "." and ".."
+    Path normalizedParent = Paths.get(parentPath).toAbsolutePath().normalize();
+    Path normalizedChild = Paths.get(childPath).toAbsolutePath().normalize();
+    return normalizedChild.startsWith(normalizedParent) || normalizedChild.equals(normalizedParent);
   }
 }
