@@ -54,7 +54,7 @@ Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clust
 
 ### What are the differences between Sandbox and Dedicated clusters?
 
-Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 10 days are [paused](#why-is-my-sandbox-cluster-paused); after 15 days they are deleted.
+Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one Sandbox cluster. Sandbox clusters that are inactive for 10 days are [paused](#why-is-my-sandbox-cluster-paused); after 15 days they are deleted.
 
 Dedicated clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Dedicated clusters also support VPC networking, and scheduled and manual backups. By default, Dedicated clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
@@ -71,7 +71,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 | [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
-| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview<br>Early Access | Production<br>Innovation<br>Early Access |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Rapid | Extended<br>Rapid |
 | Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-aeon-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
 | Support | Slack Community | Enterprise Support |
 
@@ -93,11 +93,11 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 #### YugabyteDB Aeon
 
-During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/), YugabyteDB Aeon may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
+During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/), the YugabyteDB Aeon control plane may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
 #### Cluster (YugabyteDB) version upgrade
 
-To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created.
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created.
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email.
 
@@ -113,11 +113,8 @@ Manage cluster maintenance windows and set exclusion periods
 
 Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/stable/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
-- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
-- Innovation - Updated more frequently, providing quicker access to new features.
-- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
-
-In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/stable/releases/versioning/#preview-releases) series.
+- Extended - Has less frequent updates, using mature [LTS releases](/stable/releases/versioning/#stable-release-support-policy) that have been tested longer in YugabyteDB Aeon. Recommended for production clusters.
+- Rapid - Updated more frequently, providing quicker access to new features. Rapid can include [STS and LTS releases](/stable/releases/versioning/#stable-release-support-policy), depending on which is more recent.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
