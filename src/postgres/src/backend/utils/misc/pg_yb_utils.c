@@ -2297,6 +2297,12 @@ bool		yb_is_non_atomic_commit_done = false;
 
 bool		yb_enable_retry_after_non_atomic_commit = false;
 
+char	   *yb_extra_commands_to_retry_string = NULL;
+bool	   *yb_extra_commands_to_retry = NULL;
+
+char	   *yb_extra_commands_to_retry_in_proc_string = NULL;
+bool	   *yb_extra_commands_to_retry_in_proc = NULL;
+
 bool		yb_test_system_catalogs_creation = false;
 
 int			yb_test_sleep_before_executor_start_ms = 0;

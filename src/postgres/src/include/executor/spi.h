@@ -213,4 +213,6 @@ extern bool SPI_inside_nonatomic_context(void);
 
 extern int YbGetSPIStackDepth(void);
 
+extern bool YbProcRetryBlocked(void);
+
 #endif							/* SPI_H */
