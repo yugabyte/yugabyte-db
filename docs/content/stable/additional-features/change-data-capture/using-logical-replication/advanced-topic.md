@@ -178,6 +178,35 @@ When using versions earlier than v2026.1, or when `ysql_yb_enable_implicit_dynam
 If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table, as every refresh incurs overhead.
 {{< /note >}}
 
+## Streaming DDLs causing table rewrite
+
+Available in v2026.1 and later only for the logical replication model of CDC.
+
+In versions earlier than v2026.1, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database. To perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots—potentially requiring a new CDC snapshot.
+
+Starting in v2026.1, with streaming of DDLs that cause table rewrite enabled by default, logical replication can detect a table rewrite, send a DDL event to the client, and transition to streaming changes from the re-written table's tablets after finishing data from the older tablets.
+
+With it enabled, you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. CDC detects the DDL, sends a record informing the client about the schema change, and shifts to the new tablets when the DDL causes a table rewrite.
+
+For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
+
+### Unsupported scenarios
+
+- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in {{<issue 29674>}}.
+- When a DDL causes a table rewrite, existing data is re-written to new tablets. CDC re-sends this existing data again after the table rewrite. Tracked in {{<issue 31636>}}.
+- Streaming DDLs that cause table rewrites is not supported only for colocated tables when CDC is enabled. Tracked in {{<issue 31908>}}.
+
+### Configuration
+
+The feature is controlled by the following flags. Set them on both YB-Master and YB-TServer.
+
+| Flag | Details |
+| :--- | :--- |
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (default in v2026.1 and later), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. |
+| [cdc_enable_dynamic_schema_changes](../../../../reference/configuration/yb-tserver/#cdc-enable-dynamic-schema-changes) | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+
+To disable streaming of DDLs that cause table rewrites and revert to the behavior used in versions earlier than v2026.1, set `enable_table_rewrite_for_cdcsdk_table` to `false` on all YB-Master and YB-TServer processes.
+
 ## Initial snapshot
 
 The [initial snapshot](../../../../architecture/docdb-replication/cdc-logical-replication/#initial-snapshot) data for a table is consumed by executing a snapshot query (SELECT statement). To ensure that the streaming phase continues exactly from where the snapshot left, this snapshot query is executed as of a specific database state. In YugabyteDB, this database state is represented by a value of `HybridTime`. Changes due to transactions with commit time strictly greater than this snapshot `HybridTime` will be consumed during the streaming phase.

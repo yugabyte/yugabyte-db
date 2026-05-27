@@ -44,6 +44,16 @@ Starting in v2026.1, the virtual WAL polls the sys catalog tablet in addition to
 
 In versions earlier than v2026.1, the CDC service runs only on YB-TServer, and publication changes are detected through periodic polling of the publication's tables list.
 
+### Table rewrite and DROP TABLE handling
+
+Starting in v2026.1, when [streaming DDLs that cause table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite) is enabled, a DDL that causes a table rewrite or a `DROP TABLE` on a database with active CDC does not immediately delete the table's tablets. Instead, those tablets are hidden and retained until CDC has streamed all data committed before the DDL.
+
+CDC continues to serve changes from the hidden tablets to the client until that data is fully streamed. When the virtual WAL receives records indicating a DDL that causes a table rewrite, it switches polling to the new (re-written) tablets. For `DROP TABLE`, it removes the tablets from its polling list.
+
+The restart time is the latest commit time acknowledged by the CDC client. When the restart time across all replication slots passes the hide time of these tablets, the tablets are marked as available for deletion and are subsequently deleted.
+
+In versions earlier than v2026.1, such DDLs are blocked when logical replication is active on the database.
+
 ### Data flow
 
 Logical replication starts by copying a snapshot of the data on the publisher database. After that is done, changes on the publisher are streamed to the server as they occur in near real time.

@@ -1302,11 +1302,14 @@ Tables created after the creation of a replication slot are referred as Dynamic 
 ##### --ysql_yb_enable_implicit_dynamic_tables_logical_replication
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `true`
 {{% /tags/wrap %}}
 
-When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. Set this flag on both YB-Master and YB-TServer.
+Available in v2026.1 and later.
+
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables.
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
@@ -1314,10 +1317,23 @@ For more information, refer to [Adding tables to publication](../../../additiona
 
 {{% tags/wrap %}}
 
-Default: Auto flag — initial `false`, target `true` (after promotion, behaves as `true`; see [All YB-TServer flags](../all-flags-yb-tserver/) for full metadata)
+Default: Auto flag. `false` until promoted to `true` during upgrade (`true` on new installs). See [All YB-TServer flags](../all-flags-yb-tserver/#cdc-enable-dynamic-schema-changes) for details.
 {{% /tags/wrap %}}
 
-When set, enables streaming of dynamic schema changes via CDC. Dynamic schema changes include any changes made to publications and all DDLs, including those that cause table rewrites. This auto flag is automatically promoted as part of the upgrade process. The [implicit publication changes](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) feature (v2026.1 and later) can be used only after this flag has been promoted.
+When set, enables streaming of dynamic schema changes via CDC. Dynamic schema changes include any changes made to publications and all DDLs, including those that cause table rewrites. This auto flag is automatically promoted as part of the upgrade process.
+
+Features in v2026.1 and later that depend on dynamic schema changes, such as [implicit publication changes](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) and [streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite), can be used only after this flag has been promoted.
+
+##### --enable_table_rewrite_for_cdcsdk_table
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+
+For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
 
 ##### --cdcsdk_publication_list_refresh_interval_secs
 
