@@ -1121,9 +1121,12 @@ OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   return pending_operations_.empty() ? OpId() : pending_operations_.back()->id();
 }
 
-OpId ReplicaState::NewIdUnlocked() {
+Result<OpId> ReplicaState::NewIdUnlocked(OperationType op_type) {
   DCHECK(IsLocked());
-  return OpId(GetCurrentTermUnlocked(), next_index_++);
+  auto op_id = OpId(GetCurrentTermUnlocked(), next_index_);
+  RETURN_NOT_OK(context_->CheckOperationAllowed(op_id, op_type));
+  ++next_index_;
+  return op_id;
 }
 
 void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
