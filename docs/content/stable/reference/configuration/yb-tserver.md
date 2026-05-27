@@ -1306,7 +1306,7 @@ Tables created after the creation of a replication slot are referred as Dynamic 
 Default: `true`
 {{% /tags/wrap %}}
 
-When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. Set this flag on both YB-Master and YB-TServer. Available in v2026.1 and later.
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. Set this flag on both YB-Master and YB-TServer.
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
