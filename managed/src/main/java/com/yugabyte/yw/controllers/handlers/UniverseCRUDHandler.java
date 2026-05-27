@@ -201,7 +201,7 @@ public class UniverseCRUDHandler {
         taskParams, clusterOperation, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
   }
 
-  private static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  public static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation,
       Cluster cluster,

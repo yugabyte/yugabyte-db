@@ -7,6 +7,8 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.CollectFilesRequest;
@@ -234,6 +236,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, AttachUniverseSpec attachUniverseSpec)
       throws Exception {
     universeHandler.attachUniverse(request, cUUID, uniUUID, attachUniverseSpec);
+  }
+
+  @Override
+  public CheckResizeOptionsResp checkResizeOptions(
+      Request request, UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec checkResizeOptionsSpec)
+      throws Exception {
+    return universeHandler.checkResizeOptions(cUUID, uniUUID, checkResizeOptionsSpec);
   }
 
   @Override

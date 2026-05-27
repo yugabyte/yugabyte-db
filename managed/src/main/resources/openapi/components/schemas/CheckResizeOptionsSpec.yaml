@@ -1,0 +1,16 @@
+title: CheckResizeOptionsSpec
+description: |
+  Request to check which resize-related operations are available for a cluster.
+  Part of CheckResizeOptionsReq.
+type: object
+required:
+  - cluster_uuid
+  - node_spec
+properties:
+  cluster_uuid:
+    description: Cluster UUID to evaluate.
+    type: string
+    format: uuid
+  node_spec:
+    description: Proposed node settings for the cluster.
+    $ref: "./ClusterNodeSpec.yaml"

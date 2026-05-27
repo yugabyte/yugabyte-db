@@ -11,7 +11,10 @@ import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
+import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
@@ -26,6 +29,7 @@ import api.v2.models.FileCollectionSummary;
 import api.v2.models.NodeFileCollectionResult;
 import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
+import api.v2.models.ResizeUpdateOption;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
@@ -1486,5 +1490,48 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
+  }
+
+  public CheckResizeOptionsResp checkResizeOptions(
+      UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(uniUUID, customer).getUniverseDetails();
+
+    Cluster cluster = taskParams.getClusterByUuid(spec.getClusterUuid());
+    if (cluster == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
+    }
+    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+        spec.getNodeSpec(), cluster.userIntent);
+    log.debug(
+        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
+
+    Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+
+    PlacementInfoUtil.updateUniverseDefinitionV2(
+        dbUniverse,
+        taskParams,
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
+    log.info(
+        "Check resize options for universe {} cluster {}: {}",
+        uniUUID,
+        spec.getClusterUuid(),
+        updateOptions);
+    List<ResizeUpdateOption> res = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
+      try {
+        res.add(ResizeUpdateOption.valueOf(updateOption.name()));
+      } catch (Exception ignored) {
+        log.error("Incorrect option: " + updateOption);
+      }
+    }
+    return new CheckResizeOptionsResp().options(res);
   }
 }
