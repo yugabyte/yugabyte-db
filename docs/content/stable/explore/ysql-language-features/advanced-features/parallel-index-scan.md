@@ -50,7 +50,6 @@ SET yb_enable_cbo = on;
 SET yb_enable_parallel_scan_colocated = on;
 SET yb_enable_parallel_scan_range_sharded = on;
 SET yb_enable_parallel_scan_hash_sharded = on;
-SET yb_enable_parallel_append = on;
 ```
 
 For this example, set the session-level DOP as follows:
