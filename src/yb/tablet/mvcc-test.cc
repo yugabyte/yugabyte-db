@@ -44,7 +44,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

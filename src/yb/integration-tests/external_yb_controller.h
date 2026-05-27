@@ -18,7 +18,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/integration-tests/external_daemon.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/subprocess.h"
 
 namespace yb {

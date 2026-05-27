@@ -36,7 +36,7 @@
 #include <unordered_map>
 
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 
 #include "yb/util/size_literals.h"

@@ -18,7 +18,7 @@
 #include <string>
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -40,7 +40,7 @@
 #include <memory>
 
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #include "yb/util/slice.h"
 

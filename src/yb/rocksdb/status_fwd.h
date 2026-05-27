@@ -10,16 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+// Forward declaration of rocksdb::Status (a typedef for yb::Status). Use this header instead of
+// yb/rocksdb/status.h when you only need to refer to Status in declarations or by reference --
+// e.g. parameters of type `const rocksdb::Status&`, function return types, member pointers --
+// and do not need to call any Status methods or copy/move a Status by value. The full definition
+// is in yb/rocksdb/status.h (which pulls in yb/util/status.h).
 
 #pragma once
 
-namespace yb {
+#include "yb/util/status_fwd.h"
 
-class Status;
+namespace rocksdb {
 
-#define NODISCARD_CLASS [[nodiscard]] // NOLINT
+typedef yb::Status Status;
 
-template<class TValue>
-class NODISCARD_CLASS Result;
-
-}  // namespace yb
+}  // namespace rocksdb

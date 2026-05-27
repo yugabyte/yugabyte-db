@@ -40,7 +40,7 @@
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
