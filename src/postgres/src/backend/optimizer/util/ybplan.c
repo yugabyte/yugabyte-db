@@ -31,14 +31,19 @@
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
+#include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
+#include "nodes/primnodes.h"
 #include "nodes/print.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "utils/array.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
+#include "utils/uuid.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
@@ -1040,4 +1045,254 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 		if (!pk_maybe_modified && !fkey_maybe_modified)
 			YbAddEntityToSkipList(etype, fkey->conoid, skip_entities);
 	}
+}
+
+/*
+ * Look up the hardcoded "tserver_uuid" column on 'relid' and return its
+ * AttrNumber. Returns InvalidAttrNumber if no such column exists or if it
+ * exists but is not of UUID type.
+ */
+static AttrNumber
+yb_get_federated_tserver_uuid_attno(Oid relid)
+{
+	AttrNumber	attno = get_attnum(relid, "tserver_uuid");
+
+	if (attno == InvalidAttrNumber || get_atttype(relid, attno) != UUIDOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("federated foreign table \"%s\" must have a "
+						"\"tserver_uuid\" column of type UUID",
+						get_rel_name(relid))));
+
+	return attno;
+}
+
+/*
+ * Outcome of attempting to extract a tserver_uuid filter from one
+ * RestrictInfo clause.
+ */
+typedef enum YbTserverUuidClauseResult
+{
+	YB_TS_UUID_CLAUSE_UNSUPPORTED,	/* clause shape / column / type not ours */
+	YB_TS_UUID_CLAUSE_SUBSET,		/* recognized; *out_indexes populated */
+} YbTserverUuidClauseResult;
+
+/*
+ * Map a Const UUID Datum to the index of the matching entry in 'servers',
+ * adding the index to *out_indexes if a match is found. Unmatched UUIDs
+ * (stale / unknown) simply don't contribute to the set.
+ */
+static void
+yb_add_matching_server_index(Datum uuid_datum,
+							 YbcServerDescriptor *servers, size_t nservers,
+							 Bitmapset **out_indexes)
+{
+	char	   *uuid_str =
+		yb_convert_uuid_to_yb_uuid_string_repr(DatumGetUUIDP(uuid_datum));
+
+	for (size_t i = 0; i < nservers; ++i)
+	{
+		if (strcmp(uuid_str, servers[i].uuid) == 0)
+		{
+			*out_indexes = bms_add_member(*out_indexes, (int) i);
+			break;
+		}
+	}
+
+	pfree(uuid_str);
+}
+
+/*
+ * yb_extract_tserver_indexes_from_clause
+ *		If 'clause' is a recognized equality / IN-list restriction on the
+ *		tserver_uuid column of 'rel', set *out_indexes to a Bitmapset of
+ *		indexes into 'servers' that the clause admits and return
+ *		YB_TS_UUID_CLAUSE_SUBSET. Otherwise leave *out_indexes alone and
+ *		return YB_TS_UUID_CLAUSE_UNSUPPORTED.
+ *
+ * Supported clause shapes:
+ *   - OpExpr            Var = Const          (equality)
+ *   - ScalarArrayOpExpr Var = ANY(Const[])   (i.e. IN-list, useOr=true)
+ *
+ * For both shapes the Var must reference 'relid' and 'attno', the operator
+ * must be UUID's default equality 'uuid_eq_op', and the Const must be of
+ * UUID (or UUID[]) type. NULL elements inside an IN-list array are
+ * skipped (they can never match an equality).
+ */
+static YbTserverUuidClauseResult
+yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
+									   AttrNumber attno, Oid uuid_eq_op,
+									   YbcServerDescriptor *servers,
+									   size_t nservers,
+									   Bitmapset **out_indexes)
+{
+	if (IsA(clause, OpExpr))
+	{
+		OpExpr	   *opexpr = (OpExpr *) clause;
+		Var		   *var;
+		Const	   *con;
+
+		if (opexpr->opno != uuid_eq_op)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		/* An equality OpExpr always has exactly two args. */
+		Assert(list_length(opexpr->args) == 2);
+
+		/*
+		 * The planner normalizes equality clauses so that the Var is the
+		 * left arg and the Const is the right arg.
+		 */
+		Assert(IsA(linitial(opexpr->args), Var) &&
+			   IsA(lsecond(opexpr->args), Const));
+
+		var = (Var *) linitial(opexpr->args);
+		con = (Const *) lsecond(opexpr->args);
+
+		if (var->varno != relid || var->varattno != attno)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		if (con->consttype != UUIDOID)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		/* col = NULL never reaches here */
+		Assert(!con->constisnull);
+
+		yb_add_matching_server_index(con->constvalue, servers, nservers,
+									 out_indexes);
+		return YB_TS_UUID_CLAUSE_SUBSET;
+	}
+
+	if (IsA(clause, ScalarArrayOpExpr))
+	{
+		ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+		Var		   *var;
+		Const	   *con;
+		ArrayType  *arr;
+		Datum	   *elems;
+		bool	   *nulls;
+		int			nelems;
+		int			j;
+
+		/* useOr=true means IN, useOr=false means NOT IN; we only handle IN. */
+		if (!saop->useOr || saop->opno != uuid_eq_op)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		/* A ScalarArrayOpExpr always has exactly two args. */
+		Assert(list_length(saop->args) == 2);
+		Assert(IsA(linitial(saop->args), Var) &&
+			   IsA(lsecond(saop->args), Const));
+
+		var = (Var *) linitial(saop->args);
+		con = (Const *) lsecond(saop->args);
+
+		if (var->varno != relid || var->varattno != attno)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		if (get_element_type(con->consttype) != UUIDOID)
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+
+		arr = DatumGetArrayTypeP(con->constvalue);
+
+		deconstruct_array(arr, UUIDOID, UUID_LEN, false, 'c',
+						  &elems, &nulls, &nelems);
+
+		for (j = 0; j < nelems; j++)
+		{
+			if (nulls[j])
+				continue;
+
+			yb_add_matching_server_index(elems[j], servers, nservers,
+										 out_indexes);
+		}
+
+		pfree(elems);
+		pfree(nulls);
+
+		return YB_TS_UUID_CLAUSE_SUBSET;
+	}
+
+	return YB_TS_UUID_CLAUSE_UNSUPPORTED;
+}
+
+/*
+ * YbExtractFederatedTserverFilter
+ *		Inspect 'rel->baserestrictinfo' for filters on the hardcoded
+ *		"tserver_uuid" column of the foreign table referenced by 'rte',
+ *		and return a Bitmapset of indexes into 'servers' that the
+ *		conjunction of those filters admits.
+ *
+ * Why iterating baserestrictinfo as an AND list is correct:
+ *   rel->baserestrictinfo is, by PostgreSQL invariant, an implicit-AND
+ *   list of RestrictInfo nodes. A top-level OR predicate is represented
+ *   as a single BoolExpr(OR_EXPR) entry in the list, which our IsA()
+ *   checks do not match - we therefore conservatively skip it
+ *   (treating it as "no pruning information"). Because the list is
+ *   AND-connected, a tserver excluded by any one recognized clause
+ *   cannot satisfy the overall predicate, so intersecting the SUBSETs
+ *   of all recognized clauses is sound. Unrecognized clauses remain in
+ *   baserestrictinfo and are re-evaluated as residual quals on each
+ *   per-tserver child.
+ *
+ * If no recognized clause is found, every index 0 .. nservers-1 is set
+ * so the caller requests all servers.
+ *
+ * Errors when the federated foreign table is missing a "tserver_uuid"
+ * UUID column or when UUID equality is somehow unregistered.
+ */
+Bitmapset *
+YbExtractFederatedTserverFilter(PlannerInfo *root, RelOptInfo *rel,
+								RangeTblEntry *rte,
+								YbcServerDescriptor *servers,
+								size_t nservers)
+{
+	AttrNumber	attno;
+	Oid			uuid_eq_op;
+	ListCell   *lc;
+	Bitmapset  *allowed_indexes = NULL;
+	bool		any_subset_seen = false;
+
+	attno = yb_get_federated_tserver_uuid_attno(rte->relid);
+
+	uuid_eq_op = lookup_type_cache(UUIDOID, TYPECACHE_EQ_OPR)->eq_opr;
+
+	if (!OidIsValid(uuid_eq_op))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("UUID equality operator is not registered")));
+
+	foreach(lc, rel->baserestrictinfo)
+	{
+		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+		Bitmapset  *clause_indexes = NULL;
+		YbTserverUuidClauseResult res;
+
+		res = yb_extract_tserver_indexes_from_clause(ri->clause, rel->relid,
+													 attno, uuid_eq_op,
+													 servers, nservers,
+													 &clause_indexes);
+
+		if (res == YB_TS_UUID_CLAUSE_UNSUPPORTED)
+			continue;
+
+		Assert(res == YB_TS_UUID_CLAUSE_SUBSET);
+
+		if (!any_subset_seen)
+		{
+			allowed_indexes = clause_indexes;
+			any_subset_seen = true;
+		}
+		else
+		{
+			Bitmapset  *prev = allowed_indexes;
+
+			allowed_indexes = bms_intersect(prev, clause_indexes);
+			bms_free(prev);
+			bms_free(clause_indexes);
+		}
+	}
+
+	if (!any_subset_seen)
+		return bms_add_range(NULL, 0, (int) nservers - 1);
+
+	return allowed_indexes;
 }

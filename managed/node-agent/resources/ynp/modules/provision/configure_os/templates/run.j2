@@ -2,6 +2,18 @@ is_cloud={{ is_cloud | default(false) }}
 is_yb_prebuilt_image={{ is_yb_prebuilt_image | default(false) }}
 bin_path="/usr/local/bin"
 
+{% if os_distribution == "ubuntu" %}
+# Ubuntu's apport service rewrites kernel.core_pattern when it starts, clobbering
+# the value sysctl loads from /etc/sysctl.conf and breaking YB core dump capture.
+if systemctl is-enabled apport.service >/dev/null 2>&1; then
+  echo "Disabling Apport service..."
+  systemctl disable --now apport.service || true
+  if [[ -f /etc/default/apport ]]; then
+    sed -i 's/^enabled=.*/enabled=0/' /etc/default/apport
+  fi
+fi
+{% endif %}
+
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
 #

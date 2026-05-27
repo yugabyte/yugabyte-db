@@ -215,6 +215,11 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
     "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
     "worker threads to block on closing sockets, reducing throughput.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
+    "Maximum number of pending TCP connections queued by the kernel on "
+    "Connection Manager's listening socket (the backlog argument to listen(2)). "
+    "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
