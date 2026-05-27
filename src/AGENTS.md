@@ -54,7 +54,7 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 - [ ] No internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths.
 - [ ] No unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames).
 - [ ] Test filenames, test function names, and golden-output files reviewed too — not just the prose.
-- [ ] Branch name names the change, not a customer — it becomes the public PR head ref when the branch is pushed.
+- [ ] Branch name describes the change, not a customer — it becomes the public PR head ref when the branch is pushed.
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
 
