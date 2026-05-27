@@ -979,8 +979,8 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   // send the catalog version of the db being operated on by the txn.
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
-  auto s = catalog_manager_.GetYsqlAllDBCatalogVersions(
-      FLAGS_enable_heartbeat_pg_catalog_versions_cache, &versions, &fingerprint);
+  auto s =
+      catalog_manager_.GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, &fingerprint);
   if (!s.ok()) {
     // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
     LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;

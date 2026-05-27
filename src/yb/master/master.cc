@@ -63,6 +63,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
@@ -107,6 +108,7 @@ TAG_FLAG(master_backup_svc_queue_length, advanced);
 
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
 METRIC_DEFINE_entity(cluster);
 
@@ -676,12 +678,17 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  // We do not use cache/fingerprint which is only used for filling heartbeat
-  // response. The heartbeat mechanism is already subject to a heartbeat delay.
-  // In other situation where we are not already subject to any delay, we want
-  // the latest reading from the table pg_yb_catalog_version.
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
-      false /* use_cache */, &versions, nullptr /* fingerprint */));
+  // During initdb, pg_yb_catalog_version may not yet be created when this is invoked.
+  // Treat that as "no per-db versions yet" - empty response - instead of returning an
+  // error to the caller. Steady-state callers of GetYsqlAllDBCatalogVersions assume the
+  // table exists and read directly.
+  auto table_id =
+      VERIFY_RESULT(ysql_manager().GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  if (catalog_manager_->GetTableInfo(table_id) != nullptr) {
+    RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
+        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */, &versions,
+        nullptr /* fingerprint */));
+  }
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {

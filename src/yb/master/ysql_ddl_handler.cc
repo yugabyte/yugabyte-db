@@ -57,6 +57,7 @@ DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
   "Inject delay before sending ALTER TABLE request as part of DDL atomicity rollback.");
 
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -367,8 +368,15 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
       "Received ReportYsqlDdlTxnStatus request without transaction id");
   // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
   // needed.
-  return YsqlDdlTxnCompleteCallback(nullptr /* table */, req_txn, req->is_committed(),
-                                    epoch, __FUNCTION__);
+  RETURN_NOT_OK(YsqlDdlTxnCompleteCallback(
+      nullptr /* table */, req_txn, req->is_committed(), epoch, __FUNCTION__));
+
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    // Best effort refresh of catalog version cache. Bg task
+    // will refresh it anyway.
+    (void)RefreshPgCatalogVersionCache();
+  }
+  return Status::OK();
 }
 
 struct YsqlTableDdlTxnState {

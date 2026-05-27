@@ -853,7 +853,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) override;
 
   Status GetYsqlCatalogVersion(
-      uint64_t* catalog_version, uint64_t* last_breaking_version) override;
+      uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache = false) override;
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -861,7 +862,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   Status GetYsqlDBCatalogVersion(
-      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache = false) override;
 
   Status IsCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
@@ -3096,15 +3098,28 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
-  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
+  // Background task driver: checks leadership, refreshes the cache via
+  // RefreshPgCatalogVersionCache(), and reschedules itself (with a faster delay on failure).
   void RefreshPgCatalogVersionInfoPeriodically()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Helper function to schedule the next iteration of the pg catalog versions task.
-  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
+      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
+               heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Serialized against
+  // concurrent refreshes / resets so a refresh that captured later disk state always
+  // swaps after a refresh that captured earlier disk state.
+  // Returns true on success, false on failure (cache is left intact on failure).
+  bool RefreshPgCatalogVersionCache()
+      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
+               heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Helper function to schedule the next iteration of the pg catalog versions task. When
+  // is_retry is true, uses the shorter FLAGS_pg_catalog_versions_cache_retry_ms delay.
+  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false, bool is_retry = false);
 
   void StartPgCatalogVersionsBgTaskIfStopped();
   void ResetCachedCatalogVersions()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
+               heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
@@ -3334,6 +3349,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // --ysql_enable_db_catalog_version_mode=true.
   std::atomic<bool> catalog_version_table_in_perdb_mode_ = false;
 
+  // Serializes on-demand refreshes (from DDL commit) against the periodic refresh / reset so a
+  // refresh that read later disk state always swaps after one that read earlier state.
+  mutable MutexType refresh_pg_catalog_versions_cache_mutex_;
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_

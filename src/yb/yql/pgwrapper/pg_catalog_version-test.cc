@@ -4063,5 +4063,108 @@ TEST_F(PgCatalogVersionTest, TwoPhaseNegativeCacheUpgrade) {
   }
 }
 
+class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+  }
+};
+
+// Verify that once the catalog version cache is warm, reads on the master's tserver
+// interface (which call GetYsqlDBCatalogVersion) are served from the in-memory cache
+// without hitting the sys catalog on disk.
+TEST_F(
+    PgCatalogVersionMasterCacheTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(CatalogVersionCacheUsedOnReadPath)) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--enable_heartbeat_pg_catalog_versions_cache=true");
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_log_catalog_version_cache_events=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  // Wait for the background task to populate the cache at least once.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(30s * kTimeMultiplier));
+
+  // Arm both watchers BEFORE running any catalog reads. LogWaiter is edge-triggered:
+  // events emitted before construction are invisible to the watcher.
+  auto miss_watcher = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+  auto hit_watcher = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+
+  // New connections always read pg_authid and related catalog tables during auth,
+  // unconditionally issuing Read RPCs to the sys catalog tablet on the master.
+  // A catalog-heavy query makes the cache benefit even more visible.
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Confirm the cache was used.
+  ASSERT_OK(hit_watcher.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(miss_watcher.IsEventOccurred())
+      << "Cache miss observed: GetYsqlDBCatalogVersion read from disk even though cache was warm";
+}
+
+// Verify that when the cache refresh is injected to fail (cache stays uninitialized),
+// reads fall back to the slow disk path. After the failure is cleared and the cache
+// is repopulated, reads return to using the cache.
+TEST_F(
+    PgCatalogVersionMasterCacheTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(CatalogVersionCacheFallbackOnRefreshFailure)) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+
+  // Start with failure injection so the cache is never populated (stays nullopt).
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--enable_heartbeat_pg_catalog_versions_cache=true");
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_log_catalog_version_cache_events=true");
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--TEST_simulate_catalog_version_refresh_failure=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  // Phase A: cache never initialized, slow path expected.
+
+  // Arm both watchers before any reads. LogWaiter is edge-triggered: events emitted
+  // before construction are invisible to the watcher.
+  auto hit_watcher_a = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+  auto miss_watcher_a = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Wait for a miss confirming the slow path was taken.
+  ASSERT_OK(miss_watcher_a.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(hit_watcher_a.IsEventOccurred())
+      << "Unexpected cache hit: cache should not be warm with failure injection enabled";
+
+  // Phase B: disable failure injection, cache populates, fast path resumes.
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_catalog_version_refresh_failure", "false"));
+
+  // Wait for the background task to succeed and populate the cache.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(30s * kTimeMultiplier));
+
+  // Arm both watchers before the next read. LogWaiter is edge-triggered: events emitted
+  // before construction (including those from ConnectToDB auth) are invisible to the watcher.
+  auto miss_watcher_b = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+  auto hit_watcher_b = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Confirm cache is now used.
+  ASSERT_OK(hit_watcher_b.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(miss_watcher_b.IsEventOccurred())
+      << "Cache miss after recovery: cache should be warm after failure injection was cleared";
+}
+
 } // namespace pgwrapper
 } // namespace yb

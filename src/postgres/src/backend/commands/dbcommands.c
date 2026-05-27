@@ -3147,6 +3147,28 @@ get_db_info(const char *name, LOCKMODE lockmode,
 			LockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
 
 		/*
+		 * YB: Without object locking, catalog cache invalidations may not
+		 * have propagated by the time we get here (e.g. the heartbeat catalog
+		 * versions cache on master lags after a breaking DDL like ALTER
+		 * DATABASE RENAME, suppressing the per-RPC catalog-version-mismatch
+		 * signal that normally drives PG to refresh its caches). Without a
+		 * refresh, DATABASEOID still has the old name from this backend's
+		 * local cache; the scan above reads the new name from pg_database via
+		 * master; the names disagree; we loop again with the same stale local
+		 * cache; forever. Force-invalidate the cache entry before the
+		 * re-fetch so SearchSysCache1 pulls fresh tuple data from master.
+		 *
+		 * When object locking is enabled, the lock acquisition above carries
+		 * fresh catalog-version data with it (via the release-locks RPC path),
+		 * so PG's local caches are already invalidated and a manual flush is
+		 * unnecessary.
+		 */
+		if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+			SysCacheInvalidate(DATABASEOID,
+							   GetSysCacheHashValue1(DATABASEOID,
+													 ObjectIdGetDatum(dbOid)));
+
+		/*
 		 * And now, re-fetch the tuple by OID.  If it's still there and still
 		 * the same name, we win; else, drop the lock and loop back to try
 		 * again.
