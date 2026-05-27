@@ -969,9 +969,7 @@ public class SupportBundleUtil {
             .filter(
                 path -> {
                   String fileName = path.getFileName().toString();
-                  return fileName.equals("server.conf")
-                      || (fileName.startsWith("postgresql") && fileName.endsWith(".log"))
-                      || (fileName.startsWith("filtered_postgresql") && fileName.endsWith(".log"));
+                  return fileName.equals("server.conf");
                 })
             .forEach(path -> redactSensitiveFile(path, universe));
       }
