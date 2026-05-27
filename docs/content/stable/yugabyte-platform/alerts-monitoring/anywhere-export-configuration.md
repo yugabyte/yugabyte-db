@@ -41,7 +41,7 @@ Currently, you can export data to the following tools:
 | [Google Cloud Logging](https://cloud.google.com/logging/) | Database audit logs | |
 | [Dynatrace](#dynatrace) | | Yes |
 | [Loki](#loki) | Database audit logs | |
-| [OTLP](#otlp) | Database audit logs, PostgreSQL query logs | Yes |
+| [OTLP](#otlp) | Database audit logs | Yes |
 
 ## Best practices
 
@@ -197,13 +197,11 @@ For log export on Kubernetes universes, ensure the [OpenTelemetry Operator](http
 
 ### OTLP
 
-YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database audit logs, PostgreSQL query logs, and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
-
-This is the _generic OTLP_ integration, not the dedicated [Dynatrace](#dynatrace) integration (Dynatrace also ingests via OTLP using vendor-specific configuration).
+YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database audit logs, and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
 
 The OTLP sink is vendor-agnostic and works with any backend that speaks OTLP, including (but not limited to) [Cribl](https://cribl.io/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), [New Relic](https://docs.newrelic.com/docs/opentelemetry/opentelemetry-introduction/), [Prometheus](https://prometheus.io/docs/guides/opentelemetry/) (3.0+), [VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/), and [Sumo Logic](https://help.sumologic.com/docs/send-data/opentelemetry-for-logs/).
 
-The same OTLP telemetry provider can be reused for [database audit logging](../universe-logging/) and PostgreSQL query logs, [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
+The same OTLP telemetry provider can be reused for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
 
 {{< note title="Enable OTLP before configuring" >}}
 
@@ -218,7 +216,6 @@ The flag is enforced when you create or delete an OTLP telemetry provider.
 #### Prerequisites
 
 - Enable the OTLP feature as described in the preceding note.
-- For metrics export only, also set the **Enable Metrics Export** Global Configuration option (config key `yb.universe.metrics_export_enabled`) to true. Refer to [Export metrics](../anywhere-metrics-export/).
 - A reachable OTLP-compatible receiver and credentials if required (Basic Auth username and password, or a bearer token).
 
 #### Create an OTLP export configuration
@@ -276,12 +273,6 @@ The following `OTLPConfig` fields are accepted by the REST API but are not expos
 | :----------- | :---- | :---------- |
 | `yb.telemetry.skip_connectivity_validations` | Global | Skips connectivity and permission validations on create if your receiver is not reachable from YugabyteDB Anywhere at configuration time. |
 | `yb.universe.otel_collector_max_memory` | Universe | Hard memory limit on the OpenTelemetry Collector process (kills the process if exceeded). To apply a change on an existing universe, re-run any OpenTelemetry configure API (configure metrics export, modify audit logging, or modify query logging). |
-
-#### OpenTelemetry Collector metrics
-
-The OpenTelemetry Collector exposes [internal telemetry metrics](https://opentelemetry.io/docs/collector/internal-telemetry/#lists-of-internal-metrics). In YugabyteDB Anywhere, only the log-based metrics are applicable.
-
-YugabyteDB Anywhere ships OpenTelemetry Collector **v0.90.0**. Metrics listed in the OpenTelemetry documentation for later collector versions may not be available.
 
 ## Next steps
 
