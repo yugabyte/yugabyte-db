@@ -147,6 +147,26 @@ Check the result by re-running the _pg_prpc_ query. This is new result:
  g    | s4     | invoker  | immutable  | {statement_timeout=1}
 ```
 
+### Mark extension dependencies
+
+Use `DEPENDS ON EXTENSION` to mark a function as dependent on an extension:
+
+```sql
+CREATE EXTENSION my_extension;
+
+-- Create a function that depends on the extension
+CREATE FUNCTION s4.g(int) RETURNS text SECURITY DEFINER 
+  LANGUAGE plpgsql AS $$BEGIN RETURN 'Result'; END$$;
+
+-- Mark the dependency on the extension
+ALTER FUNCTION s4.g(int) DEPENDS ON EXTENSION my_extension;
+
+-- Remove the dependency mark
+ALTER FUNCTION s4.g(int) NO DEPENDS ON EXTENSION my_extension;
+```
+
+When an extension is dropped, all dependent objects are dropped or updated accordingly.
+
 ## See also
 
 - [`CREATE FUNCTION`](../ddl_create_function)
