@@ -528,6 +528,8 @@ GET     /index                                                                 c
 
 GET    /callback                                                               @org.pac4j.play.CallbackController.callback(req: Request)
 POST   /callback                                                               @org.pac4j.play.CallbackController.callback(req: Request)
+GET    /callback/OidcClient                                                    @org.pac4j.play.CallbackController.callback(req: Request)
+POST   /callback/OidcClient                                                    @org.pac4j.play.CallbackController.callback(req: Request)
 GET    /third_party_logout                                                     @org.pac4j.play.LogoutController.logout(req: Request)
 
 # HA Backup API
