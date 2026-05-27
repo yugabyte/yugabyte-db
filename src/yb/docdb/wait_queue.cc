@@ -308,7 +308,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    // ASH: This may later be set to ResolveConficts for another thread to pick up
+    // ASH: This may later be set to ResolveConflicts for another thread to pick up
     // working on the wait-state.
     ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state);
     TRACE_FUNC();
