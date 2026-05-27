@@ -1358,7 +1358,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
       }
     }
 
-    OpId op_id = state_->NewIdUnlocked();
+    // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
+    // effects of being added as pending don't fire for an op that will be immediately rolled back.
+    // In particular, WriteOperation::AddedAsPending synchronously invokes
+    // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
+    // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
+    // the intents flushed_frontier can advance past split_op_id and propagate into the children via
+    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
+    OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
     // We use this callback to transform write operations by substituting the hybrid_time into
     // the write batch inside the write operation.
@@ -1410,6 +1418,9 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data, OpId* committed_op_id,
     OpId* last_applied_op_id) {
+  TEST_SYNC_POINT_CALLBACK(
+      "RaftConsensus::UpdateMajorityReplicated::Start",
+      const_cast<TabletId*>(&tablet_id()));
   TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);

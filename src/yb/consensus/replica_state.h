@@ -343,7 +343,11 @@ class ReplicaState {
   // API to dump pending transactions. Added to debug ENG-520.
   void DumpPendingOperationsUnlocked();
 
-  OpId NewIdUnlocked();
+  // Also checks whether a leader-side operation that was just assigned `op_id` (via NewIdUnlocked)
+  // is allowed by the registered operation filters (e.g. a WRITE_OP / UPDATE_TRANSACTION_OP must be
+  // rejected once a SPLIT_OP has become pending). If it is not allowed, cancels the id allocation
+  // and returns the rejection status; otherwise returns OK.
+  Result<OpId> NewIdUnlocked(OperationType op_type);
 
   // Used when, for some reason, an operation that failed before it could be considered
   // a part of the state machine. Basically restores the id gen to the state it was before
