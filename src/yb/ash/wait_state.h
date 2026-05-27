@@ -161,7 +161,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
-    (kConflictResolution_ResolveConficts)
+    (kConflictResolution_ResolveConflicts)
     (kConflictResolution_WaitOnConflictingTxns)
     (kRemoteBootstrap_FetchData)
     (kRemoteBootstrap_StartRemoteSession)
