@@ -736,6 +736,7 @@ TEST_P(PgPackedRowTest, Serial) {
 }
 
 TEST_P(PgPackedRowTest, PackDuringCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
