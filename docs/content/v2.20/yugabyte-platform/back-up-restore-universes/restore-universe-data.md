@@ -28,7 +28,7 @@ To access all universe backups, navigate to **Backups**.
 
 - If a universe that spans multiple regions is backed up to NFS using a different volume for each region, all the NFS volumes must be synced to contain the full backup. Each node will require access to the full backup.
 
-    - There is a caveat where a node will not require access to backed up tablets if that tablet is pinned to another region using [tablespaces](../../../explore/going-beyond-sql/tablespaces/).
+    - There is a caveat where a node will not require access to backed up tablets if that tablet is pinned to another region using [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Restore an entire or incremental backup
 
