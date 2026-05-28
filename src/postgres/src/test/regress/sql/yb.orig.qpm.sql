@@ -179,6 +179,33 @@ SELECT yb_pg_stat_plans_insert(
     1.0 -- est_total_cost
 ) /* __YB_STAT_PLANS_SKIP */;
 
+-- Hint text cannot be empty
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- query_id
+    8, -- plan_id
+    '', -- hint_text
+    'Valid plan text', -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- query_id
+    8, -- plan_id
+    '/*+*/', -- hint_text
+    'Valid plan text', -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+
 -- Plan text cannot be NULL
 SELECT yb_pg_stat_plans_insert(
     1, -- dbid
@@ -187,6 +214,20 @@ SELECT yb_pg_stat_plans_insert(
     4, -- plan_id
     'Valid hint text', -- hint_text
     NULL, -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+
+-- Plan text cannot be empty
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- queryid
+    8, -- plan_id
+    'Valid hint text', -- hint_text
+    '', -- plan_text
     '2025-01-01 14:00:00+00', -- first_used
     '2025-01-02 14:00:00+00', -- last_used
     1.0, -- total_time
@@ -206,5 +247,15 @@ SELECT yb_pg_stat_plans_insert(
     NULL, -- total_time
     NULL -- est_total_cost
 ) /* __YB_STAT_PLANS_SKIP */;
+
+SELECT * FROM yb_pg_stat_plans /* __YB_STAT_PLANS_SKIP */;
+
+-- Queries that cannot be hinted should not be tracked
+CREATE TABLE t_simple (k INT PRIMARY KEY, v INT);
+INSERT INTO t_simple VALUES (1, 1);
+UPDATE t_simple SET v = 2 WHERE k = 1;
+DELETE FROM t_simple WHERE k = 1;
+SELECT 1;
+DROP TABLE t_simple;
 
 SELECT * FROM yb_pg_stat_plans /* __YB_STAT_PLANS_SKIP */;

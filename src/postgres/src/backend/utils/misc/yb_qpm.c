@@ -961,6 +961,7 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 	if (*hintText != NULL)
 	{
 		*freeHintText = true;
+		Assert(strlen(*hintText) > 0);
 
 		if (queryDesc->params != NULL)
 		{
@@ -977,7 +978,7 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 		Assert(*planText == NULL);
 		*planText = YbQpmExplainPlan(queryDesc, yb_qpm_configuration.plan_format);
 
-		Assert(*planText != NULL);
+		Assert(*planText != NULL && strlen(*planText) > 0);
 		*freePlanText = true;
 
 		if (queryDesc->totaltime != NULL)
@@ -1235,6 +1236,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			/* Remember the original size of the hint text. */
 			hashEntry->originalHintTextSize = strlen(hintText);
+			Assert(hashEntry->originalHintTextSize > 0);
 			hashEntry->compressedHintTextSize =
 				qpmCopyOrCompress(hintText,
 								  hashEntry->hintText,
@@ -1247,6 +1249,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 			 * Insert plan text, compressing (or truncating) if necessary,
 			 */
 			hashEntry->originalPlanTextSize = strlen(planText);
+			Assert(hashEntry->originalPlanTextSize > 0);
 			hashEntry->compressedPlanTextSize =
 				qpmCopyOrCompress(planText,
 								  hashEntry->planText,
@@ -1447,25 +1450,22 @@ qpmConstructEntryInfo(YbQpmInfoEntry *infoEntry, YbQpmHashEntry *entry)
 	infoEntry->firstUsedTime = entry->firstUsedTime;
 	infoEntry->lastUsedTime = entry->lastUsedTime;
 
-	if (entry->originalHintTextSize > 0)
-	{
-		if (entry->compressedHintTextSize == 0)
-			infoEntry->hintText = pstrdup(entry->hintText);
-		else
-			infoEntry->hintText = qpmDecompress(entry->originalHintTextSize,
-												(Bytef *) entry->hintText,
-												entry->compressedHintTextSize);
-	}
+	Assert(entry->originalHintTextSize > 0);
+	if (entry->compressedHintTextSize == 0)
+		infoEntry->hintText = pstrdup(entry->hintText);
+	else
+		infoEntry->hintText = qpmDecompress(entry->originalHintTextSize,
+											(Bytef *) entry->hintText,
+											entry->compressedHintTextSize);
 
-	if (entry->originalPlanTextSize > 0)
-	{
-		if (entry->compressedPlanTextSize == 0)
-			infoEntry->planText = pstrdup(entry->planText);
-		else
-			infoEntry->planText = qpmDecompress(entry->originalPlanTextSize,
-												(Bytef *) entry->planText,
-												entry->compressedPlanTextSize);
-	}
+	Assert(entry->originalPlanTextSize > 0);
+	if (entry->compressedPlanTextSize == 0)
+		infoEntry->planText = pstrdup(entry->planText);
+	else
+		infoEntry->planText = qpmDecompress(entry->originalPlanTextSize,
+											(Bytef *) entry->planText,
+											entry->compressedPlanTextSize);
+
 
 	if (entry->originalWorstParamTextSize > 0)
 	{
@@ -1799,6 +1799,9 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	int			hintTextLen = VARSIZE_ANY_EXHDR(hintText);
 	int			planTextLen = VARSIZE_ANY_EXHDR(planText);
 
+	if (planTextLen == 0)
+		elog(ERROR, "plan text must not be empty");
+
 	/* Create a null-terminated copies to use C string functions. */
 	char	   *hintBuffer = palloc0(hintTextLen + 1);
 
@@ -1809,6 +1812,9 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	memcpy(planBuffer, VARDATA(planText), planTextLen);
 
 	removeHintDelimiters(hintBuffer);
+
+	if (strlen(hintBuffer) == 0)
+		elog(ERROR, "hint text must not be empty");
 
 	/* Insert or update the entry. */
 	bool		inserted = qpmInsert(databaseid, userid, (uint64) queryId, (uint64) planId,
