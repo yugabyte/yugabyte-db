@@ -152,17 +152,17 @@ Check the result by re-running the _pg_prpc_ query. This is new result:
 Use `DEPENDS ON EXTENSION` to mark a function as dependent on an extension:
 
 ```sql
-CREATE EXTENSION my_extension;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create a function that depends on the extension
 CREATE FUNCTION s4.g(int) RETURNS text SECURITY DEFINER 
   LANGUAGE plpgsql AS $$BEGIN RETURN 'Result'; END$$;
 
 -- Mark the dependency on the extension
-ALTER FUNCTION s4.g(int) DEPENDS ON EXTENSION my_extension;
+ALTER FUNCTION s4.g(int) DEPENDS ON EXTENSION "uuid-ossp";
 
 -- Remove the dependency mark
-ALTER FUNCTION s4.g(int) NO DEPENDS ON EXTENSION my_extension;
+ALTER FUNCTION s4.g(int) NO DEPENDS ON EXTENSION "uuid-ossp";
 ```
 
 When an extension is dropped, all dependent objects are dropped or updated accordingly.
