@@ -205,9 +205,11 @@ The same OTLP telemetry provider can be reused for [database audit logging](../u
 
 #### Prerequisites
 
-- Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`), which defaults to `false`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+- Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
-    If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with: `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
+    If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with:
+    
+    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
 
     The flag is enforced when you create or delete an OTLP telemetry provider.
 
