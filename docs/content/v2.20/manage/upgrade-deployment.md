@@ -25,6 +25,9 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 {{< warning >}}
 Review the following information before starting an upgrade.
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 

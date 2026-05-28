@@ -154,6 +154,10 @@ In {{<release "2025.1.2.0">}} or later, YugabyteDB Anywhere automatically disabl
 xCluster replication requires the target universe version to be the same or later than the source universe version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source universe is finalized before the target universe.
 {{< /note >}}
 
+{{< warning title="TA-31533: Verify before upgrading" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
+
 To upgrade universes in DR or transactional xCluster, the sequence is as follows:
 
 1. Upgrade the target (DR replica).
