@@ -24,6 +24,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 
 DEFINE_RUNTIME_bool(retry_if_ddl_txn_verification_pending, true,

@@ -34,6 +34,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 

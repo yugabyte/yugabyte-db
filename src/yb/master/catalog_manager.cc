@@ -69,6 +69,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client.h"

@@ -12,6 +12,8 @@
 
 #include "yb/cdc/cdc_producer.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"

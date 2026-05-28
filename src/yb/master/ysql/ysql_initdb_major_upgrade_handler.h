@@ -14,10 +14,11 @@
 #pragma once
 
 #include "yb/master/master_admin.pb.h"
-#include "yb/util/status_fwd.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/util/status.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 namespace yb {
 
