@@ -43,8 +43,10 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
@@ -70,6 +72,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
@@ -84,6 +88,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
@@ -2060,6 +2065,113 @@ TEST_F(RemoteBootstrapITest, TestBootstrapSourceCrashesWhileFetchingData) {
 
 TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
+}
+
+// Verifies that a failure between RemoteBootstrapClient::Finish() and OpenTablet() during
+// remote bootstrap does not leave the tablet server in an invalid state. The injected crash
+// fires after Finish() has marked the new replica's superblock as TABLET_DATA_READY but
+// before OpenTablet() has actually opened the tablet (and started its consensus). The test
+// asserts that:
+//   1) The crashed tserver's on-disk superblock is at TABLET_DATA_READY (so the crash really
+//      did fire in the Finish()->OpenTablet() gap, not earlier in the RBS pipeline).
+//   2) While the restarted tserver is bootstrapping the still-not-running replica it rejects
+//      raft consensus RPCs targeting that tablet (TABLET_NOT_RUNNING), so the replica cannot
+//      silently participate in consensus before it is fully open.
+//   3) The tserver eventually opens the tablet - either by completing its local bootstrap
+//      or by being remote-bootstrapped again by the leader - and the cluster ends up healthy
+//      with the full voter quorum and all rows intact.
+TEST_F(RemoteBootstrapITest, TestTServerSurvivesCrashBetweenRBSFinishAndOpenTablet) {
+  crash_test_timeout_ = MonoDelta::FromSeconds(60);
+  CrashTestSetUp(YBTableType::YQL_TABLE_TYPE);
+
+  // Restart the previously-removed tserver and arm the fault that crashes between
+  // RemoteBootstrapClient::Finish() (which sets the superblock to TABLET_DATA_READY) and
+  // TSTabletManager::OpenTablet().
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(crash_test_tserver_index_),
+      "TEST_fault_crash_after_rb_finish_before_open", "1.0"));
+
+  TServerDetails* ts =
+      ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_, /* error_code= */ nullptr, /* retry= */ true));
+
+  // The tserver should crash mid-RBS. The on-disk superblock should be TABLET_DATA_READY,
+  // confirming the crash landed in the Finish() -> OpenTablet() window (compared to a crash
+  // before Finish(), which would leave it at TABLET_DATA_COPYING).
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, kWaitForCrashTimeout_));
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(
+      crash_test_tserver_index_, crash_test_tablet_id_, TABLET_DATA_READY));
+
+  // Persist TEST_pause_after_set_bootstrapping across the next restart so we can catch the
+  // restarting tserver while OpenTablet() has registered the peer but has not yet started
+  // its consensus. This is the window where the tablet must reject consensus rounds.
+  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
+  cluster_->tablet_server(crash_test_tserver_index_)->AddExtraFlag(
+      "TEST_pause_after_set_bootstrapping", "true");
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+
+  // Recreating ts_map_ destroys the previous TServerDetails entries, so any pointers we
+  // were caching into it (crash_test_leader_ts_, ts) now dangle. Save the leader uuid
+  // first, refresh the map, and then re-resolve both pointers.
+  const std::string leader_uuid = crash_test_leader_ts_->uuid();
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  crash_test_leader_ts_ = ts_map_[leader_uuid].get();
+  ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
+
+  // While the bootstrap is paused, an UpdateConsensus targeting this tablet must be rejected
+  // with TABLET_NOT_RUNNING because the tablet peer's RaftConsensus has not been started
+  // yet. We require the specific error code (rather than any has_error()) so that this
+  // assertion stays meaningful even if TEST_pause_after_set_bootstrapping ever stops
+  // engaging - a request that races past the pause and hits a running replica would be
+  // rejected with INVALID_TERM/etc. and we want that to surface as a test failure.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        ThreadSafeArena arena;
+        consensus::LWConsensusRequestPB req(&arena);
+        consensus::LWConsensusResponsePB resp(&arena);
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromSeconds(5));
+        req.ref_tablet_id(crash_test_tablet_id_);
+        req.ref_dest_uuid(ts->uuid());
+        req.ref_caller_uuid(crash_test_leader_ts_->uuid());
+        req.set_caller_term(1);
+        OpId(1, 1).ToPB(req.mutable_committed_op_id());
+        OpId(1, 1).ToPB(req.mutable_preceding_id());
+        Status s = ts->consensus_proxy->UpdateConsensus(req, &resp, &rpc);
+        if (!s.ok()) {
+          return false;  // Connection not yet up; keep waiting.
+        }
+        if (!resp.has_error()) {
+          return false;
+        }
+        return resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING;
+      },
+      crash_test_timeout_,
+      "Waiting for UpdateConsensus to be rejected with TABLET_NOT_RUNNING while the tablet "
+      "is not running"));
+
+  // Unblock the bootstrap. Recovery should now complete: either by finishing the local
+  // OpenTablet() (since the superblock is TABLET_DATA_READY and the data files are intact)
+  // or by the leader driving another full remote bootstrap.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_tserver_index_),
+                              "TEST_pause_after_set_bootstrapping", "false"));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      crash_test_tserver_index_, crash_test_tablet_id_, TABLET_DATA_READY,
+      crash_test_timeout_ * 3));
+
+  // voter promotion only fires after the tablet has opened
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      5, crash_test_leader_ts_, crash_test_tablet_id_, crash_test_timeout_ * 3));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+      crash_test_workload_->table_name(), ClusterVerifier::AT_LEAST,
+      crash_test_workload_->rows_inserted()));
 }
 
 void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {

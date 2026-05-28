@@ -178,6 +178,11 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
                  "after fetching the files during a remote bootstrap but before "
                  "marking the superblock as TABLET_DATA_READY.");
 
+DEFINE_test_flag(double, fault_crash_after_rb_finish_before_open, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after RemoteBootstrapClient::Finish() has marked the superblock "
+                 "as TABLET_DATA_READY but before OpenTablet() has been called.");
+
 DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
                  "Fraction of the time when the tablet will crash immediately after initiating a "
                  "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
@@ -1783,6 +1788,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                    fs_manager_->uuid(),
                    "Remote bootstrap: Failed calling Finish()",
                    this);
+
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_finish_before_open);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
   OpenTablet(meta, nullptr);
