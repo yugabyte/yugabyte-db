@@ -25,7 +25,7 @@ type: docs
   </li>
 </ul>
 
-This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL database access using JumpCloud as the Identity Provider (IdP).
+This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access using JumpCloud as the Identity Provider (IdP).
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -42,7 +42,7 @@ To enable OIDC authentication with JumpCloud, you need to do the following:
 
 - Create an app registration in JumpCloud - The JumpCloud IdP configuration includes application registration (registering YugabyteDB Anywhere in the JumpCloud tenant) and configuring JumpCloud to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 - Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the sign in screen.
-- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping JumpCloud attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
+- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
 
 ### Create an application in JumpCloud
 
@@ -120,14 +120,35 @@ You are redirected to sign in to your IdP to test the connection. After the test
 
 ### Configure a universe
 
-To access a universe via OIDC, you need to set the following flags on the universe:
+To access a universe via OIDC, set the flags described in the following tabs for YSQL or YCQL.
+
+For information on configuring flags in YugabyteDB Anywhere, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li>
+    <a href="#oidc-ysql" class="nav-link active" id="oidc-ysql-tab" data-bs-toggle="tab" role="tab" aria-controls="oidc-ysql" aria-selected="true">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="#oidc-ycql" class="nav-link" id="oidc-ycql-tab" data-bs-toggle="tab" role="tab" aria-controls="oidc-ycql" aria-selected="false">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+<div id="oidc-ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oidc-ysql-tab">
+
+To access a universe via OIDC for YSQL, set the following flags on the universe:
 
 - ysql_hba_conf_csv
 - ysql_ident_conf_csv
 
 When the flags are set, YugabyteDB configures the `ysql_hba.conf` and `yb_ident.conf` files on the database nodes and creates the files that hold the JWKS keys for token validation.
-
-For information on configuring flags in YugabyteDB Anywhere, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
 
 #### ysql_hba_conf_csv
 
@@ -178,6 +199,101 @@ The following are examples of possible rules:
   ```sh
   map1 OIDC.Test.Read read_only_user
   ```
+
+</div>
+
+<div id="oidc-ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="oidc-ycql-tab">
+
+To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the universe. Depending on your requirements, you can configure OIDC in two ways:
+
+- _Without identity mapping_ between the IdP and the YCQL user.
+- _With identity mapping_ between the IdP and the YCQL user (requires `ycql_ident_conf_csv`, described in [ycql_ident_conf_csv](#ycql-ident-conf-csv)).
+
+OIDC authentication for YCQL is {{<tags/feature/ea idea="946">}} and is disabled by default. To enable OIDC, set the flags [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) and `ycql_use_jwt_auth` to `true`.
+
+For more information, refer to [OIDC authentication in YCQL](../../../../secure/authentication/oidc-authentication-ycql/).
+
+Use the following flags to configure OIDC for YCQL.
+
+| YB-TServer flag | Default | Description |
+| :-------------- | :------ | :---------- |
+| `ycql_use_jwt_auth` | `false` | Enables OIDC (JWT) authentication in YCQL. |
+| `ycql_jwt_users_to_skip_csv` | empty | Comma-separated list of users that continue to use the local password mechanism even when `ycql_use_jwt_auth` is `true`. |
+| `ycql_jwt_conf` | empty | Space-separated list of `key=value` options that configure JWT validation and which claim identifies the user. Valid keys are listed in the next table. |
+
+Valid keys for `ycql_jwt_conf` are described in the following table:
+
+| Key | Description |
+| :-- | :---------- |
+| `jwt_jwks_url` | URL from which to fetch the JSON Web Key Set (JWKS) of the IdP. |
+| `jwt_audiences` | A list of accepted audiences for the token. A JWT is valid only if the `aud` claim equals one of the values in this list. Multiple values are comma-separated. For more information, see the [aud claim](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) in the OpenID Connect Core specification. |
+| `jwt_issuers` | Comma-separated list of valid issuers. A JWT is valid only if the `iss` claim equals one of these values. For more information, see the [iss claim](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) in the OpenID Connect Core specification. |
+| `jwt_matching_claim_key` | Key of the JWT claim that carries the IdP identity used for login (for example, `sub`, `email`, `groups`, or `roles`). Optional. Default is `sub`. |
+
+After these options are configured, the JWT from the IdP is supplied as the password when connecting to YCQL.
+
+The following shows an example flag configuration for OIDC with JumpCloud (without identity mapping):
+
+```sh
+use_cassandra_authentication=true
+ycql_use_jwt_auth=true
+ycql_jwt_conf={jwt_jwks_url=https://oauth.id.jumpcloud.com/jwks jwt_audiences=<client_id> jwt_issuers=https://oauth.id.jumpcloud.com/ jwt_matching_claim_key=preferred_username}
+ycql_jwt_users_to_skip_csv=cassandra
+```
+
+The `ycql_jwt_users_to_skip_csv=cassandra` setting allows the `cassandra` user to continue using password authentication so an administrator can sign in to create roles and permissions for OIDC users.
+
+When entering flag values in YugabyteDB Anywhere, do not enclose them in single quotes, as you would in a Linux shell.
+
+#### ycql_ident_conf_csv
+
+Without identity mapping, the YCQL user name must match the IdP identity given by `jwt_matching_claim_key` (that is, `JWT[jwt_matching_claim_key]`).
+
+To allow different user names or to support group- or role-based authentication, configure an identity mapping between IdP identities and YCQL roles using the following flag:
+
+| YB-TServer flag | Default | Description |
+| :-------------- | :------ | :---------- |
+| `ycql_ident_conf_csv` | empty | CSV formatted list of identity mapping rules, evaluated in order. Each rule contains two fields separated by whitespace: the IdP user name pattern and the YCQL user name. |
+
+Identity mapping rules are similar to PostgreSQL [user name maps](https://www.postgresql.org/docs/current/auth-username-maps.html), where each rule has the form `idp-username database-username`. Separate rules using commas in the CSV flag value.
+
+If `idp-username` starts with `/`, the remainder of the field is treated as a regular expression. The expression can contain a single capture group. The portion of the IdP user name that matched the capture can then be referenced in the database-username field as `\1` (backslash-one).
+
+The following are examples of possible rules:
+
+- Map a single user
+
+  ```sh
+  user@yugabyte.com user
+  ```
+
+- Map multiple users with a domain pattern
+
+  ```sh
+  /^(.*)@devyugabyte\.com$ \1
+  ```
+
+- Map a role name to a database role
+
+  ```sh
+  OIDC.Test.Read read_only_user
+  ```
+
+The following shows an example flag configuration for OIDC with JumpCloud and identity mapping (role-based usernames):
+
+```sh
+use_cassandra_authentication=true
+ycql_use_jwt_auth=true
+ycql_jwt_conf={jwt_jwks_url=https://oauth.id.jumpcloud.com/jwks jwt_audiences=<client_id> jwt_issuers=https://oauth.id.jumpcloud.com/ jwt_matching_claim_key=roles}
+ycql_jwt_users_to_skip_csv=cassandra
+ycql_ident_conf_csv={/^(.*)@devyugabyte\.com$ \1}
+```
+
+With `jwt_matching_claim_key=roles`, YCQL reads identities from the `roles` claim. The `ycql_ident_conf_csv` rule maps each matching role string to the local part before `@devyugabyte.com`, which must match an existing YCQL role name.
+
+</div>
+
+</div>
 
 #### yb.security.oidc_feature_enhancements
 
