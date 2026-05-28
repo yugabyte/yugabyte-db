@@ -83,7 +83,7 @@ templates:
   HA_STANDBY_SYNC:
     name: HA Standby Sync
     description: Backup sync to standby has failed
-    queryTemplate: count by (instance_address) (time() - last_over_time(yba_ha_last_backup_seconds[1m]) {{ query_condition }} {{ query_threshold }}) > 0
+    queryTemplate: count by (instance_address) (((time() - last_over_time(yba_ha_last_backup_seconds[1m])) / 60) {{ query_condition }} {{ query_threshold }}) > 0
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
@@ -95,7 +95,7 @@ templates:
     thresholdUnitName: min
     labels:
       affected_instance_addrs: >-
-        {{ range $index, $element := query "count by (instance_address) ((time() - last_over_time(yba_ha_last_backup_seconds[1m]) / 60) > {{ query_threshold }}) > 0"}}
+        {{ range $index, $element := query "count by (instance_address) (((time() - last_over_time(yba_ha_last_backup_seconds[1m])) / 60) > {{ query_threshold }}) > 0"}}
         {{ if $index }},{{ end }}{{ $element.Labels.instance_address }}{{ end }}
     annotations:
       summary: >-
