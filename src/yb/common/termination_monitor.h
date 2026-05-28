@@ -19,11 +19,9 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 
-#ifdef __linux__
-namespace yb { class Cgroup; }
-#endif
-
 namespace yb {
+
+class Cgroup;
 class Thread;
 
 // Monitors for termination signals. Termination can be called from either the Terminate method or
@@ -33,7 +31,7 @@ class TerminationMonitor {
  public:
   ~TerminationMonitor();
 
-  static std::unique_ptr<TerminationMonitor> Create();
+  static std::unique_ptr<TerminationMonitor> Create(Cgroup* cgroup = nullptr);
 
   // This is not async-signal-safe.
   void Terminate() EXCLUDES(mutex_);
@@ -41,15 +39,10 @@ class TerminationMonitor {
   // Installs handler for SIGTERM signal and wait for termination to be called.
   void WaitForTermination() EXCLUDES(mutex_);
 
-#ifdef __linux__
-  // Move the sigterm_loop thread into the given cgroup. Must be called after Create().
-  void SetCgroup(Cgroup* cgroup);
-#endif
-
  private:
   TerminationMonitor() = default;
 
-  void InstallSigtermHandler() EXCLUDES(mutex_);
+  void InstallSigtermHandler(Cgroup* cgroup) EXCLUDES(mutex_);
   void SigtermAsyncHandler();
 
   std::mutex mutex_;

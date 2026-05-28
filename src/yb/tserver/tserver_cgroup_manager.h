@@ -61,22 +61,11 @@ class TServerCgroupManager {
   // Used to skip expensive master lookups when the name is already known.
   bool IsDbNameKnown(PgOid db_oid) const;
 
-  // System cgroups for shared/communal threads.
-  // These are created once at startup and never destroyed.
-  Cgroup* SystemHighCgroup() const { return system_high_cgroup_; }
-  Cgroup* SystemMedCgroup() const { return system_med_cgroup_; }
-  // Shared tenant CPU pool. @normal is a child of @capped-pool (along with @system-med).
-  // @normal is uncapped within @capped-pool so it can use whatever @system-med doesn't.
-  // Per-database cgroups and @default are children of @normal.
-  Cgroup* NormalPoolCgroup() const { return normal_pool_cgroup_; }
-
   Status UpdateDbCpuLimits(double max_cpu_fraction, int period);
 
   // Recompute and apply CPU limits to all cgroups based on current gflag values.
   // Called on init and whenever any qos_* flag changes at runtime.
   Status ApplyCpuLimits();
-
-  static Status MovePgBackendToCgroup(PgOid db_oid);
 
   Status Init();
 
@@ -91,6 +80,22 @@ class TServerCgroupManager {
   // sample statistics (we sample twice in order to determine if a cgroup is currently throttled).
   void DumpCgroupsToHtml(std::ostream& out, uint64_t sample_interval_ms) const;
 
+  // Initialize cgroup management for the process. Must be called before any threads/subprocesses
+  // are started. Handles calling SetupCgroupManagement.
+  static Status CgroupManagementInit(bool is_tserver);
+
+  // System cgroups for shared/communal threads.
+  // These are created once at startup and never destroyed.
+  static Cgroup* SystemHighCgroup() { return system_high_cgroup_; }
+  static Cgroup* SystemMedCgroup() { return system_med_cgroup_; }
+
+  // Shared tenant CPU pool. @normal is a child of @capped-pool (along with @system-med).
+  // @normal is uncapped within @capped-pool so it can use whatever @system-med doesn't.
+  // Per-database cgroups are children of @normal.
+  static Cgroup* NormalPoolCgroup() { return normal_pool_cgroup_; }
+
+  static Status MovePgBackendToCgroup(PgOid db_oid);
+
  private:
   struct CgroupMetrics {
     Cgroup* cgroup = nullptr;
@@ -102,6 +107,10 @@ class TServerCgroupManager {
     scoped_refptr<AtomicGauge<int64_t>> nr_throttled;
     scoped_refptr<AtomicGauge<int64_t>> throttled_time_ns;
   };
+
+  static Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid);
+
+  static Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction);
 
   double ComputePerDbCpuFraction() const;
   // Returns the fraction of total machine CPU available for @capped-pool
@@ -118,11 +127,6 @@ class TServerCgroupManager {
   std::unordered_map<PgOid, Cgroup&> db_cgroups_ GUARDED_BY(mutex_);
   std::unordered_map<PgOid, std::string> db_names_ GUARDED_BY(mutex_);
 
-  Cgroup* system_high_cgroup_ = nullptr;
-  Cgroup* capped_pool_cgroup_ = nullptr;   // parent of @system-med and @normal
-  Cgroup* system_med_cgroup_ = nullptr;
-  Cgroup* normal_pool_cgroup_ = nullptr;
-
   // Background metrics collector. shutdown_mutex_ + shutdown_cv_ enable responsive
   // shutdown: MetricsCollectorThread sleeps via cv.wait_for instead of SleepFor,
   // and Shutdown() notifies the cv so the thread wakes immediately.
@@ -137,6 +141,11 @@ class TServerCgroupManager {
   std::vector<CgroupMetrics> system_cgroup_metrics_;
   // Per-DB cgroup metrics (created dynamically). Only accessed from MetricsCollectorThread.
   std::unordered_map<PgOid, CgroupMetrics> db_cgroup_metrics_;
+
+  static Cgroup* system_high_cgroup_;
+  static Cgroup* capped_pool_cgroup_;   // parent of @system-med and @normal
+  static Cgroup* system_med_cgroup_;
+  static Cgroup* normal_pool_cgroup_;
 };
 
 } // namespace tserver

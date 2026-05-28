@@ -262,6 +262,7 @@ class TestSleepProcessWrapper : public ProcessWrapper {
 
 class TestSleepSupervisor : public ProcessSupervisor {
  public:
+  explicit TestSleepSupervisor(Cgroup* cgroup = nullptr) : ProcessSupervisor(cgroup) {}
   ~TestSleepSupervisor() { Stop(); }
 
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override {
@@ -278,8 +279,7 @@ TEST(TestProcessSupervisor, CgroupAssignmentOnStart) {
   auto& test_cgroup = ASSERT_RESULT_REF(
       RootCgroup()->CreateOrLoadChild("@test-supervisor"));
 
-  TestSleepSupervisor supervisor;
-  supervisor.SetCgroup(&test_cgroup);
+  TestSleepSupervisor supervisor(&test_cgroup);
   ASSERT_OK(supervisor.Start());
 
   // Give the process a moment to be fully started and moved.
