@@ -737,6 +737,10 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+
+/* Test fault injection: fail drop after heap_drop_with_catalog. */
+extern bool yb_test_fail_drop_after_heap_drop;
+
 /*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.

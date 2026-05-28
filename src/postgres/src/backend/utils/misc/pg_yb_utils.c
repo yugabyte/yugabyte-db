@@ -2285,6 +2285,8 @@ int			yb_test_sleep_before_executor_start_ms = 0;
 
 int			yb_test_fail_next_ddl = 0;
 
+bool		yb_test_fail_drop_after_heap_drop = false;
+
 bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;

@@ -2861,6 +2861,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_drop_after_heap_drop", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Test fault injection: fail drop after heap_drop_with_catalog."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_drop_after_heap_drop,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_invalidate_relcache_in_planner", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, the relcache entries for every base relation "
 						 "and its indexes will be invalidated after "
