@@ -70,11 +70,7 @@ This produces an XML element:
 ```output
                         xmlelement
 ------------------------------------------------------
- <employee>
-  <name>Charlie Brown</name>
-  <title>Designer</title>
-  <department>Design</department>
- </employee>
+ <employee><name>Charlie Brown</name><title>Designer</title><department>Design</department></employee>
 ```
 
 ### Building XML with attributes
