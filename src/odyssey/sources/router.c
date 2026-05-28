@@ -1323,7 +1323,7 @@ attach:
 		 */
 
 		server->yb_replication_connection = true;
-		if(!(route->rule->pool->routing == OD_RULE_POOL_INTERVAL)) {
+		if(!yb_is_control_pool(server->route)) {
 			route->server_pool.yb_count_sticky++;
 		}
 	}
@@ -1491,7 +1491,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	    !server->reset_timeout && !server_expired && is_parse_queue_empty) {
 		od_instance_t *instance = server->global->instance;
 		if ((route->id.physical_rep || route->id.logical_rep) &&
-		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {
+		    (!yb_is_control_pool(route))) {
 			od_debug(&instance->logger, "expire-replication", NULL,
 				 server, "closing replication connection");
 			server->route = NULL;
