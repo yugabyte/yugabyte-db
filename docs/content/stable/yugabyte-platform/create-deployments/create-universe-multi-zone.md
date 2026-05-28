@@ -171,6 +171,7 @@ Enhanced Postgres Compatibility
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+: After the universe is created, you can customize additional connection pooling YB-TServer flags using **Actions > Edit Flags**. For flag names and defaults, refer to [YSQL Connection Manager configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure). On v2025.2 and later, use `ysql_conn_mgr_internal_conn_user` instead of the deprecated `ysql_conn_mgr_username` flag, and `ysql_conn_mgr_reserve_internal_conns` instead of `ysql_conn_mgr_max_phy_conn_percent`.
 
 Override Deployment Ports
 : To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.

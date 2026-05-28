@@ -70,6 +70,17 @@ To enable or disable connection pooling on a universe:
 1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
 1. Click **Apply Changes**.
 
+To tune additional YSQL Connection Manager settings, use **Actions > Edit Flags** and add YB-TServer flags documented in [Configure](../../../additional-features/connection-manager-ysql/ycm-setup/#configure). Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` manually when connection pooling is managed through YugabyteDB Anywhere.
+
+The following flags were renamed to match YSQL naming conventions; use the new names on database versions that support them:
+
+| Deprecated flag | Use instead |
+| :-------------- | :---------- |
+| `ysql_conn_mgr_username` | `ysql_conn_mgr_internal_conn_user` |
+| `ysql_conn_mgr_password` | Not used; internal connections authenticate with the tserver key |
+| `ysql_conn_mgr_max_phy_conn_percent` | `ysql_conn_mgr_reserve_internal_conns` |
+| `ysql_conn_mgr_deallocate_if_invalid_prep_stmt` | `ysql_conn_mgr_enable_prep_stmt_close` |
+
 ## Smart resize
 
 Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can perform some resizing operations without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.

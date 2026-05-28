@@ -22,6 +22,21 @@ For more information about the available configuration flags, see the following:
 - [YB-TServer configuration reference](../../../reference/configuration/yb-tserver/)
 - [YB-Master configuration reference](../../../reference/configuration/yb-master/)
 
+### Connection pooling flags
+
+On universes with [built-in connection pooling](../../../additional-features/connection-manager-ysql/) enabled, you can add YSQL Connection Manager YB-TServer flags using **Actions > Edit Flags**. For descriptions and defaults, refer to the [connection pooling configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure) table.
+
+Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` through **Edit Flags** when YugabyteDB Anywhere manages connection pooling for the universe.
+
+On database v2025.2 and later, prefer these renamed flags over their deprecated predecessors:
+
+| Deprecated flag | Use instead |
+| :-------------- | :---------- |
+| `ysql_conn_mgr_username` | `ysql_conn_mgr_internal_conn_user` |
+| `ysql_conn_mgr_password` | Not used; internal connections authenticate with the tserver key |
+| `ysql_conn_mgr_max_phy_conn_percent` | `ysql_conn_mgr_reserve_internal_conns` |
+| `ysql_conn_mgr_deallocate_if_invalid_prep_stmt` | `ysql_conn_mgr_enable_prep_stmt_close` |
+
 ## Enhanced Postgres Compatibility
 
 If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > More > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
