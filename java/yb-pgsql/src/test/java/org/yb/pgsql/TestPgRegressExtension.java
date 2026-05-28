@@ -30,10 +30,10 @@ public class TestPgRegressExtension extends BasePgRegressTest {
   }
 
   @Test
+  // YB: yb.orig.extensions test is failing in yb_extensions_schedule with ysql
+  // connection manager due to reason GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT.
+  @BypassConnMgr(reason = BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT)
   public void testPgRegressExtension() throws Exception {
-    // YB: yb.orig.extensions test is failing in yb_extensions_schedule with ysql
-    // connection manager due to reason GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT.
-    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT);
     runPgRegressTest("yb_extensions_schedule");
   }
 }

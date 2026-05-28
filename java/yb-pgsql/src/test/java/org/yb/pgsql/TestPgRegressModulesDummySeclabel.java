@@ -27,10 +27,10 @@ public class TestPgRegressModulesDummySeclabel extends BasePgRegressTest {
   }
 
   @Test
+  // (abhinab-yb) GH #26650: Dummy security labels are not getting loaded.
+  // TODO: Enable the test with connection manager once above issue is fixed.
+  @BypassConnMgr(reason = BasePgSQLTest.DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS)
   public void schedule() throws Exception {
-    // (abhinab-yb) GH #26650: Dummy security labels are not getting loaded.
-    // TODO: Enable the test with connection manager once above issue is fixed.
-    skipYsqlConnMgr(BasePgSQLTest.DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/src/test/modules/dummy_seclabel"),
                      "yb_schedule");
