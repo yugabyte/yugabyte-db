@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <mutex>
 #include <optional>
 
 #include "yb/client/client_fwd.h"
@@ -634,6 +635,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
 
   // Create custom RocksDB listener to analyse files in a compaction.
   struct Listener : public rocksdb::EventListener {
+    using CompactedFiles = std::vector<uint64_t>;
+    using CompactionJob  = std::vector<CompactedFiles>;
+
     void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
       LOG(INFO) << "Compaction completed: db = " << db
                 << ", job id = " << ci.job_id
@@ -652,13 +656,21 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
         EXPECT_GT(file_number, 0);
         files.push_back(file_number);
       }
-      compactions_per_db[db].push_back(std::move(files));
+
+      {
+        std::lock_guard l(mutex);
+        compactions_per_db[db].push_back(std::move(files));
+      }
       compactions_done.CountDown();
     }
 
-    using CompactedFiles = std::vector<uint64_t>;
-    using CompactionJob  = std::vector<CompactedFiles>;
-    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db;
+    std::unordered_map<rocksdb::DB*, CompactionJob> GetCompactions() {
+      std::lock_guard l(mutex);
+      return compactions_per_db;
+    }
+
+    std::mutex mutex;
+    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db GUARDED_BY(mutex);
 
     // For each regular db we expect 4 post split compactions with files and 1 empty post split
     // compaction, which is triggered to signal the whole post split compaction is done (all its
@@ -786,8 +798,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
 
   // Analyse compactions. The order is preserved.
   // 1) We expected 4 instances (1 regular db and 1 intents db per child).
-  ASSERT_EQ(4, compactions_listener.compactions_per_db.size());
-  for (const auto& jobs : compactions_listener.compactions_per_db) {
+  auto compactions_per_db = compactions_listener.GetCompactions();
+  ASSERT_EQ(4, compactions_per_db.size());
+  for (const auto& jobs : compactions_per_db) {
     // 2) We expect at least one job.
     ASSERT_FALSE(jobs.second.empty());
     // Get type of DB.
