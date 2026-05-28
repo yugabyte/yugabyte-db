@@ -17,9 +17,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
@@ -87,6 +89,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
@@ -257,6 +260,63 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
   // This will make client first try to access deleted tablet and that should be handled correctly.
   ASSERT_OK(CheckRowsCount(kNumRows));
+}
+
+// Test for #31936, ensure that marking all_tablets as stale forces a full tablet lookup, even if
+// each tablet in all_tablets is individually looked up and un-staled.
+TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
+  // Keep parent around so a by-id lookup against it returns a location instead of "Tablet hidden".
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const client::YBTableName table_name = table_->name();
+  auto table_ptr = ASSERT_RESULT(client_->OpenTable(table_name));
+
+  // Populate all_tablets, it should just contain the parent tablet now.
+  auto initial_tablets =
+      ASSERT_RESULT(client_->LookupAllTabletsFuture(table_ptr, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(initial_tablets.size(), 1);
+  const TabletId parent_id = initial_tablets[0]->tablet_id();
+  ASSERT_FALSE(initial_tablets[0]->stale());
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /*expected_non_split_tablets=*/2, /*expected_split_tablets=*/1));
+
+  // Trigger cache invalidation: mark partitions stale, then issue a lookup that refreshes them.
+  table_ptr->MarkPartitionsAsStale();
+
+  Synchronizer refresh_sync;
+  client_->LookupTabletByKey(
+      table_ptr, /*partition_key=*/std::string(), CoarseMonoClock::now() + 30s,
+      [&refresh_sync](const Result<client::internal::RemoteTabletPtr>& r) {
+        refresh_sync.StatusCB(r.ok() ? Status::OK() : r.status());
+      });
+  ASSERT_OK(refresh_sync.Wait());
+
+  // A by-id lookup on the parent refreshes its shared RemoteTablet (no longer marked stale now).
+  Synchronizer lookup_sync;
+  client_->LookupTabletById(
+      parent_id, table_ptr, master::IncludeInactive::kTrue, master::IncludeDeleted::kFalse,
+      CoarseMonoClock::now() + 30s,
+      [&lookup_sync](const Result<client::internal::RemoteTabletPtr>& r) {
+        lookup_sync.StatusCB(r.ok() ? Status::OK() : r.status());
+      },
+      client::UseCache::kFalse);
+  ASSERT_OK(lookup_sync.Wait());
+
+  // Now call LookupAllTablets and ensure it does the lookup (i.e., returns the children tablets).
+  auto post_split_tablets =
+      ASSERT_RESULT(client_->LookupAllTabletsFuture(table_ptr, CoarseMonoClock::now() + 30s).get());
+
+  EXPECT_EQ(post_split_tablets.size(), 2u)
+      << "LookupAllTabletsFuture should return both children after a split, "
+         "not the cached pre-split parent.";
+  for (const auto& tablet : post_split_tablets) {
+    EXPECT_NE(tablet->tablet_id(), parent_id) << "parent leaked back into all_tablets";
+  }
 }
 
 TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {

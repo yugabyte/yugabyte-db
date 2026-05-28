@@ -1352,9 +1352,12 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
       tablet.second->MarkStale();
     }
 
-    for (auto& tablet : table_data.all_tablets) {
-      tablet->MarkStale();
-    }
+    // Drop the cached whole-table view entirely rather than marking entries stale: the
+    // RemoteTablet objects here are shared with tablets_by_id_, so a later by-id lookup can
+    // Refresh() and un-stale them out from under us.
+    // Clearing forces the next LookupAllTablets to refetch from master.
+    table_data.all_tablets.clear();
+
     // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
     // detect which need to be retried by GetTableLocationsResponsePB.partition_list_version.
     for (auto& group_lookups : table_data.tablet_lookups_by_group) {
