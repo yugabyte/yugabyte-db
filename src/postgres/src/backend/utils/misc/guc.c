@@ -4081,7 +4081,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_new_relation_fastpath_write", PGC_SUSET, CUSTOM_OPTIONS,
+		{"yb_enable_new_relation_fastpath_write", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables fastpath writes for relations created in the current transaction "
 						 "(apply writes directly to the regular RocksDB DB when safe, skipping the "
 						 "intents DB)."),
@@ -4094,7 +4094,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_SUSET, CUSTOM_OPTIONS,
+		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
