@@ -115,13 +115,13 @@ This shows the updated procedure:
 Use `DEPENDS ON EXTENSION` to mark a procedure as dependent on an extension:
 
 ```sql
-CREATE EXTENSION my_extension;
+CREATE EXTENSION "uuid-ossp";
 
 -- Mark the procedure as dependent on the extension
-ALTER PROCEDURE s2.q(int) DEPENDS ON EXTENSION my_extension;
+ALTER PROCEDURE s2.q(int) DEPENDS ON EXTENSION "uuid-ossp";
 
 -- Remove the dependency mark if needed
-ALTER PROCEDURE s2.q(int) NO DEPENDS ON EXTENSION my_extension;
+ALTER PROCEDURE s2.q(int) NO DEPENDS ON EXTENSION "uuid-ossp";
 ```
 
 When an extension is dropped, all dependent objects are dropped or updated accordingly.
