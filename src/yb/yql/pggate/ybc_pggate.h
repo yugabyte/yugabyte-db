@@ -599,6 +599,13 @@ YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data);
 
+// Add a ybctid as a batch_argument on a read statement (for batch SKIP LOCKED).
+YbcStatus YBCPgDmlAddBatchYbctidArg(YbcPgStatement handle, const char *ybctid, size_t ybctid_len);
+
+// Read first_locked_batch_arg_index from response after execution.
+// Returns -1 if not present.
+YbcStatus YBCPgDmlGetFirstLockedBatchArgIndex(YbcPgStatement handle, int32_t *index);
+
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count);
 

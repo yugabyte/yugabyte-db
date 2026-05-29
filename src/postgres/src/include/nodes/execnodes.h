@@ -3052,6 +3052,17 @@ typedef struct LockRowsState
 
 	bool		yb_are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB
 												 * relations */
+
+	/*
+	 * Leftover candidates from a batch SKIP LOCKED RPC.  When the batch path
+	 * locks the first unlocked row, candidates after the winner are saved here
+	 * so subsequent ExecLockRows calls can try them via the per-row path
+	 * instead of losing them.
+	 */
+	HeapTuple  *yb_batch_leftover_tuples;
+	Datum	   *yb_batch_leftover_ybctids;
+	int			yb_batch_leftover_count;
+	int			yb_batch_leftover_idx;
 } LockRowsState;
 
 /* ----------------

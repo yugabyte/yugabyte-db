@@ -3167,6 +3167,29 @@ Status GetIntents(
   return Status::OK();
 }
 
+Status GetIntentsForBatchArg(
+    const PgsqlReadRequestPB& request, int batch_arg_index, const Schema& schema,
+    IsolationLevel level, LWKeyValueWriteBatchPB* out) {
+  DCHECK_GE(batch_arg_index, 0);
+  DCHECK_LT(batch_arg_index, request.batch_arguments_size());
+
+  const auto row_mark = request.has_row_mark_type() ? request.row_mark_type() : ROW_MARK_ABSENT;
+  if (IsValidRowMarkType(row_mark)) {
+    RSTATUS_DCHECK(request.has_wait_policy(), IllegalState, "wait policy is expected");
+    out->set_wait_policy(request.wait_policy());
+  }
+
+  IntentInserter inserter(out);
+  DocKeyAccessor accessor(schema);
+  const IntentMode mode{
+      level, row_mark, KeyOnlyRequested(IsOnlyKeyColumnsRequested(schema, request))};
+  const auto& batch_argument = request.batch_arguments(batch_arg_index);
+  auto slice = VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid()));
+  bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+  inserter.Add(slice, inlcudes_pk, mode);
+  return Status::OK();
+}
+
 PgsqlLockOperation::PgsqlLockOperation(
     std::reference_wrapper<const PgsqlLockRequestMsg> request,
     const TransactionOperationContext& txn_op_context)

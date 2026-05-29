@@ -178,6 +178,8 @@ static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
 uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
 bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
 
+int			yb_skip_locked_batch_size = 32;
+
 static int	GUC_check_errcode_value;
 
 static List *reserved_class_prefix = NIL;
@@ -4171,6 +4173,18 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_explicit_row_locking_batch_size,
 		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
+	{
+		{"yb_skip_locked_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Batch size for SKIP LOCKED candidate prefetch"),
+			gettext_noop("Number of candidate rows to send in a single RPC "
+						 "when using SELECT ... FOR UPDATE SKIP LOCKED. "
+						 "Set to 1 to disable batching."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_skip_locked_batch_size,
+		32, 1, 1024,
+		NULL, NULL, NULL
 	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,

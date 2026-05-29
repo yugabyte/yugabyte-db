@@ -380,6 +380,17 @@ extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 							  LockWaitPolicy wait_policy, EState *estate);
 
 /*
+ * Try to lock one of several candidate rows in SKIP LOCKED mode.
+ * Sends all ybctids in a single RPC; the tserver tries each in order
+ * and locks the first unlocked one.
+ * Returns TM_Ok if a row was locked (*locked_index set to 0-based winner),
+ * or TM_WouldBlock if all were skipped (*locked_index set to -1).
+ */
+extern TM_Result YBCLockTupleBatch(Relation relation, Datum *ybctids, int count,
+								   RowMarkType mode, EState *estate,
+								   int *locked_index);
+
+/*
  * Fetch a single row for given ybctid into a heap-tuple.
  * This API is needed for reading data from a catalog (system table).
  */

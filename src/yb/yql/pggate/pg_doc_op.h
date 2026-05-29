@@ -493,6 +493,10 @@ class PgDocReadOp : public PgDocOp {
 
   Status ResetPgsqlOps();
 
+  // Get first_locked_batch_arg_index from the first operation's response.
+  // Returns -1 if not present or no response available.
+  int32_t GetFirstLockedBatchArgIndex() const;
+
  protected:
   Status CompleteProcessResponse() override;
 

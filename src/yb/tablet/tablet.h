@@ -709,6 +709,14 @@ class Tablet : public AbstractTablet,
       const PgsqlReadRequestMsgs& pgsql_batch,
       docdb::LWKeyValueWriteBatchPB* out);
 
+  // Creates read intents for a single batch_argument of a pgsql read request.
+  // Used for batch SKIP LOCKED: we try each candidate row individually.
+  Status CreateReadIntentForBatchArg(
+      IsolationLevel level,
+      const PgsqlReadRequestMsg& pgsql_read,
+      int batch_arg_index,
+      docdb::LWKeyValueWriteBatchPB* out);
+
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;

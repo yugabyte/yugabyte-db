@@ -4641,6 +4641,20 @@ Status Tablet::CreateReadIntents(
   return Status::OK();
 }
 
+Status Tablet::CreateReadIntentForBatchArg(
+    IsolationLevel level,
+    const PgsqlReadRequestMsg& pgsql_read,
+    int batch_arg_index,
+    docdb::LWKeyValueWriteBatchPB* write_batch) {
+  auto table_info = metadata_->primary_table_info();
+  if (table_info == nullptr || table_info->table_id != pgsql_read.table_id()) {
+    table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read.table_id()));
+  }
+  RETURN_NOT_OK(docdb::GetIntentsForBatchArg(
+      pgsql_read, batch_arg_index, table_info->schema(), level, write_batch));
+  return Status::OK();
+}
+
 bool Tablet::ShouldApplyWrite() {
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!scoped_read_operation.ok()) {

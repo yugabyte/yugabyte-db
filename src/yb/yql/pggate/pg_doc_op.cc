@@ -1422,6 +1422,17 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
   }
 }
 
+int32_t PgDocReadOp::GetFirstLockedBatchArgIndex() const {
+  if (pgsql_ops_.empty() || !pgsql_ops_[0]->response()) {
+    return -1;
+  }
+  const auto* resp = pgsql_ops_[0]->response();
+  if (!resp->has_first_locked_batch_arg_index()) {
+    return -1;
+  }
+  return resp->first_locked_batch_arg_index();
+}
+
 Status PgDocReadOp::ResetPgsqlOps() {
   SCHECK(!HasActiveOps(), IllegalState, "Can't reset operations when some of them are active");
   // Discard outstanding results, if any

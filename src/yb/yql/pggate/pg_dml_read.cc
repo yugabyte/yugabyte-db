@@ -1039,4 +1039,24 @@ bool PgDmlRead::ActualValueForIsForSecondaryIndexArg(bool is_for_secondary_index
   return is_for_secondary_index && !IsPgSelectIndex();
 }
 
+void PgDmlRead::AddBatchYbctidArg(Slice ybctid) {
+  auto* batch_arg = read_req_->add_batch_arguments();
+  batch_arg->mutable_ybctid()->mutable_value()->dup_binary_value(ybctid);
+
+  // Also set ybctid_column_value to the smallest ybctid for backward compatibility.
+  if (!read_req_->has_ybctid_column_value() ||
+      ybctid < read_req_->ybctid_column_value().value().binary_value()) {
+    read_req_->mutable_ybctid_column_value()->mutable_value()->ref_binary_value(
+        batch_arg->ybctid().value().binary_value());
+  }
+}
+
+Result<int32_t> PgDmlRead::GetFirstLockedBatchArgIndex() const {
+  if (!doc_op_) {
+    return STATUS(IllegalState, "No doc_op available");
+  }
+  auto* read_op = down_cast<PgDocReadOp*>(doc_op_.get());
+  return read_op->GetFirstLockedBatchArgIndex();
+}
+
 }  // namespace yb::pggate

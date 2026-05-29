@@ -15,6 +15,7 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/dockv/doc_key.h"
 
@@ -181,6 +182,18 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
     retained_self_ = nullptr;
   }
 
+  // Tries to lock the batch_argument at the given index for a batch SKIP LOCKED request.
+  // On success, sets first_locked_batch_arg_index in the pgsql response and proceeds to read.
+  // On kSkipLocking, recursively tries the next batch_argument.
+  void TryLockBatchArg(
+      int batch_arg_index,
+      int total_batch_args,
+      const PgsqlReadRequestMsg& pgsql_read,
+      IsolationLevel isolation_level,
+      int64_t leader_term,
+      tablet::TabletPeerPtr peer,
+      tablet::TabletPtr tablet_ptr);
+
   TabletServerIf& server_;
   ReadTabletProvider& read_tablet_provider_;
   const ReadRequestMsg* req_;
@@ -199,6 +212,9 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
   std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info_;
+
+  // For batch SKIP LOCKED: index of the winning batch_argument, or -1 if not applicable.
+  int first_locked_batch_arg_index_ = -1;
 };
 
 bool ReadQuery::transactional() const {
@@ -416,6 +432,29 @@ Status ReadQuery::DoPerform() {
 
   if (serializable_isolation || has_row_mark) {
     tserver::WriteResponseMsg* response = nullptr;
+
+    // Check for batch SKIP LOCKED: single pgsql read with WAIT_SKIP and multiple batch_arguments.
+    // Instead of locking all rows at once (which fails atomically on first conflict),
+    // try each candidate row individually and return the first one that succeeds.
+    bool is_batch_skip_locked = false;
+    if (has_row_mark && !serializable_isolation && req_->pgsql_batch_size() == 1) {
+      const auto& pgsql_read = req_->pgsql_batch(0);
+      if (pgsql_read.has_wait_policy() &&
+          pgsql_read.wait_policy() == WAIT_SKIP &&
+          pgsql_read.batch_arguments_size() > 1) {
+        is_batch_skip_locked = true;
+      }
+    }
+
+    if (is_batch_skip_locked) {
+      // Batch SKIP LOCKED: iterate through candidates one at a time.
+      const auto& pgsql_read = req_->pgsql_batch(0);
+      TryLockBatchArg(
+          0, pgsql_read.batch_arguments_size(), pgsql_read,
+          isolation_level, leader_peer.leader_term, leader_peer.peer, leader_peer.tablet);
+      return Status::OK();
+    }
+
     const bool use_async_write = req_->use_async_write();
     if (use_async_write) {
       response = req_->arena().ArenaObjectFactory();
@@ -736,11 +775,39 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
   if (!req_->pgsql_batch().empty()) {
     size_t total_num_rows_read = 0;
-    for (const auto& pgsql_read_req : req_->pgsql_batch()) {
+    for (int pgsql_idx = 0; pgsql_idx < req_->pgsql_batch_size(); ++pgsql_idx) {
+      const auto& pgsql_read_req = req_->pgsql_batch(pgsql_idx);
+
+      // For batch SKIP LOCKED: create a modified request for the read phase.
+      // If we locked a row (>= 0), include only the winning batch_argument.
+      // If all were skipped (-1), clear batch_arguments to return zero rows.
+      PgsqlReadRequestMsg* modified_req = nullptr;
+      const PgsqlReadRequestMsg* effective_req = &pgsql_read_req;
+      if (pgsql_idx == 0 && pgsql_read_req.batch_arguments_size() > 1 &&
+          pgsql_read_req.has_wait_policy() && pgsql_read_req.wait_policy() == WAIT_SKIP) {
+        if (first_locked_batch_arg_index_ >= 0) {
+          modified_req = req_->arena().NewArenaObject<PgsqlReadRequestMsg>(pgsql_read_req);
+          modified_req->clear_batch_arguments();
+          int arg_index = 0;
+          for (const auto& batch_argument : pgsql_read_req.batch_arguments()) {
+            if (arg_index++ == first_locked_batch_arg_index_) {
+              *modified_req->add_batch_arguments() = batch_argument;
+              break;
+            }
+          }
+          effective_req = modified_req;
+        } else if (first_locked_batch_arg_index_ == -1) {
+          // All candidates were skipped -- return empty result.
+          modified_req = req_->arena().NewArenaObject<PgsqlReadRequestMsg>(pgsql_read_req);
+          modified_req->clear_batch_arguments();
+          effective_req = modified_req;
+        }
+      }
+
       tablet::PgsqlReadRequestResult result(resp_->arena(), &context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
-          read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req,
+          read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, *effective_req,
           req_->transaction(), req_->subtransaction(), &result));
 
       total_num_rows_read += result.num_rows_read;
@@ -748,6 +815,17 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       TRACE("Done HandlePgsqlReadRequest");
       if (result.read_restart_data.is_valid()) {
         return FormReadRestartInfo(result.read_restart_data);
+      }
+      // For batch SKIP LOCKED: tell pggate that ALL batch args were consumed (tried)
+      // even though we only read data for the winning one. This prevents
+      // CompleteProcessResponse from seeing batch_arg_count < batch_arguments_size
+      // and triggering additional Perform RPCs for the "remaining" args.
+      if (pgsql_idx == 0 && pgsql_read_req.batch_arguments_size() > 1 &&
+          pgsql_read_req.has_wait_policy() && pgsql_read_req.wait_policy() == WAIT_SKIP) {
+        result.response->set_batch_arg_count(pgsql_read_req.batch_arguments_size());
+        if (first_locked_batch_arg_index_ >= 0) {
+          result.response->set_first_locked_batch_arg_index(first_locked_batch_arg_index_);
+        }
       }
       result.response->set_rows_data_sidecar(
           narrow_cast<int32_t>(context_.sidecars().Complete()));
@@ -767,6 +845,85 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   }
 
   return ReadRestartInfo();
+}
+
+void ReadQuery::TryLockBatchArg(
+    int batch_arg_index,
+    int total_batch_args,
+    const PgsqlReadRequestMsg& pgsql_read,
+    IsolationLevel isolation_level,
+    int64_t leader_term,
+    tablet::TabletPeerPtr peer,
+    tablet::TabletPtr tablet_ptr) {
+  if (batch_arg_index >= total_batch_args) {
+    // All candidates were skipped. Proceed to read phase with no locked row.
+    // The response will have no first_locked_batch_arg_index set, and the read
+    // will return zero rows, signaling to postgres that all were skipped.
+    first_locked_batch_arg_index_ = -1;
+    retained_self_ = shared_from_this();
+    peer->Enqueue(this);
+    return;
+  }
+
+  // Build a WriteQuery with intents for just this one batch_argument.
+  auto query = std::make_unique<tablet::WriteQuery>(
+      leader_term, context_.GetClientDeadline(), peer.get(),
+      tablet_ptr, nullptr /* rpc_context */, nullptr /* response */);
+
+  auto& write = *query->operation().AllocateRequest();
+  auto& write_batch = *write.mutable_write_batch();
+  *write_batch.mutable_transaction() = req_->transaction();
+
+  // Set row mark type from the pgsql read request.
+  auto row_mark = GetRowMarkTypeFromPB(pgsql_read);
+  if (IsValidRowMarkType(row_mark)) {
+    write_batch.set_row_mark_type(row_mark);
+    query->set_read_time(read_time_);
+  }
+
+  write.ref_unused_tablet_id(""); // For backward compatibility.
+  write_batch.set_deprecated_may_have_metadata(true);
+  write.set_batch_idx(req_->batch_idx());
+  if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
+    write_batch.mutable_subtransaction()->set_subtransaction_id(
+        req_->subtransaction().subtransaction_id());
+  }
+  if (req_->has_start_time_micros()) {
+    query->SetRequestStartUs(req_->start_time_micros());
+  }
+
+  // Create intents for just this single batch_argument.
+  auto status = tablet_ptr->CreateReadIntentForBatchArg(
+      isolation_level, pgsql_read, batch_arg_index, &write_batch);
+  if (!status.ok()) {
+    RespondFailure(status);
+    return;
+  }
+
+  query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
+
+  query->set_callback(
+      [self = shared_from_this(), peer, tablet_ptr, batch_arg_index, total_batch_args,
+       pgsql_read = &pgsql_read, isolation_level, leader_term](const Status& status) {
+    if (status.ok()) {
+      // Lock acquired successfully for this batch_argument.
+      self->first_locked_batch_arg_index_ = batch_arg_index;
+      self->retained_self_ = self;
+      peer->Enqueue(self.get());
+    } else if (TransactionError(status).value() != TransactionErrorCode::kNone) {
+      // For SKIP LOCKED, any transaction-level failure to lock a row (kSkipLocking,
+      // kConflict, kAborted, kDeadlock, etc.) means we cannot acquire this row.
+      // Skip it and try the next candidate rather than aborting the entire batch.
+      self->TryLockBatchArg(
+          batch_arg_index + 1, total_batch_args, *pgsql_read,
+          isolation_level, leader_term, peer, tablet_ptr);
+    } else {
+      // Non-transaction error -- propagate it.
+      self->RespondFailure(status);
+    }
+  });
+
+  peer->WriteAsync(std::move(query));
 }
 
 } // namespace

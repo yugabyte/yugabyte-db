@@ -1546,6 +1546,19 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
   return ToYBCStatus(pgapi->AdjustOperationsBuffering(multiple));
 }
 
+YbcStatus YBCPgDmlAddBatchYbctidArg(YbcPgStatement handle, const char *ybctid, size_t ybctid_len) {
+  return ToYBCStatus(pgapi->DmlAddBatchYbctidArg(handle, Slice(ybctid, ybctid_len)));
+}
+
+YbcStatus YBCPgDmlGetFirstLockedBatchArgIndex(YbcPgStatement handle, int32_t *index) {
+  auto result = pgapi->DmlGetFirstLockedBatchArgIndex(handle);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *index = *result;
+  return YBCStatusOK();
+}
+
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }

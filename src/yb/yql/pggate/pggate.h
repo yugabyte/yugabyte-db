@@ -526,6 +526,12 @@ class PgApiImpl {
   Status DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
                   YbcPgSysColumns *syscols, bool *has_data);
 
+  // Add a ybctid as a batch_argument on a read statement (for batch SKIP LOCKED).
+  Status DmlAddBatchYbctidArg(PgStatement *handle, Slice ybctid);
+
+  // Read first_locked_batch_arg_index from a read statement's response.
+  Result<int32_t> DmlGetFirstLockedBatchArgIndex(PgStatement *handle);
+
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 

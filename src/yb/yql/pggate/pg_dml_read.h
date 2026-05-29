@@ -136,6 +136,14 @@ class PgDmlRead : public PgDml {
 
   [[nodiscard]] const LWPgsqlReadRequestPB* read_req() const { return read_req_.get(); }
 
+  // Add a ybctid as a batch_argument on the underlying read request.
+  // Used for batch SKIP LOCKED: sends multiple candidate ybctids in a single RPC.
+  void AddBatchYbctidArg(Slice ybctid);
+
+  // Read first_locked_batch_arg_index from the response after execution.
+  // Returns -1 if the field is not present (i.e., not a batch SKIP LOCKED response).
+  Result<int32_t> GetFirstLockedBatchArgIndex() const;
+
   [[nodiscard]] bool IsReadFromYsqlCatalog() const;
 
   [[nodiscard]] bool IsIndexOrderedScan() const;

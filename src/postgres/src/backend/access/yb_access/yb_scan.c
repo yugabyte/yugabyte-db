@@ -5235,6 +5235,104 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 	return res;
 }
 
+TM_Result
+YBCLockTupleBatch(Relation relation, Datum *ybctids, int count,
+				  RowMarkType mode, EState *estate,
+				  int *locked_index)
+{
+	Assert(count > 0);
+
+	const Oid relfile_oid = YbGetRelfileNodeId(relation);
+
+	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */);
+
+	/*
+	 * Bind the first ybctid as the regular column value (needed for partition
+	 * routing). All ybctids are also added as batch_arguments for the tserver
+	 * to iterate through.
+	 */
+	YbcPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid,
+										   ybctids[0], false);
+	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber,
+									  ybctid_expr));
+
+	for (int i = 0; i < count; i++)
+	{
+		Datum		d = ybctids[i];
+		const char *data = VARDATA_ANY(DatumGetPointer(d));
+		size_t		len = VARSIZE_ANY_EXHDR(DatumGetPointer(d));
+
+		HandleYBStatus(YBCPgDmlAddBatchYbctidArg(ybc_stmt, data, len));
+	}
+
+	YbcPgExecParameters exec_params = {0};
+	exec_params.limit_count = count;
+	exec_params.rowmark = mode;
+	exec_params.pg_wait_policy = LockWaitSkip;
+	exec_params.docdb_wait_policy = YBGetDocDBWaitPolicy(LockWaitSkip);
+	exec_params.stmt_in_txn_limit_ht_for_reads =
+		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
+
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params));
+
+	/*
+	 * We must fetch at least once to trigger the RPC and populate the
+	 * response protobuf (which carries first_locked_batch_arg_index).
+	 *
+	 * Like YBCLockTuple, catch conflict/skip-locking errors from the fetch
+	 * rather than raising them — for SKIP LOCKED, these mean "all candidates
+	 * were contended" and should return TM_WouldBlock, not abort the statement.
+	 */
+	bool		has_data = false;
+	YbcStatus	status = YBCPgDmlFetch(ybc_stmt, 0, NULL, NULL, NULL, &has_data);
+
+	if (status)
+	{
+		const uint32_t err_code = YBCStatusPgsqlError(status);
+
+		switch (err_code)
+		{
+			case ERRCODE_YB_TXN_CONFLICT:
+			case ERRCODE_YB_TXN_SKIP_LOCKING:
+				/* Conflict or skip during batch lock — treat as all-skipped. */
+				YBCFreeStatus(status);
+				*locked_index = -1;
+				YBCPgDeleteStatement(ybc_stmt);
+				return TM_WouldBlock;
+			default:
+				HandleYBStatus(status);
+				break;
+		}
+		YBCFreeStatus(status);
+	}
+
+	/*
+	 * Read the first_locked_batch_arg_index from the response.
+	 * The tserver tries each batch_argument in order and returns the index
+	 * of the first one it successfully locked.
+	 */
+	int32_t		winner = -1;
+
+	HandleYBStatus(YBCPgDmlGetFirstLockedBatchArgIndex(ybc_stmt, &winner));
+
+	TM_Result	res;
+
+	if (winner >= 0 && winner < count)
+	{
+		*locked_index = winner;
+		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctids[winner]);
+		res = TM_Ok;
+	}
+	else
+	{
+		*locked_index = -1;
+		res = TM_WouldBlock;
+	}
+
+	YBCPgDeleteStatement(ybc_stmt);
+	return res;
+}
+
 void
 YBCFlushTupleLocks()
 {

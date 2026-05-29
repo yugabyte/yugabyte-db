@@ -1540,6 +1540,15 @@ Status PgApiImpl::DmlFetch(
       natts, values, isnulls, syscols, has_data);
 }
 
+Status PgApiImpl::DmlAddBatchYbctidArg(PgStatement* handle, Slice ybctid) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddBatchYbctidArg(ybctid);
+  return Status::OK();
+}
+
+Result<int32_t> PgApiImpl::DmlGetFirstLockedBatchArgIndex(PgStatement* handle) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).GetFirstLockedBatchArgIndex();
+}
+
 Result<dockv::KeyBytes> PgApiImpl::BuildTupleId(const YbcPgYBTupleIdDescriptor& descr) {
     return tuple_id_builder_.Build(pg_session_.get(), descr);
 }
