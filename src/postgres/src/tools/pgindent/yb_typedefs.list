@@ -255,6 +255,7 @@ YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
+YbcIsExplicitlyLockedRowSkippedCheckHandle
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

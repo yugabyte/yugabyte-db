@@ -1755,4 +1755,8 @@ extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
 extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *root,
 													  Index rti);
 
+extern void YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
+
+extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
+
 #endif							/* PG_YB_UTILS_H */

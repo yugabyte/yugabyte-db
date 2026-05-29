@@ -89,6 +89,8 @@ int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1;
 
+int yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
+
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 bool yb_disable_catalog_version_check = false;

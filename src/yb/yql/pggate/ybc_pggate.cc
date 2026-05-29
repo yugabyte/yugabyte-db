@@ -2125,11 +2125,12 @@ void YBCNotifyDeferredTriggersProcessingStarted() {
 
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info) {
+    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle* handle) {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
       PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
-      locality_info, result.error_info));
+      locality_info, handle ? std::optional(*handle) : std::nullopt, result.error_info));
   return result;
 }
 
@@ -2137,6 +2138,18 @@ YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
   return result;
+}
+
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* is_skipped) {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ExtractValueFromResult(
+      pgapi->IsRowSkipped(handle, result.error_info), is_skipped);
+  return result;
+}
+
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle() {
+  return pgapi->AcquireExplicitlyLockedRowSkippedCheckHandle();
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
