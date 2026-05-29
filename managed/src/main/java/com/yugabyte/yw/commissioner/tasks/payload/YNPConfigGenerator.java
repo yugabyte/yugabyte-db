@@ -141,7 +141,8 @@ public class YNPConfigGenerator {
         String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
     ynpNode.put(
         "min_prometheus_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
+        String.valueOf(
+            confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
     ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
