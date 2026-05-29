@@ -3038,6 +3038,19 @@ typedef struct SetOpState
 	TupleHashIterator hashiter; /* for iterating through hash table */
 } SetOpState;
 
+typedef struct YbLockRowsStateInfo {
+	bool are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB * relations */
+	TupleTableSlot *tuple_slot;
+	Tuplestorestate *buffered_slots;
+	uint16_t buffered_slots_capacity;
+	uint16_t buffered_slot_index;
+	YbcIsExplicitlyLockedRowSkippedCheckHandle *check_handles;
+	bool bounded;
+	uint64_t bound;
+	uint64_t rows_fetched;
+	bool end_reached;
+} YbLockRowsStateInfo;
+
 /* ----------------
  *	 LockRowsState information
  *
@@ -3050,8 +3063,7 @@ typedef struct LockRowsState
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
 
-	bool		yb_are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB
-												 * relations */
+	YbLockRowsStateInfo yb_info;
 } LockRowsState;
 
 /* ----------------

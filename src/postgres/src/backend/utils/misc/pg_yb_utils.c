@@ -9803,3 +9803,61 @@ YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 		skip_intents_txn_state.disabled = true;
 	}
 }
+
+void
+YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
+{
+	if (wait_policy == LockWaitError)
+	{
+		/*
+		 * In case the user has specified NOWAIT, the intention is to error out
+		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
+		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
+		 */
+
+		if (rel)
+			ereport(ERROR,
+					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					 errmsg("could not obtain lock on row in relation \"%s\"",
+							RelationGetRelationName(rel))));
+		else
+		{
+			/*
+			 * It is not expected that relation is null. Raise an error wihout
+			 * relation name in release mode.
+			 */
+			Assert(false);
+			ereport(ERROR,
+					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					 errmsg("could not obtain lock on row")));
+		}
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_YB_TXN_CONFLICT),
+			 errmsg("could not serialize access due to concurrent update")));
+}
+
+static bool
+YbIsExplicitRowLockConflict(YbcStatus status)
+{
+	Assert(status);
+	const uint32_t err_code = YBCStatusPgsqlError(status);
+
+	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
+}
+
+void
+HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
+{
+	if (!(status.error_info.is_initialized && YbIsExplicitRowLockConflict(status.ybc_status)))
+	{
+		HandleYBStatus(status.ybc_status);
+		return;
+	}
+	YBCFreeStatus(status.ybc_status);
+	YbHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
+						   RelationIdGetRelation(status.error_info.conflicting_table_id) :
+						   NULL),
+						   status.error_info.pg_wait_policy);
+}
