@@ -653,6 +653,13 @@ DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
+
+namespace yb::internal {
+
+std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill = std::nullopt;
+
+} // namespace yb::internal
+
 namespace yb::master {
 
 using std::shared_ptr;
@@ -4572,6 +4579,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       } else if (backend == kYbHnsw) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
       }
+      // No reverse mapping backfill is required during vector index backfill because
+      // reverse mapping is now populated with a row insertion or update regardless of
+      // whether a vector index already exists.
+      // TODO(GH31886): Switch to true once the indexed table owns the reverse mapping.
+      constexpr bool kVectorIndexSkipReverseMappingBackfill = false;
+      vector_index_options.set_skip_reverse_mapping_backfill(
+          internal::TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+              kVectorIndexSkipReverseMappingBackfill));
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";

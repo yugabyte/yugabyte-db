@@ -159,6 +159,17 @@ message PgVectorIdxOptionsPB {
   // Permanent index id. It should be unique for tablet, but when tablet is cloned,
   // index id in new tablet remains the same.
   optional string id = 8;
+
+  // As of now, no reverse mapping backfill is required during vector index backfill.
+  // However, there could be a scenario where vector index backfill was started but
+  // not completed before an upgrade. In such a case, we must allow the backfill to
+  // finish as usual to avoid losing any vector data.
+  // This field is used for backward compatibility in upgrade scenarios, allowing
+  // vector indexes to complete the backfill process. It is explicitly set to `true`
+  // for all newly created vector indexes to prevent reverse mapping backfill, since
+  // reverse mappings are now populated on row insertion or update regardless of
+  // whether a vector index already exists.
+  optional bool skip_reverse_mapping_backfill = 9;
 }
 
 message PgHnswReadOptionsPB {
