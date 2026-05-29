@@ -4,7 +4,6 @@ package session
 
 import (
 	"context"
-	"math/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestSessionCacheOrder(t *testing.T) {
 		for j := 0; j < 3; j++ {
 			entry := &SessionEntry{
 				ID:     strconv.Itoa(i),
-				Expiry: time.Now().Add(time.Duration(time.Minute * time.Duration(1+rand.Intn(10)))),
+				Expiry: time.Now().Add(time.Duration(time.Minute * time.Duration(i+1))),
 			}
 			cache.Put(ctx, entry)
 		}
@@ -26,7 +25,16 @@ func TestSessionCacheOrder(t *testing.T) {
 	if cache.Size() != 30 {
 		t.Fatalf("Cache size (%d) is not exactly 30", cache.Size())
 	}
-	for i := 0; i < 30; i++ {
+	// First 20 entries should be expired.
+	for i := 0; i < 20; i++ {
+		key := strconv.Itoa(i)
+		val := cache.Get(ctx, key)
+		if val != nil {
+			t.Fatalf("Value is found for %s", key)
+		}
+	}
+	// Last 30 entries should be present.
+	for i := 21; i < 50; i++ {
 		key := strconv.Itoa(i)
 		val := cache.Get(ctx, key)
 		if val == nil {

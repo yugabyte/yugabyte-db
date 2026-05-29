@@ -9,7 +9,9 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
+	"node-agent/util"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +45,7 @@ func generateSSHKeyPairs(t *testing.T, bits, count int) ([]sshKeyPair, error) {
 			t.Fatalf("Failed to generate public key: %v", err)
 		}
 
-		pubBytes := ssh.MarshalAuthorizedKey(pub)
+		pubBytes := bytes.TrimSpace(ssh.MarshalAuthorizedKey(pub))
 		sshKeyPairs = append(sshKeyPairs, sshKeyPair{
 			privateKey: privateKeyPEM,
 			publicKey:  pubBytes,
@@ -65,6 +67,7 @@ func createAuthorizedKeysFile(t *testing.T, sshKeyPairs []sshKeyPair) string {
 		if err != nil {
 			t.Fatalf("Failed to write public key: %v", err)
 		}
+		file.WriteString("\n")
 	}
 	t.Logf("Authorized keys file created at %s", authorizedKeysPath)
 	return authorizedKeysPath
@@ -132,6 +135,7 @@ func TestRotateSshKey(t *testing.T) {
 		param: &pb.RotateSshKeyInput{
 			RemoteTmp: t.TempDir(),
 		},
+		logOut: util.NewBuffer(module.MaxBufferCapacity),
 	}
 	data, _ := os.ReadFile(authorizedKeysPath)
 	t.Logf("\nBefore rotation: Authorized keys file contents:\n%s\n", string(data))
@@ -162,7 +166,12 @@ func TestRotateSshKey(t *testing.T) {
 	for i := range updatedKeys {
 		expectedKey := sshKeyPairs[i]
 		if !bytes.Equal(expectedKey.publicKey, updatedKeys[i]) {
-			t.Fatalf("Expected key %d to be %s, got %s", i, expectedKey.publicKey, updatedKeys[i])
+			t.Fatalf(
+				"Expected key %d to be [%s], got [%s]",
+				i,
+				expectedKey.publicKey,
+				updatedKeys[i],
+			)
 		}
 	}
 }
