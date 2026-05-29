@@ -25,7 +25,7 @@ check_port() {
     local port=$2
     count=0
     # Start checking the port to respond faster for reachable ports.
-    until "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
+    until bash -c "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
         count=$((count + 1))
         if [ $count -gt 5 ]; then
             break

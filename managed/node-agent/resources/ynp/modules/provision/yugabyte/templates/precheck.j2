@@ -21,7 +21,7 @@ else
         add_result "Yugabyte Home Directory Assigned Check" "PASS" "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_user_home }}"
     else
         echo "Yugabyte home directory for user {{ yb_user }} is incorrectly set to $set_yb_user_home"
-        add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Yugabyte home directory for user {{ yb_user }} is set to $set_yb_home_dir instead of {{ yb_user_home }}"
+        add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Yugabyte home directory for user {{ yb_user }} is set to $set_yb_user_home instead of {{ yb_user_home }}"
     fi
 fi
 
@@ -48,24 +48,30 @@ check_directory_permissions() {
   if [ "$permissions" -lt 711 ]; then
     echo "Permissions of $dir are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
     add_result "$dir_name_msg Permissions Check" "FAIL" "Permissions of $dir are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
+  else
+    echo "$dir has the correct ownership and acceptable permissions"
+    add_result "$dir_name_msg Permissions Check" "PASS" "$dir has the correct ownership and acceptable permissions"
   fi
-  echo "$dir has the correct ownership and acceptable permissions"
-  add_result "$dir_name_msg Permissions Check" "PASS" "$dir has the correct ownership and acceptable permissions"
   free_space_gb=$(df -B1G --output=avail "$dir" | tail -n 1)
   if [ "$free_space_gb" -gt "$min_space_gb" ]; then
     add_result "$dir_name_msg Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
   else
-    add_result "$dir_name_msg Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+    add_result "$dir_name_msg Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${min_space_gb}G required."
   fi
 }
 
-is_subdirectory() {
+is_same_or_descendant() {
   local dir="$1"
   local parent="$2"
 
   # Resolve the absolute canonical paths
-  dir=$(realpath -m "$dir")
-  parent=$(realpath -m "$parent")
+  dir=$(realpath -m "$dir" 2>/dev/null || echo "$dir")
+  parent=$(realpath -m "$parent" 2>/dev/null || echo "$parent")
+
+  if [ "$dir" = "$parent" ]; then
+    # same directory
+    return 0
+  fi
 
   # Append a trailing slash to the parent directory for accurate matching
   case "$dir/" in
@@ -84,13 +90,16 @@ fi
 
 threshold={{ min_mount_point_dir_space_gb }}
 # Convert the space-separated string to an array
-mount_points="{{ mount_points | default('') | trim }}"
+mount_points="{{ mount_paths | default('') | trim }}"
 IFS=' ' read -ra mount_points_array <<< "$mount_points"
 # Verify each mount point
 for mount_point in "${mount_points_array[@]}"; do
-    if is_subdirectory "$mount_point" "{{ yb_home_dir }}"; then
-        message="Mountpoint $mount_point is inside software home directory {{ yb_home_dir }}"
-        add_result "home directory check" "FAIL" "$message"
+    if is_same_or_descendant "$mount_point" "{{ yb_home_dir }}"; then
+        message="Mountpoint $mount_point cannot be the same as or inside software home directory {{ yb_home_dir }}"
+        add_result "YB Home and Mount Path Check" "FAIL" "$message"
+    elif is_same_or_descendant "{{ yb_home_dir }}" "$mount_point"; then
+        message="Software home directory {{ yb_home_dir }} cannot be the same as or inside mount point $mount_point"
+        add_result "YB Home and Mount Path Check" "FAIL" "$message"
     fi
     if [ -d "$mount_point" ]; then
         # Check if the directory is owned by yugabyte or has 7 (rwx) permissions
@@ -160,8 +169,8 @@ if [ "{{ check_clean_dirs }}" == "True" ]; then
   # Check whether files in data directory are cleaned up.
   data_dir_clean=true
   processes=("tserver" "master" "controller")
-  IFS="," read -ra mount_points_arr <<< "$mount_points"
-  for path in "${mount_points_arr[@]}"; do
+  IFS=' ' read -ra mount_points_array <<< "$mount_points"
+  for path in "${mount_points_array[@]}"; do
     if [ -e "$path/pg_data" ]; then
       data_dir_clean=false
       break

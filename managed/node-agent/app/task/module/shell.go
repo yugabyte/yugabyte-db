@@ -72,12 +72,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
-	cmd, err := createCmd(ctx, userDetail, cmdInfo.Cmd, cmdInfo.Args...)
-	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to create command %s. Error: %s", cmdInfo.Desc, err.Error())
-		return err
-	}
+	cmd := createCmd(ctx, userDetail, cmdInfo.Cmd, cmdInfo.Args...)
 	cmd.Env = append(cmd.Env, env...)
 	if cmdInfo.StdOut != nil {
 		cmd.Stdout = cmdInfo.StdOut
@@ -189,7 +184,7 @@ func createCmd(
 	userDetail *util.UserDetail,
 	name string,
 	arg ...string,
-) (*exec.Cmd, error) {
+) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, arg...)
 	if !userDetail.IsCurrent {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -202,13 +197,13 @@ func createCmd(
 	if pwd == "" {
 		pwd = "/tmp"
 	}
-	os.Setenv("PWD", pwd)
-	os.Setenv("HOME", pwd)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("PWD=%s", pwd))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("HOME=%s", pwd))
 	for _, userVar := range userVariables {
-		os.Setenv(userVar, userDetail.User.Username)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", userVar, userDetail.User.Username))
 	}
 	cmd.Dir = pwd
-	return cmd, nil
+	return cmd
 }
 
 func RunShellCmdWithRetry(
@@ -296,12 +291,7 @@ func createCmds(
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
 	for _, info := range infos {
-		cmd, err := createCmd(ctx, userDetail, info.Cmd, info.Args...)
-		if err != nil {
-			util.FileLogger().
-				Warnf(ctx, "Failed to create command %s. Error: %s", info.Desc, err.Error())
-			return err
-		}
+		cmd := createCmd(ctx, userDetail, info.Cmd, info.Args...)
 		cmd.Env = append(cmd.Env, env...)
 		if info.StdOut != nil {
 			cmd.Stdout = info.StdOut
@@ -324,7 +314,7 @@ func userEnv(
 	// Approximate capacity of 100.
 	env := make([]string, 0, 100)
 	// Interactive shell to source ~/.bashrc.
-	cmd, err := createCmd(ctx, userDetail, "bash")
+	cmd := createCmd(ctx, userDetail, "bash")
 	// Create a pseudo tty (non stdin) to act like SSH login.
 	// Otherwise, the child process is stopped because it is a background process.
 	ptty, err := pty.Start(cmd)
