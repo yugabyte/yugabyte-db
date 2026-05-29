@@ -242,10 +242,12 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
     pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid);
+    pg_replication_origin_table_id_ = GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid);
     table_list.emplace(pg_class_table_id_);
     table_list.emplace(pg_publication_rel_table_id_);
-    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class and pg_publication_rel "
-                           "to the polling list.";
+    table_list.emplace(pg_replication_origin_table_id_);
+    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel and "
+                           "pg_replication_origin to the polling list.";
   }
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
@@ -1603,8 +1605,7 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
   }
 
   for (auto table_id : publication_table_list_) {
-    if (!new_tables.contains(table_id) && table_id != pg_class_table_id_ &&
-        table_id != pg_publication_rel_table_id_) {
+    if (!new_tables.contains(table_id) && !IsCatalogTableEligibleForCDC(table_id)) {
       tables_to_be_removed.insert(table_id);
       VLOG_WITH_PREFIX(1) << "Table: " << table_id << " to be removed from polling list";
     }
@@ -1782,6 +1783,11 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
   return tablet_ids;
 }
 
+bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
+  return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
+         table_id == pg_replication_origin_table_id_;
+}
+
 bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
@@ -1821,17 +1827,24 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
     }
 
     return true;
+  } else if (table_id == pg_replication_origin_table_id_) {
+    if (record->row_message().op() != RowMessage_Op_INSERT &&
+        record->row_message().op() != RowMessage_Op_DELETE) {
+      return false;
+    }
+    return true;
   }
 
-  // We should only receive records corresponding to pg_class and pg_publication_rel tables. Only
-  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex: when
-  // a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting retention
-  // barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_publication_rel and
+  // pg_replication_origin tables. Only possibility of reaching here is when a DDL record is sent
+  // from sys catalog tablet, for ex: when a new slot is created, the existing slot sees the
+  // CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
-      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
+      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
+      << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_;
   return false;
 }
 
