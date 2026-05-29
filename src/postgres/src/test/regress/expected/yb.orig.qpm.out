@@ -249,6 +249,33 @@ SELECT yb_pg_stat_plans_insert(
  
 (1 row)
 
+-- Hint text cannot be empty
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- query_id
+    8, -- plan_id
+    '', -- hint_text
+    'Valid plan text', -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+ERROR:  hint text must not be empty
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- query_id
+    8, -- plan_id
+    '/*+*/', -- hint_text
+    'Valid plan text', -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+ERROR:  hint text must not be empty
 -- Plan text cannot be NULL
 SELECT yb_pg_stat_plans_insert(
     1, -- dbid
@@ -267,6 +294,20 @@ SELECT yb_pg_stat_plans_insert(
  
 (1 row)
 
+-- Plan text cannot be empty
+SELECT yb_pg_stat_plans_insert(
+    5, -- dbid
+    6, -- user_id
+    7, -- queryid
+    8, -- plan_id
+    'Valid hint text', -- hint_text
+    '', -- plan_text
+    '2025-01-01 14:00:00+00', -- first_used
+    '2025-01-02 14:00:00+00', -- last_used
+    1.0, -- total_time
+    1.0 -- est_total_cost
+) /* __YB_STAT_PLANS_SKIP */;
+ERROR:  plan text must not be empty
 -- Stats must be populated as the function is marked as STRICT
 SELECT yb_pg_stat_plans_insert(
     1, -- dbid
@@ -285,6 +326,24 @@ SELECT yb_pg_stat_plans_insert(
  
 (1 row)
 
+SELECT * FROM yb_pg_stat_plans /* __YB_STAT_PLANS_SKIP */;
+ dbid | userid | queryid | planid |          first_used          |          last_used           |      hints      | calls | avg_exec_time | max_exec_time | max_exec_time_params | avg_est_cost |      plan       
+------+--------+---------+--------+------------------------------+------------------------------+-----------------+-------+---------------+---------------+----------------------+--------------+-----------------
+    1 |      2 |       3 |      4 | Wed Jan 01 06:00:00 2025 PST | Thu Jan 02 06:00:00 2025 PST | Valid hint text |     1 |             1 |             1 |                      |            1 | Valid plan text
+(1 row)
+
+-- Queries that cannot be hinted should not be tracked
+CREATE TABLE t_simple (k INT PRIMARY KEY, v INT);
+INSERT INTO t_simple VALUES (1, 1);
+UPDATE t_simple SET v = 2 WHERE k = 1;
+DELETE FROM t_simple WHERE k = 1;
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+DROP TABLE t_simple;
 SELECT * FROM yb_pg_stat_plans /* __YB_STAT_PLANS_SKIP */;
  dbid | userid | queryid | planid |          first_used          |          last_used           |      hints      | calls | avg_exec_time | max_exec_time | max_exec_time_params | avg_est_cost |      plan       
 ------+--------+---------+--------+------------------------------+------------------------------+-----------------+-------+---------------+---------------+----------------------+--------------+-----------------
