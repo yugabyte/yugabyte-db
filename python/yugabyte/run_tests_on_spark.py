@@ -89,9 +89,8 @@ from yugabyte.test_descriptor import TEST_DESCRIPTOR_SEPARATOR  # noqa
 # that should be triggered earlier.
 TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 
-# Defaults for maximum test failure threshold, after which the Spark job will be aborted
-DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
-DEFAULT_MAX_NUM_TEST_FAILURES = 100
+# Default for maximum test failure threshold, after which the Spark job will be aborted
+DEFAULT_MAX_NUM_TEST_FAILURES = 200
 
 # Default for test artifact size limit to copy back to the build host, in bytes.
 MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024
@@ -127,6 +126,8 @@ from yugabyte import yb_dist_tests  # noqa
 from yugabyte import command_util  # noqa
 from yugabyte.common_util import set_to_comma_sep_str, is_macos  # noqa
 from yugabyte import artifact_upload  # noqa
+
+REPEAT_FAILURE_LIMIT = 50
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
@@ -298,6 +299,9 @@ def init_spark_context(details: List[str] = []) -> None:
         'build type: {}'.format(build_type)
         ]
 
+    if 'Version' in os.environ and 'YB_RELEASE_BUILD_NUMBER' in os.environ:
+        details.append('version: {}-b{}'.format(os.environ['Version'],
+                                                os.environ['YB_RELEASE_BUILD_NUMBER']))
     if 'BUILD_URL' in os.environ:
         details.append('URL: {}'.format(os.environ['BUILD_URL']))
 
@@ -360,6 +364,24 @@ def copy_to_host(artifact_paths: List[str], dest_host: str) -> artifact_upload.F
         path_transformer=path_transformer)
 
 
+def upload_spark_stderr(
+        test_descriptor_str: str,
+        csi_id: str) -> None:
+    from pyspark import SparkFiles  # type: ignore
+    spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
+
+    test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+    error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+    spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
+
+    error_log_dir_path = os.path.dirname(spark_stderr_dest)
+    file_util.mkdir_p(error_log_dir_path)
+
+    logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
+    shutil.copyfile(spark_stderr_src, spark_stderr_dest)
+    csi_report.upload_log(csi_id, time.time(), [spark_stderr_dest])
+
+
 def copy_spark_stderr(
         test_descriptor_str: str,
         csi_id: str,
@@ -404,7 +426,8 @@ def join_build_root_with(rel_path: str) -> str:
     return os.path.join(get_build_root(), rel_path)
 
 
-def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
+def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: Any,
+                      rerun: bool) -> None:
     """
     This is invoked in parallel to actually run tests.
     """
@@ -463,7 +486,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt)
+        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt, rerun)
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
@@ -491,6 +514,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
                 if csi_id:
                     csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
                     csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
+                    upload_spark_stderr(test_descriptor_str, csi_id)
+                else:
                     if build_host:
                         copy_spark_stderr(test_descriptor_str, csi_id, build_host)
                 process.kill()
@@ -564,9 +589,14 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            artifact_copy_result = copy_to_host(artifact_paths, build_host)
+            if not csi_id:
+                artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
-                spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id, build_host)
+                if not csi_id:
+                    spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id,
+                                                                build_host)
+                else:
+                    upload_spark_stderr(test_descriptor_str, csi_id)
 
             rel_artifact_paths = [
                 os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
@@ -574,14 +604,15 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
 
         csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags)
 
-        return yb_dist_tests.TestResult(
-                exit_code=exit_code,
-                test_descriptor=test_descriptor,
-                elapsed_time_sec=elapsed_time_sec,
-                failed_without_output=failed_without_output,
-                artifact_paths=rel_artifact_paths,
-                artifact_copy_result=artifact_copy_result,
-                spark_error_copy_result=spark_error_copy_result)
+        test_results.add(yb_dist_tests.TestResult(
+            exit_code=exit_code,
+            test_descriptor=test_descriptor,
+            elapsed_time_sec=elapsed_time_sec,
+            failed_without_output=failed_without_output,
+            artifact_paths=rel_artifact_paths,
+            artifact_copy_result=artifact_copy_result,
+            spark_error_copy_result=spark_error_copy_result))
+        return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
         delete_if_exists_log_errors(test_started_running_flag_file)
@@ -1163,18 +1194,78 @@ def propagate_env_vars() -> None:
     logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
+# This action is a spark job, not individual task.
 def run_spark_action(action: Any) -> Any:
     import py4j  # type: ignore
+    results = None
     try:
         results = action()
     except py4j.protocol.Py4JJavaError as e:
         if "cancelled as part of cancellation of all jobs" in str(e):
-            logging.warning("Spark job was killed after hitting test failure threshold of %s",
-                            g_max_num_test_failures)
+            log_heading("Spark job was killed after hitting test failure threshold of {}".format(
+                        g_max_num_test_failures))
         else:
-            logging.error("Spark job failed to run! Jenkins should probably restart this build.")
-        raise
+            logging.error("Spark job failed to run!.")
+    return results
 
+
+# Run the tests in parallel on Spark. This is executed on the main Spark driver.
+def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool) -> \
+        List[yb_dist_tests.TestResult]:
+    # Rather than collect results from RDD dataset, accumulate them in the spark_context.
+    # That way we are not dependent on the entire test set to run successfully and can
+    # capture partial results.
+    from pyspark.accumulators import AccumulatorParam  # type: ignore
+
+    class ListAccumulatorParam(AccumulatorParam):  # type: ignore
+        def zero(self, value: Any) -> list:
+            return []
+
+        def addInPlace(self, listvar: list, newvalue: Any) -> list:
+            listvar.append(newvalue)
+            return listvar
+
+    test_results = spark_context.accumulator([], ListAccumulatorParam())  # type: ignore
+
+    def monitor_fail_count(stop_event: threading.Event) -> None:
+        while fail_count.value < g_max_num_test_failures and not stop_event.is_set():
+            time.sleep(5)
+
+        if fail_count.value >= g_max_num_test_failures:
+            logging.info("Stopping all jobs for application %s",
+                         spark_context.applicationId)  # type: ignore
+            spark_context.cancelAllJobs()  # type: ignore
+
+    fail_count = spark_context.accumulator(0)  # type: ignore
+    counter_stop = threading.Event()
+    counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
+    counter_thread.daemon = True
+
+    log_heading("Test Job Beginning")
+    test_phase_start_time = time.time()
+
+    # Randomize test order to avoid any kind of skew.
+    random.shuffle(test_descriptors)
+    test_names_rdd = spark_context.parallelize(  # type: ignore
+            [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
+            numSlices=len(test_descriptors))
+
+    try:
+        counter_thread.start()
+        # We are not passing in fail_count or test_results values, just references to
+        # the accumulator objects.
+        run_spark_action(lambda: test_names_rdd.map(
+            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun)
+        ).collect())
+
+    finally:
+        counter_stop.set()
+        counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+
+    # Each task (or executor?) adds a list of results, so we need to flatten to single list.
+    results = []
+    for rlist in test_results.value:
+        results.extend(rlist)
     return results
 
 
@@ -1182,7 +1273,7 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
     suite_var_name = 'YB_CSI_' + test_descriptor.language
     skip_time = time.time()
     os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
-    csi_id = csi_report.create_test(test_descriptor, skip_time, 0)
+    csi_id = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
     csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'])
 
 
@@ -1197,7 +1288,10 @@ def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
         for line in input_file:
             line = line.strip()
             if line:
-                disabled_tests.append(SimpleTestDescriptor.parse(line))
+                try:
+                    disabled_tests.append(SimpleTestDescriptor.parse(line))
+                except Exception:
+                    logging.exception("Could not parse disabled test line: '%s'", line)
     logging.info("Loaded %d disabled tests from %s", len(disabled_tests), disable_list_path)
 
     enabled = []
@@ -1269,6 +1363,8 @@ def main() -> None:
                              'produced by dependency_graph.py')
     parser.add_argument('--num_repetitions', type=int, default=1,
                         help='Number of times to run each test.')
+    parser.add_argument('--fail_repetitions', type=int, default=0,
+                        help='Number of times to re-run each failure.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
@@ -1291,9 +1387,7 @@ def main() -> None:
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'
-                             'Default is {} for all the builds except {} for macOS debug.'.format(
-                              DEFAULT_MAX_NUM_TEST_FAILURES,
-                              DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG))
+                             'Default is {}.'.format(DEFAULT_MAX_NUM_TEST_FAILURES))
 
     args = parser.parse_args()
     global g_spark_master_url_override
@@ -1332,6 +1426,9 @@ def main() -> None:
     if args.num_repetitions < 1:
         fatal_error("--num_repetitions must be at least 1, got: {}".format(args.num_repetitions))
 
+    if args.fail_repetitions > 0 and args.num_repetitions > 1:
+        fatal_error("--fail_repetitions is not supported with --num_repetitions > 1")
+
     failed_test_list_path = args.failed_test_list
     if failed_test_list_path and not is_parent_dir_writable(failed_test_list_path):
         fatal_error("Parent directory of failed test list destination path ('{}') is not "
@@ -1366,10 +1463,7 @@ def main() -> None:
 
     global g_max_num_test_failures
     if not (args.max_num_test_failures or os.environ.get('YB_MAX_NUM_TEST_FAILURES', None)):
-        if is_macos() and global_conf.build_type == 'debug':
-            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG
-        else:
-            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES
+        g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES
     elif args.max_num_test_failures:
         g_max_num_test_failures = args.max_num_test_failures
     else:
@@ -1508,47 +1602,30 @@ def main() -> None:
 
     set_global_conf_for_spark_jobs()
 
+    # Rather than collect results from RDD dataset, accumulate them in the spark_context.
+    # That way we are not dependent on the entire test set to run successfully and can
+    # capture partial results.
+    from pyspark.accumulators import AccumulatorParam  # type: ignore
+
+    class ListAccumulatorParam(AccumulatorParam):  # type: ignore
+        def zero(self, value: Any) -> list:
+            return []
+
+        def addInPlace(self, listvar: list, newvalue: Any) -> list:
+            listvar.append(newvalue)
+            return listvar
+
+    test_results = spark_context.accumulator([], ListAccumulatorParam())  # type: ignore
+
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
+    logging.info("Running {} tasks on Spark".format(total_num_tests))
+    assert total_num_tests == len(test_descriptors), \
+        "total_num_tests={}, len(test_descriptors)={}".format(
+                total_num_tests, len(test_descriptors))
 
-    results: List[yb_dist_tests.TestResult] = []
     if test_descriptors:
-        def monitor_fail_count(stop_event: threading.Event) -> None:
-            while fail_count.value < g_max_num_test_failures and not stop_event.is_set():
-                time.sleep(5)
-
-            if fail_count.value >= g_max_num_test_failures:
-                logging.info("Stopping all jobs for application %s",
-                             spark_context.applicationId)  # type: ignore
-                spark_context.cancelAllJobs()  # type: ignore
-
-        fail_count = spark_context.accumulator(0)  # type: ignore
-        counter_stop = threading.Event()
-        counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
-        counter_thread.daemon = True
-
-        logging.info("Running {} tasks on Spark".format(total_num_tests))
-        assert total_num_tests == len(test_descriptors), \
-            "total_num_tests={}, len(test_descriptors)={}".format(
-                    total_num_tests, len(test_descriptors))
-        test_phase_start_time = time.time()
-
-        # Randomize test order to avoid any kind of skew.
-        random.shuffle(test_descriptors)
-        test_names_rdd = spark_context.parallelize(  # type: ignore
-                [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-                numSlices=total_num_tests)
-
-        try:
-            counter_thread.start()
-            results = run_spark_action(lambda: test_names_rdd.map(
-              lambda test_name: parallel_run_test(test_name, fail_count)
-            ).collect())
-
-        finally:
-            counter_stop.set()
-            counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
-
+        results = run_tests_job(test_descriptors, rerun=False)
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
@@ -1565,6 +1642,7 @@ def main() -> None:
     num_tests_by_language: Dict[str, int] = defaultdict(int)
     failures_by_language: Dict[str, int] = defaultdict(int)
     failed_test_desc_strs = []
+    failed_test_descriptors = []
     had_errors_copying_artifacts = False
 
     result: yb_dist_tests.TestResult
@@ -1580,6 +1658,7 @@ def main() -> None:
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1
             failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
+            failed_test_descriptors.append(result.test_descriptor)
         result.log_artifact_upload_errors()
         if result.artifact_copy_result:
             total_artifact_upload_time_sec += result.artifact_copy_result.total_time_sec
@@ -1593,9 +1672,6 @@ def main() -> None:
         num_tests_by_language[test_language] += 1
     logging.info("Total time spent uploading artifacts: %.2f sec (total retry wait time: %.2f sec)",
                  total_artifact_upload_time_sec, total_retry_wait_time_sec)
-
-    for suite_name in csi_suites.keys():
-        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])
 
     if had_errors_copying_artifacts and global_exit_code == 0:
         logging.info("Will return exit code 1 due to errors copying artifacts to build host")
@@ -1627,6 +1703,30 @@ def main() -> None:
             total_elapsed_time_sec=total_test_run_time_sec,
             gzip_full_report=not args.no_gzip_full_report,
             save_to_build_dir=args.save_report_to_build_dir)
+
+    tot_failures = len(failed_test_descriptors)
+    if tot_failures > 0 and args.fail_repetitions > 0:
+        if tot_failures > REPEAT_FAILURE_LIMIT:
+            logging.info("Too many failures ({} > {}), not re-running failures".format(
+                tot_failures, REPEAT_FAILURE_LIMIT))
+        else:
+            logging.info("Re-running failed tests {} times each".format(args.fail_repetitions))
+            test_descriptors_rerun = [
+                test_descriptor.with_attempt_index(i)
+                for test_descriptor in failed_test_descriptors
+                for i in range(1, args.fail_repetitions + 1)
+            ]
+            rerun_results = run_tests_job(test_descriptors_rerun, rerun=True)
+            logging.info("Re-run results: %s  Expected: %s", len(rerun_results),
+                         len(test_descriptors_rerun))
+            rerun_failed = 0
+            for result in rerun_results:
+                if result.exit_code != 0:
+                    rerun_failed += 1
+            logging.info("Number of failures in re-run: %s", rerun_failed)
+
+    for suite_name in csi_suites.keys():
+        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])
 
     if args.sleep_after_tests:
         # This can be used as a way to keep the Spark app running during debugging while examining
