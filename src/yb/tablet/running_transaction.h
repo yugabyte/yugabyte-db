@@ -208,6 +208,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionalBatchData last_batch_data_;
   OneWayBitmap replicated_batches_;
   RunningTransactionContext& context_;
+  std::weak_ptr<void> weak_context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
 

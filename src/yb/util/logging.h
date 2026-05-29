@@ -144,6 +144,31 @@
 #define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
     YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
 
+#define LOG_COND_SEVERITY(condition, severity_true, severity_false) \
+  google::LogMessage( \
+      __FILE__, __LINE__, \
+      (condition) ? YB_GLOG_SEVERITY(severity_true) \
+                  : YB_GLOG_SEVERITY(severity_false)).stream()
+
+#define LOG_WITH_PREFIX_COND_SEVERITY(condition, severity_true, severity_false) \
+    LOG_COND_SEVERITY(condition, severity_true, severity_false) << LogPrefix()
+
+////////////////////////////////////////////////////////////////////////////////
+// Versions of glog macros for "LOG_EVERY" and "LOG_FIRST" that annotate the
+// benign races on their internal static variables.
+////////////////////////////////////////////////////////////////////////////////
+
+#define YB_GLOG_SEVERITY_INFO google::GLOG_INFO
+#define YB_GLOG_SEVERITY_WARNING google::GLOG_WARNING
+#define YB_GLOG_SEVERITY_ERROR google::GLOG_ERROR
+#define YB_GLOG_SEVERITY_FATAL google::GLOG_FATAL
+#if DCHECK_IS_ON()
+#define YB_GLOG_SEVERITY_DFATAL google::GLOG_FATAL
+#else
+#define YB_GLOG_SEVERITY_DFATAL google::GLOG_ERROR
+#endif
+#define YB_GLOG_SEVERITY(severity) BOOST_PP_CAT(YB_GLOG_SEVERITY_, severity)
+
 namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 } // namespace yb
