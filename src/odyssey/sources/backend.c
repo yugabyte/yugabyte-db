@@ -665,7 +665,7 @@ static inline int od_backend_startup(od_server_t *server,
 			machine_msg_free(msg);
 			break;
 		}
-		case KIWI_BE_NOTICE_RESPONSE:
+		case KIWI_BE_NOTICE_RESPONSE: {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 			/*
 			 * Store the client_id from the notice packet during authentication
@@ -681,8 +681,36 @@ static inline int od_backend_startup(od_server_t *server,
 				}
 			}
 #endif
-			machine_msg_free(msg);
+			od_client_t *client_to_forward = NULL;
+			if (is_authenticating)
+				client_to_forward = client->yb_external_client;
+			else if (client != NULL)
+				client_to_forward = client;
+
+			if (client_to_forward != NULL) {
+				rc = od_write(&client_to_forward->io, &msg);
+				if (rc < 0) {
+					od_error(
+						&instance->logger,
+						"startup notice-response",
+						client_to_forward, server,
+						"write error while forwarding notice-response packet: %s",
+						od_io_error(
+							&client_to_forward->io));
+				/*
+				 * YB: Don't return -1 here. The client may have
+				 * disconnected, but the backend connection is still
+				 * valid. Failing to forward an informational
+				 * NoticeResponse should not abort startup and tear
+				 * down the backend.
+				 */
+					break;
+				}
+			} else {
+				machine_msg_free(msg);
+			}
 			break;
+		}
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 				yb_handle_fatalforlogicalconnection_pkt(
 					is_authenticating ? client->yb_external_client : client,
