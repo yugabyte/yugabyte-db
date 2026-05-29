@@ -193,6 +193,53 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       }
   }
 
+  // Regression test: protocol-level Close ('C') message must not crash when
+  // the search-path cache has been invalidated since the last transaction.
+  //   1. Client prepares + executes a named statement. The Sync after Execute
+  //      runs CommitTransaction(), which sets CurrentResourceOwner = NULL and
+  //      tears down TopTransactionResourceOwner.
+  //   2. Client sends SET search_path which tries to invalidate the cache.
+  //   3. Client sends Close 'S' on the prepared statement which would make
+  //      request to check the validity of the prepared statement.
+  @Test
+  public void testClosePacketAfterSearchPathChange() throws Exception {
+    Properties props = new Properties();
+    // Force named extended-protocol prepared statements so JDBC sends Parse +
+    // Bind + Execute as separate messages.
+    props.setProperty("prepareThreshold", "1");
+    // Disable the driver-side prepared statement cache so pstmt.close()
+    // actually emits a Close 'S' message instead of returning the statement
+    // to the cache silently.
+    props.setProperty("preparedStatementCacheQueries", "0");
+    setUpTestTableAndCleanBackends();
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withUser("yugabyte")
+            .withPassword("yugabyte")
+            .connect(props)) {
+      Statement stmt = conn.createStatement();
+
+      PreparedStatement pstmt = conn.prepareStatement(SELECT_QUERY1);
+      pstmt.execute();
+
+      // Dirty the search-path cache. assign_search_path() flips
+      // baseSearchPathValid to false; recomputeNamespacePath() will need to
+      // walk pg_authid (for $user) the next time it's called.
+      stmt.execute("SET search_path TO public");
+
+      // Without the fix, this Close 'S' segfaults inside the catcache lookup
+      // because the 'C' message handler never started a transaction and
+      // CurrentResourceOwner is NULL.
+      pstmt.close();
+
+      // Connection must still be usable -- a backend crash would have
+      // dropped it.
+      ResultSet rs = stmt.executeQuery("SELECT 1");
+      assertEquals(true, rs.next());
+      assertEquals(1, rs.getInt(1));
+    }
+  }
+
   @Test
   public void testDeallocateQuery() throws Exception {
     // Validates DEALLOCATE statement sent for valid protocol-level

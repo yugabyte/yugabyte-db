@@ -259,6 +259,124 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
         survivingIds.equals(expectedIds));
   }
 
+  // Validates that LRU ForceClose eviction works correctly when a GUC such as
+  // search_path has been changed, making the existing cached plans invalid.
+  // The scenario:
+  //   1. Set a small per-backend prepared-statement cap.
+  //   2. Round-robin attach distributes prepares across every backend until
+  //      each one is past the cap (triggering ForceClose eviction).
+  //   3. Change search_path so cached plans on every backend become stale
+  //      (conn mgr's session-parameter tracking re-applies the SET on each
+  //      backend on the next attach).
+  //   4. Prepare more statements; ForceClose runs again on every backend with
+  //      a dirty search_path.
+  // ForceClose handler shouldn't access catalog cache so it does not need a
+  // transaction and must not crash even when search_path is dirty. The cap
+  // assertion runs on every backend (round-robin verification), so any
+  // backend that exceeds the cap fails the test instead of being silently
+  // skipped.
+  @Test
+  public void testForceCloseAfterSearchPathChange() throws Exception {
+    LOG.info("Running with optimizedMode={}", optimizedMode);
+    final int maxPrepStmts = 3;
+    // numBackends is reported as 3 with the default round_robin warmup; using
+    // 30 here gives each backend ~10 prepares per phase, well past the cap.
+    final int phaseStmts = 30;
+
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_conn_mgr_max_prepared_statements", String.valueOf(maxPrepStmts));
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query, log_debug");
+    tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
+        Boolean.toString(optimizedMode));
+    tserverFlags.put("ysql_conn_mgr_enable_prep_stmt_close",
+        Boolean.toString(optimizedMode));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+    props.setProperty("preparedStatementCacheQueries", "0");
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withUser("yugabyte")
+            .withPassword("yugabyte")
+            .connect(props)) {
+
+      Statement stmt = conn.createStatement();
+      stmt.execute("CREATE TABLE IF NOT EXISTS t_force_close_sp (id int)");
+
+      // Phase 1: round-robin attach distributes prepares across backends.
+      // With phaseStmts >> numBackends * maxPrepStmts, each backend exceeds
+      // the cap and triggers ForceClose eviction on detach.
+      int nextId = 0;
+      for (int i = 0; i < phaseStmts; i++) {
+        try (PreparedStatement pstmt = conn.prepareStatement(
+            "SELECT id FROM t_force_close_sp WHERE id = " + nextId++)) {
+          pstmt.execute();
+        }
+      }
+
+      int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+      LOG.info("Pool has {} physical backend(s)", numBackends);
+
+      // Dirty search_path. With ysql_conn_mgr_optimized_session_parameters
+      // (default true) conn mgr tracks the SET per-client and re-applies it
+      // on each backend on the next attach, so every backend that conn lands
+      // on during Phase 2 will have a stale search_path before its next
+      // ForceClose runs.
+      stmt.execute("SET search_path = pg_catalog, public");
+
+      // Phase 2: more prepares trigger ForceClose with dirty search_path on
+      // every backend. If the ForceClose handler accessed the catalog cache,
+      // any backend hit here would crash.
+      for (int i = 0; i < phaseStmts; i++) {
+        try (PreparedStatement pstmt = conn.prepareStatement(
+            "SELECT id FROM t_force_close_sp WHERE id = " + nextId++)) {
+          pstmt.execute();
+        }
+      }
+
+      // Connection must still be usable on every backend after eviction.
+      for (int b = 0; b < numBackends; b++) {
+        ResultSet rs = stmt.executeQuery("SELECT 1");
+        assertTrue("Connection must remain usable after ForceClose eviction",
+            rs.next());
+        assertEquals(1, rs.getInt(1));
+      }
+
+      // Verify the cap holds on every backend. With round-robin, consecutive
+      // simple-mode queries on verifyConn rotate through backends, so
+      // iterating numBackends times visits each one. preferQueryMode=simple
+      // ensures verification queries don't create server-side prepared
+      // statements that would themselves count toward the cap.
+      Properties simpleProps = new Properties();
+      simpleProps.setProperty("preferQueryMode", "simple");
+      try (Connection verifyConn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .withUser("yugabyte")
+              .withPassword("yugabyte")
+              .connect(simpleProps);
+           Statement vs = verifyConn.createStatement()) {
+        for (int b = 0; b < numBackends; b++) {
+          ResultSet rs = vs.executeQuery(
+              "SELECT count(*) FROM pg_prepared_statements");
+          assertTrue(rs.next());
+          int count = rs.getInt(1);
+          LOG.info("Backend {} prepared statement count after eviction: {}",
+              b, count);
+          assertTrue(
+              String.format(
+                  "Backend %d: expected <= %d prepared statements, got %d",
+                  b, maxPrepStmts, count),
+              count <= maxPrepStmts);
+        }
+      }
+
+      stmt.close();
+    }
+  }
+
   @FunctionalInterface
   private interface Function<T, R> {
     R apply(T t) throws Exception;

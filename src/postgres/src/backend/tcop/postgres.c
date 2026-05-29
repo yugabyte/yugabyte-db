@@ -7353,7 +7353,17 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
+							{
+								if (YbIsClientYsqlConnMgr())
+								{
+									/*
+									 * YB: Start a transaction, if not already done, to allow catalog
+									 * cache lookup in YbIsCachedQueryValid()
+									 */
+									yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */ );
+								}
 								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
+							}
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7392,6 +7402,10 @@ PostgresMain(const char *dbname, const char *username)
 
 								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
 								yb_conn_mgr_selective_deallocate = false;
+								/*
+								 * YB: Force Close does not access catalog cache and hence starting
+								 * a transaction is not required here.
+								 */
 								DropPreparedStatement(close_target, false, false);
 								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
 
