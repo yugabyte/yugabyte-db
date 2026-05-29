@@ -61,6 +61,57 @@ check_file_exists() {
   fi
 }
 
+# Verifies that a directory and all of its descendants up to max_depth are accessible to the
+# current user. Echoes a single-line status:
+#   OK            - the directory and every subdirectory within max_depth is readable and
+#                   traversable.
+#   MISSING       - the top-level path does not exist.
+#   DENIED        - the top-level path exists but is not readable/traversable, OR some
+#                   descendant within max_depth could not be read/traversed.
+# Uses `stat` (instead of `test -e`) for the top-level probe so a missing path can be told
+# apart from a permission error on a parent directory. For the recursive case, captures
+# find's stderr - find prints "Permission denied" for every directory it cannot enter, so a
+# non-empty stderr means at least one subtree within max_depth is inaccessible.
+check_dir_accessible() {
+  remote_dir_path=$1
+  shift
+  max_depth=$1
+
+  if ! stat_err=$(stat "$remote_dir_path" 2>&1 >/dev/null); then
+    if [[ "$stat_err" == *"No such file or directory"* ]]
+    then
+      echo "MISSING"
+    else
+      echo "DENIED"
+    fi
+    return
+  fi
+
+  if [ ! -r "$remote_dir_path" ] || [ ! -x "$remote_dir_path" ]
+  then
+    echo "DENIED"
+    return
+  fi
+
+  # max_depth <= 0 means only the top-level path is in scope; the subsequent listing runs with
+  # -maxdepth 0 too, which returns no files. Existence and readability of the top-level were
+  # already verified above, so skip the recursive walk rather than relying on find's implicit
+  # "start point only" behavior at -maxdepth 0.
+  if [ "$max_depth" -le 0 ]
+  then
+    echo "OK"
+    return
+  fi
+
+  perm_errors=$(find "$remote_dir_path" -maxdepth "$max_depth" -type d 2>&1 >/dev/null)
+  if [ -z "$perm_errors" ]
+  then
+    echo "OK"
+  else
+    echo "DENIED"
+  fi
+}
+
 get_paths_and_sizes() {
   remote_dir_path=$1
   shift

@@ -541,9 +541,11 @@ public class FileCollectionDownloader {
       String fileName = new File(remoteTarPath).getName();
       Path localPath = Paths.get(outputDirectory, fileName);
 
-      // Download the file using NodeUniverseManager
-      nodeUniverseManager.downloadNodeFile(
-          node, universe, "/", List.of(remoteTarPath), localPath.toString());
+      // Copy the tar straight back as bytes. downloadNodeFile would tar-stream the file
+      // during transfer (preserving its remote path inside a wrapper archive), producing a
+      // gratuitous extra tar layer in the final download. The remote tar is already a tar.gz
+      // and the staging dir is yugabyte-owned/world-readable, so a plain file copy works.
+      nodeUniverseManager.copyFileFromNode(node, universe, remoteTarPath, localPath.toString());
 
       // Verify download
       if (Files.exists(localPath)) {

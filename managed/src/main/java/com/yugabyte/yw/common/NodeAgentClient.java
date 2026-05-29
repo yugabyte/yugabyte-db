@@ -129,7 +129,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
-import org.mapstruct.ap.internal.util.Strings;
 import org.slf4j.MDC;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
@@ -873,12 +872,20 @@ public class NodeAgentClient {
       NodeAgent nodeAgent, Path scriptPath, List<String> params, ShellProcessContext context) {
     try {
       byte[] bytes = Files.readAllBytes(scriptPath);
+      // Use a unique heredoc terminator so it can't collide with content inside the script body
+      // (e.g. a 'cat <<EOF ... EOF' block in the user's script).
+      String heredocMarker = "YBA_SCRIPT_EOF_" + UUID.randomUUID().toString().replace("-", "");
+      String quotedParams =
+          params.stream().map(NodeAgentClient::shellQuote).collect(Collectors.joining(" "));
       ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
       commandBuilder.add("/bin/bash").add("-c");
       commandBuilder.add(
           String.format(
-              "/bin/bash -s %s <<'EOF'\n%s\nEOF",
-              Strings.join(params, " "), new String(bytes, StandardCharsets.UTF_8)));
+              "/bin/bash -s -- %s <<'%s'\n%s\n%s",
+              quotedParams,
+              heredocMarker,
+              new String(bytes, StandardCharsets.UTF_8),
+              heredocMarker));
       List<String> command = commandBuilder.build();
       return executeCommand(nodeAgent, command, context);
     } catch (Exception e) {
@@ -888,6 +895,15 @@ public class NodeAgentClient {
       }
       throw new RuntimeException(e);
     }
+  }
+
+  /**
+   * Wraps a string in single quotes for safe interpolation into a bash command line. Embedded
+   * single quotes are escaped using the standard '"'"' idiom (close-quote, escaped-quote,
+   * re-open-quote).
+   */
+  private static String shellQuote(String s) {
+    return "'" + s.replace("'", "'\\''") + "'";
   }
 
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {

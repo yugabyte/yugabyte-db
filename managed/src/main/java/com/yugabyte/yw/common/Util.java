@@ -153,6 +153,14 @@ public class Util {
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
+  /**
+   * Conservative safe-set for string values that are interpolated directly into shell or sed
+   * command fragments. Matches only ASCII letters, digits, dot, underscore, and hyphen. This is a
+   * security check (preventing shell-quote escape, command injection, and sed metacharacters), not
+   * a schema rule -- it must not be relaxed without auditing every interpolation site.
+   */
+  public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
+
   public static final double EPSILON = 0.000001d;
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
@@ -447,6 +455,15 @@ public class Util {
   // Validate the universe name pattern.
   public static boolean isValidUniverseNameFormat(String univName) {
     return univName.matches(UNIVERSE_NAME_REGEX);
+  }
+
+  /**
+   * Whether the given value is safe to interpolate verbatim into a shell or sed command fragment
+   * (e.g., a single-quoted s-command separator). Returns false for null. Tighter than any product
+   * schema rule by design -- see {@link #SHELL_SAFE_IDENTIFIER}.
+   */
+  public static boolean isShellSafeIdentifier(String value) {
+    return value != null && SHELL_SAFE_IDENTIFIER.matcher(value).matches();
   }
 
   // Helper API to create a CSV of any keys present in existing map but not in new
