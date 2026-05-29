@@ -37,6 +37,39 @@ dockv::KeyBytes ToKeyBytes(const dockv::DocKey& doc_key) {
 
 } // namespace
 
+bool PgReadRange::Equals(const PgReadRange& other) const {
+  return (empty_ && other.empty_) ||
+         (!empty_ && !other.empty_ &&
+          lower_bound_.CompareTo(other.lower_bound_) == 0 &&
+          upper_bound_.CompareTo(other.upper_bound_) == 0 &&
+          lower_bound_is_inclusive_ == other.lower_bound_is_inclusive_ &&
+          upper_bound_is_inclusive_ == other.upper_bound_is_inclusive_);
+}
+
+bool PgReadRange::Intersects(const PgReadRange& other) const {
+  if (empty_ || other.empty_) {
+    return false;
+  }
+  // No intersection if the lower bound is higher than other's upper bound.
+  // Special case: empty upper bound is higher than anything.
+  if (!other.upper_bound_.empty()) {
+    auto cmp = lower_bound_.CompareTo(other.upper_bound_);
+    if (cmp > 0 ||
+        (cmp == 0 && !(lower_bound_is_inclusive_ && other.upper_bound_is_inclusive_))) {
+      return false;
+    }
+  }
+  // Same, other way around.
+  if (!upper_bound_.empty()) {
+    auto cmp = upper_bound_.CompareTo(other.lower_bound_);
+    if (cmp < 0 ||
+        (cmp == 0 && !(upper_bound_is_inclusive_ && other.lower_bound_is_inclusive_))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool is_lower) {
   if (!is_inclusive) {
     if (is_lower) {
@@ -94,6 +127,18 @@ void PgReadRange::SetPartitionBounds(size_t partition) {
       // Hash code bound is not a document key, inclusivity does not matter
       SetUpperBound(std::move(bound), false /* is_inclusive */);
     }
+  }
+  ComputeEmpty();
+}
+
+void PgReadRange::SetRequestBounds(const LWPgsqlReadRequestPB& req) {
+  if (req.has_lower_bound()) {
+    auto bound = ToKeyBytes(req.lower_bound().key());
+    SetLowerBound(std::move(bound), req.lower_bound().is_inclusive());
+  }
+  if (req.has_upper_bound()) {
+    auto bound = ToKeyBytes(req.upper_bound().key());
+    SetUpperBound(std::move(bound), req.upper_bound().is_inclusive());
   }
   ComputeEmpty();
 }
