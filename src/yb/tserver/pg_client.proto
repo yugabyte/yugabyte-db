@@ -56,6 +56,8 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsDatabaseColocated(PgIsDatabaseColocatedRequestPB)
+      returns (PgIsDatabaseColocatedResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB) {
@@ -591,6 +593,17 @@ message PgGetDatabaseInfoResponsePB {
   AppStatusPB status = 1;
 
   master.GetNamespaceInfoResponsePB info = 2;
+}
+
+message PgIsDatabaseColocatedRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsDatabaseColocatedResponsePB {
+  AppStatusPB status = 1;
+
+  bool colocated = 2;
+  bool legacy_colocated_database = 3;
 }
 
 message PgIsInitDbDoneRequestPB {
