@@ -84,6 +84,7 @@
 #include "utils/varlena.h"
 
 /* YB includes */
+#include "catalog/storage.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
@@ -5924,6 +5925,14 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 {
 	if (yb_debug_log_internal_restarts)
 		elog(LOG, "Restarting transaction");
+
+	/*
+	 * Clean up pending deletes from the failed attempt. Since we are restarting
+	 * the transaction from the beginning, any physical files scheduled for deletion
+	 * (atCommit=true) should be forgotten, and any physical files created
+	 * (atCommit=false) should be deleted.
+	 */
+	smgrDoPendingDeletes(false);
 
 	/*
 	 * The txn might or might not have performed writes. Reset the state in

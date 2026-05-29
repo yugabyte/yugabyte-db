@@ -5618,4 +5618,42 @@ TEST_F(PgLibPqTest, TestGetTableXorHash) {
   ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
 }
 
+class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+
+    // Disable object locking and transactional DDL. If they are enabled, DDL conflicts
+    // are either avoided or DDL statement retries are not supported in READ COMMITTED,
+    // which would prevent us from exercising the DDL retry path.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+
+    // DDL statement retries are only supported in READ COMMITTED isolation.
+    // In debug builds, this flag defaults to false, causing READ COMMITTED to fall back
+    // to REPEATABLE READ, which would prevent the DDL retry.
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// Test for #29871: SMgrRelation hashtable corrupted during DDL retry.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Using SERIAL creates a sequence. Dropping a sequence schedules a physical file
+  // deletion via RelationDropStorage, which adds it to the pendingDeletes list.
+  ASSERT_OK(conn.Execute("CREATE TABLE drop_retry_test(a SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX drop_retry_test_idx ON drop_retry_test(a)"));
+
+  // Inject a transaction conflict error at the end of the next DDL statement.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 5"));
+
+  // This should succeed because the DDL retry wrapper will catch the conflict and retry.
+  // The fix ensures that the pendingDeletes list is cleared before the retry,
+  // preventing the "SMgrRelation hashtable corrupted" double-close error.
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS drop_retry_test CASCADE"));
+}
+
 } // namespace yb::pgwrapper
