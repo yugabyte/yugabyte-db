@@ -175,19 +175,19 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
     The directory structure of the **Backup location** matters. YBA determines the location of the backup files by removing the backup config's path from the start of the **Backup location** you provide, and then appending whatever remains to the backup config's path. As a result, the **Backup location** must begin with the path defined in the selected backup config. If it doesn't, the path is constructed incorrectly and the restore fails immediately.
 
-    The backup config path also includes a `yugabyte_backup` directory, which YBA adds automatically when writing backups. The **Backup location** must include this directory. For example, for a backup config with the path `/backup`, a valid location is the following:
+    For NFS backup configs, the backup config path also includes a `yugabyte_backup` directory, which YBA adds automatically when writing backups. The **Backup location** must include this directory. (S3, GCS, and Azure backup configs do not have this extra directory; the bucket is part of the backup config's path itself.) For example, for an NFS backup config with the path `/backup`, a valid location is the following:
 
     ```output
     /backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
     ```
 
-    Similarly, for a backup config with the path `/mnt/backup/`, a valid location is the following:
+    Similarly, for an NFS backup config with the path `/mnt/backup/`, a valid location is the following:
 
     ```output
     /mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
     ```
 
-    Everything from the `yugabyte_backup` folder down must be left unchanged; only the leading storage address can differ, and only if it matches the selected backup config and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the backup config with the correct path prefix is used to match where the backup data now resides.
+    Everything from the `yugabyte_backup` folder down (or, for cloud storage, everything after the configured bucket and path prefix) must be left unchanged; only the leading storage address can differ, and only if it matches the selected backup config and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the backup config with the correct path prefix is used to match where the backup data now resides.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 
