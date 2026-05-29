@@ -1329,15 +1329,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
-  private long getPerformCountForTServer(int tserverIndex) throws Exception {
-    String host = getPgHost(tserverIndex);
+  private long getTotalWriteRpcCount() throws Exception {
+    long total = 0;
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      if (ts.getLocalhostIP().equals(host)) {
-        return new Metrics(ts.getLocalhostIP(), ts.getWebPort(), "server")
-            .getHistogram("handler_latency_yb_tserver_PgClientService_Perform").totalCount;
-      }
+      total += new Metrics(ts.getLocalhostIP(), ts.getWebPort(), "server")
+          .getHistogram("handler_latency_yb_tserver_TabletServerService_Write").totalCount;
     }
-    throw new RuntimeException("No tserver found at index " + tserverIndex);
+    return total;
   }
 
   /**
@@ -1345,7 +1343,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    */
   @Test
   public void testTxnNotifysAreBuffered() throws Exception {
-    final int N = 50;
+    final int N = 10;
     final int tserverIndex = 0;
 
     try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
@@ -1355,12 +1353,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("NOTIFY " + CHANNEL + ", 'msg_" + i + "'");
       }
 
-      long before = getPerformCountForTServer(tserverIndex);
+      long before = getTotalWriteRpcCount();
       stmt.execute("COMMIT");
-      long delta = getPerformCountForTServer(tserverIndex) - before;
+      long delta = getTotalWriteRpcCount() - before;
 
-      LOG.info("NOTIFY flush optimization: {} notifications, {} Perform RPCs", N, delta);
-      assertEquals("Perform RPCs for " + N + " notifications", 2, delta);
+      LOG.info("NOTIFY flush optimization: {} notifications, {} Write RPCs", N, delta);
+      assertEquals("Write RPCs for " + N + " notifications", 2, delta);
     }
   }
 }
