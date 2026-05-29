@@ -81,20 +81,26 @@ namespace yb::docdb {
 extern bool TEST_vector_index_filter_allowed;
 extern size_t TEST_vector_index_max_checked_entries;
 
-}
+} // namespace yb::docdb
+
+namespace yb::internal {
+
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
+
+} // namespace yb::internal
 
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
-}
+} // namespace yb::tablet
 
 namespace yb::vector_index {
 
 extern MonoDelta TEST_sleep_during_flush;
 
-}
+} // namespace yb::vector_index
 
 namespace yb::pgwrapper {
 
@@ -2070,7 +2076,61 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  // Flushes the single tablet and returns the vector index reverse mapping entries currently
+  // persisted in the Regular DB.
+  Result<std::string> DumpSingleTabletReverseMapping() {
+    RETURN_NOT_OK(WaitNoBackgroundInserts());
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto table_peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(table_peers.size(), 1, IllegalState, "Expected exactly one tablet leader");
+    auto tablet = VERIFY_RESULT(table_peers.front()->shared_tablet());
+    auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+    SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
+    LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+
+    TestKVFormatter formatter;
+    RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
+    auto output = formatter.FormatVectorsMeta();
+    LOG(INFO) << "Parsed SST dump output:\n" << output;
+    return output;
+  }
 };
+
+TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // No reverse mapping entries are expected: backfill skipped them and the rows predate the index.
+  ASSERT_TRUE(output.empty()) << "Unexpected reverse mapping entries:\n" << output;
+}
+
+TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // The order is deterministic and stable, but follows [HT, str(hash, id)] ordering, where
+  // HT is the backfill time and is the same for all entries for this particular backfill case.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_1_vector_1 -> ybctid_1
+      )#",
+      output);
+}
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
   constexpr size_t kNumRows = 5;
@@ -2080,21 +2140,8 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
 
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
-  ASSERT_OK(cluster_->FlushTablets());
 
-  auto table_peers = ASSERT_RESULT(
-      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
-  ASSERT_EQ(table_peers.size(), 1);
-  auto tablet = ASSERT_RESULT(table_peers.front()->shared_tablet());
-  auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
-  ASSERT_FALSE(rocksdb_dir.empty());
-  LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
-
-  TestKVFormatter formatter;
-  ASSERT_OK(RunSstDump(formatter, rocksdb_dir));
-
-  auto output = formatter.FormatVectorsMeta();
-  LOG(INFO) << "Parsed SST dump output:\n" << output;
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
   // The entires order is different from what sst_dump really prints, it's required to re-sort
   // to be able to compare the expected results.
