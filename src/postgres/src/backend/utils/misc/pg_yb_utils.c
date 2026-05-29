@@ -8834,6 +8834,11 @@ yb_maybe_test_fail_ddl(void)
 				*null_ptr = 0;
 				break;
 			}
+		case 5:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL operation with conflict as requested")));
+			break;
 		default:
 			break;
 	}
