@@ -345,8 +345,8 @@ The global ordering is still preserved on this keyset pagination without any cha
 ## Limitations
 
 - Only [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) can be used to benefit from scan optimizations. (Issue {{<issue 31072>}})
-- Use int for the bucket column; int2 and int8 aren't currently supported.
-- Merge scan does not work on varchar columns.
+- Use int (integer) for the bucket column; int2 (smallint) and int8 (bigint) aren't currently supported.
+- Merge scan does not work on varchar columns.  (Issue {{<issue 31200>}})
 
 ## Learn more
 
