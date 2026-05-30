@@ -63,7 +63,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBaseFunctions)) {
   // setting up a cluster with 3 RF
   ASSERT_OK(SetUpWithParams(3, 1, false /* colocated */));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   ASSERT_FALSE(table.is_cql_namespace());
 }
@@ -72,7 +72,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLoadInsertionOnly)) {
   // set up an RF3 cluster
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   ASSERT_OK(WriteRows(0, 10, &test_cluster_));
 }
@@ -174,12 +174,13 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
@@ -438,8 +439,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   }
 
   // Perform sql operations.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 10 WHERE key = 2"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
 
@@ -464,7 +465,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   uint32_t records_missed_by_stream_2 = 3;
 
   // Perform sql operations.
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 1 WHERE key = 4"));
 
   ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
@@ -618,7 +619,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public",
       num_cols));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -676,7 +677,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByDelete
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public",
       num_cols));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -727,7 +728,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public",
       num_cols));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -846,12 +847,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DropDatabase)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -881,12 +882,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnableTruncateTable)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
@@ -901,12 +902,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnableTruncateTable)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
@@ -1007,12 +1008,12 @@ CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestSetCDCCheckpoint);
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelete)) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   DropTable(&test_cluster_, kTableName);
 
@@ -1047,13 +1048,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
 
   while (idx < 3) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
     idx += 1;
   }
   auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -1070,7 +1070,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
 
   // create a new table and verify that it gets added to stream metadata.
   table[idx] = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+      &test_cluster_, test_namespace_name, kTableName,
+      1, true, false, 0, true, table_list_suffix[idx]));
   ASSERT_OK(test_client()->GetTablets(
       table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
 
@@ -1124,13 +1125,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
 
   while (idx < 3) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
     idx += 1;
   }
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -1149,7 +1149,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
 
   // create a new table and verify that it does not get added to stream metadata.
   table[idx] = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+      &test_cluster_, test_namespace_name, kTableName,
+      1, true, false, 0, true, table_list_suffix[idx]));
   ASSERT_OK(test_client()->GetTablets(
       table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
 
@@ -1208,12 +1209,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // insert some records in transaction.
@@ -1279,12 +1281,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   EnableCDCServiceInAllTserver(1);
@@ -1306,12 +1309,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   EnableCDCServiceInAllTserver(3);
@@ -1334,12 +1338,13 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -1369,12 +1374,13 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -1404,12 +1410,13 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -1439,12 +1446,13 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -1473,12 +1481,13 @@ void CDCSDKYsqlTest::TestMultipleStreamOnSameTablet(CDCCheckpointType checkpoint
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   vector<xrepl::StreamId> stream_id;
   // Create 2 streams
@@ -1529,12 +1538,13 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   // Create 2 streams
   vector<xrepl::StreamId> stream_ids;
@@ -1626,12 +1636,13 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   vector<xrepl::StreamId> stream_id;
   // Create 2 streams
@@ -1758,12 +1769,13 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -1845,12 +1857,13 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -1932,12 +1945,13 @@ void CDCSDKYsqlTest::TestHighIntentCountPersistencyAllNodesRestart(
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -1983,12 +1997,13 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -2091,12 +2106,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnum)) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+      CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -2140,12 +2156,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+      CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -2203,18 +2220,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   const uint32_t num_tablets = 1;
 
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+      CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
 
   auto table1 = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true, "1"));
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true, "1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets1.size(), num_tablets);
@@ -2257,7 +2275,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPopulationOfDDLRecordUponCach
   const uint32_t num_tablets = 1;
 
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+      CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -2282,11 +2301,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPopulationOfDDLRecordUponCach
   // in the cache, the logic will not enum labels again unless it hits a cache miss error.
   DropTable(&test_cluster_, kTableName);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TYPE $0", kEnumTypeName));
 
   auto table_2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+      CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
   ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets_2.size(), num_tablets);
@@ -2325,7 +2345,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeType)) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp"));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "emp"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
@@ -2370,7 +2390,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp"));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "emp"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 20;
@@ -2424,7 +2444,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNestedCompositeType)) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp_nested"));
+  std::string table_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "emp_nested"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
@@ -2469,7 +2490,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestArrayCompositeType)) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp_array"));
+  std::string table_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "emp_array"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
@@ -2517,7 +2539,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeCompositeType)) {
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::string table_id =
-      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "range_composite_table"));
+      ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "range_composite_table"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
@@ -2567,7 +2589,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeArrayCompositeType)) {
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::string table_id =
-      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "range_array_composite_table"));
+      ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "range_array_composite_table"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int insert_count = 10;
@@ -2614,8 +2636,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -2664,13 +2687,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in transaction.
@@ -2740,13 +2764,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDoesntDeadlockWithT
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in transaction.
@@ -2797,8 +2822,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Create the table AFTER the stream has been created
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -2857,8 +2883,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
 
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
@@ -2910,8 +2937,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
 
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
@@ -2991,16 +3019,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   // the newtable should not fail,(precondition:- create new stream in same namespace).
   for (int idx = 0; idx < total_stream_count; idx++) {
     auto table = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, true,
         tablePrefix[idx]));
     ASSERT_OK(
         test_client()->GetTablets(table, 0, &tablets[idx], /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets[idx].size(), num_tablets);
 
-    table_id[idx] = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, listTablesName[idx]));
+    table_id[idx] = ASSERT_RESULT(GetTableId(
+        &test_cluster_, test_namespace_name, listTablesName[idx]));
     auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-    ASSERT_OK(WriteEnumsRows(0, 100, &test_cluster_, tablePrefix[idx], kNamespaceName, kTableName));
+    ASSERT_OK(WriteEnumsRows(0, 100, &test_cluster_, tablePrefix[idx], kTableName));
     ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
@@ -3032,11 +3061,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointWithHigherTse
   ASSERT_OK(SetUpWithParams(5, 1, false));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   for (uint32_t idx = 0; idx < num_tablets; idx++) {
@@ -3051,10 +3081,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDC)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 3;
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3073,8 +3104,9 @@ TEST_F(CDCSDKYsqlTest, TestGetTabletListToPollForCDCWithConsistentSnapshot) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
@@ -3095,12 +3127,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropT
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
@@ -3137,14 +3169,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupMultiTab
 
   for (auto table_suffix : table_list_suffix) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_suffix));
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true, table_suffix));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     TableId table_id =
-        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix));
+        ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName + table_suffix));
 
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kTableName));
     idx += 1;
   }
   auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -3230,12 +3262,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaCleanUpAndDeleteStr
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
@@ -3262,12 +3294,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowsRemoved)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in transaction.
@@ -3306,17 +3339,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
 
   for (int idx = 0; idx < 2; idx++) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     TableId table_id = ASSERT_RESULT(
-        GetTableId(&test_cluster_, kNamespaceName, kTableName + table_list_suffix[idx]));
+        GetTableId(&test_cluster_, test_namespace_name, kTableName + table_list_suffix[idx]));
 
     stream_ids.push_back(ASSERT_RESULT(CreateDBStreamWithReplicationSlot()));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
   }
 
   // Drop table test_table_1 which is associated with both streams.
@@ -3361,17 +3393,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDele
 
   for (int idx = 0; idx < 2; idx++) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     TableId table_id = ASSERT_RESULT(
-        GetTableId(&test_cluster_, kNamespaceName, kTableName + table_list_suffix[idx]));
+        GetTableId(&test_cluster_, test_namespace_name, kTableName + table_list_suffix[idx]));
 
     stream_ids.push_back(ASSERT_RESULT(CreateDBStreamWithReplicationSlot()));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
   }
 
   // Deleting the stream-2 associated with both tables
@@ -3406,12 +3437,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3460,13 +3492,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderChange))
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   EnableCDCServiceInAllTserver(3);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3519,13 +3552,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3615,12 +3649,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
   }
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3738,13 +3773,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3819,12 +3855,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -3882,7 +3919,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -3938,7 +3975,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -3984,12 +4021,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   vector<xrepl::StreamId> stream_ids;
   for (int idx = 0; idx < 2; idx++) {
     stream_ids.push_back(ASSERT_RESULT(CreateConsistentSnapshotStream()));
@@ -4042,12 +4080,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLastSentTimeMetric)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -4086,12 +4125,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKExpiryMetric)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -4125,12 +4165,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -4181,12 +4222,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKChangeEventCountMetric)
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -4224,7 +4266,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
 
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     table[idx] = ASSERT_RESULT(
-        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+        CreateTable(
+            &test_cluster_, test_namespace_name, kTableName + table_suffix[idx], num_tablets));
 
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx],
@@ -4232,7 +4275,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
     ASSERT_EQ(tablets[idx].size(), num_tablets);
 
     table_id[idx] =
-        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx]));
+        ASSERT_RESULT(GetTableId(
+            &test_cluster_, test_namespace_name, kTableName + table_suffix[idx]));
   }
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -4305,14 +4349,15 @@ TEST_F(
 
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx),
+        &test_cluster_, test_namespace_name, kTableName + underscore + std::to_string(idx),
         num_tablets));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets[idx].size(), num_tablets);
 
     table_id[idx] = ASSERT_RESULT(
-        GetTableId(&test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx)));
+        GetTableId(
+            &test_cluster_, test_namespace_name, kTableName + underscore + std::to_string(idx)));
 
     auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
     stream_ids.push_back(stream_id);
@@ -4367,14 +4412,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesTwoStre
 
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx),
+        &test_cluster_, test_namespace_name, kTableName + underscore + std::to_string(idx),
         num_tablets));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets[idx].size(), num_tablets);
 
     table_id[idx] = ASSERT_RESULT(
-        GetTableId(&test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx)));
+        GetTableId(
+            &test_cluster_, test_namespace_name, kTableName + underscore + std::to_string(idx)));
   }
 
   for (uint32_t idx = 0; idx < num_streams; idx++) {
@@ -4422,12 +4468,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -4493,7 +4540,8 @@ TEST_F(CDCSDKYsqlTest, TestLagMetricForUnconsumedSlot) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -4559,7 +4607,8 @@ void CDCSDKYsqlTest::TestLagMetricWithConsistentSnapshotStream(bool expire_table
   // Create two tables.
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     table[idx] = ASSERT_RESULT(
-        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+        CreateTable(
+            &test_cluster_, test_namespace_name, kTableName + table_suffix[idx], num_tablets));
 
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx],
@@ -4567,7 +4616,8 @@ void CDCSDKYsqlTest::TestLagMetricWithConsistentSnapshotStream(bool expire_table
     ASSERT_EQ(tablets[idx].size(), num_tablets);
 
     table_id[idx] =
-        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx]));
+        ASSERT_RESULT(GetTableId(
+            &test_cluster_, test_namespace_name, kTableName + table_suffix[idx]));
   }
 
   // Creat a consistent snapshot stream.
@@ -4771,14 +4821,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(2);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -4790,8 +4841,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
   auto table_2 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
-  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_1"));
   expected_table_ids.push_back(table_2_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
   ASSERT_OK(
@@ -4818,17 +4870,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true /* add_pk */,
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true /* add_pk */,
       true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const int num_new_tables = 100;
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   for (int i = 1; i <= num_new_tables; i++) {
     std::string table_name = "test_table_" + std::to_string(i);
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(key int PRIMARY KEY, value_1 int);", table_name));
@@ -4851,14 +4903,15 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(2);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -4871,8 +4924,9 @@ TEST_F(
   LOG(INFO) << "Verified tablets of first table exist in cdc_state table";
 
   auto table_2 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
-  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_1"));
   expected_table_ids.push_back(table_2_id);
   LOG(INFO) << "Created second table";
 
@@ -4915,15 +4969,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceW
   const uint32_t num_tablets = 1;
 
   ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(3);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test1"));
-  TableId table_id_2 = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test2"));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "test1"));
+  TableId table_id_2 = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "test2"));
   expected_table_ids.push_back(table_id);
   expected_table_ids.push_back(table_id_2);
 
@@ -4938,8 +4992,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceW
   ASSERT_NO_FATAL_FAILURE(VerifyTabletIdsInCdcStateForStream(stream_id, expected_tablet_ids));
 
   ASSERT_OK(AddColocatedTable(&test_cluster_, "test3"));
-  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test3"));
-  TableId table_id_3 = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test3"));
+  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test3"));
+  TableId table_id_3 = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "test3"));
   expected_table_ids.push_back(table_id_3);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_3;
   ASSERT_OK(
@@ -4973,14 +5027,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(2);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -4991,8 +5046,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
   ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
 
   auto table_1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
-  TableId table_1_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1", num_tablets));
+  TableId table_1_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_1"));
   expected_table_ids.push_back(table_1_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
   ASSERT_OK(
@@ -5005,8 +5061,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
   xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   auto table_2 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2", num_tablets));
-  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_2"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_2", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_2"));
   expected_table_ids.push_back(table_2_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
   ASSERT_OK(
@@ -5035,14 +5092,15 @@ TEST_F(
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(2);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -5053,8 +5111,9 @@ TEST_F(
   ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
 
   auto table_1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
-  TableId table_1_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1", num_tablets));
+  TableId table_1_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_1"));
   expected_table_ids.push_back(table_1_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
   ASSERT_OK(
@@ -5067,8 +5126,9 @@ TEST_F(
   xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   auto table_2 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2", num_tablets));
-  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_2"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_2", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, "test_table_2"));
   expected_table_ids.push_back(table_2_id);
 
   xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -5113,8 +5173,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
   const uint32_t num_new_tables = 3;
   expected_table_ids.reserve(num_new_tables + 1);
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   for (const auto& tablet : tablets) {
@@ -5132,8 +5193,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
   for (uint32_t i = 1; i <= num_new_tables; ++i) {
     std::string table_name = "test_table_" + std::to_string(i);
     auto table =
-        ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name, num_tablets));
-    TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, table_name));
+        ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, table_name, num_tablets));
+    TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name));
     expected_table_ids.insert(table_id);
 
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -5162,7 +5223,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  // Create a stream on the empty namespace: test_namespace (kNamespaceName).
+  // Create a stream on the empty namespace: test_namespace (test_namespace_name).
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   NamespaceId ns_id;
@@ -5178,7 +5239,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)
 
   // Now add a new table to the same namespace.
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -5189,7 +5251,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(1);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
 
   // Check that 'cdc_state' table to see if the tablets of the newly added table are also in
@@ -5207,7 +5269,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
   // Create a table without a PK.
   ASSERT_OK(CreateTableWithoutPK(&test_cluster_));
 
-  // Create a stream on the namespace: test_namespace (kNamespaceName).
+  // Create a stream on the namespace: test_namespace (test_namespace_name).
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   NamespaceId ns_id;
@@ -5222,7 +5284,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
       stream_state, master::SysCDCStreamEntryPB::State_Name(master::SysCDCStreamEntryPB::ACTIVE));
 
   const uint32_t num_tablets = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -5233,7 +5296,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
 
   std::vector<TableId> expected_table_ids;
   expected_table_ids.reserve(1);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   expected_table_ids.push_back(table_id);
 
   // Check that 'cdc_state' table to see if the tablets of the newly added table are also in
@@ -5252,12 +5315,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -5308,12 +5372,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -5365,12 +5430,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   const uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
@@ -5435,7 +5501,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDDLRecordValidationWithColoca
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -5498,7 +5564,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -5556,18 +5622,19 @@ TEST_F(
 
   const uint32_t num_tablets = 1;
   const uint32_t num_get_changes_before_commit = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
   auto cdc_service = CDCService(tserver);
 
   // Initiate a transaction with 'BEGIN' statement.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("BEGIN"));
 
   // Insert 100 rows as part of the initiated transaction.
@@ -5622,19 +5689,20 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
 
   const uint32_t num_tablets = 1;
   const uint32_t num_get_changes_before_commit = 3;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
   auto cdc_service = CDCService(tserver);
 
   // Initiate a transaction with 'BEGIN' statement.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("BEGIN"));
 
   // Insert 100 rows as part of the initiated transaction.
@@ -5695,12 +5763,13 @@ void CDCSDKYsqlTest::TestMetricObjectRemovalAfterStreamDeletion(bool use_logical
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = use_logical_replication
                        ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
                        : ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -5745,7 +5814,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterStrea
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
@@ -5792,12 +5861,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterNames
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -5833,7 +5903,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction))
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -5893,7 +5963,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
   uint32_t idx = 0;
   for (const auto& table_name : tables_wo_pk) {
     table_list[idx] = ASSERT_RESULT(
-        CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
+        CreateTable(&test_cluster_, test_namespace_name, table_name, 1 /* num_tablets */, false));
     idx += 1;
   }
 
@@ -5903,7 +5973,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
       /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, tables_wo_pk[0]));
+  std::string table_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, tables_wo_pk[0]));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
@@ -5923,12 +5994,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOfTransactionRecord
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in transaction.
@@ -5957,12 +6029,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeIncreasesForTransac
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in transaction.
@@ -6010,22 +6083,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOrderAcrossMultiTab
   ASSERT_OK(SetUpWithParams(1, 1, false, true /* cdc_populate_safepoint_record */));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
   constexpr static const char* const second_table_name = "test_table_1";
   auto second_table =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, second_table_name, num_tablets));
+      ASSERT_RESULT(CreateTable(
+          &test_cluster_, test_namespace_name, second_table_name, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_second_table;
   ASSERT_OK(test_client()->GetTablets(
       second_table, 0, &tablets_second_table, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets_second_table.size(), num_tablets);
 
-  TableId first_table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId first_table_id = ASSERT_RESULT(GetTableId(
+      &test_cluster_, test_namespace_name, kTableName));
   TableId second_table_id =
-      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, second_table_name));
+      ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, second_table_name));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Insert some records in two separate transaction, affecting two tables. The promary key of each
@@ -6152,12 +6228,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   // Assert the cdc_sdk_min_checkpoint_op_id is -1.-1.
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
@@ -6203,12 +6280,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   EnableCDCServiceInAllTserver(3);
@@ -6254,7 +6332,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int) TABLEGROUP tg1;"));
@@ -6262,7 +6340,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
       "CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
       "value_4 int) TABLEGROUP tg1;"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6277,8 +6355,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test1", kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue3ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(10));
 
   // Call get changes.
@@ -6317,7 +6395,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int) TABLEGROUP tg1;"));
@@ -6325,7 +6403,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
       "CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
       "value_3 int) TABLEGROUP tg1;"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6341,8 +6419,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test2", kValue4ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6401,14 +6479,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColum
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
                          "value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6424,9 +6502,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColum
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue2ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6484,14 +6562,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
                          "value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6507,9 +6585,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue2ColumnName, &conn));
 
   // Call get changes.
   auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
@@ -6548,7 +6626,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   }
   LOG(INFO) << "All nodes restarted";
 
-  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("BEGIN"));
   insert_count = 60;
   for (int i = 30; i < insert_count; ++i) {
@@ -6598,14 +6676,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
                          "value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6621,9 +6699,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue2ColumnName, &conn));
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
@@ -6670,7 +6748,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   }
   ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
-  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("BEGIN"));
   insert_count = 60;
   for (int i = 30; i < insert_count; ++i) {
@@ -6720,14 +6798,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
                          "value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -6743,9 +6821,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, "test2", kValue2ColumnName, &conn));
 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
@@ -6780,7 +6858,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   ASSERT_EQ(insert_count, expected_key2);
   ASSERT_EQ(ddl_count, 5);
 
-  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("BEGIN"));
   insert_count = 60;
   for (int i = 30; i < insert_count; ++i) {
@@ -6864,15 +6942,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithZeroIntents)) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, id_fk int, FOREIGN KEY (id_fk) "
                          "REFERENCES test1 (id1));"));
 
   // Create two tables with parent key - foreign key relation.
-  auto parent_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
-  auto fk_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  auto parent_table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
+  auto fk_table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> fk_tablets;
   ASSERT_OK(
       test_client()->GetTablets(fk_table, 0, &fk_tablets, /* partition_list_version =*/nullptr));
@@ -6921,14 +6999,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointForColocatedTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
                          "value_4 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7009,11 +7087,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnStreamedColoca
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7074,11 +7152,11 @@ TEST_F(CDCSDKYsqlTest, TestGetCheckpointOnStreamedColocatedTableWithConsistentSn
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7141,11 +7219,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocated
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7259,11 +7337,11 @@ TEST_F(CDCSDKYsqlTest, TestGetCheckpointOnAddedColocatedTableWithConsistentSnaps
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7381,7 +7459,7 @@ TEST_F(CDCSDKYsqlTest, TestGetCheckpointOnAddedColocatedTableWithConsistentSnaps
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNamesapceWithStream)) {
   ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 2 /* num_masters */, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   for (int i = 1; i <= 400; i++) {
@@ -7395,7 +7473,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNames
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetAndSetCheckpointWithDefaultNumTabletsForTable)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   // Create a table with default number of tablets.
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7431,7 +7509,7 @@ TEST_F(
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginAndCommitRecordsForSingleShardTxns)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   // Create a table with default number of tablets.
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7477,7 +7555,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7486,9 +7564,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   ASSERT_FALSE(set_resp.has_error());
   ASSERT_OK(WriteRowsHelper(0, 30, &test_cluster_, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
 
   ASSERT_OK(WriteRowsHelper(30, 80, &test_cluster_, true));
 
@@ -7529,7 +7607,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7544,11 +7622,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   const int expected_count_for_packed_row[] = {2, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
-  ASSERT_NOK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_NOK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
 
   // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("BEGIN;"));
@@ -7597,7 +7675,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithInc
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 4));
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public", 4));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7611,7 +7689,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithInc
   const int expected_count[] = {1, 3, 2, 0, 0, 0, 3, 3};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1,1,1);"));
   ASSERT_OK(conn.Execute("BEGIN;"));
   ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 2, col3 = 3 where col1 = 1;"));
@@ -7668,7 +7746,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7719,7 +7797,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7733,11 +7811,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Fail the ALTER TABLE DROP column
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
-  ASSERT_NOK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
+  ASSERT_NOK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValueColumnName, &conn));
 
   // Sleep to ensure that rollback has taken place
   SleepFor(MonoDelta::FromSeconds(10));
@@ -7746,7 +7824,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
 
   // Perform a successful ALTER TABLE DROP COLUMN
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValueColumnName, &conn));
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(7,9));"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (10);"));
@@ -7782,11 +7860,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -7812,10 +7890,10 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForLogicalReplicationStream) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
 
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
@@ -7851,10 +7929,10 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
 
   ASSERT_RESULT(CreateConsistentSnapshotStream());
 
@@ -7882,7 +7960,7 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
+  auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "old_table"));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(old_table, 0, &tablets, nullptr));
@@ -7897,7 +7975,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
     ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
   // Create new table.
-  auto new_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "new_table"));
+  auto new_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "new_table"));
 
   // Wait till this table gets added to the stream.
   ASSERT_OK(WaitFor(
@@ -7933,7 +8011,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
   ASSERT_OK(test_cluster_.mini_cluster_->mini_tablet_server(tserver_idx)->Restart());
 
   // Drop newly created table.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   DropTable(&test_cluster_, "new_table");
 
   // Call GetChanges on the old table.
@@ -7968,7 +8046,8 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, /*num_tablets=*/3));
+      ASSERT_RESULT(CreateTable(
+          &test_cluster_, test_namespace_name, kTableName, /*num_tablets=*/3));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -7976,7 +8055,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   xrepl::StreamId stream_id = ASSERT_RESULT(
       CreateConsistentSnapshotStreamWithReplicationSlot("repl_slot_drop_with_active_invalid"));
 
-  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(WriteRows(1 /* start */, 11 /* end */, &test_cluster_));
 
@@ -8014,7 +8093,7 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
   // ListReplicationSlots - pg_client_service.cc.
   google::SetVLOGLevel("cdc*", 0);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
@@ -8060,7 +8139,7 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsWithoutCDCStateTable) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
 }
@@ -8069,7 +8148,7 @@ TEST_F(CDCSDKYsqlTest, TestPgCreateReplicationSlotDefaultLsnType) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8093,7 +8172,7 @@ void CDCSDKYsqlTest::TestCreateReplicationSlotWithLsnType(const std::string lsn_
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8134,7 +8213,7 @@ TEST_F(CDCSDKYsqlTest, TestPgCreateReplicationSlotDefaultLsnTypeParam) {
   ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_lsn_types, true));
   ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8161,7 +8240,7 @@ void CDCSDKYsqlTest::TestCreateReplicationSlotWithLsnTypeParam(const std::string
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8198,7 +8277,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotLsnTypePresentAfterRestart) {
   ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_lsn_types, true));
   ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8252,7 +8331,7 @@ TEST_F(CDCSDKYsqlTest, TestPgCreateReplicationSlotDefaultOrderingMode) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8276,7 +8355,7 @@ void CDCSDKYsqlTest::TestCreateReplicationSlotWithOrderingMode(const std::string
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8318,7 +8397,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotOrderingModePresentAfterRestart) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
@@ -8373,7 +8452,7 @@ TEST_F(CDCSDKYsqlTest, TestPgCreateReplicationSlotDefaultOrderingModeParam) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   auto result = ASSERT_RESULT(
       conn.Fetch("select * from pg_create_logical_replication_slot('rs', 'yboutput');"));
@@ -8396,7 +8475,7 @@ void CDCSDKYsqlTest::TestCreateReplicationSlotWithOrderingModeParam(
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
 
   const std::string ordering_mode_name =
       ordering_mode == ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW ? "ROW"
@@ -8429,7 +8508,7 @@ TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("create publication pub for all tables;"));
 
@@ -8448,8 +8527,8 @@ TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
 TEST_F(CDCSDKYsqlTest, TestSafetimeUpdateFromExplicitCheckPoint) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -8521,8 +8600,8 @@ TEST_F(CDCSDKYsqlTest, TestSafetimeUpdateFromExplicitCheckPoint) {
 TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -8565,7 +8644,7 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 3);
@@ -8590,7 +8669,7 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->last_decided_pub_refresh_time.value(), oss.str());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
-  std::string kNamespaceName_2 = "test_namespace_2";
+  const auto kNamespaceName_2 = "test_namespace_2";
   ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
@@ -8609,9 +8688,9 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
   ASSERT_OK(conn.ExecuteFormat(
@@ -8789,9 +8868,9 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 ADD COLUMN $2 VARCHAR", "public", kTableName, kValue2ColumnName));
   ASSERT_OK(conn.ExecuteFormat(
@@ -8905,7 +8984,7 @@ void CDCSDKYsqlTest::TestTableIdAndPkInCDCRecords(bool colocated_db) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, colocated_db));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   int num_tablets_per_table = 1;
   std::string table1_name = "test_table_1";
   std::string table2_name = "test_table_2";
@@ -8920,8 +8999,8 @@ void CDCSDKYsqlTest::TestTableIdAndPkInCDCRecords(bool colocated_db) {
   ASSERT_OK(conn.ExecuteFormat(
       create_table_query, table2_name, kKeyColumnName, kValueColumnName, kValue2ColumnName));
 
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table1_name));
-  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table2_name));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, table1_name));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, table2_name));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
@@ -9023,7 +9102,7 @@ TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnColocatedTables) {
 TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -9033,7 +9112,7 @@ TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
   ASSERT_EQ(resp.tablet_checkpoint_pairs_size(), 1);
   auto checkpoint = resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 10 WHERE key = 5"));
 
@@ -9047,7 +9126,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 50_KB;
   ASSERT_OK(SetUpWithParams(3, 1, false, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -9059,7 +9138,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
   ASSERT_EQ(resp.tablet_checkpoint_pairs_size(), 1);
   auto checkpoint = resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   int num_inserts = 500;
   for (int i = 0; i < num_inserts; ++i) {
@@ -9129,12 +9208,12 @@ void CDCSDKYsqlTest::TestNonEligibleTableShouldNotGetAddedToCDCStream(
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   const auto tableName2 = "test_table_2";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -9165,7 +9244,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableShouldNotGetAddedToCDCStream(
   // Create a dynamic table and create non user tables on this dynamic table.
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
-  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName2));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -9255,7 +9334,8 @@ void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
   // Since dynamic table addition is not yet disabled, create a new table and verify that it gets
   // added to stream metadata of both the streams.
   table[idx] = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+      &test_cluster_, test_namespace_name, kTableName,
+      1, true, false, 0, true, table_list_suffix[idx]));
   ASSERT_OK(test_client()->GetTablets(
       table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
   idx += 1;
@@ -9271,7 +9351,8 @@ void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
 
   // Create a new table and verify that it only gets added to stream2's metadata.
   table[idx] = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+      &test_cluster_, test_namespace_name, kTableName,
+      1, true, false, 0, true, table_list_suffix[idx]));
   ASSERT_OK(test_client()->GetTablets(
       table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
   idx += 1;
@@ -9313,7 +9394,8 @@ void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
 
   // Any newly created table after master restart should not get added to stream1.
   table[idx] = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+      &test_cluster_, test_namespace_name, kTableName,
+      1, true, false, 0, true, table_list_suffix[idx]));
   ASSERT_OK(test_client()->GetTablets(
       table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
   idx += 1;
@@ -9549,12 +9631,12 @@ void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consisten
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   const auto tableName2 = "test_table_2";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -9582,7 +9664,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consisten
     ASSERT_OK(
         conn.ExecuteFormat("CREATE INDEX $0_idx$1 ON $0(b ASC)", tableName1, index_list_suffix[i]));
     indexes[i] = ASSERT_RESULT(GetTable(
-        &test_cluster_, kNamespaceName, Format("$0_idx$1", tableName1, index_list_suffix[i])));
+        &test_cluster_, test_namespace_name, Format("$0_idx$1", tableName1, index_list_suffix[i])));
     // Wait for the bg thread to complete finding out new tables added in the namespace and add
     // them to CDC stream if relevant.
     SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
@@ -9657,7 +9739,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consisten
   // Create a dynamic table and create non eligible tables on this dynamic table.
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
-  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName2));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -9717,11 +9799,11 @@ void CDCSDKYsqlTest::TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -9743,7 +9825,7 @@ void CDCSDKYsqlTest::TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
   // Create an index AFTER the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(b ASC)", tableName1));
   auto idx1 =
-      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx1", tableName1)));
+      ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, Format("$0_idx1", tableName1)));
   // Wait for the bg thread to complete finding out new tables added in the namespace and add
   // them to CDC stream if relevant.
   SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
@@ -9862,13 +9944,12 @@ TEST_F(
 
   while (idx < 3) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
     idx += 1;
   }
 
@@ -10052,11 +10133,11 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -10072,7 +10153,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
   // Create an index AFTER the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(b ASC)", tableName1));
   auto index =
-      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", tableName1)));
+      ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, Format("$0_idx", tableName1)));
   // Wait for the bg thread to complete finding out new tables added in the namespace and add
   // them to CDC stream if relevant.
   SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
@@ -10166,11 +10247,11 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDeleteStream) {
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -10186,7 +10267,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDeleteStream) {
   // Create an index AFTER the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(b ASC)", tableName1));
   auto index =
-      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", tableName1)));
+      ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, Format("$0_idx", tableName1)));
   // Wait for the bg thread to complete finding out new tables added in the namespace and add
   // them to CDC stream if relevant.
   SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
@@ -10254,13 +10335,13 @@ void CDCSDKYsqlTest::TestRemovalOfColocatedTableFromCDCStream(bool start_removal
   int idx = 0;
   vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   // Create 3 colocated tables.
   for (idx = 0; idx < kNumTables; idx++) {
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0$1(id1 int primary key);", kTableName, table_list_suffix[idx]));
     table[idx] = ASSERT_RESULT(GetTable(
-        &test_cluster_, kNamespaceName, Format("$0$1", kTableName, table_list_suffix[idx])));
+        &test_cluster_, test_namespace_name, Format("$0$1", kTableName, table_list_suffix[idx])));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
   }
@@ -10394,13 +10475,12 @@ TEST_F(CDCSDKYsqlTest, TestUserTableRemovalWithDynamicTableAddition) {
 
   auto createTableAndWriteRows = [&](int idx) {
     table[idx] = ASSERT_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true,
         table_list_suffix[idx]));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
     ASSERT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kTableName));
   };
 
   // Create and populate data in the all 3 tables.
@@ -10570,15 +10650,15 @@ TEST_F(CDCSDKYsqlTest, TestDisablingDynamicTableAdditionAtStreamCreationTime) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 3, false));
 
-  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_1"));
-  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_2"));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_2"));
 
   // Create a yb-admin stream with dynamic tables enabled and one with dynamic tables disabled.
   auto stream_id_1 = ASSERT_RESULT(CreateDBStream(
-      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName,
+      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, test_namespace_name,
       CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED));
   auto stream_id_2 = ASSERT_RESULT(CreateDBStream(
-      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName,
+      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, test_namespace_name,
       CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED));
 
   auto stream_info = ASSERT_RESULT(GetDBStreamInfo(stream_id_1));
@@ -10588,7 +10668,7 @@ TEST_F(CDCSDKYsqlTest, TestDisablingDynamicTableAdditionAtStreamCreationTime) {
   ASSERT_EQ(stream_info.table_info_size(), 2);
 
   // Create a dynamic table.
-  auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_3"));
+  auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_3"));
 
   // Sleep for 10 seconds for master bg thread to run.
   SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
@@ -10608,8 +10688,8 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 3, false));
 
-  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_1"));
-  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_2"));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_2"));
 
   // Create a slot.
   auto slot_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -10619,7 +10699,7 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   ASSERT_EQ(stream_info.table_info_size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
 
   // Create a dynamic table.
-  auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_3"));
+  auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_3"));
 
   // Sleep for 10 seconds for master bg thread to run.
   SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
@@ -10636,7 +10716,7 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) 
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10694,9 +10774,9 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
   ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
 
   constexpr auto num_tablets = 1;
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) SPLIT INTO 1 tablets;"));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets,
@@ -10775,7 +10855,7 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ASSERT_OK(SetUpWithParams(3, 3, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10824,7 +10904,7 @@ void CDCSDKYsqlTest::TestCleanupOfExpiredTable(bool use_logical_replication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10881,8 +10961,8 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10893,7 +10973,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
   // stream.
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
   auto idx_table =
-      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", kTableName)));
+      ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, Format("$0_idx", kTableName)));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx_tablets;
   ASSERT_OK(
       test_client()->GetTablets(idx_table, 0, &idx_tablets, /* partition_list_version=*/nullptr));
@@ -10959,8 +11039,8 @@ TEST_F(CDCSDKYsqlTest, TestInEligibleTableEntriesRemovalFromCDCStateTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10973,7 +11053,7 @@ TEST_F(CDCSDKYsqlTest, TestInEligibleTableEntriesRemovalFromCDCStateTable) {
   // for the index will be created.
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
   auto idx_table =
-      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", kTableName)));
+      ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, Format("$0_idx", kTableName)));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx_tablets;
   ASSERT_OK(
       test_client()->GetTablets(idx_table, 0, &idx_tablets, /* partition_list_version=*/nullptr));
@@ -11040,12 +11120,12 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfUnpolledTableWithTabletSplit) {
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
   ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets_1.size(), 1);
 
-  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
   ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets_2.size(), 1);
@@ -11136,7 +11216,7 @@ TEST_F(CDCSDKYsqlTest, TestSplitOfTabletNotOfInterestDuringCleanup) {
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -11178,16 +11258,16 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfNotOfInterestColocatedTabletWithMultipleStre
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   ASSERT_OK(SetUpWithParams(3, 3, true));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table_1 (id int primary key)"));
-  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table_1"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table_2 (id int primary key)"));
-  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_2"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table_2"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table_3 (id int primary key)"));
-  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_3"));
+  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table_3"));
 
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -11422,11 +11502,11 @@ TEST_F(CDCSDKYsqlTest, TestRemoveUserTablesFailsForNonEligibleTable) {
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const auto tableName1 = "test_table_1";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, tableName1));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
 
   // Wait for a second for the table to be created and the tablets to be RUNNING
@@ -11449,7 +11529,7 @@ TEST_F(CDCSDKYsqlTest, TestRemoveUserTablesFailsForNonEligibleTable) {
     ASSERT_OK(
         conn.ExecuteFormat("CREATE INDEX $0_idx$1 ON $0(b ASC)", tableName1, index_list_suffix[i]));
     indexes[i] = ASSERT_RESULT(GetTable(
-        &test_cluster_, kNamespaceName, Format("$0_idx$1", tableName1, index_list_suffix[i])));
+        &test_cluster_, test_namespace_name, Format("$0_idx$1", tableName1, index_list_suffix[i])));
     // Wait for the bg thread to complete finding out new tables added in the namespace and add
     // them to CDC stream if relevant.
     SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
@@ -11529,7 +11609,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   const vector<string> table_list_suffix = {"_0", "_1"};
   const int kNumTables = 2;
   vector<YBTableName> tables(kNumTables);
@@ -11539,7 +11619,8 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
         "CREATE TABLE $0$1(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", kTableName,
         table_list_suffix[i]));
     tables[i] = ASSERT_RESULT(
-        GetTable(&test_cluster_, kNamespaceName, Format("$0$1", kTableName, table_list_suffix[i])));
+        GetTable(&test_cluster_, test_namespace_name, Format(
+            "$0$1", kTableName, table_list_suffix[i])));
     ASSERT_OK(test_client()->GetTablets(
         tables[i], 0, &table_tablets[i], /* partition_list_version=*/nullptr));
     ASSERT_EQ(table_tablets[i].size(), 3);
@@ -11558,7 +11639,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE INDEX $0_idx$1 ON $0(b ASC)", tables[i % 2].table_name(), index_list_suffix[i]));
     indexes[i] = ASSERT_RESULT(GetTable(
-        &test_cluster_, kNamespaceName,
+        &test_cluster_, test_namespace_name,
         Format("$0_idx$1", tables[i % 2].table_name(), index_list_suffix[i])));
     // Wait for the bg thread to complete finding out new tables added in the namespace and add
     // them to CDC stream if relevant.
@@ -11666,7 +11747,7 @@ TEST_F(CDCSDKYsqlTest, TestSlotNameInCDCMetricsAttributes) {
   std::string kNamespaceName_2 = "test_namespace_for_old_model";
   ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
 
-  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
   auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test2"));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
@@ -11720,14 +11801,15 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
 
   auto num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets,
       /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   int num_txns = 10;
@@ -11848,8 +11930,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnStreamDeletion) {
 
   for (int i = 0; i < kNumTables; i++) {
     ASSERT_OK(WriteEnumsRows(
-        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kNamespaceName,
-        kTableName));
+        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kTableName));
   }
 
   ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
@@ -11921,8 +12002,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnTableRemovalFromCDCStream) {
 
   for (int i = 0; i < kNumTables; i++) {
     ASSERT_OK(WriteEnumsRows(
-        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kNamespaceName,
-        kTableName));
+        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kTableName));
   }
 
   ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
@@ -11988,14 +12068,15 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
   ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
 
   constexpr auto num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets,
       /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
   const auto& tablet_id = tablets.Get(0).tablet_id();
 
@@ -12088,7 +12169,8 @@ TEST_F(CDCSDKYsqlTest, TestCDCFlushLagMetricWithgRPCModel) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -12126,7 +12208,7 @@ TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
       true /* set_pgsql_proxy_bind_address */));
 
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
       true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
@@ -12136,7 +12218,7 @@ TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Add a column and create index on that column.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
@@ -12171,10 +12253,10 @@ TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) 
   ASSERT_OK(SetUpWithParams(
       1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
       true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
@@ -12214,9 +12296,9 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   // Create 2 tables.
   std::string table_suffix[2] = {"_1", "_2"};
   auto table_1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[0]));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName + table_suffix[0]));
   auto table_2 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[1]));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName + table_suffix[1]));
 
   // Create a replication slot and an Xcluster stream.
   const auto slot_name = "test_slot";
@@ -12229,7 +12311,7 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
 
   // Drop the table under xcluster replication.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName + table_suffix[0]));
 
   // Sleep for 5 seconds for master bg task to do its work.
@@ -12247,7 +12329,7 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 3);
@@ -12260,7 +12342,7 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
       {kCDCSDKSlotEntryTabletId, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_TRUE(entry.has_value());
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto result = ASSERT_RESULT(conn.Fetch(
       "SELECT to_char(yb_restart_time AT TIME ZONE 'UTC',"
           " 'YYYY-MM-DD HH24:MI:SS.US') || '+00'"
@@ -12286,7 +12368,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   xrepl::StreamId stream_id =
       ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
   ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
   ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_1 FOR TABLE test_1"));
@@ -12348,10 +12430,10 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2, false /* colocated*/));
 
   // Create one table on each DB.
-  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table_1"));
   ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test_table_2"));
 
-  auto conn_1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn_1 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
 
   // Create a publication in each DB.
@@ -12360,7 +12442,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
 
   // Create streams on both DBs.
   auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot_1", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName));
+      "test_slot_1", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, test_namespace_name));
   auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
       "test_slot_2", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName_2));
 
@@ -12397,7 +12479,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   // Create a table before stream creation. No change record corresponding to this DDL will be
   // shipped from catalog tablet.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
 
   // Create a stream.
@@ -12537,7 +12619,7 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnCatalogTablet) {
 
   // Create a table after slot creation. This will result in a multi-shard txn on sys catalog
   // tablet.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
 
   // Call GetChanges on master and assert that we are getting a checkpoint record with valid
@@ -12562,7 +12644,7 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
   int idx = 0;
   vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Create 2 colocated tables. The test_table_1 will not have a primary key and as a result it will
   // not be included in the stream metadata, hence making it an unqualified table.
@@ -12571,7 +12653,7 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
         "CREATE TABLE $0$1(id1 int $2);", kTableName, table_list_suffix[idx],
         idx ? "primary key" : ""));
     table[idx] = ASSERT_RESULT(GetTable(
-        &test_cluster_, kNamespaceName, Format("$0$1", kTableName, table_list_suffix[idx])));
+        &test_cluster_, test_namespace_name, Format("$0$1", kTableName, table_list_suffix[idx])));
     ASSERT_OK(test_client()->GetTablets(
         table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
   }
@@ -12600,14 +12682,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPackedRowUpdateFlag)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Test 1: INSERT a row (should show as INSERT in CDC)
   LOG(INFO) << "Test 1: INSERT - should show as INSERT";
@@ -12662,10 +12744,10 @@ TEST_F(CDCSDKYsqlTest, TestConsumptionFromActiveSegmentWithOpLargerThanBatchSize
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
 
   // Create a table with single tablet.
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (a int primary key, b text) SPLIT INTO 1 TABLETS", kTableName));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -12693,14 +12775,14 @@ TEST_F(CDCSDKYsqlTest, TestNoLossFromActiveSegmentWithApproachingDeadline) {
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
 
   // Create a table with single tablet.
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1)"));
 
   // Wait for tablet leader safe time to move forward.
@@ -12766,12 +12848,12 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
-  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
   ASSERT_EQ(table1_tablets.size(), 1);
 
-  const std::string kNamespaceName2 = Format("$0_2", kNamespaceName);
+  const std::string kNamespaceName2 = Format("$0_2", test_namespace_name);
   const std::string kTableName2 = Format("$0_2", kTableName);
   ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName2));
   auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName2, kTableName2));
@@ -12780,7 +12862,7 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
   ASSERT_EQ(table2_tablets.size(), 1);
 
   auto stream_id1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "slot_1", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName));
+      "slot_1", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, test_namespace_name));
   auto stream_id2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
       "slot_2", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName2));
 
@@ -12848,7 +12930,7 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
-  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
   ASSERT_EQ(table1_tablets.size(), 1);
@@ -12890,7 +12972,7 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         // Check whether both streams are deleted and their related cdc state table entries are
-        // deleted. Also, check that the table in kNamespaceName is deleted.
+        // deleted. Also, check that the table in test_namespace_name is deleted.
         bool checker = true;
         for (const auto& stream_id : {stream_id1, stream_id2}) {
           auto stream_info = cm.GetXReplStreamInfo(stream_id);
@@ -12905,7 +12987,7 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
                     !slot_entry.has_value();
         }
 
-        checker = checker && !GetTable(&test_cluster_, kNamespaceName, kTableName).ok();
+        checker = checker && !GetTable(&test_cluster_, test_namespace_name, kTableName).ok();
         return checker;
       },
       MonoDelta::FromSeconds(60), "Timed out waiting for all streams to be deleted"));
@@ -12950,7 +13032,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -12998,13 +13080,13 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
   const auto kOrigin2 = "origin2";
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Create 2 replication origins.
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin2));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13061,11 +13143,11 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
 TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13129,11 +13211,11 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdSurvivesApplyResend) {
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13167,14 +13249,14 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
 
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
       true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
   ASSERT_EQ(tablets.size(), 1);
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table(value_1)"));
 
@@ -13196,7 +13278,7 @@ TEST_F(CDCSDKYsqlTest, TestHitDeadlineOnWalReadMidTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
   ASSERT_EQ(tablets.size(), 1);
@@ -13251,7 +13333,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesHandlesLogCloseDuringRead) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
@@ -13301,11 +13383,13 @@ TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
       true /* cdc_populate_safepoint_record */));
 
   auto qualified_table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_qualified", 1 /* num_tablets*/));
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_qualified", 1 /* num_tablets*/));
   auto unqualified_table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_unqualified", 1 /* num_tablets*/));
+      CreateTable(
+          &test_cluster_, test_namespace_name, "test_table_unqualified", 1 /* num_tablets*/));
   auto non_dropped_table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_non_dropped", 1 /* num_tablets*/));
+      CreateTable(
+          &test_cluster_, test_namespace_name, "test_table_non_dropped", 1 /* num_tablets*/));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_qualified;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_unqualified;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_non_dropped;
@@ -13321,7 +13405,7 @@ TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
   // Adding 'unqualified_table' to the unqualified_table_id list of the stream metadata.
   ASSERT_OK(RemoveUserTableFromCDCSDKStream(stream_id, unqualified_table.table_id()));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("DROP TABLE test_table_qualified"));
   ASSERT_OK(conn.Execute("DROP TABLE test_table_unqualified"));
 
@@ -13365,9 +13449,10 @@ TEST_F(CDCSDKYsqlTest, TestUpgradeFromDeletingMetadataToDroppedTableList) {
       true /* cdc_populate_safepoint_record */));
 
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_to_drop", 1 /* num_tablets */));
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
   auto non_dropped_table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_non_dropped", 1 /* num_tablets */));
+      CreateTable(
+          &test_cluster_, test_namespace_name, "test_table_non_dropped", 1 /* num_tablets */));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
@@ -13430,7 +13515,7 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedT
       true /* cdc_populate_safepoint_record */));
 
   auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_to_drop", 1 /* num_tablets */));
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
@@ -13507,9 +13592,9 @@ TEST_F(CDCSDKYsqlTest, TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTa
       true /* cdc_populate_safepoint_record */));
 
   auto table_1 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_1", 1 /* num_tablets */));
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_1", 1 /* num_tablets */));
   auto table_2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "test_table_2", 1 /* num_tablets */));
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_2", 1 /* num_tablets */));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
@@ -13567,17 +13652,18 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
 
-  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
   // Wait for few seconds to let background task of catalog manager run.
   SleepFor(MonoDelta::FromSeconds(5));
 
   auto index_table = ASSERT_RESULT(GetTable(
-      &test_cluster_, kNamespaceName, Format("$0_idx", kTableName), true /* verify_table_name */,
+      &test_cluster_, test_namespace_name, Format(
+          "$0_idx", kTableName), true /* verify_table_name */,
       true /* exclude_system_tables */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
   ASSERT_OK(test_client()->GetTablets(index_table, 0, &index_tablets, nullptr));
@@ -13602,13 +13688,14 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
       true /* cdc_populate_safepoint_record */));
 
   auto table_1 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, Format("$0_1", kTableName), 1 /* num_tablets */));
+      CreateTable(&test_cluster_, test_namespace_name, Format(
+          "$0_1", kTableName), 1 /* num_tablets */));
 
   auto stream_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_1"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
   auto table_2 = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, Format("$0_2", kTableName), 1 /* num_tablets */,
+      &test_cluster_, test_namespace_name, Format("$0_2", kTableName), 1 /* num_tablets */,
       false /* add_primary_key */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_2_tablets;
   ASSERT_OK(test_client()->GetTablets(table_2, 0, &table_2_tablets, nullptr));
@@ -13630,7 +13717,7 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
   auto stream_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_2"));
 
   auto table_3 = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, Format("$0_3", kTableName), 1 /* num_tablets */,
+      &test_cluster_, test_namespace_name, Format("$0_3", kTableName), 1 /* num_tablets */,
       false /* add_primary_key */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_3_tablets;
   ASSERT_OK(test_client()->GetTablets(table_3, 0, &table_3_tablets, nullptr));
@@ -13663,7 +13750,7 @@ TEST_F(CDCSDKYsqlTest, TestMetricsDontRecreateAfterStreamDeletion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13713,12 +13800,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetSchemaUpdatesSch
       1 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE SCHEMA new_schema"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -13759,7 +13847,7 @@ TEST_F(CDCSDKYsqlTest, TestNoMetricsCreationForSysCatalogTablet) {
       true;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13786,7 +13874,7 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13878,7 +13966,7 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -13932,7 +14020,7 @@ TEST_F(CDCSDKYsqlTest, TestNoChangeInSysCatalogHistoryCutOffAfterMasterRestart) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
