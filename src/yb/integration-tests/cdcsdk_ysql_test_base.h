@@ -272,10 +272,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  static Status WriteRows(
+  Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name = {},
-      pgwrapper::PGConn* conn = nullptr);
+      const vector<string>& optional_cols_name = {}, pgwrapper::PGConn* conn = nullptr);
 
   static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
@@ -316,8 +315,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteEnumsRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
-      string database_name = kNamespaceName, string table_name = kTableName,
-      string schema_name = "public");
+      string table_name = kTableName, string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
       PostgresMiniCluster* cluster, const uint32_t num_tablets,
