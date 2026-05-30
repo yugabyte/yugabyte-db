@@ -142,10 +142,11 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     // Get the namespace ID.
     std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
 
-    // Add the two pg_catalog tables which will be present in stream metadata.
+    // Add the pg_catalog tables which will be present in stream metadata.
     auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+    table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
 
     if (with_table) {
       auto table =
@@ -169,7 +170,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> resp_stream_ids;
     for (uint32_t i = 0; i < num_streams; ++i) {
       if (with_table) {
-        // Since there are three tables (1 user + 2 catalog), all the streams would contain three
+        // Since there are four tables (1 user + 3 catalog), all the streams would contain four
         // table_ids in their response.
         ASSERT_EQ(1 + kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
 
@@ -180,7 +181,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
           ASSERT_TRUE(table_ids.contains(table_id_in_resp));
         }
       } else {
-        // Since there are no user tables in DB, there would be 2 table_ids (catalog tables) in the
+        // Since there are no user tables in DB, there would be 3 table_ids (catalog tables) in the
         // response.
         ASSERT_EQ(kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
       }
@@ -218,12 +219,14 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     // Get the namespace ID.
     std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
 
-    // Add the two pg_catalog tables which will be present in stream metadata to
+    // Add the pg_catalog tables which will be present in stream metadata to
     // tables_expected_in_stream_metadata.
     auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
     tables_expected_in_stream_metadata.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
     tables_expected_in_stream_metadata.insert(
         GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+    tables_expected_in_stream_metadata.insert(
+        GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
 
     auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
@@ -509,7 +512,7 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
           LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
           RETURN_NOT_OK(StatusFromPB(resp->error().status()));
         }
-        // We will have 2 pg_catalog tables in the stream metadata.
+        // We will have 3 pg_catalog tables in the stream metadata.
         return (resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC);
       },
       MonoDelta::FromSeconds(60),

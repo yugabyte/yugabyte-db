@@ -2846,8 +2846,8 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // - If the tablet is colocated, we check the replica identities of this tablet's tables which
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
-    // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
-    // catalog tables are part of publication's table list).
+    // 'pg_publication_rel', 'pg_class' & 'pg_replication_origin' residing in it (This is because
+    // currently only these sys catalog tables are part of publication's table list).
     // If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
@@ -4854,6 +4854,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+  table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   return table_ids;
 }
 

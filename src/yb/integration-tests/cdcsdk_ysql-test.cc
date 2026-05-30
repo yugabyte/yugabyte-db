@@ -1021,7 +1021,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
       [&]() -> Result<bool> {
         while (true) {
           auto resp = GetDBStreamInfo(stream_id);
-          // We will have 2 catalog tables in stream metadata.
+          // We will have 3 catalog tables in stream metadata.
           if (resp.ok() && !resp->has_error() &&
               resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC) {
             return true;
@@ -3116,7 +3116,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropT
             LOG(INFO) << "GetDBStreamInfo response = " << get_resp.ToString();
             RETURN_NOT_OK(StatusFromPB(get_resp->error().status()));
           }
-          // We will get 2 catalog tables in stream metadata.
+          // We will get 3 catalog tables in stream metadata.
           return (get_resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC);
         }
       },
@@ -10615,7 +10615,7 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   auto slot_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
-  // 2 user tables + 2 catalog tables.
+  // 2 user tables + 3 catalog tables.
   ASSERT_EQ(stream_info.table_info_size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
 
   // Create a dynamic table.
@@ -10625,8 +10625,8 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
 
   // Since dynamic table addition is always enabled in streams associated with slots, table_3 will
-  // get added to its stream metadata. We will have total 5 tables in stream metadata (3 user tables
-  // + 2 catalog tables).
+  // get added to its stream metadata. We will have total 6 tables in stream metadata (3 user tables
+  // + 3 catalog tables).
   stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
   ASSERT_EQ(stream_info.table_info_size(), 3 + kNumberOfCatalogTablesBeingPolledByCDC);
 }
@@ -10798,7 +10798,8 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   // won't get deleted. Also, the sys_catalog tables won't get removed from stream metadata's
   // qualified tables list.
   auto expected_num_state_table_rows = use_logical_replication ? 2 : 0;
-  auto expected_num_qualified_tables = use_logical_replication ? 2 : 0;
+  auto expected_num_qualified_tables =
+      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_num_state_table_rows,
       /* qualified_table_ids_count */ expected_num_qualified_tables,
@@ -12222,7 +12223,7 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
   ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
 
-  // Verify that replica identity map contains four entries (2 user tables + 2 catalog tables).
+  // Verify that replica identity map contains five entries (2 user tables + 3 catalog tables).
   std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
   ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
@@ -12297,23 +12298,29 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_1 ADD COLUMN c text"));
 
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_create('origin_1')"));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_create('origin_2')"));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_drop('origin_1')"));
+
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
   ASSERT_FALSE(change_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  // We will receive 2 DDLs, one for pg_class and one for pg_publication_rel.
+  // We will receive 3 DDLs, one each for pg_class, pg_publication_rel and pg_replication_origin.
   // Each CREATE TABLE will give 2 inserts and an update to pg_class in debug builds. In release
   // build we get 3 inserts.
   // Creation of pub_1 will result into one insert to pg_publication_rel.
   // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete.
   // Creation of an all tables publication does not give any change record to us.
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
+  // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
+  // gives 1 delete.
   // We will not receive any record corresponding to the addition of column in other catalog tables
   // such as pg_attribute.
-  const int expected_count_without_packed_row[] = {2, 8, 4, 1, 0, 0, 8, 8};
-  const int expected_count_with_packed_row[] = {2, 12, 0, 1, 0, 0, 8, 8};
+  const int expected_count_without_packed_row[] = {3, 10, 4, 2, 0, 0, 11, 11};
+  const int expected_count_with_packed_row[] = {3, 14, 0, 2, 0, 0, 11, 11};
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, record_count);
@@ -12444,7 +12451,7 @@ TEST_F(CDCSDKYsqlTest, TestFailSettingRetentionBarriersOnApplyForCatalogTable) {
 
   ASSERT_OK(SetUpWithParams(3, 3, false /* colocated */));
 
-  // Since there were no tables in the database, stream metadata will only contain the two catalog
+  // Since there were no tables in the database, stream metadata will only contain the three catalog
   // tables and we will try to set the retention barriers on sys catalog tablet only. Stream
   // creation will fail since the safe_op_id will not be populated in the state table entry for the
   // sys catalog tablet as the apply of change_metadata_op will fail.

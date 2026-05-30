@@ -217,6 +217,8 @@ class CDCSDKVirtualWAL {
 
   bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
 
+  bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
+
   bool ShouldPopulateExplicitCheckpoint();
 
   bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
@@ -354,6 +356,9 @@ class CDCSDKVirtualWAL {
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
   // polling.
   TableId pg_publication_rel_table_id_;
+
+  // The table ID of pg_replication_origin catalog.
+  TableId pg_replication_origin_table_id_;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;
