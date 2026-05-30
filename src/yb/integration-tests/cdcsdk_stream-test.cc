@@ -85,7 +85,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
   }
 
   Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams(
-      const std::string& namespace_name = kNamespaceName, const TableId table_id = "") {
+    const TableId table_id = "") {
     // Listing the streams now.
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
@@ -97,7 +97,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
       list_req.set_table_id(table_id);
     } else {
       list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(test_namespace_name)));
     }
 
     RpcController list_rpc;
@@ -140,10 +140,10 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     if (with_table) {
       auto table =
-          ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+          ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
       // Get the table_id of the created table.
-      table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
     }
     // We will create some DB Streams to be listed out later.
     auto created_streams = ASSERT_RESULT(CreateDBStreams(3));
@@ -184,11 +184,11 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<std::string>::size_type num_of_tables_with_pk = table_with_pk.size();
 
     for (const auto& table_name : table_with_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, table_name));
     }
 
     for (const auto& table_name : table_without_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name,
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, table_name,
                                 1 /* num_tablets */, false));
     }
 
@@ -196,7 +196,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     for (const auto& table_name : table_with_pk) {
       created_table_ids_with_pk.push_back(
-          ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, table_name)));
+          ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
     }
 
     std::vector<std::string> created_table_ids_without_pk;
@@ -209,7 +209,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     ASSERT_FALSE(get_resp.has_error());
 
     // Get the namespace ID.
-    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
+    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(test_namespace_name));
 
     // We have only 1 table, so the response will (should) have 1 table info only.
     uint32_t table_info_size = get_resp.table_info_size();
@@ -261,10 +261,11 @@ TEST_F(CDCSDKStreamTest, TestStreamCreation) {
 
   // Create a table with primary key.
   auto table1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_with_pk"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_with_pk"));
   // Create another table without primary key.
   auto table2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "table_without_pk", 1 /* num_tablets */, false));
+      CreateTable(
+          &test_cluster_, test_namespace_name, "table_without_pk", 1 /* num_tablets */, false));
 
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
@@ -363,7 +364,7 @@ TEST_F(CDCSDKStreamTest, DBStreamInfoTest_AllTablesWithoutPrimaryKey) {
 TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // Set up an RF 3 cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   // We not need to create both xcluster and cdc streams on a table,
   // and we will list them to check that they are not the same.
@@ -390,13 +391,13 @@ TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
 
   // List streams for CDC and xCluster. They both should not be the same.
   std::vector<std::string> db_streams;
-  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName))) {
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams())) {
     db_streams.push_back(stream.stream_id());
   }
 
   // List the streams for xCluster.
   std::vector<std::string> xcluster_streams;
-  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()))) {
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams(table.table_id()))) {
     xcluster_streams.push_back(stream.stream_id());
   }
   std::sort(xcluster_streams.begin(), xcluster_streams.end());
@@ -418,7 +419,7 @@ TEST_F(CDCSDKStreamTest, ImplicitCheckPointValidate) {
 
   // Get the list of dbstream.
   google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
-      ASSERT_RESULT(ListDBStreams(kNamespaceName));
+      ASSERT_RESULT(ListDBStreams());
   const uint32_t num_streams = list_streams.size();
 
   for (uint32_t i = 0; i < num_streams; ++i) {
@@ -447,7 +448,7 @@ TEST_F(CDCSDKStreamTest, ExplicitCheckPointValidate) {
 
     // Get the list of dbstream.
     google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
-        ASSERT_RESULT(ListDBStreams(kNamespaceName));
+        ASSERT_RESULT(ListDBStreams());
     const uint32_t num_streams = list_streams.size();
 
     for (uint32_t i = 0; i < num_streams; ++i) {
@@ -470,7 +471,7 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
@@ -502,8 +503,8 @@ TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto resp = GetDBStreamInfo(stream_id);
@@ -533,7 +534,8 @@ TEST_F(CDCSDKStreamTest, TestDisallowImplicitStreamCreationWhenFlagDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = false;
 
   constexpr auto num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   ASSERT_NOK_STR_CONTAINS(
       CreateConsistentSnapshotStream(
