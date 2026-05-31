@@ -15,11 +15,14 @@
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/common_flags.h"
 
 #include "yb/consensus/consensus.h"
+
+#include "yb/gutil/strings/join.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.pb.h"
@@ -509,6 +512,7 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
 
     // Commit term now.
     term_ = term;
+    launch_time_ = CoarseMonoClock::Now();
 
     for (const auto& ts_desc : descs) {
       if (!IsTSLeaseLive(*ts_desc, *object_lock_info_manager_)) {
@@ -583,7 +587,11 @@ Result<int> BackendsCatalogVersionJob::WaitAndGetNumLaggingBackends(
   if (IsStateTerminal(state())) {
     return HandleTerminalState();
   }
-  return GetNumLaggingBackends();
+  const int num_lagging_backends = GetNumLaggingBackends();
+  if (num_lagging_backends == -1) {
+    LogUnknownLaggingBackends();
+  }
+  return num_lagging_backends;
 }
 
 Result<int> BackendsCatalogVersionJob::HandleTerminalState() {
@@ -717,6 +725,50 @@ int BackendsCatalogVersionJob::GetNumLaggingBackends() const {
     total_num_lagging_backends += num_lagging_backends;
   }
   return total_num_lagging_backends;
+}
+
+void BackendsCatalogVersionJob::LogUnknownLaggingBackends() const {
+  const auto now = CoarseMonoClock::Now();
+  std::vector<std::string> unknown_ts_uuids;
+  std::vector<std::string> known_ts_counts;
+  size_t num_tservers = 0;
+  int total_known_lagging_backends = 0;
+  int64_t elapsed_ms = -1;
+
+  {
+    std::lock_guard l(mutex_);
+
+    num_tservers = ts_map_.size();
+    unknown_ts_uuids.reserve(num_tservers);
+    known_ts_counts.reserve(num_tservers);
+    elapsed_ms = launch_time_ == CoarseTimePoint::min() ? -1 : ToMilliseconds(now - launch_time_);
+
+    for (const auto& [ts_uuid, num_lagging_backends] : ts_map_) {
+      if (num_lagging_backends == -1) {
+        unknown_ts_uuids.push_back(ts_uuid);
+      } else {
+        DCHECK_GE(num_lagging_backends, 0);
+        total_known_lagging_backends += num_lagging_backends;
+        known_ts_counts.push_back(Format("$0:$1", ts_uuid, num_lagging_backends));
+      }
+    }
+  }
+  if (unknown_ts_uuids.empty()) {
+    return;
+  }
+
+  std::sort(unknown_ts_uuids.begin(), unknown_ts_uuids.end());
+  std::sort(known_ts_counts.begin(), known_ts_counts.end());
+
+  LOG_WITH_PREFIX(INFO)
+      << "Unable to determine total number of lagging backends because "
+      << unknown_ts_uuids.size() << " of " << num_tservers
+      << " tservers have not reported a count. requestor_ts_uuid=" << requestor_ts_uuid_
+      << ", requestor_pg_backend_pid=" << requestor_pg_backend_pid_
+      << ", elapsed_since_launch_ms=" << elapsed_ms
+      << ", total_known_lagging_backends=" << total_known_lagging_backends
+      << ", unknown_ts_uuids=[" << JoinStrings(unknown_ts_uuids, ",") << "]"
+      << ", known_ts_counts=[" << JoinStrings(known_ts_counts, ",") << "]";
 }
 
 // Compare-and-swap state.

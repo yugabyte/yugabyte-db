@@ -357,6 +357,9 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   std::string LogPrefix() const;
 
  private:
+  // Log the tserver progress that prevents calculating the total number of lagging backends.
+  void LogUnknownLaggingBackends() const EXCLUDES(mutex_);
+
   // dependency vars
   Master* master_;
   ObjectLockInfoManager* object_lock_info_manager_;
@@ -375,6 +378,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   const pid_t requestor_pg_backend_pid_;
   // Master sys catalog consensus term when launching the job.
   int64_t term_ GUARDED_BY(mutex_);
+  CoarseTimePoint launch_time_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   // Last time this job was accessed.  Used to determine when the job should be cleaned up for lack
   // of activity.  No need to guard with mutex since writes are already guarded by
   // YsqlBackendsManager mutex.
