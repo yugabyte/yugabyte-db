@@ -2,7 +2,7 @@
 title: Full move for Kubernetes universes
 headerTitle: Full move for Kubernetes universes
 linkTitle: Kubernetes full move
-description: Modify storage class and volume count on running YugabyteDB Anywhere Kubernetes universes.
+description: Modify storage class, volume count, and volume size on running YugabyteDB Anywhere Kubernetes universes.
 tags:
   feature: early-access
 headcontent: Change volume attributes on operator and non-operator Kubernetes universes
@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-{{<tags/feature/ea idea="2459">}} Full move for Kubernetes universes lets you modify storage attributes such as volume count and storage class on existing universes.
+{{<tags/feature/ea idea="2459">}} Full move for Kubernetes universes lets you modify storage attributes such as volume count, storage class, and volume size on existing universes. Decreasing volume size is supported and is carried out through a full move (persistent volumes cannot be shrunk in place).
 
 {{< note title="Version requirement" >}}
 
@@ -32,7 +32,7 @@ Full move applies to universes that YugabyteDB Anywhere manages via Helm charts.
 
 ### Modify volume attributes
 
-To change storage class or volume count on a running universe:
+To change storage class, volume count, or volume size on a running universe:
 
 1. Navigate to your universe and choose **Actions > Edit Universe**. For general edit-universe options, refer to [Modify universe](../edit-universe/).
 2. Edit the volume fields under **Instance Configuration** for TServer and Master as needed.
@@ -117,7 +117,7 @@ The following illustrates `userIntent` with `userIntentOverrides.azOverrides` af
 
 ## Operator universes
 
-To use full move on universes managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/), configure the `tserverVolume` and `masterVolume` fields on the `YBUniverse` CRD. Each field supports a `perAZ` section for AZ-specific values. For creating operator-managed universes, refer to [Create a universe](../../anywhere-automation/yb-kubernetes-operator/#create-a-universe). Per-AZ storage class on the provider is configured through [Create a provider](../../anywhere-automation/yb-kubernetes-operator/#create-a-provider) (`kubernetesStorageClass`).
+To use full move on universes managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/), configure the `tserverVolume` and `masterVolume` fields on the `YBUniverse` CRD (`volumeSize`, `numVolumes`, `storageClass`). Each field supports a `perAZ` section for AZ-specific values. Changing any of these attributes, including decreasing `volumeSize` triggers a full move. For creating operator-managed universes, refer to [Create a universe](../../anywhere-automation/yb-kubernetes-operator/#create-a-universe). Per-AZ storage class on the provider is configured through [Create a provider](../../anywhere-automation/yb-kubernetes-operator/#create-a-provider) (`kubernetesStorageClass`).
 
 If you migrated a Helm-managed universe to the Operator using [Import universe](../../anywhere-automation/yb-kubernetes-operator/#import-universe), edit volume settings on the `YBUniverse` CRD; the UI blocks most edit actions on imported universes.
 
