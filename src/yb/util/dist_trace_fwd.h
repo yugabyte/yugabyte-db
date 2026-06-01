@@ -13,17 +13,18 @@
 
 #pragma once
 
-#include <cstdint>
+namespace opentelemetry {
+inline namespace v1 {
 
-#include "yb/util/dist_trace_fwd.h"
+namespace nostd {
+class string_view;
+template <class T> class shared_ptr;
+} // namespace nostd
 
-namespace yb::dist_trace {
+namespace trace {
+class Tracer;
+class SpanContext;
+} // namespace trace
 
-void InitDistTrace(int64_t process_pid, opentelemetry::nostd::string_view node_uuid);
-void CleanupDistTrace();
-opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
-bool IsDistTraceEnabled();
-opentelemetry::trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
-bool IsSpanContextValidAndRemote(const opentelemetry::trace::SpanContext& span_context);
-
-}  // namespace yb::dist_trace
+} // namespace v1
+} // namespace opentelemetry

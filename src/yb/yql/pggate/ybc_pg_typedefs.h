@@ -59,6 +59,9 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
+// Handle to a distributed trace span context.
+YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
+
 // Handle to a distributed trace scope.
 YB_DEFINE_HANDLE_TYPE(OtelScope);
 
