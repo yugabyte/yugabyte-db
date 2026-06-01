@@ -42,14 +42,14 @@ jobs:
       # This should be a sub-set of the build flavors in jenkins_jobs.yml.
       matrix:
         include:
-          - name: "GCC 12, fastdebug, AlmaLinux 8"
+          - name: "GCC 15, fastdebug, AlmaLinux 8"
             os: ubuntu-24.04
-            yb_build_args: --gcc12 fastdebug
+            yb_build_args: --gcc15 fastdebug
             docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
-          - name: "GCC 12, debug, AlmaLinux 9"
+          - name: "GCC 15, debug, AlmaLinux 9"
             os: ubuntu-24.04
-            yb_build_args: --gcc12 debug
+            yb_build_args: --gcc15 debug
             docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
 
           - name: "Clang 21, release, AlmaLinux 8"

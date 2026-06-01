@@ -62,6 +62,10 @@ _YB_LLVM_TOOLCHAIN_DIR = (
         os.path.realpath(os.environ.get("YB_LLVM_TOOLCHAIN_DIR", ""))
         if os.environ.get("YB_LLVM_TOOLCHAIN_DIR") is not None else None)
 
+_YB_GCC_TOOLCHAIN_DIR = (
+        os.path.realpath(os.environ.get("YB_GCC_TOOLCHAIN_DIR", ""))
+        if os.environ.get("YB_GCC_TOOLCHAIN_DIR") is not None else None)
+
 GLOBAL_DOWNLOAD_CACHE_DIR = '/opt/yb-build/download_cache'
 attempted_to_create_download_cache_dir = False
 
@@ -86,6 +90,17 @@ def set_llvm_toolchain_dir(llvm_toolchain_dir: str) -> None:
     global _YB_LLVM_TOOLCHAIN_DIR
     _YB_LLVM_TOOLCHAIN_DIR = llvm_toolchain_dir
     os.environ["YB_LLVM_TOOLCHAIN_DIR"] = llvm_toolchain_dir
+
+
+def get_gcc_toolchain_dir() -> Optional[str]:
+    global _YB_GCC_TOOLCHAIN_DIR
+    return _YB_GCC_TOOLCHAIN_DIR
+
+
+def set_gcc_toolchain_dir(gcc_toolchain_dir: str) -> None:
+    global _YB_GCC_TOOLCHAIN_DIR
+    _YB_GCC_TOOLCHAIN_DIR = gcc_toolchain_dir
+    os.environ["YB_GCC_TOOLCHAIN_DIR"] = gcc_toolchain_dir
 
 
 def sorted_grouped_by(

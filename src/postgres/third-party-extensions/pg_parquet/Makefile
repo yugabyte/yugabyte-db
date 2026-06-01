@@ -38,10 +38,16 @@ ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
 		endif
 	endif
 else
-	CC := gcc
-	CXX := g++
 	RUSTFLAGS := -L$(YB_THIRDPARTY_DIR)/installed/common/lib
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
+	ifneq ($(origin YB_GCC_PREFIX),undefined)
+		CC := $(YB_GCC_PREFIX)/bin/gcc$(YB_GCC_SUFFIX)
+		CXX := $(YB_GCC_PREFIX)/bin/g++$(YB_GCC_SUFFIX)
+		RUSTFLAGS += -C linker=$(CC)
+	else
+		CC := gcc
+		CXX := g++
+	endif
 endif
 
 all:
