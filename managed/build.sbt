@@ -244,7 +244,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -276,6 +275,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.8.0" % Test
 )
 
 // Clear default resolvers.
@@ -618,6 +618,7 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
+  installOpenapiFormat()
   changedFiles.par.foreach(formatFile)
 }
 
@@ -1018,6 +1019,8 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
+
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
