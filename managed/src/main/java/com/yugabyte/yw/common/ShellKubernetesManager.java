@@ -450,6 +450,38 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteStatefulSet(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> getCommandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "sts", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, getCommandList, false)
+            .processErrors(String.format("Unable to get StatefulSets in namespace {}", namespace));
+    List<StatefulSet> stsList =
+        deserialize(response.getMessage(), StatefulSetList.class).getItems();
+    if (CollectionUtils.isEmpty(stsList)) {
+      log.warn(
+          "No StatefulSet found for release {} and app type {} in namespace {}, skipping delete",
+          helmReleaseName,
+          appName,
+          namespace);
+      return;
+    }
+    for (StatefulSet sts : stsList) {
+      String stsName = sts.getMetadata().getName();
+      log.info("Deleting StatefulSet {} in namespace {}", stsName, namespace);
+      deleteStatefulSet(config, namespace, stsName);
+    }
+  }
+
+  @Override
   public List<Quantity> getPVCSizeList(
       Map<String, String> config,
       String namespace,
