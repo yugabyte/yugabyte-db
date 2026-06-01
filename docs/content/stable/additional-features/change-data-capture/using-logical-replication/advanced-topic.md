@@ -140,7 +140,7 @@ The feature is controlled by the following flags. Set them on both YB-Master and
 | Flag | Details |
 | :--- | :--- |
 | [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default in v2026.1 and later), modifications to a publication are reflected implicitly. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. |
-| [cdc_enable_dynamic_schema_changes](../../../../reference/configuration/yb-tserver/#cdc-enable-dynamic-schema-changes) | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
 To disable implicit publication changes and revert to the periodic publication refresh behavior used in versions earlier than v2026.1, set `ysql_yb_enable_implicit_dynamic_tables_logical_replication` to `false` on all YB-Master and YB-TServer processes and restart the cluster.
 
@@ -203,7 +203,7 @@ The feature is controlled by the following flags. Set them on both YB-Master and
 | Flag | Details |
 | :--- | :--- |
 | [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (default in v2026.1 and later), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. |
-| [cdc_enable_dynamic_schema_changes](../../../../reference/configuration/yb-tserver/#cdc-enable-dynamic-schema-changes) | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
 To disable streaming of DDLs that cause table rewrites and revert to the behavior used in versions earlier than v2026.1, set `enable_table_rewrite_for_cdcsdk_table` to `false` on all YB-Master and YB-TServer processes.
 

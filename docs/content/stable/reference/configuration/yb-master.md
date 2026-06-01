@@ -1233,17 +1233,6 @@ When set to `true`, modifications to a publication are reflected implicitly in l
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
-##### --cdc_enable_dynamic_schema_changes
-
-{{% tags/wrap %}}
-
-Default: Auto flag. `false` until promoted to `true` during upgrade (`true` on new installs). See [All YB-Master flags](../all-flags-yb-master/#cdc-enable-dynamic-schema-changes) for details.
-{{% /tags/wrap %}}
-
-When set, enables streaming of dynamic schema changes via CDC. Dynamic schema changes include any changes made to publications and all DDLs, including those that cause table rewrites. This auto flag is automatically promoted as part of the upgrade process.
-
-Features in v2026.1 and later that depend on dynamic schema changes, such as [implicit publication changes](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) and [streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite), can be used only after this flag has been promoted.
-
 ##### --enable_table_rewrite_for_cdcsdk_table
 
 {{% tags/wrap %}}
