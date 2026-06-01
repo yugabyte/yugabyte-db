@@ -100,6 +100,8 @@ DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
 
 namespace yb::integration_tests {
 
@@ -147,6 +149,36 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
       const std::string& column_header) {
     return path_handlers_util::GetHtmlTableColumn(
         master_http_url_ + url, html_table_tag_id, column_header);
+  }
+
+  Status WaitForLeaseStatusCounts(
+      size_t expected_has_lease, size_t expected_no_lease, MonoDelta timeout) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto make_predicate = [](const std::string_view target) {
+            return [target](const std::string& cell) { return cell.contains(target); };
+          };
+          auto green_checker = make_predicate("Green");
+          auto red_checker = make_predicate("Red");
+          for (const auto& col_name : {"Lease Expiry", "Lease Epoch"}) {
+            auto cols =
+                VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", col_name));
+            size_t has_lease_count = std::ranges::count_if(cols, green_checker);
+            size_t missing_lease_count = std::ranges::count_if(cols, red_checker);
+            if (has_lease_count != expected_has_lease || missing_lease_count != expected_no_lease) {
+              LOG(INFO) << Format(
+                  "Lease counts from tablet-servers status page not as expected. For column $0, "
+                  "Has lease is $1, "
+                  "expected $2. Missing lease is $3, expected $4",
+                  col_name, has_lease_count, expected_has_lease, missing_lease_count,
+                  expected_no_lease);
+              return false;
+            }
+          }
+          return true;
+        },
+        timeout,
+        Format("Waiting for $0 HAS LEASE, $1 NO LEASE", expected_has_lease, expected_no_lease));
   }
 
   virtual int num_tablet_servers() const {
@@ -2032,4 +2064,43 @@ TEST_F_EX(
       << "Expected hash_split partition format in HTML response";
 }
 
-} // namespace yb::integration_tests
+// Validates the UI elements for the Lease Status column function correctly when starting up and
+// after a tserver is shut down
+TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
+  const MonoDelta kWaitTimeout = 10s;
+  const MonoDelta kLeaseTimeoutWaitBufferTime = 2s;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());
+  }
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+          auto lease_info =
+              VERIFY_RESULT(cluster_->mini_tablet_server(i)->server()->GetYSQLLeaseInfo());
+          if (!lease_info.is_live) return false;
+        }
+        return true;
+      },
+      kWaitTimeout, "Waiting for all tservers to acquire leases"));
+
+  ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
+
+  // Shutdown tserver and wait for heartbeat timeout.
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(WaitForLeaseStatusCounts(
+      cluster_->num_tablet_servers() - 1, 1,
+      MonoDelta::FromMilliseconds(
+          FLAGS_master_ysql_operation_lease_ttl_ms +
+          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
+          kLeaseTimeoutWaitBufferTime));
+
+  // Restart the tserver so the cluster verifier passes on teardown.
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
+
+  // refresh the lease
+  ASSERT_OK(cluster_->mini_tablet_server(0)->server()->StartYSQLLeaseRefresher());
+  ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
+}
+
+}  // namespace yb::integration_tests
