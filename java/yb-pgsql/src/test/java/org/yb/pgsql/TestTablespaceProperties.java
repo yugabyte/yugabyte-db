@@ -106,8 +106,12 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
     String matViewName = "alter_tsp_mv";
     String tablegroupName = "alter_tsp_tgroup";
     String tablegroupTableName = "alter_tsp_tgroup_tbl";
+    String partitionedTableName = "alter_tsp_part";
+    String partitionName1 = "alter_tsp_part_p1";
+    String partitionName2 = "alter_tsp_part_p2";
+    // The partitioned parent does not own tablets, so verify its partitions.
     List<String> relations = Arrays.asList(
-        tableName, indexName, matViewName, tablegroupTableName);
+        tableName, indexName, matViewName, tablegroupTableName, partitionName1, partitionName2);
 
     try (Statement setupStatement = connection.createStatement()) {
       setupStatement.execute(String.format(
@@ -121,6 +125,15 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
           "CREATE TABLEGROUP %s TABLESPACE %s", tablegroupName, tablespaceName));
       setupStatement.execute(String.format(
           "CREATE TABLE %s (a int) TABLEGROUP %s", tablegroupTableName, tablegroupName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s (a int) PARTITION BY RANGE (a) TABLESPACE %s",
+          partitionedTableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (0) TO (100) TABLESPACE %s",
+          partitionName1, partitionedTableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (100) TO (200) TABLESPACE %s",
+          partitionName2, partitionedTableName, tablespaceName));
     }
 
     try {
@@ -151,6 +164,8 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
         cleanupStatement.execute(String.format("DROP TABLE IF EXISTS %s", tablegroupTableName));
         cleanupStatement.execute(String.format("DROP TABLEGROUP IF EXISTS %s", tablegroupName));
         cleanupStatement.execute(String.format("DROP MATERIALIZED VIEW IF EXISTS %s", matViewName));
+        cleanupStatement.execute(String.format(
+            "DROP TABLE IF EXISTS %s CASCADE", partitionedTableName));
         cleanupStatement.execute(String.format("DROP TABLE IF EXISTS %s CASCADE", tableName));
         cleanupStatement.execute(String.format(
             "ALTER TABLESPACE %s SET (replica_placement='%s')",

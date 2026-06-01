@@ -16335,7 +16335,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	if (IsYBRelation(rel))
 		yb_validate_tablespace_placement_by_oid(newTableSpace,
-											true /* check_satisfiable */);
+											true /* check_satisfiable */ );
 
 	/* Update can be done, so change reltablespace */
 	SetRelationTableSpace(rel, newTableSpace, InvalidOid);

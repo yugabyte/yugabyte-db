@@ -1746,6 +1746,9 @@ yb_extract_tablespace_placement_options(Datum *options, int num_options,
 	*live_placement = NULL;
 	*read_replica_placement = NULL;
 
+	if (options == NULL || num_options <= 0)
+		return;
+
 	for (int i = 0; i < num_options; i++)
 	{
 		char	   *option = text_to_cstring(DatumGetTextP(options[i]));
@@ -1817,6 +1820,9 @@ yb_validate_tablespace_placement_by_oid(Oid spc_oid, bool check_satisfiable)
 	int			num_options;
 	char	   *live_placement = NULL;
 	char	   *read_replica_placement = NULL;
+
+	if (!OidIsValid(spc_oid))
+		return;
 
 	yb_get_tablespace_options(&options, &num_options, spc_oid);
 	yb_extract_tablespace_placement_options(options, num_options,
