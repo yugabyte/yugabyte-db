@@ -1889,6 +1889,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
       int numTservers = numNodesInAZ;
       PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
+      // Carry over the master and tserver STS index from the current placement so that the
+      // STS name generated for the delete/expand/helm-upgrade subtasks matches the existing
+      // StatefulSet (which can have a non-zero index, e.g. after a full move).
+      PlacementAZ placementAZ = placement.placementInfo.findByAZUUID(azUUID);
+      if (placementAZ != null) {
+        PlacementAZ azPlacementAZ = azPI.cloudList.get(0).regionList.get(0).azList.get(0);
+        azPlacementAZ.masterStsIndex = placementAZ.masterStsIndex;
+        azPlacementAZ.tsStsIndex = placementAZ.tsStsIndex;
+      }
+
       // Validate that the StorageClass has allowVolumeExpansion=true
       if (needsExpandPVCInZone) {
         // Only check for volume expansion if we are actually expanding the PVC.
