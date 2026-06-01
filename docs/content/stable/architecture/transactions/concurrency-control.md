@@ -1346,7 +1346,7 @@ Finally, advisory locks can be blocking or non-blocking:
 
 {{<tags/feature/ea idea="1114">}} Table-level locks for YSQL (available in {{<release "2025.1.1.0">}} and later) provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
 
-Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true.
+Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true. To enable concurrent DDL within a database, you must also set [ysql_enable_concurrent_ddl](../../../reference/configuration/yb-tserver/#ysql-enable-concurrent-ddl) to true after enabling table-level locks. For details, see [Enable concurrent DDL](../../../explore/transactions/explicit-locking/#enable-concurrent-ddl).
 
 Table-level locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same modes and API. Refer to [Table-level locks](https://www.postgresql.org/docs/15/explicit-locking.html#LOCKING-TABLES) in the PostgreSQL documentation.
 
