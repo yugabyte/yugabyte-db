@@ -51,6 +51,7 @@
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 namespace yb {
@@ -479,6 +480,11 @@ bool TSDescriptor::IsLive() const { return LockForRead()->IsLive(); }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
+}
+
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         FLAGS_master_ts_ysql_catalog_lease_ms && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {

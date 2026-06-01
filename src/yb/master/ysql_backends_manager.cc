@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 #include "yb/common/common_flags.h"
 
 #include "yb/consensus/consensus.h"
@@ -39,6 +40,7 @@
 using namespace std::chrono_literals;
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 
 DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
     60 * 1000, // 60s
@@ -92,8 +94,11 @@ Status CheckLeadership(
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
   }
+  const auto lease_ms = FLAGS_enable_ysql_operation_lease ?
+      FLAGS_master_ysql_operation_lease_ttl_ms :
+      FLAGS_master_ts_ysql_catalog_lease_ms;
   if (catalog_manager->TimeSinceElectedLeader() <
-      MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms)) {
+      MonoDelta::FromMilliseconds(lease_ms)) {
     return SetupError(
         resp->mutable_error(),
         STATUS(
@@ -107,7 +112,10 @@ Status CheckLeadership(
 // Static helper to centralize "Live Lease" logic
 bool IsTSLeaseLive(const TSDescriptor& ts_desc,
                    const ObjectLockInfoManager& manager) {
-  return manager.TabletServerHasLiveLease(ts_desc.permanent_uuid()) && !ts_desc.IsReplaced();
+  if (FLAGS_enable_ysql_operation_lease) {
+    return manager.TabletServerHasLiveLease(ts_desc.permanent_uuid()) && !ts_desc.IsReplaced();
+  }
+  return ts_desc.HasYsqlCatalogLease();
 }
 
 } // namespace
@@ -507,7 +515,9 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
 Status BackendsCatalogVersionJob::Launch(int64_t term) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
-  const auto descs = object_lock_info_manager_->GetAllTSDescriptorsWithALiveLease();
+  const auto descs = FLAGS_enable_ysql_operation_lease ?
+      object_lock_info_manager_->GetAllTSDescriptorsWithALiveLease() :
+      master_->ts_manager()->GetAllDescriptors();
   // If any new tservers join after this point, they should have up-to-date catalog version.
 
   std::vector<std::string> ts_uuids;
@@ -807,7 +817,8 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
     // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
     // lease expired.
     LOG_WITH_PREFIX(WARNING)
-        << "TS " << permanent_uuid() << " YSQL lease expired. Assume backends on that TS"
+        << "TS " << permanent_uuid() << (FLAGS_enable_ysql_operation_lease ? " YSQL" : " catalog")
+        << " lease expired. Assume backends on that TS"
         << " will be resolved to sufficient catalog version";
     TransitionToCompleteState();
     found_lease_expired_ = true;
@@ -927,7 +938,8 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
       if (found_lease_expired_ || !HasLiveLease()) {
         // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
-            << "tserver YSQL lease expired, so assuming its backends are at latest catalog version";
+            << "tserver " << (FLAGS_enable_ysql_operation_lease ? "YSQL" : "catalog")
+            << " lease expired, so assuming its backends are at latest catalog version";
       } else {
         // The two tserver-found-behind cases.
         LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";
@@ -963,7 +975,8 @@ bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
     return false;
   } else if (!HasLiveLease()) {
     LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
-                             << " YSQL lease expired. Assume backends"
+                             << (FLAGS_enable_ysql_operation_lease ? " YSQL" : " catalog")
+                             << " lease expired. Assume backends"
                              << " on that TS will be resolved to sufficient catalog version";
     return false;
   }
