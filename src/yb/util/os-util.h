@@ -78,8 +78,11 @@ Status ParseStat(const std::string&buffer, std::string* name, ThreadStats* stats
 // unrecognised format, or if the kernel version is not modern enough.
 Status GetThreadStats(int64_t tid, ThreadStats* stats);
 
-// Read thread name from /proc/<tid>/comm.
+// Read thread name from /proc/<tid>/stat/<tid>/comm.
 Result<std::string> GetProcfsThreadName(int64_t tid);
+
+// Read process command line from /proc/<tid>/cmdline.
+Result<std::string> GetProcfsProcessCmdline(int64_t tid, size_t max_length);
 
 // Runs a shell command. Returns false if there was any error (either failure to launch or
 // non-0 exit code), and true otherwise. *msg is set to an error message including the OS
