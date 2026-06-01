@@ -126,6 +126,20 @@ class PgAshSingleNode : public PgAshTest {
   }
 };
 
+class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--transaction_min_running_check_delay_ms=0");
+    options->extra_tserver_flags.push_back("--transaction_min_running_check_interval_ms=50");
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_inject_txn_get_status_delay_ms=$0", 4 * kTimeMultiplier * kSamplingIntervalMs));
+    options->extra_tserver_flags.push_back(
+      "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+    options->extra_tserver_flags.push_back("--index_backfill_wait_for_old_txns_ms=30000");
+  }
+};
+
 class YbAshV2Test : public PgAshSingleNode {
  public:
   YbAshV2Test() : circular_buffer_size_kb_(16 * 1024) {}
@@ -994,6 +1008,42 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
     ASSERT_GT(count, 0);
   }
   LOG_WITH_FUNC(INFO) << "done";
+}
+
+TEST_F(PgAshMinRunningHybridTimeTest, TestMinRunningHybridTimeWaitEventHasTabletId) {
+  static constexpr auto kTableName = "min_running_ash_test";
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  const auto tablet_id = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT tablet_id FROM yb_local_tablets WHERE table_name = '$0'", kTableName)));
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET v = 2 WHERE k = 1", kTableName));
+
+  TestThreadHolder index_backfill_thread;
+  index_backfill_thread.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE INDEX idx_min_running_ash_test ON min_running_ash_test (v)"));
+  });
+
+  const auto min_running_query_id =
+      std::to_underlying(ash::FixedQueryId::kQueryIdForMinRunningHybridTime);
+  const auto ash_query = Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE query_id = $0 "
+      "AND wait_event = 'TransactionStatusCache_DoGetCommitData' "
+      "AND wait_event_component = 'TServer' "
+      "AND wait_event_aux = SUBSTRING('$1', 1, 15)",
+      min_running_query_id, tablet_id);
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<int64_t>(ash_query)) > 0;
+  }, 30s * kTimeMultiplier, "wait for MinRunningHybridTime ASH sample"));
+
+  ASSERT_OK(conn_->RollbackTransaction());
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
