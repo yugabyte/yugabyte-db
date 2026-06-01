@@ -38,6 +38,10 @@ public class TestPgRegressForeignKeyWhenTypesMismatch extends BasePgRegressTest 
 
   @Test
   public void testPgRegress() throws Exception {
+    // Set connection manager mode to NONE to ensure
+    // we get same results for EXPLAIN (ANALYZE) queries.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+
     runPgRegressTest("yb_foreign_key_when_types_mismatch_schedule");
   }
 }
