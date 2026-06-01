@@ -351,6 +351,11 @@ class AbstractInstancesMethod(AbstractMethod):
                 "node_agent_ip": host_info["private_ip"],
                 "node_agent_port": self.extra_vars["node_agent_port"]
             }
+        if connection_type == 'kubectl':
+            return {
+                "kubectl_pod": host_info["name"],
+                "kubectl_namespace": host_info.get("namespace", "default")
+            }
         raise YBOpsRuntimeError("Unknown connection type: {}".format(connection_type))
 
     def get_server_ports_to_check(self, args):
@@ -365,6 +370,9 @@ class AbstractInstancesMethod(AbstractMethod):
                 server_ports.append(int(args.custom_ssh_port))
         elif connection_type == 'node_agent_rpc':
             server_ports.append(self.extra_vars["node_agent_port"])
+        elif connection_type == 'kubectl':
+            # Kubectl doesn't use ports, return empty list
+            pass
         return list(set(server_ports))
 
 
