@@ -259,7 +259,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -294,6 +293,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.7.1-2026.1" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
 // Clear default resolvers.
@@ -1084,6 +1084,8 @@ dependencyOverrides += "org.springframework" % "spring-jcl" % "5.3.39"
 // Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
 excludeDependencies += "org.glassfish" % "javax.el"
 libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
+
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
