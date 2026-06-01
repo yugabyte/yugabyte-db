@@ -25,7 +25,6 @@
 #include "catalog/pg_class_d.h"
 #include "catalog/pg_namespace_d.h"
 #include "commands/defrem.h"
-#include "commands/extension.h" /* YB: get_extension_oid() */
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
@@ -36,6 +35,7 @@
 #include "utils/ag_cache.h"
 
 /* YB includes */
+#include "commands/extension.h" /* YB: get_extension_oid() */
 #include "commands/graph_commands.h"
 
 static object_access_hook_type prev_object_access_hook;
@@ -158,7 +158,7 @@ static bool is_age_drop(PlannedStmt *pstmt)
                     return false;
 
                 return true;
-            }
+            } /* YB */
         }
     }
 
