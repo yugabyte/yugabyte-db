@@ -189,10 +189,7 @@ export const mapCreateUniversePayload = (
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: securitySettings.enableIPV6 ?? false,
-        ...(securitySettings?.enableExposingService && {
-          enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
-        })
+        enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       clusters: [
         {
