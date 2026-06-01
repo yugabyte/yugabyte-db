@@ -408,8 +408,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
-        .setSubTaskGroupType(getTaskSubGroupType());
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(
           taskParams().upgradeSystemCatalog,
@@ -427,6 +425,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             true /* isSoftwareRollbackAllowed */);
       }
     }
+    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   @Override
@@ -603,8 +603,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               universe.getUniverseUUID(),
               true /* ignoreErrors */,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           if (!taskParams().rollbackSupport) {
             // When rollback is not supported, finalize within this task
@@ -625,6 +623,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   true /* isSoftwareRollbackAllowed */);
             }
           }
+          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
+              .setSubTaskGroupType(getTaskSubGroupType());
         },
         null /* firstRunTxnCallback */,
         () -> {
