@@ -101,7 +101,7 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public String getRemoteTmpDir(NodeDetails node, Universe universe) {
-    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     if (remoteTmpDir == null || remoteTmpDir.isEmpty()) {
       remoteTmpDir = "/tmp";
     }
@@ -537,7 +537,7 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }

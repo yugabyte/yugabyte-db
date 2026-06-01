@@ -55,6 +55,10 @@ DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minut
   "How often to read cdc_state table on master and move the retention barriers for the sys "
   "catalog tablet.");
 
+DEFINE_RUNTIME_bool(enable_update_local_peer_min_index_master, false,
+    "When false, the master leader updates retention barriers on all master peers (including "
+    "followers) for the sys catalog tablet, instead of each peer updating its own.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
@@ -94,6 +98,10 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<HostPort> GetDesiredHostPortForLocal() const override {
     return STATUS(NotSupported, "GetDesiredHostPortForLocal not supported on master");
+  }
+
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index_master;
   }
 
  private:

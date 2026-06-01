@@ -1499,6 +1499,9 @@ public class PlacementInfoUtil {
       }
       if (!newCluster.areTagsSame(oldCluster)
           || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
+          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
+          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)

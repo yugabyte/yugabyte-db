@@ -57,30 +57,6 @@ std::string NormalizeFileName(const std::string fname) {
   return out_name;
 }
 
-class WritableFileImpl : public WritableFile {
- public:
-  explicit WritableFileImpl(std::shared_ptr<InMemoryFileState> file) : file_(std::move(file)) {}
-
-  ~WritableFileImpl() {}
-
-  Status Append(const Slice& data) override {
-    return file_->Append(data);
-  }
-  Status Truncate(uint64_t size) override {
-    return Status::OK();
-  }
-  Status Close() override { return Status::OK(); }
-  Status Flush() override { return Status::OK(); }
-  Status Sync() override { return Status::OK(); }
-
-  const std::string& filename() const override {
-    return file_->filename();
-  }
-
- private:
-  std::shared_ptr<InMemoryFileState> file_;
-};
-
 class InMemoryDirectory : public Directory {
  public:
   Status Fsync() override { return Status::OK(); }
@@ -133,7 +109,7 @@ class InMemoryEnv : public EnvWrapper {
     auto file = std::make_shared<InMemoryFileState>(fname);
     file_map_[nfname] = file;
 
-    result->reset(new WritableFileImpl(file));
+    result->reset(new yb::InMemoryWritableFile(file));
     return Status::OK();
   }
 

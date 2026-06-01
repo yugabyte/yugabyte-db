@@ -19,7 +19,13 @@
 
 #include "yb/util/enums.h"
 
+namespace yb {
+class WritableFile;
+}
+
 namespace rocksdb {
+
+using yb::WritableFile;
 
 class Arena;
 class BoundaryValuesExtractor;
@@ -37,7 +43,6 @@ class ReadFileFilter;
 class Statistics;
 class IteratorFilter;
 class TableReader;
-class WritableFile;
 class WriteBatch;
 
 struct BlockBasedTableOptions;

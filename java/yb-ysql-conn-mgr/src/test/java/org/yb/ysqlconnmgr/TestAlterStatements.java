@@ -199,10 +199,11 @@ public class TestAlterStatements extends BaseYsqlConnMgr {
      */
     private void restartClusterWithAlterGucFlags(String strategy, int ttlMs) throws Exception {
         Map<String, String> tserverFlags = new HashMap<>();
-        tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-                + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
         tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", strategy);
         tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(ttlMs));
+        // Disable warmup mode, we want to explicitly control the backends here
+        tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        tserverFlags.put("ysql_conn_mgr_dowarmup", "false");
         restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
     }
 

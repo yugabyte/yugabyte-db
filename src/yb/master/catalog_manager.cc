@@ -611,7 +611,7 @@ static constexpr char kYbHnsw[] = "yb_hnsw";
 static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
 static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
-DEFINE_RUNTIME_string(vector_index_backend, kYbHnswUsearch,
+DEFINE_RUNTIME_string(vector_index_backend, kYbHnswHnswlib,
     "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
     "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
     "\"yb_hnsw_usearch\".");
@@ -1642,7 +1642,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   }
 
   RETURN_NOT_OK(LoadXReplStream());
-  cdc_enabled_status_known_.store(true, std::memory_order_release);
 
   RETURN_NOT_OK(LoadUniverseReplication());
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());

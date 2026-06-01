@@ -4907,23 +4907,36 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   pg_ts = cluster_->tablet_server(2);
   auto conn2 = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&conn1]() -> void {
-    // Retry on 40001 (serialization failure) which can occur due to
-    // running CREATE TABLE concurrently with the other thread.
-    Status s;
-    do {
-      s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
-    ASSERT_OK(s);
-    ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
+  // The concurrent CREATE TABLEs bump the catalog version and can race with each other.
+  // When transactional DDL is disabled (--ysql_yb_ddl_transaction_block_enabled=false),
+  // a catalog-version-mismatch abort does not roll back the table that the first attempt
+  // already wrote to DocDB; instead the master's DDL atomicity infrastructure cleans it up
+  // asynchronously. That cleanup can land between a successful CREATE TABLE IF NOT EXISTS
+  // (which no-ops on the still-cached pg_class entry) and the INSERT, leaving the INSERT to
+  // fail with "relation does not exist". Wrap the whole create+insert in a retry loop so we
+  // recover from each of these transient outcomes.
+  auto create_and_insert = [](PGConn* conn, const std::string& table) {
+    while (true) {
+      auto create_status = conn->ExecuteFormat(
+          "CREATE TABLE IF NOT EXISTS $0(k SERIAL, v INT)", table);
+      ASSERT_TRUE(create_status.ok() ||
+                  HasTransactionError(create_status) || IsRetryable(create_status))
+          << create_status;
+      auto insert_status = conn->ExecuteFormat("INSERT INTO $0(v) VALUES(1)", table);
+      if (insert_status.ok()) return;
+      // The table may have been removed by the master's DDL atomicity cleanup after a
+      // catalog-mismatch abort of a concurrent CREATE TABLE; that surfaces as "relation
+      // does not exist" on the INSERT and is also retryable.
+      ASSERT_TRUE(HasTransactionError(insert_status) || IsRetryable(insert_status) ||
+                  insert_status.message().ToBuffer().find("does not exist") != std::string::npos)
+          << insert_status;
+    }
+  };
+  thread_holder.AddThreadFunctor([&conn1, &create_and_insert]() -> void {
+    create_and_insert(&conn1, "t1");
   });
-  thread_holder.AddThreadFunctor([&conn2]() -> void {
-    Status s;
-    do {
-      s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
-    ASSERT_OK(s);
-    ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
+  thread_holder.AddThreadFunctor([&conn2, &create_and_insert]() -> void {
+    create_and_insert(&conn2, "t2");
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
@@ -4958,8 +4971,12 @@ class PgBackendsSessionExpireTest : public LibPqTestBase {
         });
   }
 
-  const MonoDelta kHeartbeatTimeout = 1s;
-  const MonoDelta kHeartbeatInterval = 10s;
+  // Sanitizer builds can spend multiple seconds in backend startup/relcache
+  // initialization, so a 1s session lifetime can expire unrelated connection
+  // attempts. Using a conservative 10x multipler in sanitizer builds as a
+  // workaround.
+  const MonoDelta kHeartbeatTimeout = RegularBuildVsSanitizers(1s, 10s);
+  const MonoDelta kHeartbeatInterval = kHeartbeatTimeout * 10;
   static constexpr int kMaxTabletsPerTable = 10;
 };
 
@@ -4969,7 +4986,7 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
   constexpr auto query = "SELECT * FROM pg_class LIMIT 1";
   PGConn conn = ASSERT_RESULT(Connect());
 
-  // The backend sends a heartbeat to the tablet server once every 10s by default.
+  // The backend sends a heartbeat to the tablet server every kHeartbeatInterval.
   // This is controlled by the 'pg_client_heartbeat_interval_ms' flag.
   // The flag 'pg_client_session_expiration_ms' controls how often the tserver checks for the
   // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little

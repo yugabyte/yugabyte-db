@@ -61,6 +61,7 @@ class TserverXClusterContextIf;
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (IsDatabaseColocated) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
@@ -73,6 +74,7 @@ class TserverXClusterContextIf;
     (Heartbeat) \
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
+    (IsNamespacePartOfCDCSDK) \
     (ListClones) \
     (QueryAutoAnalyze) \
     (ResetTableMutationCountersAfterAnalyze) \

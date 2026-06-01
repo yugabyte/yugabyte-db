@@ -862,7 +862,8 @@ public class HealthChecker {
                   nodeInfo.isK8s()
                       ? String.format(
                           CommonUtils.DEFAULT_YBC_DIR,
-                          GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
+                          GFlagsUtil.getCustomTmpDirectory(
+                              confGetter, nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
         // Check if any export is currently enabled in the universe.
@@ -1265,7 +1266,8 @@ public class HealthChecker {
         environment.resourceAsStream("health/node_health.py.template")) {
       template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
       Universe universe = Universe.getOrBadRequest(universeUuid);
-      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(nodeInfo.nodeDetails, universe);
+      String customTmpDirectory =
+          GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe);
       String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
       scriptContent = scriptContent.replace("{{TMP_DIR}}", customTmpDirectory);
       // For now it has no universe/cluster specific info. Add placeholder substitution here once

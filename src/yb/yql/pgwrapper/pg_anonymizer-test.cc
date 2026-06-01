@@ -75,10 +75,6 @@ class PgAnonymizerTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back(
         "--enable_pg_anonymizer=true");
     if (options->IsYsqlConnMgrEnabled()) {
-      AppendFlagToAllowedPreviewFlagsCsv(
-          options->extra_tserver_flags, "ysql_conn_mgr_alter_guc_adoption_strategy");
-      AppendFlagToAllowedPreviewFlagsCsv(
-          options->extra_tserver_flags, "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
       options->extra_tserver_flags.push_back("--ysql_conn_mgr_alter_guc_adoption_strategy=gradual");
       options->extra_tserver_flags.push_back("--ysql_conn_mgr_alter_guc_stale_backend_ttl_ms=500");
     }

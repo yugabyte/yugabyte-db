@@ -46,6 +46,10 @@ class CDCServiceContext {
   // endpoint verification succeeds with DNS-based server addresses.
   virtual Result<HostPort> GetDesiredHostPortForLocal() const = 0;
 
+  // Whether each local peer should update its own retention barriers independently.
+  // When false, the leader propagates retention barriers to all peers.
+  virtual bool ShouldLocalPeerUpdateOwnBarriers() const = 0;
+
   virtual ~CDCServiceContext() = default;
 };
 

@@ -39,7 +39,7 @@ import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
-import { getTableUuid } from '../../../../utils/tableUtils';
+import { getTableUuid, withTotalStorageAsSizeBytes } from '../../../../utils/tableUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 import {
   SearchToken,
@@ -701,13 +701,14 @@ const getReplicationItemsFromTables = (
             indexTableUuid
           );
           const isDroppedOnTarget = !!tableUuidsDroppedOnTarget?.has(indexTableUuid);
-          const indexTableReplicationCandidate: IndexTableReplicationCandidate = {
-            ...indexTable,
-            eligibilityDetails: indexTableReplicationEligibility,
-            tableUUID: indexTableUuid,
-            isUnreplicatedTableInReplicatedNamespace,
-            isDroppedOnTarget
-          };
+          const indexTableReplicationCandidate: IndexTableReplicationCandidate =
+            withTotalStorageAsSizeBytes({
+              ...indexTable,
+              eligibilityDetails: indexTableReplicationEligibility,
+              tableUUID: indexTableUuid,
+              isUnreplicatedTableInReplicatedNamespace,
+              isDroppedOnTarget
+            });
 
           if (isUnreplicatedTableInReplicatedNamespace && indexTableReplicationEligibility) {
             unreplicatedIndexTablesInReplicatedNamespace.push(indexTableReplicationCandidate);
@@ -715,7 +716,7 @@ const getReplicationItemsFromTables = (
 
           indexTableIds.push(indexTableUuid);
           indexTables.push(indexTableReplicationCandidate);
-          indexTablesTotalSize += indexTable.sizeBytes;
+          indexTablesTotalSize += indexTableReplicationCandidate.sizeBytes;
         });
 
         const mainTableUuid = getTableUuid(sourceTable);
@@ -723,20 +724,17 @@ const getReplicationItemsFromTables = (
           mainTableUuid
         );
         const isDroppedOnTarget = !!tableUuidsDroppedOnTarget?.has(mainTableUuid);
-        const mainTableReplicationCandidate: MainTableReplicationCandidate = {
-          ...sourceTable,
-          indexTableIDs: indexTableIds,
-          eligibilityDetails: mainTableReplicationEligibility,
-          tableUUID: mainTableUuid,
-          indexTables: indexTables,
-          isUnreplicatedTableInReplicatedNamespace,
-          isDroppedOnTarget
-        };
-        const {
-          keySpace: namespaceName,
-          sizeBytes,
-          eligibilityDetails
-        } = mainTableReplicationCandidate;
+        const mainTableReplicationCandidate: MainTableReplicationCandidate =
+          withTotalStorageAsSizeBytes({
+            ...sourceTable,
+            indexTableIDs: indexTableIds,
+            eligibilityDetails: mainTableReplicationEligibility,
+            tableUUID: mainTableUuid,
+            indexTables: indexTables,
+            isUnreplicatedTableInReplicatedNamespace,
+            isDroppedOnTarget
+          });
+        const { keySpace: namespaceName, eligibilityDetails } = mainTableReplicationCandidate;
         const namespaceId =
           namespaceIdentifierToNamespaceUuid[getNamespaceIdentifier(namespaceName, tableType)] ??
           namespaceName;
@@ -783,7 +781,8 @@ const getReplicationItemsFromTables = (
         // Selecting/deselecting a namespace will select/deselect all tables under that namespace regardless if
         // those tables match the current filter.
         items.namespaces[namespaceId].allTables.push(mainTableReplicationCandidate);
-        items.namespaces[namespaceId].sizeBytes += sizeBytes + indexTablesTotalSize;
+        items.namespaces[namespaceId].sizeBytes +=
+          mainTableReplicationCandidate.sizeBytes + indexTablesTotalSize;
 
         // Metadata, `tables`, `searchMatchTableUuids`, `searchMatchingNamespaceUuids` fields reflect what is presented
         // to the user based on the current search tokens.

@@ -94,7 +94,7 @@ ybm cluster create \
   --region-info region=ap-northeast-1,num-nodes=3,num-cores=4,disk-size-gb=200  \
   --cluster-tier Dedicated \
   --fault-tolerance ZONE \
-  --database-version Innovation \
+  --database-version Rapid \
   --cluster-name my-sandbox \
   --wait
 ```

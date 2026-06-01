@@ -9447,6 +9447,12 @@ write_relcache_init_file(bool shared)
 		Assert(OidIsValid(MyDatabaseId));
 
 	/*
+	 * YB mode uses local-tserver prefetching instead of relcache file.
+	 */
+	if (IsYugaByteEnabled() && YbCatalogPreloadRequired())
+		return;
+
+	/*
 	 * If we have already received any relcache inval events, there's no
 	 * chance of succeeding so we may as well skip the whole thing.
 	 */

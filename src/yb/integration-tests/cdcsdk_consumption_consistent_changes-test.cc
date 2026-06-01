@@ -5462,7 +5462,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -5499,6 +5498,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
     auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
     ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
   }
+
+  // Force-expire the stream so the XReplParentTabletDeletionTask is unblocked from cleaning up the
+  // tablets dropped above. The retention check is `last_active_time + retention < now`, so 0 makes
+  // the stream expire on the next background-task tick. This decouples the wait below from any
+  // TSAN-sensitive retention timing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -6660,6 +6665,90 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithoutGRPC
   TestSysCatalogRetentionBarriers(/* use_grpc_stream */ true,
                                   /* use_logical_replication_stream */ true,
                                   /* add_dummy_grpc_slot_entry */ false);
+}
+
+// Test that retention barriers for the sys catalog tablet are propagated to all master peers
+// (including followers) and survive master leader failovers.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToFollowerMasters) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+
+  const uint32_t num_masters = 3;
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, num_masters, false /* colocated */, true /* cdc_populate_safepoint_record */));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto leader_tablet_peer = leader_master->tablet_peer();
+  auto initial_wal_barrier = leader_tablet_peer->get_cdc_min_replicated_index();
+  auto initial_intents_barrier = leader_tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  auto initial_history_barrier = leader_tablet_peer->get_cdc_sdk_safe_time();
+
+  ASSERT_LT(initial_wal_barrier, OpId::Max().index);
+  ASSERT_LT(initial_intents_barrier, OpId::Max());
+  ASSERT_LT(initial_history_barrier, HybridTime::kMax);
+
+  ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
+
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 10 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  // Wait for CDCMasterBgTask to propagate barriers to all masters.
+  SleepFor(
+      MonoDelta::FromSeconds(
+          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+
+  auto check_all_masters_barriers = [&]() {
+    for (size_t i = 0; i < num_masters; i++) {
+      auto* mini_master = test_cluster_.mini_cluster_->mini_master(i);
+      auto peer = mini_master->tablet_peer();
+      auto wal_barrier = peer->get_cdc_min_replicated_index();
+      auto intents_barrier = peer->cdc_sdk_min_checkpoint_op_id();
+      auto history_barrier = peer->get_cdc_sdk_safe_time();
+
+      ASSERT_LT(wal_barrier, OpId::Max().index);
+      ASSERT_LT(initial_wal_barrier, wal_barrier);
+      ASSERT_LT(intents_barrier, OpId::Max());
+      ASSERT_LT(initial_intents_barrier, intents_barrier);
+      ASSERT_LT(history_barrier, HybridTime::kMax);
+      ASSERT_LT(initial_history_barrier, history_barrier);
+    }
+  };
+
+  // Verify that all masters have retention barriers that are ahead of the initial barriers.
+  check_all_masters_barriers();
+
+  // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
+  // CDCMasterBgTask is correctly refreshing them.
+  SleepFor(
+      MonoDelta::FromSeconds(
+          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+  check_all_masters_barriers();
+
+  // Step down the master leader to simulate a failover. Then verify that retention barriers on all
+  // masters are still valid (ahead of initial barriers). On the new leader, the barriers should not
+  // have been reset despite the stale sleep, because the leader propagation kept refreshing them.
+  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /* new_leader_uuid */));
+  // Wait for the new leader to be elected and CDCMasterBgTask to run.
+  SleepFor(
+      MonoDelta::FromSeconds(
+          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  check_all_masters_barriers();
+
+  // Restart all 3 masters and verify barriers are still propagated after a full cycle.
+  for (size_t i = 0; i < num_masters; i++) {
+    ASSERT_OK(test_cluster_.mini_cluster_->mini_master(i)->Restart());
+  }
+  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
+  SleepFor(
+      MonoDelta::FromSeconds(
+          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  check_all_masters_barriers();
 }
 
 }  // namespace cdc

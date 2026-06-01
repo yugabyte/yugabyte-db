@@ -78,7 +78,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "that messages survive long enough for every TServer to receive them "
                        "via heartbeats.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
                        "If a DDL statement generates more than this number of invalidation "
                        "messages we do not associate the messages with the new catalog version "
                        "caused by this DDL statement. This effetively turns off incremental "
@@ -86,6 +86,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
 
 DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
                       "Maximum number of invalidation messages we keep for a given database.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
+                       "Enables fastpath writes for relations created in the current transaction "
+                       "(skip intents DB when safe).");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
+                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                               "inside explicit transaction blocks too.");
 
 namespace yb::pggate {
 namespace {
@@ -403,7 +411,15 @@ class PgSession::RunHelper {
             << ", table name: " << table.table_name().table_name()
             << ", table relfilenode id: " << table.relfilenode_id();
 
+    bool skip_intents = op->skip_intents();
     auto& buffer = pg_session_.buffer_;
+    if (!buffer.IsEmpty() && skip_intents != pg_session_.last_op_skipped_intents_) {
+        VLOG(1) << "Flushing buffer due to skip_intents mode switch. "
+                << "new skip_intents mode: " << skip_intents;
+        RETURN_NOT_OK(pg_session_.FlushBufferedEntities(
+            PgFlushDebugContext::SwitchSkipIntentsMode()));
+    }
+    pg_session_.last_op_skipped_intents_ = skip_intents;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
@@ -581,12 +597,9 @@ PgSession::~PgSession() = default;
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
-  auto resp = VERIFY_RESULT(pg_client_.GetDatabaseInfo(database_oid));
-  *colocated = resp.colocated();
-  if (resp.has_legacy_colocated_database())
-    *legacy_colocated_database = resp.legacy_colocated_database();
-  else
-    *legacy_colocated_database = true;
+  auto info = VERIFY_RESULT(pg_client_.IsDatabaseColocated(database_oid));
+  *colocated = info.colocated;
+  *legacy_colocated_database = info.legacy_colocated_database;
   return Status::OK();
 }
 
@@ -718,6 +731,7 @@ Status PgSession::StopOperationsBuffering() {
 void PgSession::ResetOperationsBuffering() {
   buffer_.Clear();
   buffering_enabled_ = false;
+  last_op_skipped_intents_ = false;
 }
 
 Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedEntities(
@@ -731,6 +745,7 @@ SetupPerformOptionsAccessorTag PgSession::ClearState() {
   buffer_.Clear();
   explicit_row_lock_buffer_.Clear();
   ClearAllInsertOnConflictBuffers();
+  last_op_skipped_intents_ = false;
   return {};
 }
 

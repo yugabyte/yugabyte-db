@@ -74,6 +74,12 @@ bindVectorIndexOptions(YbcPgStatement handle,
 	options.idx_type = ybpg_idx_type;
 	options.dist_type = dist_type;
 
+	/* Partial indexes are not supported */
+	if (indexInfo->ii_Predicate != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("partial vector indexes are not supported")));
+
 	/* We only support indexes with one vector attribute for now. */
 	Assert(indexTupleDesc->natts == 1);
 

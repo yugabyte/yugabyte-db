@@ -62,8 +62,13 @@ class PgReadTimeTest : public PgMiniTestBase {
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
+    // Turn off yb_enable_new_relation_fastpath_write because this test is not testing
+    // skip intents, it's testing read time picking. When we skip intents we also clear
+    // the read time to avoid restart read error. If read time is cleared then it will
+    // be picked by DocDB, causing num_pick_read_time_on_docdb > 0.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
-        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0);
+        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0) +
+        ",yb_enable_new_relation_fastpath_write=false";
 
     PgMiniTestBase::SetUp();
   }

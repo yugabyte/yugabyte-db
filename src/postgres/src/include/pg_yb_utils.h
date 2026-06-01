@@ -144,6 +144,8 @@ extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
+extern bool yb_enable_spi_dist_tracing;
+
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
@@ -656,6 +658,17 @@ extern bool yb_ignore_freeze_with_copy;
 /* GUC variables needed by YB via their YB pointers. */
 extern int	StatementTimeout;
 
+
+/*
+ * Enable the skip intents write optimization.
+ */
+extern bool yb_enable_new_relation_fastpath_write;
+
+/*
+ * Enable the skip intents write optimization in transaction blocks.
+ */
+extern bool yb_enable_new_relation_fastpath_write_in_txn_blocks;
+
 /* ------------------------------------------------------------------------------ */
 /* YB Debug utils. */
 
@@ -1065,7 +1078,8 @@ typedef enum YbTableDistribution
 	YB_HASH_SHARDED,
 	YB_RANGE_SHARDED
 } YbTableDistribution;
-YbTableDistribution YbGetTableDistribution(Oid relid);
+extern YbTableDistribution YbGetTableDistribution(Relation rel);
+extern YbTableDistribution YbGetTableDistributionById(Oid relid);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
@@ -1699,6 +1713,9 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
+extern bool YbCanSkipIntentsWrite(Relation rel);
+extern void YbEnableSkipIntentsForNewTransaction();
+extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
@@ -1718,6 +1735,7 @@ extern const char *YbGetTraceparentResultErrmsg(YbTraceparentResult result);
 extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_context,
 															size_t trace_context_len,
 															char *traceparent_out);
+extern bool YBHasSkippedIntentsWrite();
 
 /*
  * Returns true if 'relid' is a foreign table whose foreign server has
@@ -1726,6 +1744,8 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
 struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
 extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
 											  Index rti,
 											  const char *tserver_uuid);
@@ -1733,4 +1753,5 @@ extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *
 													  Index rti);
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
 #endif							/* PG_YB_UTILS_H */

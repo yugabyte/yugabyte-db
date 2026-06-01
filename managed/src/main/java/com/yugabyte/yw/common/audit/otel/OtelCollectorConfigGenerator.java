@@ -652,7 +652,7 @@ public class OtelCollectorConfigGenerator {
                 "body matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"",
                 "body matches \"unable to find pgstat entry for abnormally terminated PID\"",
                 "body matches \"^[IWEF]\\\\d{4} \\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{6} \\\\d+"
-                    + " .*\\\\.cc:\\\\d+\""));
+                    + " .*\\\\.[ch]+:\\\\d+\""));
         receivers.put(queryYsqlReceiverName, ysqlReceiver);
       }
       allReceivers.putAll(receivers);
@@ -768,7 +768,7 @@ public class OtelCollectorConfigGenerator {
     filterOperator3.setType("filter");
     filterOperator3.setExpr(
         "body matches \"^[IWEF]\\\\d{4} \\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{6} \\\\d+"
-            + " .*\\\\.cc:\\\\d+\"");
+            + " .*\\\\.[ch]+:\\\\d+\"");
 
     OtelCollectorConfigFormat.RegexOperator regexOperator =
         getRegexOperator(logPrefix, ExportType.QUERY_LOGS);

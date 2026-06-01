@@ -211,6 +211,12 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
 
   void Shutdown();
 
+  // Returns true once Shutdown() has been initiated. From that point on, Enqueue() is
+  // guaranteed to return false. Note that Enqueue() can also return false for a non-closing
+  // reason if max_workers == kUnlimitedWorkersWithoutQueue and worker-thread creation fails;
+  // in any other configuration "Enqueue returned false" and "IsClosing()" are equivalent.
+  bool IsClosing() const;
+
   bool Owns(Thread* thread);
   bool OwnsThisThread();
   bool BusyWait(MonoTime deadline);
@@ -242,6 +248,13 @@ class ThreadSubPoolBase {
   // Shut down the strand and wait for running tasks to finish. Concurrent calls to this function
   // are OK, and each of them will wait for all tasks.
   void Shutdown();
+
+  // Returns true if either this sub-pool / strand or the underlying YBThreadPool is shutting
+  // down. From that point on, Enqueue() is guaranteed to return false. This is the
+  // sub-pool-level analogue of YBThreadPool::IsClosing().
+  bool IsClosing() const {
+    return Closing() || thread_pool_.IsClosing();
+  }
 
  protected:
   static constexpr size_t kStopMark = 1ULL << 48;

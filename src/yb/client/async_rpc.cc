@@ -77,6 +77,11 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
+METRIC_DEFINE_counter(server, skip_intents_writes,
+    "Number of writes that have skipped intents db within a transaction.",
+    yb::MetricUnit::kRequests,
+    "Number of writes that have skipped intents db within a transaction.");
+
 DEFINE_RUNTIME_int32(ybclient_print_trace_every_n, 0,
     "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
     "disables printing the collected traces.");
@@ -156,7 +161,8 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)),
       consistent_prefix_successful_reads(
           METRIC_consistent_prefix_successful_reads.Instantiate(entity)),
-      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)) {
+      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)),
+      skip_intents_writes(METRIC_skip_intents_writes.Instantiate(entity)) {
 }
 
 AsyncRpc::AsyncRpc(
@@ -174,7 +180,8 @@ AsyncRpc::AsyncRpc(
                       mutable_retrier(),
                       trace_.get()),
       start_(CoarseMonoClock::Now()),
-      async_rpc_metrics_(data.batcher->async_rpc_metrics()) {
+      async_rpc_metrics_(data.batcher->async_rpc_metrics()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data.allow_local_calls_in_curr_thread);
 }
@@ -185,6 +192,10 @@ AsyncRpc::~AsyncRpc() {
 
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
+
+  // On retries, this runs on a reactor thread (via RpcRetrier::DoRetry) that carries no wait
+  // state. Re-adopt the wait state captured at construction
+  ADOPT_WAIT_STATE(wait_state_);
 
   retained_self_ = shared_from_this();
   // For now, if this is a retry, execute this rpc on the leader even if
@@ -432,11 +443,19 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
+    DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
     bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
+  } else if (data.skip_intents) {
+    if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
+      IncrementCounter(async_rpc_metrics_->skip_intents_writes);
+    }
+    if (req_.read_time().read_ht() > 0) {
+      req_.clear_read_time();
+    }
   }
 }
 

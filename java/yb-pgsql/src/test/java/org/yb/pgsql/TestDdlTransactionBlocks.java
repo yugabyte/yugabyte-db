@@ -21,6 +21,8 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.util.SkipOnTSAN;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 /**
  * Runs the pg_regress test suite for DDL transaction blocks support.
  */
@@ -46,6 +48,14 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
+    builder.addCommonTServerFlag("ysql_bypass_anonymous_savepoint_ddl_check", "false");
+    builder.addCommonTServerFlag(
+        "allowed_preview_flags_csv", "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+    boolean enableSkipIntents = ThreadLocalRandom.current().nextBoolean();
+    if (enableSkipIntents) {
+      builder.addCommonTServerFlag(
+          "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "true");
+    }
   }
 
   @Test

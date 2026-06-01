@@ -278,22 +278,50 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
+      // For the non-ConnMgr path, disable heartbeats so that catalog version
+      // updates from each ALTER on connection 1 are not propagated to
+      // connection 2's tserver during the loop. Without this, the prologue
+      // check in YBCheckSharedCatalogCacheVersion may refresh connection 2's
+      // catcache before the SELECT runs, hiding the expected "Catalog Version
+      // Mismatch" error. The race window is widened under TSAN where ALTER
+      // runtimes span multiple heartbeat intervals. The ConnMgr path
+      // intentionally waits for the heartbeat (DDL sleeps), so keep heartbeats
+      // enabled there to preserve the separate "no failures" assertion below.
+      final boolean disableHeartbeats = !isTestRunningWithConnectionManager();
+
       final int attempts = 5;
-      List<Throwable> errors = IntStream.range(0, attempts)
-          .boxed()
-          .map((i) -> captureThrow(() -> {
-            // Add some artificial delay to space out attempts.
-            Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS / attempts);
+      final List<Throwable> errors;
+      try {
+        if (disableHeartbeats) {
+          for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "TEST_tserver_disable_heartbeat", "true", true));
+          }
+        }
 
-            // Add new row from connection 1.
-            statement1.execute("ALTER TABLE test_table ADD COLUMN x" + i + " int");
+        errors = IntStream.range(0, attempts)
+            .boxed()
+            .map((i) -> captureThrow(() -> {
+              // Add some artificial delay to space out attempts.
+              Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS / attempts);
 
-            // Immediately try selecting row from connection 2.
-            statement2.execute("SELECT x" + i + " FROM test_table");
-          }))
-          .filter(Optional::isPresent)
-          .map(Optional::get)
-          .collect(Collectors.toList());
+              // Add new row from connection 1.
+              statement1.execute("ALTER TABLE test_table ADD COLUMN x" + i + " int");
+
+              // Immediately try selecting row from connection 2.
+              statement2.execute("SELECT x" + i + " FROM test_table");
+            }))
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toList());
+      } finally {
+        if (disableHeartbeats) {
+          for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "TEST_tserver_disable_heartbeat", "false", true));
+          }
+        }
+      }
 
       if (isTestRunningWithConnectionManager()) {
         // Due to DDL sleeps with Connection Manager, all select statements

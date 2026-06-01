@@ -135,6 +135,7 @@ namespace master {
 class CMGlobalLoadState;
 class CMPerTableLoadState;
 struct DeferredAssignmentActions;
+class ImportSnapshotAddTableToTabletWaiter;
 class InitialSysCatalogSnapshotWriter;
 struct KeyRange;
 struct PgTypeInfo;
@@ -1498,6 +1499,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DeleteCDCStream(
       const DeleteCDCStreamRequestPB* req, DeleteCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Delete the notifications replication slot for a tserver.
+  Status DeleteNotificationsReplicationSlot(
+      const std::string& tserver_uuid, uint64_t tserver_start_time = 0);
+
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) override;
@@ -1505,6 +1510,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Whether there is a CDC stream for a given table.
   Status IsObjectPartOfXRepl(
     const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) override;
+
+  // Whether there is a CDC stream for a given namespace (database).
+  Status IsNamespacePartOfCDCSDK(
+    const IsNamespacePartOfCDCSDKRequestPB* req,
+    IsNamespacePartOfCDCSDKResponsePB* resp) override;
 
   // Fetch CDC stream info corresponding to a db stream id
   Status GetCDCDBStreamInfo(
@@ -2810,7 +2820,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch,
       bool is_clone,
       bool use_relfilenode,
-      ExternalTableSnapshotDataMap* tables_data);
+      ExternalTableSnapshotDataMap* tables_data,
+      const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter);
   Status ImportSnapshotCreateAndWaitForTables(
       const SnapshotInfoPB& snapshot_pb,
       const NamespaceMap& namespace_map,
@@ -2819,6 +2830,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data,
+      const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
       const SnapshotInfoPB& snapshot_pb, bool use_relfilenode,
@@ -2870,7 +2882,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       bool use_relfilenode,
       ExternalTableSnapshotDataMap* table_map,
-      ExternalTableSnapshotData* table_data);
+      ExternalTableSnapshotData* table_data,
+      const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter);
   // Get the restore target table id and add it to table_data by using the backup source table id
   // and name. Returns a bool whether the table is a colocated parent table. Used in ycql backups
   // or older ysql backups formats where relfilenode is not preserved.
@@ -2886,12 +2899,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // 'colocated' DBs is not supported.
   Result<TableId> GetRestoreTargetParentTableForLegacyColocatedDb(
       const NamespaceId& restore_target_namespace_id);
-  // Update the colocated user table info to point to the new parent tablet. Add the colocated table
-  // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
-  // and doesn't have table ids.
-  Status UpdateColocatedUserTableInfoForClone(
+  // Re-point a colocated secondary user table at its parent's current tablets after the parent
+  // has been recreated (clone) or repartitioned (backup/restore). Clears the secondary table's
+  // tablet maps, re-adds the parent's current tablets, and adds the secondary table id to each
+  // parent tablet's in-memory hosted-tables list. For backup/restore (is_clone == false) this also
+  // dispatches AsyncAddTableToTablet so tservers register the secondary table on the new tablets;
+  // each scheduled task is registered with `add_table_waiter` so DoImportSnapshotMeta can block
+  // until they all complete (or report a per-task failure) before returning.
+  Status UpdateColocatedUserTableInfo(
       const TableInfoPtr& table, const TableId& new_parent_table_id,
-      ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch);
+      ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch, bool is_clone,
+      const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter);
+
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(
       const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
@@ -3038,6 +3057,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<std::optional<CDCStreamInfoPtr>> GetStreamIfValidForDelete(
       const xrepl::StreamId& stream_id, bool force_delete) REQUIRES_SHARED(mutex_);
+
+  Result<std::optional<CDCStreamInfoPtr>> GetReplicationSlotStreamForDelete(
+      const ReplicationSlotName& slot_name, bool force_delete) REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
@@ -3398,11 +3420,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
-
-  // True once we have determined whether CDC is enabled on the master. This is set after CDC
-  // streams are loaded from persisted data during master startup, regardless of whether any CDC
-  // streams actually exist.
-  std::atomic<bool> cdc_enabled_status_known_{false};
 
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;

@@ -109,6 +109,11 @@ DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
+DEFINE_RUNTIME_int32(cdc_min_replicated_index_considered_stale_secs_master, 14400 /* 4 hours */,
+    "Same as cdc_min_replicated_index_considered_stale_secs but applied to the sys catalog tablet "
+    "on master. A higher default (4 hours) prevents premature reset of retention barriers on "
+    "master followers that receive less frequent barrier updates.");
+
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
 
@@ -1187,9 +1192,10 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
   if (seconds_since_last_refresh_ptr) {
     *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
   }
-  return (
-      seconds_since_last_refresh >
-      FLAGS_cdc_min_replicated_index_considered_stale_secs);
+  auto stale_secs = meta_->IsSysCatalog()
+      ? FLAGS_cdc_min_replicated_index_considered_stale_secs_master
+      : FLAGS_cdc_min_replicated_index_considered_stale_secs;
+  return (seconds_since_last_refresh > stale_secs);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
