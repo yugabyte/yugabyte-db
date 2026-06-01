@@ -64,7 +64,8 @@ class PgBackendsTest : public LibPqTestBase {
     options->extra_master_flags.insert(
         options->extra_master_flags.end(),
         {
-          Format("--master_ysql_operation_lease_ttl_ms=$0", kYsqlLeaseSec * 1000),
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
+          Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           Format("--catalog_manager_bg_task_wait_ms=$0", kCatalogManagerBgTaskWaitMs),
           Format("--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
                  kMasterTserverRpcTimeoutSec * 1000),
@@ -74,6 +75,8 @@ class PgBackendsTest : public LibPqTestBase {
     options->extra_tserver_flags.insert(
         options->extra_tserver_flags.end(),
         {
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms,ysql_enable_auto_analyze",
+          Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           "--ysql_yb_disable_wait_for_backends_catalog_version=false",
           "--ysql_enable_auto_analyze=false"
         });
@@ -97,7 +100,7 @@ class PgBackendsTest : public LibPqTestBase {
  protected:
   void WaitOutInitialCatalogLeasePeriod() {
     const auto sleep_time =
-        MonoDelta::FromSeconds(kYsqlLeaseSec) - (MonoTime::Now() - start_time_);
+        MonoDelta::FromSeconds(kCatalogLeaseSec) - (MonoTime::Now() - start_time_);
     LOG(INFO) << "Sleep " << sleep_time << " to wait out lease period of master in fresh cluster";
     SleepFor(sleep_time);
   }
@@ -157,7 +160,7 @@ class PgBackendsTest : public LibPqTestBase {
   std::unique_ptr<client::YBClient> client_;
   std::unique_ptr<PGConn> conn_;
   PgOid catalog_version_db_oid_ = kPgInvalidOid;
-  static constexpr int kYsqlLeaseSec = 10;
+  static constexpr int kCatalogLeaseSec = 10;
   static constexpr int kCatalogManagerBgTaskWaitMs = 1000;
   static constexpr int kMasterTserverRpcTimeoutSec = 30;
 };
@@ -919,7 +922,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
   // version.
   LOG(INFO) << "Ensure that that tserver is not considered resolved";
   auto num_backends = ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver + 1, MonoDelta::FromSeconds(kYsqlLeaseSec / 2) /* timeout */));
+      "yugabyte", cat_ver + 1, MonoDelta::FromSeconds(kCatalogLeaseSec / 2) /* timeout */));
   ASSERT_EQ(-1, num_backends);
 
   PGConn conn_user = ASSERT_RESULT(PGConnBuilder({
@@ -929,7 +932,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
       }).Connect());
 
   // TODO(#13369): check that conn_user becomes blocked when ts lease expires, and check that that
-  // happens after kYsqlLeaseSec time has passed since disabling heartbeat.
+  // happens after kCatalogLeaseSec time has passed since disabling heartbeat.
 }
 
 // An unresponsive tserver that expires lease should be considered resolved.
@@ -998,8 +1001,8 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
 
   WaitOutInitialCatalogLeasePeriod();
   if (keep_alive) {
-    LOG(INFO) << "Stop YSQL lease refresh for that ts";
-    RETURN_NOT_OK(cluster_->SetFlag(ts, "TEST_tserver_enable_ysql_lease_refresh", "false"));
+    LOG(INFO) << "Stop heartbeating for that ts";
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "TEST_tserver_disable_heartbeat", "true"));
   } else {
     LOG(INFO) << "Shutdown that ts";
     ts->Shutdown();
@@ -1007,7 +1010,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
 
   LOG(INFO) << "Verify that the disconnect does not immediately result in resolution for that ts";
   num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver, MonoDelta::FromSeconds(kYsqlLeaseSec / 2) /* timeout */));
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(kCatalogLeaseSec / 2) /* timeout */));
   // Still waiting on the "BEGIN" backend.
   SCHECK_EQ(1, num_backends, IllegalState, "unexpected num backends");
 
@@ -1017,20 +1020,28 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
       client_->WaitForYsqlBackendsCatalogVersion(
         "yugabyte",
         cat_ver,
-        MonoDelta::FromSeconds(kYsqlLeaseSec / 2 + kMarginSec +
-                               kMasterTserverRpcTimeoutSec) /* timeout */));
+        MonoDelta::FromSeconds(kCatalogLeaseSec / 2 + kMarginSec
+                               + kMasterTserverRpcTimeoutSec) /* timeout */));
   SCHECK_EQ(0, num_backends, IllegalState, "unexpected num backends");
 
   if (keep_alive) {
-    // Confirm that the connection is dead because on a lease expiration all PG backends
-    // on ts are killed.
-    auto res = conn_user.Fetch("SELECT oid FROM pg_class");
-
-    // We EXPECT this to fail if the lease logic is working
-    SCHECK(!res.ok(), IllegalState, "Connection should be dead, but it succeeded!");
+    LOG(INFO) << "Check that old connection on unresponsive tserver is blocked";
+    LOG(INFO) << "Actually, old connection should not be blocked yet.  See first task of"
+              << " issue #13369. Also, it works because ALTER TABLE is not a breaking catalog"
+              << " change.";
+    // Confirm that the connection is still performing as usual.
+    RETURN_NOT_OK(conn_user.Fetch("SELECT oid FROM pg_class"));
+    auto res = conn_user.FetchFormat("SELECT * FROM $0tab", kUser);
+    // TODO(#13369): check status type, status msg. We are getting permission denied error
+    // which means the connection is still performing as usual. If the connection is
+    // blocked, we should see a different error indicating that.
+    SCHECK(!res.ok(), IllegalState, "should not have permission");
     Status s = res.status();
-    SCHECK(s.IsNetworkError(), IllegalState,
-           Format("Expected network error but got: $0", s.ToString()));
+    if (!s.IsNetworkError() ||
+        (s.message().ToBuffer().find(Format("permission denied for table $0tab", kUser)) ==
+         std::string::npos)) {
+      return s;
+    }
   }
 
   LOG(INFO) << "Make new connection in case conn_'s node was selected to be unresponsive";
